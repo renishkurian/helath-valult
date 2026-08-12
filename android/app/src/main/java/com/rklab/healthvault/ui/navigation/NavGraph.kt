@@ -121,14 +121,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 HomeScreen(
                     repository = repository,
                     onAddFamily = { navController.navigate(Routes.FAMILY) },
-                    onOpenFolder = { category ->
-                        navController.navigate(Routes.documents("", category, category.name))
+                    onOpenFolder = { personId, category ->
+                        navController.navigate(Routes.documents(personId, category, category.name))
                     },
-                    onAddDocument = {
-                        navController.navigate(Routes.upload("", null))
+                    onAddDocument = { personId ->
+                        navController.navigate(Routes.upload(personId, null))
                     },
                     onOpenDocument = { /* handled inside folder view; home tap is informational */ },
-                    onAddCard = { navController.navigate(Routes.upload("", null)) },
+                    onAddCard = { navController.navigate(Routes.FAMILY) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) }
                 )
             }
@@ -209,7 +209,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 var resolvedPersonId by remember { mutableStateOf(personId) }
                 LaunchedEffect(Unit) {
                     if (resolvedPersonId.isBlank()) {
-                        resolvedPersonId = repository.activePersonFlow().first().orEmpty()
+                        // Try DataStore first; if still empty (e.g. first login before HomeViewModel
+                        // has written it), fall back to the first person from the API.
+                        val fromStore = repository.activePersonFlow().first().orEmpty()
+                        resolvedPersonId = if (fromStore.isNotBlank()) {
+                            fromStore
+                        } else {
+                            repository.listPeople().firstOrNull()?.id.orEmpty()
+                        }
                     }
                 }
                 if (resolvedPersonId.isNotBlank()) {

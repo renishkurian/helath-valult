@@ -33,8 +33,8 @@ import java.time.temporal.ChronoUnit
 fun HomeScreen(
     repository: HealthVaultRepository,
     onAddFamily: () -> Unit,
-    onOpenFolder: (DocCategory) -> Unit,
-    onAddDocument: () -> Unit,
+    onOpenFolder: (String, DocCategory) -> Unit,
+    onAddDocument: (String) -> Unit,
     onOpenDocument: (DocumentOut) -> Unit,
     onAddCard: () -> Unit,
     onOpenSettings: () -> Unit
@@ -69,10 +69,19 @@ fun HomeScreen(
                 return@Box
             }
 
-            LazyColumnContent(state, viewModel, onAddFamily, onOpenFolder, onAddDocument, onOpenDocument, onAddCard, onOpenSettings)
+            val activeId = state.activePerson?.id.orEmpty()
+            LazyColumnContent(
+                state, viewModel,
+                onAddFamily = onAddFamily,
+                onOpenFolder = { cat -> onOpenFolder(activeId, cat) },
+                onAddDocument = { onAddDocument(activeId) },
+                onOpenDocument = onOpenDocument,
+                onAddCard = onAddCard,
+                onOpenSettings = onOpenSettings
+            )
 
             FloatingActionButton(
-                onClick = onAddDocument,
+                onClick = { onAddDocument(state.activePerson?.id.orEmpty()) },
                 containerColor = Navy,
                 contentColor = White,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
