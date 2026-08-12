@@ -1,6 +1,7 @@
 package com.rklab.healthvault.ui.screens.documents
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,6 +43,9 @@ fun DocumentListScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // Track which doc is currently being downloaded (prevents double-tap crash)
+    var downloadingDocId by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(personId, category) { viewModel.load(personId, category) }
 
     Column(modifier = Modifier.fillMaxSize().background(Paper)) {
@@ -55,7 +59,7 @@ fun DocumentListScreen(
                 Spacer(Modifier.height(4.dp))
                 Text("${state.documents.size} documents", style = MaterialTheme.typography.headlineMedium, color = Ink)
 
-                // Error toast (doesn't block the list — cached data may still be showing)
+                // Error banner (doesn't block the list — cached data may still be showing)
                 if (state.error != null) {
                     Spacer(Modifier.height(8.dp))
                     Surface(
@@ -89,32 +93,87 @@ fun DocumentListScreen(
                         contentPadding = PaddingValues(bottom = 90.dp)
                     ) {
                         items(state.documents) { doc ->
+                            val isDownloading = downloadingDocId == doc.id
                             LedgerRow(
                                 title = doc.title,
                                 metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${doc.hospital_name ?: "—"}",
                                 category = doc.category,
-                                tagLabel = "Open",
+                                tagLabel = if (isDownloading) "..." else "Open",
                                 tagColor = Sage,
                                 tagBg = SageBg,
                                 onClick = {
+                                    if (downloadingDocId != null) return@LedgerRow // prevent double-tap
                                     scope.launch {
-                                        val safeName = doc.title.replace(Regex("[^a-zA-Z0-9.\\-]"), "_")
-                                        val dest = File(context.cacheDir.resolve("downloads").apply { mkdirs() }, "${doc.id}_$safeName")
-                                        val file = viewModel.download(doc.id, dest)
-                                        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                                        val intent = Intent(Intent.ACTION_VIEW).apply {
-                                            setDataAndType(uri, doc.file_type ?: "*/*")
-                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        }
+                                        downloadingDocId = doc.id
                                         try {
+                                            val safeName = doc.title
+                                                .replace(Regex("[^a-zA-Z0-9.\\-]"), "_")
+                                                .take(80)
+                                            val downloadsDir = context.cacheDir.resolve("downloads")
+                                            downloadsDir.mkdirs()
+                                            val dest = File(downloadsDir, "${doc.id}_$safeName")
+                                            val file = viewModel.download(doc.id, dest)
+                                            val uri = FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                file
+                                            )
+                                            val mimeType = when {
+                                                !doc.file_type.isNullOrBlank() -> doc.file_type
+                                                safeName.endsWith(".pdf", true) -> "application/pdf"
+                                                safeName.endsWith(".jpg", true) || safeName.endsWith(".jpeg", true) -> "image/jpeg"
+                                                safeName.endsWith(".png", true) -> "image/png"
+                                                else -> "*/*"
+                                            }
+                                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                                setDataAndType(uri, mimeType)
+                                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            }
                                             context.startActivity(Intent.createChooser(intent, "Open with"))
                                         } catch (e: Exception) {
-                                            android.widget.Toast.makeText(context, "No app found to open this file.", android.widget.Toast.LENGTH_SHORT).show()
+                                            val msg = when {
+                                                e.message?.contains("No Activity found", ignoreCase = true) == true ->
+                                                    "No app found to open this file type."
+                                                isOffline ->
+                                                    "You're offline. Cannot download this file right now."
+                                                else ->
+                                                    "Could not open file: ${e.message ?: "Unknown error"}"
+                                            }
+                                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                        } finally {
+                                            downloadingDocId = null
                                         }
                                     }
                                 }
                             )
                             Divider(color = PaperDeep, thickness = 1.dp)
+                        }
+                    }
+                }
+            }
+
+            // Downloading overlay — shows a spinner while a file is being fetched
+            if (downloadingDocId != null) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 8.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = Navy,
+                                strokeWidth = 2.dp
+                            )
+                            Text("Downloading…", color = Ink)
                         }
                     }
                 }
