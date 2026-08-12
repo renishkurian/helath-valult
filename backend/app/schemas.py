@@ -92,6 +92,18 @@ class CardOut(BaseModel):
 
 
 # ---------- Documents ----------
+class DocumentFileOut(BaseModel):
+    id: str
+    document_id: str
+    original_filename: str
+    file_type: Optional[str]
+    file_size: Optional[int]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class DocumentOut(BaseModel):
     id: str
     person_id: str
@@ -99,8 +111,9 @@ class DocumentOut(BaseModel):
     title: str
     hospital_name: Optional[str]
     doc_date: Optional[str]
-    file_type: Optional[str]
-    file_size: Optional[int]
+    file_type: Optional[str]   # legacy, first file's type for backward compat
+    file_size: Optional[int]   # legacy, first file's size
+    file_count: int = 1        # total number of attached files
     notes: Optional[str]
     created_at: datetime
 

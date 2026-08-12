@@ -1,26 +1,35 @@
 package com.rklab.healthvault.ui.screens.documents
+
 import android.Manifest
 import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rklab.healthvault.data.model.DocCategory
@@ -51,27 +60,33 @@ fun UploadDocumentScreen(
     var hospitalName by remember { mutableStateOf("") }
     var docDate by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-    var pickedFile by remember { mutableStateOf<File?>(null) }
-    var pickedMime by remember { mutableStateOf("application/octet-stream") }
+
+    // Multi-file: list of (File, mimeType) pairs
+    var pickedFiles by remember { mutableStateOf<List<Pair<File, String>>>(emptyList()) }
     var captureUri by remember { mutableStateOf<Uri?>(null) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
     var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
 
-    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-        uri ?: return@rememberLauncherForActivityResult
-        pickedMime = FileUtil.mimeTypeOf(context, uri)
-        pickedFile = FileUtil.copyUriToCacheFile(context, uri, "doc_${System.currentTimeMillis()}")
+    // Multi-document picker (images + PDFs)
+    val multiFileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        val newFiles = uris.mapNotNull { uri ->
+            val mime = FileUtil.mimeTypeOf(context, uri)
+            val file = FileUtil.copyUriToCacheFile(context, uri, "doc_${System.currentTimeMillis()}_${uri.lastPathSegment}")
+            file?.let { Pair(it, mime) }
+        }
+        pickedFiles = pickedFiles + newFiles
     }
 
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
         if (success && captureUri != null) {
-            pickedMime = "image/jpeg"
-            pickedFile = captureUri?.let { uri ->
+            captureUri?.let { uri ->
                 val dest = FileUtil.newCaptureFile(context)
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     dest.outputStream().use { output -> input.copyTo(output) }
                 }
-                dest
+                pickedFiles = pickedFiles + Pair(dest, "image/jpeg")
             }
         }
     }
@@ -83,10 +98,6 @@ fun UploadDocumentScreen(
         cameraLauncher.launch(uri)
     }
 
-    // The manifest declares android.permission.CAMERA, which makes it a
-    // runtime-requestable "dangerous" permission on API 23+. Launching the
-    // camera intent without requesting it first throws SecurityException
-    // and crashes the app — this is what was happening before.
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -94,19 +105,15 @@ fun UploadDocumentScreen(
             permissionDeniedMessage = null
             launchCamera()
         } else {
-            permissionDeniedMessage = "Camera permission is needed to take a photo. You can still use Gallery / Files, or grant camera access in system Settings."
+            permissionDeniedMessage = "Camera permission is needed to take a photo."
         }
     }
 
     fun onCameraTapped() {
         val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
             PackageManager.PERMISSION_GRANTED
-        if (hasPermission) {
-            permissionDeniedMessage = null
-            launchCamera()
-        } else {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-        }
+        if (hasPermission) { permissionDeniedMessage = null; launchCamera() }
+        else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Paper)) {
@@ -114,7 +121,7 @@ fun UploadDocumentScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(20.dp)
-                .verticalScrollWorkaround()
+                .verticalScroll(rememberScrollState())
         ) {
             TextButton(onClick = onBack) { Text("← Back", color = Navy) }
             Text("ADD DOCUMENT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
@@ -122,18 +129,12 @@ fun UploadDocumentScreen(
             Text("Add a document", style = MaterialTheme.typography.headlineMedium, color = Ink)
             Spacer(Modifier.height(20.dp))
 
-            // File source
+            // File source buttons
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SourceButton(
-                    icon = Icons.Filled.CameraAlt,
-                    label = "Camera",
-                    modifier = Modifier.weight(1f)
-                ) { onCameraTapped() }
-                SourceButton(
-                    icon = Icons.Filled.InsertDriveFile,
-                    label = "Gallery / Files",
-                    modifier = Modifier.weight(1f)
-                ) { galleryLauncher.launch("*/*") }
+                SourceButton(icon = Icons.Filled.CameraAlt, label = "Camera", modifier = Modifier.weight(1f)) { onCameraTapped() }
+                SourceButton(icon = Icons.Filled.InsertDriveFile, label = "Gallery / Files", modifier = Modifier.weight(1f)) {
+                    multiFileLauncher.launch(arrayOf("*/*"))
+                }
             }
 
             if (permissionDeniedMessage != null) {
@@ -141,20 +142,37 @@ fun UploadDocumentScreen(
                 Text(permissionDeniedMessage!!, color = StampRed, style = MaterialTheme.typography.bodySmall)
             }
 
-            if (pickedFile != null) {
-                Spacer(Modifier.height(10.dp))
-                Text("Selected: ${pickedFile!!.name}", style = MaterialTheme.typography.bodySmall, color = Sage)
+            // Selected files chips
+            if (pickedFiles.isNotEmpty()) {
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    "${pickedFiles.size} file${if (pickedFiles.size > 1) "s" else ""} selected",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = Sage
+                )
+                Spacer(Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    itemsIndexed(pickedFiles) { idx, (file, mime) ->
+                        FileChip(
+                            name = file.name.take(20),
+                            mime = mime,
+                            index = idx + 1,
+                            onRemove = { pickedFiles = pickedFiles.toMutableList().also { it.removeAt(idx) } }
+                        )
+                    }
+                }
             }
 
             Spacer(Modifier.height(18.dp))
 
+            // Category dropdown
             Box {
                 OutlinedTextField(
                     value = categoryLabel(category),
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Category") },
-                    modifier = Modifier.fillMaxWidth().clickableOpen { categoryMenuOpen = true }
+                    modifier = Modifier.fillMaxWidth().clickable { categoryMenuOpen = true }
                 )
                 DropdownMenu(expanded = categoryMenuOpen, onDismissRequest = { categoryMenuOpen = false }) {
                     DocCategory.entries.forEach { cat ->
@@ -165,15 +183,12 @@ fun UploadDocumentScreen(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title*") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            
+
             if (people.isNotEmpty()) {
                 com.rklab.healthvault.ui.components.PersonDropdownField(
                     label = "Family Member",
                     selectedPersonId = selectedPersonId,
-                    onPersonSelected = { 
-                        selectedPersonId = it 
-                        viewModel.setActivePerson(it)
-                    },
+                    onPersonSelected = { selectedPersonId = it; viewModel.setActivePerson(it) },
                     people = people,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -188,7 +203,7 @@ fun UploadDocumentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))
-            
+
             com.rklab.healthvault.ui.components.DatePickerField(
                 label = "Date (optional)",
                 value = docDate,
@@ -206,19 +221,75 @@ fun UploadDocumentScreen(
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    val file = pickedFile ?: return@Button
+                    if (pickedFiles.isEmpty()) return@Button
                     viewModel.upload(
-                        selectedPersonId, category, title.ifBlank { file.name }, hospitalName.ifBlank { null },
-                        docDate.ifBlank { null }, notes.ifBlank { null }, file, pickedMime, null, onDone
+                        personId = selectedPersonId,
+                        category = category,
+                        title = title.ifBlank { pickedFiles.firstOrNull()?.first?.name ?: "Document" },
+                        hospitalName = hospitalName.ifBlank { null },
+                        docDate = docDate.ifBlank { null },
+                        notes = notes.ifBlank { null },
+                        files = pickedFiles.map { it.first },
+                        mimeTypes = pickedFiles.map { it.second },
+                        reloadCategory = null,
+                        onDone = onDone
                     )
                 },
-                enabled = pickedFile != null && !state.uploading,
-                modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = pickedFiles.isNotEmpty() && !state.uploading,
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = docCategoryColor(category))
             ) {
-                Text(if (state.uploading) "Uploading…" else "Save document", color = White)
+                if (state.uploading) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(
+                    if (state.uploading) "Uploading ${pickedFiles.size} file${if (pickedFiles.size > 1) "s" else ""}…"
+                    else "Save document (${pickedFiles.size} file${if (pickedFiles.size > 1) "s" else ""})",
+                    color = White,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
             Spacer(Modifier.height(40.dp))
+        }
+    }
+}
+
+@Composable
+private fun FileChip(name: String, mime: String, index: Int, onRemove: () -> Unit) {
+    val isPdf = mime.contains("pdf", ignoreCase = true)
+    val isImage = mime.startsWith("image/")
+    val icon = when {
+        isPdf -> "PDF"
+        isImage -> "IMG"
+        else -> "DOC"
+    }
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(SageBg)
+            .border(1.dp, Sage.copy(alpha = 0.4f), RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(28.dp).clip(RoundedCornerShape(6.dp)).background(Sage.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(icon, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 8.sp), color = Sage)
+        }
+        Column {
+            Text("#$index", style = MaterialTheme.typography.labelSmall, color = InkSoft)
+            Text(name, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium), color = Ink, maxLines = 1)
+        }
+        Spacer(Modifier.width(2.dp))
+        Box(
+            modifier = Modifier.size(18.dp).clip(CircleShape).background(Color(0x22FF4444)).clickable { onRemove() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = "Remove", tint = StampRed, modifier = Modifier.size(12.dp))
         }
     }
 }
@@ -229,7 +300,7 @@ private fun SourceButton(icon: androidx.compose.ui.graphics.vector.ImageVector, 
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(White)
-            .clickableOpen(onClick)
+            .clickable(onClick = onClick)
             .padding(vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -239,10 +310,5 @@ private fun SourceButton(icon: androidx.compose.ui.graphics.vector.ImageVector, 
     }
 }
 
-private fun categoryLabel(cat: DocCategory): String = cat.name.lowercase().split("_").joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
-
-private fun Modifier.clickableOpen(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
-
-@Composable
-private fun Modifier.verticalScrollWorkaround(): Modifier =
-    this.verticalScroll(rememberScrollState())
+private fun categoryLabel(cat: DocCategory): String =
+    cat.name.lowercase().split("_").joinToString(" ") { it.replaceFirstChar(Char::uppercase) }

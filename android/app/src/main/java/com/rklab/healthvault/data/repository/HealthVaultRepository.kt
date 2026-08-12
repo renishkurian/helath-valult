@@ -177,13 +177,14 @@ class HealthVaultRepository(
         hospitalName: String?,
         docDate: String?,
         notes: String?,
-        file: File,
-        mimeType: String
+        files: List<File>,
+        mimeTypes: List<String>
     ): UploadResult {
         fun text(v: String) = v.toRequestBody("text/plain".toMediaTypeOrNull())
-        val filePart = MultipartBody.Part.createFormData(
-            "file", file.name, file.asRequestBody(mimeType.toMediaTypeOrNull())
-        )
+        val fileParts = files.mapIndexed { idx, file ->
+            val mime = mimeTypes.getOrElse(idx) { "application/octet-stream" }
+            MultipartBody.Part.createFormData("files", file.name, file.asRequestBody(mime.toMediaTypeOrNull()))
+        }
         return try {
             val doc = api.uploadDocument(
                 personId = text(personId),
@@ -192,12 +193,13 @@ class HealthVaultRepository(
                 hospitalName = hospitalName?.let { text(it) },
                 docDate = docDate?.let { text(it) },
                 notes = notes?.let { text(it) },
-                file = filePart
+                files = fileParts
             )
             db.documentDao().upsertAll(listOf(doc.toEntity()))
             UploadResult.Success(doc)
         } catch (e: IOException) {
-            // Queue locally — SyncWorker will send it when Pi is reachable.
+            // Queue the first file locally for offline sync
+            val firstFile = files.firstOrNull() ?: return UploadResult.QueuedOffline
             db.pendingUploadDao().insert(
                 PendingUploadEntity(
                     person_id = personId,
@@ -206,13 +208,24 @@ class HealthVaultRepository(
                     hospital_name = hospitalName,
                     doc_date = docDate,
                     notes = notes,
-                    file_path = file.absolutePath,
-                    mime_type = mimeType
+                    file_path = firstFile.absolutePath,
+                    mime_type = mimeTypes.firstOrNull() ?: "application/octet-stream"
                 )
             )
             SyncWorker.enqueueNow(appContext)
             UploadResult.QueuedOffline
         }
+    }
+
+    suspend fun listDocumentFiles(documentId: String): List<com.rklab.healthvault.data.model.DocumentFileOut> =
+        api.listDocumentFiles(documentId)
+
+    suspend fun downloadDocumentFile(documentId: String, fileId: String, destination: File): File {
+        val body = api.downloadDocumentFile(documentId, fileId)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
     }
 
     suspend fun downloadDocument(id: String, destination: File): File {

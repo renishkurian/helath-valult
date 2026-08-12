@@ -91,22 +91,21 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         hospitalName: String?,
         docDate: String?,
         notes: String?,
-        file: File,
-        mimeType: String,
+        files: List<File>,
+        mimeTypes: List<String>,
         reloadCategory: DocCategory?,
         onDone: () -> Unit
     ) {
         viewModelScope.launch {
             _state.value = _state.value.copy(uploading = true, error = null)
             try {
-                when (repository.uploadDocument(personId, category, title, hospitalName, docDate, notes, file, mimeType)) {
+                when (repository.uploadDocument(personId, category, title, hospitalName, docDate, notes, files, mimeTypes)) {
                     is UploadResult.Success -> {
                         _state.value = _state.value.copy(uploading = false)
                         load(personId, reloadCategory)
                         onDone()
                     }
                     is UploadResult.QueuedOffline -> {
-                        // File saved locally — inform the user and navigate away.
                         _state.value = _state.value.copy(
                             uploading = false,
                             error = "You're offline — this document will upload automatically when your Pi is reachable again."

@@ -13,36 +13,61 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.rklab.healthvault.ui.navigation.HealthVaultNavGraph
 import com.rklab.healthvault.ui.theme.HealthVaultTheme
 import com.rklab.healthvault.ui.theme.Paper
 import com.rklab.healthvault.ui.theme.Navy
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : FragmentActivity() {
+    
+    private val requiresAuthFlow = MutableStateFlow(true) // Start by requiring auth check
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         val app = application as HealthVaultApp
 
+        // Listen for app going to background to lock it again
+        ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
+            override fun onStop(owner: LifecycleOwner) {
+                lifecycleScope.launch {
+                    val isEnabled = app.repository.tokenManager.isBiometricEnabled.first()
+                    if (isEnabled && app.repository.isLoggedIn) {
+                        requiresAuthFlow.value = true
+                    }
+                }
+            }
+        })
+
         setContent {
+            val requiresAuth by requiresAuthFlow.collectAsState()
             var authState by remember { mutableStateOf<AuthState>(AuthState.Checking) }
 
-            LaunchedEffect(Unit) {
-                val isEnabled = app.repository.tokenManager.isBiometricEnabled.first()
-                if (isEnabled && app.repository.isLoggedIn) {
-                    showBiometricPrompt { success ->
-                        if (success) {
-                            authState = AuthState.Authenticated
-                        } else {
-                            finish()
+            LaunchedEffect(requiresAuth) {
+                if (requiresAuth) {
+                    authState = AuthState.Checking
+                    val isEnabled = app.repository.tokenManager.isBiometricEnabled.first()
+                    if (isEnabled && app.repository.isLoggedIn) {
+                        showBiometricPrompt { success ->
+                            if (success) {
+                                authState = AuthState.Authenticated
+                                requiresAuthFlow.value = false
+                            } else {
+                                finish() // Close app if they cancel the lock screen
+                            }
                         }
+                    } else {
+                        authState = AuthState.Authenticated
+                        requiresAuthFlow.value = false
                     }
-                } else {
-                    authState = AuthState.Authenticated
                 }
             }
 

@@ -59,12 +59,22 @@ interface ApiService {
         @Part("hospital_name") hospitalName: RequestBody?,
         @Part("doc_date") docDate: RequestBody?,
         @Part("notes") notes: RequestBody?,
-        @Part file: MultipartBody.Part
+        @Part files: List<MultipartBody.Part>  // supports 1..N files
     ): DocumentOut
+
+    @GET("documents/{id}/files")
+    suspend fun listDocumentFiles(@Path("id") id: String): List<DocumentFileOut>
 
     @Streaming
     @GET("documents/{id}/download")
     suspend fun downloadDocument(@Path("id") id: String): ResponseBody
+
+    @Streaming
+    @GET("documents/{id}/files/{fileId}/download")
+    suspend fun downloadDocumentFile(
+        @Path("id") id: String,
+        @Path("fileId") fileId: String
+    ): ResponseBody
 
     @DELETE("documents/{id}")
     suspend fun deleteDocument(@Path("id") id: String): Response<Unit>

@@ -99,15 +99,36 @@ class Document(Base):
     hospital_name = Column(String(255), nullable=True, index=True)
     doc_date = Column(String(20), nullable=True)
 
-    file_path = Column(String(500), nullable=False)   # path to the ENCRYPTED file on disk
-    file_type = Column(String(100), nullable=True)     # original mime type
-    file_size = Column(Integer, nullable=True)          # original (decrypted) size in bytes
+    # Legacy single-file columns — kept for backward compatibility.
+    # New uploads use the DocumentFile child table instead.
+    file_path = Column(String(500), nullable=True)   # path to the ENCRYPTED file on disk
+    file_type = Column(String(100), nullable=True)   # original mime type
+    file_size = Column(Integer, nullable=True)        # original (decrypted) size in bytes
 
     notes_enc = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
     person = relationship("Person", back_populates="documents")
+    files = relationship("DocumentFile", back_populates="document", cascade="all, delete-orphan", order_by="DocumentFile.created_at")
+
+
+class DocumentFile(Base):
+    """A single page/file attached to a Document entry. A document can have N files."""
+    __tablename__ = "document_files"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=False, index=True)
+
+    original_filename = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)    # path to the ENCRYPTED file on disk
+    file_type = Column(String(100), nullable=True)     # original mime type
+    file_size = Column(Integer, nullable=True)          # original (decrypted) size in bytes
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    document = relationship("Document", back_populates="files")
+
+
 
 
 class Reminder(Base):

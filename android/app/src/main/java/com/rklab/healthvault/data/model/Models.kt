@@ -78,7 +78,17 @@ data class DocumentOut(
     val doc_date: String?,
     val file_type: String?,
     val file_size: Long?,
+    val file_count: Int = 1,
     val notes: String?,
+    val created_at: String
+)
+
+data class DocumentFileOut(
+    val id: String,
+    val document_id: String,
+    val original_filename: String,
+    val file_type: String?,
+    val file_size: Long?,
     val created_at: String
 )
 
