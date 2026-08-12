@@ -154,8 +154,7 @@ fun EditDocumentScreen(
                                 notes = notes.ifBlank { null }
                             )
                             repository.updateDocument(docId, update)
-                            // Reload list from local db to reflect changes instantly on the previous screen
-                            viewModel.load(null, null, null)
+                            // Simply navigate back; the list reloads on re-entry
                             onDone()
                         } catch (e: Exception) {
                             saveError = e.message ?: "Failed to update document"
