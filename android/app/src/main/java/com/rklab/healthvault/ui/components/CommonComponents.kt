@@ -22,13 +22,13 @@ import com.rklab.healthvault.ui.theme.*
 data class FolderDef(val category: DocCategory, val label: String, val bg: Color)
 
 val FolderDefs = listOf(
-    FolderDef(DocCategory.HOSPITAL_CARD, "Hospital Cards", Color(0xFFEFE3C4)),
-    FolderDef(DocCategory.PRESCRIPTION, "Prescriptions", Color(0xFFE7EEDD)),
-    FolderDef(DocCategory.LAB_REPORT, "Lab Reports", Color(0xFFEAE0EC)),
-    FolderDef(DocCategory.INSURANCE, "Insurance", Color(0xFFDDE8EC)),
-    FolderDef(DocCategory.VACCINATION, "Vaccination", Color(0xFFE3ECD9)),
-    FolderDef(DocCategory.BILL, "Bills", Color(0xFFF1DEDA)),
-    FolderDef(DocCategory.MEDICINE, "Medicines", Color(0xFFF5E9D0)),
+    FolderDef(DocCategory.HOSPITAL_CARD, "Hospital Cards", CatHospitalCard),
+    FolderDef(DocCategory.PRESCRIPTION, "Prescriptions", CatPrescription),
+    FolderDef(DocCategory.LAB_REPORT, "Lab Reports", CatLabReport),
+    FolderDef(DocCategory.INSURANCE, "Insurance", CatInsurance),
+    FolderDef(DocCategory.VACCINATION, "Vaccination", CatVaccination),
+    FolderDef(DocCategory.BILL, "Bills", CatBill),
+    FolderDef(DocCategory.MEDICINE, "Medicines", CatMedicine),
 )
 
 private val folderTabShape = GenericShape { size, _ ->
@@ -42,30 +42,42 @@ private val folderTabShape = GenericShape { size, _ ->
 
 @Composable
 fun FolderTab(def: FolderDef, count: Int, onClick: () -> Unit) {
-    Box(
+    Column(
         modifier = Modifier
-            .width(92.dp)
-            .height(72.dp)
-            .clip(folderTabShape)
-            .background(def.bg)
+            .width(110.dp)
+            .height(110.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(CardSurface)
+            .border(1.dp, CardOutline, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
-            .padding(start = 18.dp, top = 12.dp, end = 10.dp, bottom = 8.dp),
+            .padding(14.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.SpaceBetween
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(def.bg.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center
         ) {
             Text(
+                docCategoryShortLabel(def.category).take(1), // Just a single letter for icon
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = def.bg
+            )
+        }
+        Column {
+            Text(
                 def.label,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = Ink,
+                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                color = TextWhite,
                 maxLines = 2
             )
+            Spacer(Modifier.height(4.dp))
             Text(
-                "%02d".format(count),
-                style = MaterialTheme.typography.labelMedium,
-                color = InkSoft
+                count.toString(),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextGray
             )
         }
     }
@@ -152,25 +164,34 @@ fun FamilyAvatarChip(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.width(64.dp).clickable(onClick = onClick)
     ) {
-        Box(
-            modifier = Modifier
+        val boxModifier = if (selected) {
+            Modifier
                 .size(52.dp)
                 .clip(CircleShape)
-                .background(if (selected) Navy else White)
-                .border(1.5.dp, if (selected) Navy else LineColor, CircleShape),
+                .background(GradientPrimary)
+        } else {
+            Modifier
+                .size(52.dp)
+                .clip(CircleShape)
+                .background(Color.Transparent)
+                .border(1.dp, CardOutline, CircleShape)
+        }
+
+        Box(
+            modifier = boxModifier,
             contentAlignment = Alignment.Center
         ) {
             Text(
                 initials,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (selected) White else Ink
+                color = if (selected) TextWhite else TextGray
             )
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(8.dp))
         Text(
             name.split(" ").first(),
             style = MaterialTheme.typography.labelSmall,
-            color = if (selected) Navy else InkSoft,
+            color = if (selected) TextWhite else TextGray,
             maxLines = 1
         )
     }

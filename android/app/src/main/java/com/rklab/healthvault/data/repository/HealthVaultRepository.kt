@@ -11,6 +11,7 @@ import com.rklab.healthvault.data.sync.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -28,7 +29,7 @@ sealed class UploadResult {
 
 class HealthVaultRepository(
     private val api: ApiService,
-    private val tokenManager: TokenManager,
+    val tokenManager: TokenManager,
     private val serverConfig: ServerConfigManager,
     private val db: AppDatabase,
     val connectivityObserver: ConnectivityObserver,

@@ -82,11 +82,16 @@ fun HomeScreen(
 
             FloatingActionButton(
                 onClick = { onAddDocument(state.activePerson?.id.orEmpty()) },
-                containerColor = Navy,
-                contentColor = White,
-                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
+                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp).size(64.dp),
+                containerColor = Color.Transparent,
+                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add document")
+                Box(
+                    modifier = Modifier.fillMaxSize().background(GradientPrimary, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add document", tint = TextWhite, modifier = Modifier.size(32.dp))
+                }
             }
         }
     }
@@ -109,17 +114,18 @@ private fun LazyColumnContent(
     ) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                Column {
-                    Text("HEALTH VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        "Hi, ${state.activePerson?.name?.split(" ")?.first() ?: "there"}",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = Ink
-                    )
-                }
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = InkSoft)
+                Text(
+                    "Hi, ${state.activePerson?.name?.split(" ")?.first() ?: "there"}",
+                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                    color = TextWhite
+                )
+                Box(
+                    modifier = Modifier.size(48.dp).clip(CircleShape).background(CardSurface).border(1.dp, CardOutline, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = TextGray)
+                    }
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -141,16 +147,20 @@ private fun LazyColumnContent(
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(PaperDeep)
-                                .then(Modifier),
+                                .background(androidx.compose.ui.graphics.Color.Transparent)
+                                .border(
+                                    width = 1.dp,
+                                    color = TextGray,
+                                    shape = CircleShape
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             IconButton(onClick = onAddFamily) {
-                                Icon(Icons.Filled.PersonAdd, contentDescription = "Add family member", tint = InkSoft)
+                                Icon(Icons.Filled.Add, contentDescription = "Add family member", tint = TextGray)
                             }
                         }
-                        Spacer(Modifier.height(4.dp))
-                        Text("Add", style = MaterialTheme.typography.labelSmall, color = InkSoft)
+                        Spacer(Modifier.height(8.dp))
+                        Text("Add", style = MaterialTheme.typography.labelSmall, color = TextGray)
                     }
                 }
             }
@@ -188,7 +198,7 @@ private fun LazyColumnContent(
             Spacer(Modifier.height(12.dp))
         }
         item {
-            LazyRow {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 items(FolderDefs) { def ->
                     FolderTab(def = def, count = state.folderCounts[def.category] ?: 0) {
                         onOpenFolder(def.category)
@@ -247,20 +257,32 @@ private fun EmptyCardPrompt(onAddCard: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(White)
+            .background(CardSurface)
+            .border(1.dp, CardOutline, RoundedCornerShape(18.dp))
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("No hospital card yet", style = MaterialTheme.typography.titleLarge, color = Ink)
+        Text("No hospital card yet", style = MaterialTheme.typography.titleLarge, color = TextWhite)
         Spacer(Modifier.height(6.dp))
         Text(
             "Add a hospital ID card to keep it one tap away.",
             style = MaterialTheme.typography.bodyMedium,
-            color = InkSoft
+            color = TextGray
         )
         Spacer(Modifier.height(14.dp))
-        Button(onClick = onAddCard, colors = ButtonDefaults.buttonColors(containerColor = Navy)) {
-            Text("Add hospital card", color = White)
+        Button(
+            onClick = onAddCard,
+            contentPadding = PaddingValues(0.dp),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.height(48.dp).fillMaxWidth(0.8f),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = TextWhite)
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(GradientPrimary),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Add hospital card", color = TextWhite, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }
@@ -277,21 +299,23 @@ private fun ExpiryAlert(hospitalName: String, validTill: String?) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(MustardBg)
-            .padding(horizontal = 13.dp, vertical = 11.dp),
+            .border(1.dp, Mustard, RoundedCornerShape(12.dp))
+            .padding(horizontal = 16.dp, vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Mustard))
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.width(12.dp))
         Text(
             buildString {
                 append(hospitalName)
                 append(" card ")
                 append(if (daysLeft != null) "expires in $daysLeft days" else "is expiring soon")
             },
-            style = MaterialTheme.typography.bodySmall,
-            color = androidx.compose.ui.graphics.Color(0xFF5A4419),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextWhite,
             modifier = Modifier.weight(1f)
         )
+        Text("RENEW ➔", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold), color = Mustard)
     }
 }
 
