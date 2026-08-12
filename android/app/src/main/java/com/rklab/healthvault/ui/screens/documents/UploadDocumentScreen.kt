@@ -39,6 +39,9 @@ import com.rklab.healthvault.ui.theme.*
 import com.rklab.healthvault.util.FileUtil
 import com.rklab.healthvault.util.ViewModelFactory
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun UploadDocumentScreen(
@@ -64,37 +67,50 @@ fun UploadDocumentScreen(
 
     // Multi-file: list of (File, mimeType) pairs
     var pickedFiles by remember { mutableStateOf<List<Pair<File, String>>>(emptyList()) }
+    // The File the camera is writing into (captureUri points here)
+    var captureFile by remember { mutableStateOf<File?>(null) }
     var captureUri by remember { mutableStateOf<Uri?>(null) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
     var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
+    var isProcessingFile by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    // Multi-document picker (images + PDFs)
+    // Gallery/file picker: copy URIs to cache on a background thread
     val multiFileLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { uris: List<Uri> ->
-        val newFiles = uris.mapNotNull { uri ->
-            val mime = FileUtil.mimeTypeOf(context, uri)
-            val file = FileUtil.copyUriToCacheFile(context, uri, "doc_${System.currentTimeMillis()}_${uri.lastPathSegment}")
-            file?.let { Pair(it, mime) }
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        isProcessingFile = true
+        scope.launch {
+            val newFiles = withContext(Dispatchers.IO) {
+                uris.mapNotNull { uri ->
+                    val mime = FileUtil.mimeTypeOf(context, uri)
+                    val file = FileUtil.copyUriToCacheFile(context, uri, "doc_${System.currentTimeMillis()}_${uri.lastPathSegment}")
+                    file?.let { Pair(it, mime) }
+                }
+            }
+            pickedFiles = pickedFiles + newFiles
+            isProcessingFile = false
         }
-        pickedFiles = pickedFiles + newFiles
     }
 
+    // Camera: TakePicture writes directly into captureFile — just add it to the list
     val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        if (success && captureUri != null) {
-            captureUri?.let { uri ->
-                val dest = FileUtil.newCaptureFile(context)
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    dest.outputStream().use { output -> input.copyTo(output) }
+        if (success) {
+            captureFile?.let { file ->
+                if (file.exists() && file.length() > 0) {
+                    pickedFiles = pickedFiles + Pair(file, "image/jpeg")
                 }
-                pickedFiles = pickedFiles + Pair(dest, "image/jpeg")
             }
         }
+        captureFile = null
+        captureUri = null
     }
 
     fun launchCamera() {
         val file = FileUtil.newCaptureFile(context)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        captureFile = file
         captureUri = uri
         cameraLauncher.launch(uri)
     }
@@ -144,6 +160,14 @@ fun UploadDocumentScreen(
             }
 
             // Selected files chips
+            if (isProcessingFile) {
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Sage, strokeWidth = 2.dp)
+                    Text("Preparing files…", style = MaterialTheme.typography.labelMedium, color = Sage)
+                }
+            }
+
             if (pickedFiles.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
                 Text(
