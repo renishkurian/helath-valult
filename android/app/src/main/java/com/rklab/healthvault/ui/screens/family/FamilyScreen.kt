@@ -21,6 +21,7 @@ import com.rklab.healthvault.data.model.Relation
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
 import com.rklab.healthvault.util.ViewModelFactory
+import androidx.compose.foundation.rememberScrollState
 
 @Composable
 fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) -> Unit) {
@@ -169,4 +170,4 @@ private fun AddFamilyMemberDialog(
 
 @Composable
 private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
-    this.then(androidx.compose.foundation.clickable(onClick = onClick))
+    this.clickable(onClick = onClick)rememberScrollState
