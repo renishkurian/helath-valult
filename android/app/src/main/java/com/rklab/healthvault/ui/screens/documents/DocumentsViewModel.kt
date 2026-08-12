@@ -65,6 +65,12 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         emit(repository.listPeople()) // Simple fetch; real app might observe a DB flow
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    fun setActivePerson(id: String) {
+        viewModelScope.launch {
+            repository.setActivePerson(id)
+        }
+    }
+
     fun load(personId: String, category: DocCategory?) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)

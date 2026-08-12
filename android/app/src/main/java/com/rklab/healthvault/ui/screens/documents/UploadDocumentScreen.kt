@@ -170,7 +170,10 @@ fun UploadDocumentScreen(
                 com.rklab.healthvault.ui.components.PersonDropdownField(
                     label = "Family Member",
                     selectedPersonId = selectedPersonId,
-                    onPersonSelected = { selectedPersonId = it },
+                    onPersonSelected = { 
+                        selectedPersonId = it 
+                        viewModel.setActivePerson(it)
+                    },
                     people = people,
                     modifier = Modifier.fillMaxWidth()
                 )

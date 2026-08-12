@@ -98,14 +98,19 @@ fun DocumentListScreen(
                                 tagBg = SageBg,
                                 onClick = {
                                     scope.launch {
-                                        val dest = File(context.cacheDir.resolve("downloads").apply { mkdirs() }, doc.title)
+                                        val safeName = doc.title.replace(Regex("[^a-zA-Z0-9.\\-]"), "_")
+                                        val dest = File(context.cacheDir.resolve("downloads").apply { mkdirs() }, "${doc.id}_$safeName")
                                         val file = viewModel.download(doc.id, dest)
                                         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                                         val intent = Intent(Intent.ACTION_VIEW).apply {
                                             setDataAndType(uri, doc.file_type ?: "*/*")
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }
-                                        context.startActivity(Intent.createChooser(intent, "Open with"))
+                                        try {
+                                            context.startActivity(Intent.createChooser(intent, "Open with"))
+                                        } catch (e: Exception) {
+                                            android.widget.Toast.makeText(context, "No app found to open this file.", android.widget.Toast.LENGTH_SHORT).show()
+                                        }
                                     }
                                 }
                             )

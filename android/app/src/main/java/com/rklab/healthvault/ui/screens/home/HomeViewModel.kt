@@ -40,24 +40,39 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
     val pendingUploadCount: StateFlow<Int> = repository.pendingUploadCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    init {
+        viewModelScope.launch {
+            repository.activePersonFlow().collect { savedActiveId ->
+                // When the active person ID changes (e.g. from the Upload screen),
+                // we automatically refresh the home screen for that person.
+                loadInternal(savedActiveId)
+            }
+        }
+    }
+
     fun load() {
         viewModelScope.launch {
-            _state.value = _state.value.copy(loading = true, error = null)
-            try {
-                val people = repository.listPeople()
-                val savedActiveId = repository.activePersonFlow().first()
-                val active = people.firstOrNull { it.id == savedActiveId }
-                    ?: people.firstOrNull { it.relation == Relation.SELF }
-                    ?: people.firstOrNull()
+            val savedActiveId = repository.activePersonFlow().first()
+            loadInternal(savedActiveId)
+        }
+    }
 
-                if (active != null && active.id != savedActiveId) {
-                    repository.setActivePerson(active.id)
-                }
+    private suspend fun loadInternal(savedActiveId: String?) {
+        _state.value = _state.value.copy(loading = true, error = null)
+        try {
+            val people = repository.listPeople()
+            val active = people.firstOrNull { it.id == savedActiveId }
+                ?: people.firstOrNull { it.relation == Relation.SELF }
+                ?: people.firstOrNull()
 
-                loadForPerson(people, active)
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(loading = false, error = "Couldn't reach your server. Pull down to retry.")
+            if (active != null && active.id != savedActiveId) {
+                repository.setActivePerson(active.id)
+                // This will trigger the collect() block above, but it's fine.
             }
+
+            loadForPerson(people, active)
+        } catch (e: Exception) {
+            _state.value = _state.value.copy(loading = false, error = "Couldn't reach your server. Pull down to retry.")
         }
     }
 
