@@ -134,7 +134,7 @@ class HealthVaultRepository(
     // ---------- Documents ----------
 
     suspend fun listDocuments(personId: String? = null, category: DocCategory? = null): List<DocumentOut> = try {
-        val docs = api.listDocuments(personId, category)
+        val docs = api.listDocuments(personId, category?.name?.lowercase())
         if (personId != null) {
             if (category == null) {
                 db.documentDao().deleteByPerson(personId)

@@ -47,7 +47,7 @@ interface ApiService {
     @GET("documents")
     suspend fun listDocuments(
         @Query("person_id") personId: String? = null,
-        @Query("category") category: DocCategory? = null
+        @Query("category") category: String? = null
     ): List<DocumentOut>
 
     @Multipart
