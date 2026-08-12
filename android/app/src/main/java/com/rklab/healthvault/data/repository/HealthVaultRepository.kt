@@ -173,6 +173,7 @@ class HealthVaultRepository(
     suspend fun uploadDocument(
         personId: String,
         category: DocCategory,
+        customCategory: String?,
         title: String,
         hospitalName: String?,
         docDate: String?,
@@ -189,6 +190,7 @@ class HealthVaultRepository(
             val doc = api.uploadDocument(
                 personId = text(personId),
                 category = text(category.name.lowercase()),
+                customCategory = customCategory?.let { text(it) },
                 title = text(title),
                 hospitalName = hospitalName?.let { text(it) },
                 docDate = docDate?.let { text(it) },
@@ -204,6 +206,7 @@ class HealthVaultRepository(
                 PendingUploadEntity(
                     person_id = personId,
                     category = category.name.lowercase(),
+                    custom_category = customCategory,
                     title = title,
                     hospital_name = hospitalName,
                     doc_date = docDate,
@@ -317,11 +320,12 @@ class HealthVaultRepository(
                 val doc = api.uploadDocument(
                     personId = text(upload.person_id),
                     category = text(upload.category),
+                    customCategory = upload.custom_category?.let { text(it) },
                     title = text(upload.title),
                     hospitalName = upload.hospital_name?.let { text(it) },
                     docDate = upload.doc_date?.let { text(it) },
                     notes = upload.notes?.let { text(it) },
-                    file = filePart
+                    files = listOf(filePart)
                 )
                 db.documentDao().upsertAll(listOf(doc.toEntity()))
                 db.pendingUploadDao().delete(upload)

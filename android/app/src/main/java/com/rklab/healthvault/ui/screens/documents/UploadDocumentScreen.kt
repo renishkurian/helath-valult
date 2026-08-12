@@ -56,6 +56,7 @@ fun UploadDocumentScreen(
 
     var selectedPersonId by remember { mutableStateOf(personId) }
     var category by remember { mutableStateOf(defaultCategory ?: DocCategory.OTHER) }
+    var customCategory by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
     var hospitalName by remember { mutableStateOf("") }
     var docDate by remember { mutableStateOf("") }
@@ -180,6 +181,16 @@ fun UploadDocumentScreen(
                     }
                 }
             }
+            if (category == DocCategory.OTHER) {
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = customCategory,
+                    onValueChange = { customCategory = it },
+                    label = { Text("Custom folder name (Optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title*") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
@@ -225,6 +236,7 @@ fun UploadDocumentScreen(
                     viewModel.upload(
                         personId = selectedPersonId,
                         category = category,
+                        customCategory = customCategory.ifBlank { null },
                         title = title.ifBlank { pickedFiles.firstOrNull()?.first?.name ?: "Document" },
                         hospitalName = hospitalName.ifBlank { null },
                         docDate = docDate.ifBlank { null },

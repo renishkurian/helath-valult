@@ -35,11 +35,13 @@ data class DocumentEntity(
     @PrimaryKey val id: String,
     val person_id: String,
     val category: String,
+    val custom_category: String?,
     val title: String,
     val hospital_name: String?,
     val doc_date: String?,
     val file_type: String?,
     val file_size: Long?,
+    val file_count: Int,
     val notes: String?,
     val created_at: String
 )
@@ -63,6 +65,7 @@ data class PendingUploadEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val person_id: String,
     val category: String,   // matches DocCategory enum name lowercase
+    val custom_category: String?,
     val title: String,
     val hospital_name: String?,
     val doc_date: String?,

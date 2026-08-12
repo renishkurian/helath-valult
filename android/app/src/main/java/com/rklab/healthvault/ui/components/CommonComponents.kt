@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.DocCategory
 import com.rklab.healthvault.ui.theme.*
 
-data class FolderDef(val category: DocCategory, val label: String, val bg: Color)
+data class FolderDef(val category: DocCategory, val label: String, val bg: Color, val customCategory: String? = null)
 
 val FolderDefs = listOf(
     FolderDef(DocCategory.HOSPITAL_CARD, "Hospital Cards", CatHospitalCard),
@@ -60,8 +60,13 @@ fun FolderTab(def: FolderDef, count: Int, onClick: () -> Unit) {
                 .background(def.bg.copy(alpha = 0.2f)),
             contentAlignment = Alignment.Center
         ) {
+            val shortLabel = if (def.customCategory != null) {
+                def.customCategory.take(1).uppercase()
+            } else {
+                docCategoryShortLabel(def.category).take(1)
+            }
             Text(
-                docCategoryShortLabel(def.category).take(1), // Just a single letter for icon
+                shortLabel,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = def.bg
             )

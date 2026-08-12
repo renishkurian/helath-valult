@@ -33,7 +33,7 @@ import java.time.temporal.ChronoUnit
 fun HomeScreen(
     repository: HealthVaultRepository,
     onAddFamily: () -> Unit,
-    onOpenFolder: (String, DocCategory) -> Unit,
+    onOpenFolder: (String, DocCategory, String?) -> Unit,
     onAddDocument: (String) -> Unit,
     onOpenDocument: (DocumentOut) -> Unit,
     onAddCard: () -> Unit,
@@ -73,7 +73,7 @@ fun HomeScreen(
             LazyColumnContent(
                 state, viewModel,
                 onAddFamily = onAddFamily,
-                onOpenFolder = { cat -> onOpenFolder(activeId, cat) },
+                onOpenFolder = { cat, customCat -> onOpenFolder(activeId, cat, customCat) },
                 onAddDocument = { onAddDocument(activeId) },
                 onOpenDocument = onOpenDocument,
                 onAddCard = onAddCard,
@@ -102,7 +102,7 @@ private fun LazyColumnContent(
     state: HomeUiState,
     viewModel: HomeViewModel,
     onAddFamily: () -> Unit,
-    onOpenFolder: (DocCategory) -> Unit,
+    onOpenFolder: (DocCategory, String?) -> Unit,
     onAddDocument: () -> Unit,
     onOpenDocument: (DocumentOut) -> Unit,
     onAddCard: () -> Unit,
@@ -199,9 +199,10 @@ private fun LazyColumnContent(
         }
         item {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(FolderDefs) { def ->
-                    FolderTab(def = def, count = state.folderCounts[def.category] ?: 0) {
-                        onOpenFolder(def.category)
+                items(state.folders) { def ->
+                    val key = def.customCategory ?: def.category.name
+                    FolderTab(def = def, count = state.folderCounts[key] ?: 0) {
+                        onOpenFolder(def.category, def.customCategory)
                     }
                 }
             }

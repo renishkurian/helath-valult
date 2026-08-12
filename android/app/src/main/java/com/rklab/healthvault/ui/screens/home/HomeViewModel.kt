@@ -22,7 +22,8 @@ data class HomeUiState(
     val activePerson: PersonOut? = null,
     val cards: List<CardOut> = emptyList(),
     val recentDocuments: List<DocumentOut> = emptyList(),
-    val folderCounts: Map<DocCategory, Int> = emptyMap(),
+    val folders: List<com.rklab.healthvault.ui.components.FolderDef> = emptyList(),
+    val folderCounts: Map<String, Int> = emptyMap(), // key is either category name or custom category name
     val expiringCards: List<CardOut> = emptyList()
 )
 
@@ -90,7 +91,36 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
         }
         val cards = repository.listCards(active.id)
         val documents = repository.listDocuments(active.id)
-        val counts = DocCategory.entries.associateWith { cat -> documents.count { it.category == cat } }
+        
+        val counts = mutableMapOf<String, Int>()
+        val customFolders = mutableSetOf<String>()
+        
+        documents.forEach { doc ->
+            if (doc.category == DocCategory.OTHER && !doc.custom_category.isNullOrBlank()) {
+                val customName = doc.custom_category
+                customFolders.add(customName)
+                counts[customName] = (counts[customName] ?: 0) + 1
+            } else {
+                val catKey = doc.category.name
+                counts[catKey] = (counts[catKey] ?: 0) + 1
+            }
+        }
+        
+        // Base folders
+        val baseFolders = com.rklab.healthvault.ui.components.FolderDefs
+        
+        // Generate custom folders
+        val generatedCustomFolders = customFolders.map { customName ->
+            com.rklab.healthvault.ui.components.FolderDef(
+                category = DocCategory.OTHER,
+                customCategory = customName,
+                label = customName,
+                bg = com.rklab.healthvault.ui.theme.CatOther
+            )
+        }.sortedBy { it.label }
+        
+        val allFolders = baseFolders + generatedCustomFolders
+
         val expiring = cards.filter { isExpiringSoon(it.valid_till) }
 
         _state.value = HomeUiState(
@@ -99,6 +129,7 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
             activePerson = active,
             cards = cards,
             recentDocuments = documents.sortedByDescending { it.created_at }.take(6),
+            folders = allFolders,
             folderCounts = counts,
             expiringCards = expiring
         )

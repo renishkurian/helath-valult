@@ -31,6 +31,7 @@ def _to_out(doc: models.Document) -> schemas.DocumentOut:
         id=doc.id,
         person_id=doc.person_id,
         category=doc.category,
+        custom_category=doc.custom_category,
         title=doc.title,
         hospital_name=doc.hospital_name,
         doc_date=doc.doc_date,
@@ -61,6 +62,7 @@ def list_documents(
 async def upload_document(
     person_id: str = Form(...),
     category: models.DocCategory = Form(...),
+    custom_category: Optional[str] = Form(None),
     title: str = Form(...),
     hospital_name: Optional[str] = Form(None),
     doc_date: Optional[str] = Form(None),
@@ -75,9 +77,13 @@ async def upload_document(
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
 
+    # If a custom category is provided, force the main category to 'other'
+    actual_category = models.DocCategory.other if custom_category else category
+
     doc = models.Document(
         person_id=person_id,
-        category=category,
+        category=actual_category,
+        custom_category=custom_category,
         title=title,
         hospital_name=hospital_name,
         doc_date=doc_date,

@@ -55,6 +55,7 @@ interface ApiService {
     suspend fun uploadDocument(
         @Part("person_id") personId: RequestBody,
         @Part("category") category: RequestBody,
+        @Part("custom_category") customCategory: RequestBody?,
         @Part("title") title: RequestBody,
         @Part("hospital_name") hospitalName: RequestBody?,
         @Part("doc_date") docDate: RequestBody?,

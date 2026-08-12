@@ -71,12 +71,15 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         }
     }
 
-    fun load(personId: String, category: DocCategory?) {
+    fun load(personId: String, category: DocCategory?, customCategory: String? = null) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             try {
                 // Repository is cache-first: IOException returns cached data instead of throwing.
-                val docs = repository.listDocuments(personId, category)
+                var docs = repository.listDocuments(personId, category)
+                if (customCategory != null) {
+                    docs = docs.filter { it.custom_category == customCategory }
+                }
                 _state.value = _state.value.copy(loading = false, documents = docs)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(loading = false, error = describeError(e))
@@ -87,6 +90,7 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
     fun upload(
         personId: String,
         category: DocCategory,
+        customCategory: String?,
         title: String,
         hospitalName: String?,
         docDate: String?,
@@ -99,7 +103,7 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         viewModelScope.launch {
             _state.value = _state.value.copy(uploading = true, error = null)
             try {
-                when (repository.uploadDocument(personId, category, title, hospitalName, docDate, notes, files, mimeTypes)) {
+                when (repository.uploadDocument(personId, category, customCategory, title, hospitalName, docDate, notes, files, mimeTypes)) {
                     is UploadResult.Success -> {
                         _state.value = _state.value.copy(uploading = false)
                         load(personId, reloadCategory)

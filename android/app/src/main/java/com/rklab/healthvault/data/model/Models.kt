@@ -73,6 +73,7 @@ data class DocumentOut(
     val id: String,
     val person_id: String,
     val category: DocCategory,
+    val custom_category: String?,
     val title: String,
     val hospital_name: String?,
     val doc_date: String?,

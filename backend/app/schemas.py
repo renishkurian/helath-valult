@@ -108,6 +108,7 @@ class DocumentOut(BaseModel):
     id: str
     person_id: str
     category: DocCategory
+    custom_category: Optional[str] = None
     title: str
     hospital_name: Optional[str]
     doc_date: Optional[str]

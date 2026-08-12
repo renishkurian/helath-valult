@@ -32,12 +32,12 @@ private object Routes {
     const val FAMILY = "family"
     const val SETTINGS = "settings"
     const val CARDS = "cards/{personId}/{personName}"
-    const val DOCUMENTS = "documents/{personId}?category={category}&label={label}"
+    const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}"
     const val UPLOAD = "upload/{personId}?category={category}"
 
     fun cards(personId: String, personName: String) = "cards/$personId/$personName"
-    fun documents(personId: String, category: DocCategory?, label: String) =
-        "documents/$personId?category=${category?.name ?: ""}&label=$label"
+    fun documents(personId: String, category: DocCategory?, customCategory: String?) =
+        "documents/$personId?category=${category?.name ?: ""}&custom_category=${customCategory ?: ""}&label=${customCategory ?: category?.name ?: "Documents"}"
     fun upload(personId: String, category: DocCategory?) = "upload/$personId?category=${category?.name ?: ""}"
 }
 
@@ -121,8 +121,8 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 HomeScreen(
                     repository = repository,
                     onAddFamily = { navController.navigate(Routes.FAMILY) },
-                    onOpenFolder = { personId, category ->
-                        navController.navigate(Routes.documents(personId, category, category.name))
+                    onOpenFolder = { personId, category, customCategory ->
+                        navController.navigate(Routes.documents(personId, category, customCategory))
                     },
                     onAddDocument = { personId ->
                         navController.navigate(Routes.upload(personId, null))
@@ -169,12 +169,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 arguments = listOf(
                     navArgument("personId") { type = NavType.StringType },
                     navArgument("category") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                    navArgument("custom_category") { type = NavType.StringType; nullable = true; defaultValue = "" },
                     navArgument("label") { type = NavType.StringType; defaultValue = "" }
                 )
             ) { entry ->
                 val personId = entry.arguments?.getString("personId").orEmpty()
                 val categoryStr = entry.arguments?.getString("category").orEmpty()
                 val category = categoryStr.takeIf { it.isNotBlank() }?.let { DocCategory.valueOf(it) }
+                val customCategory = entry.arguments?.getString("custom_category")?.takeIf { it.isNotBlank() }
                 val label = entry.arguments?.getString("label") ?: "Documents"
 
                 var resolvedPersonId by remember { mutableStateOf(personId) }
@@ -188,6 +190,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         repository = repository,
                         personId = resolvedPersonId,
                         category = category,
+                        customCategory = customCategory,
                         title = label,
                         onBack = { navController.popBackStack() },
                         onAddDocument = { navController.navigate(Routes.upload(resolvedPersonId, category)) }

@@ -39,6 +39,7 @@ fun DocumentListScreen(
     repository: HealthVaultRepository,
     personId: String,
     category: DocCategory?,
+    customCategory: String? = null,
     title: String,
     onBack: () -> Unit,
     onAddDocument: () -> Unit
@@ -61,7 +62,7 @@ fun DocumentListScreen(
     var docFiles by remember { mutableStateOf<List<DocumentFileOut>>(emptyList()) }
     var fetchingFiles by remember { mutableStateOf(false) }
 
-    LaunchedEffect(personId, category) { viewModel.load(personId, category) }
+    LaunchedEffect(personId, category, customCategory) { viewModel.load(personId, category, customCategory) }
 
     // Fetch files when a document is selected for the bottom sheet
     LaunchedEffect(selectedDocForFiles) {

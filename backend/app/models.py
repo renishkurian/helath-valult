@@ -95,6 +95,7 @@ class Document(Base):
     person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
 
     category = Column(Enum(DocCategory), nullable=False, index=True)
+    custom_category = Column(String(255), nullable=True, index=True)
     title = Column(String(255), nullable=False)
     hospital_name = Column(String(255), nullable=True, index=True)
     doc_date = Column(String(20), nullable=True)
