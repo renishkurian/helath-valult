@@ -6,9 +6,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 private val Context.dataStore by preferencesDataStore(name = "healthvault_prefs")
 
@@ -44,6 +47,9 @@ class TokenManager(private val context: Context) {
 
     fun clear() {
         encryptedPrefs.edit().clear().apply()
+        CoroutineScope(Dispatchers.IO).launch {
+            context.dataStore.edit { it.clear() }
+        }
     }
 
     // Non-sensitive UI prefs (e.g. last selected person) can live in plain DataStore.

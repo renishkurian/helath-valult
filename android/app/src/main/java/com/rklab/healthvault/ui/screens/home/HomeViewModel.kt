@@ -6,6 +6,7 @@ import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -32,8 +33,14 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
             _state.value = _state.value.copy(loading = true, error = null)
             try {
                 val people = repository.listPeople()
-                val savedActiveId = repository.activePersonFlow()
-                val active = people.firstOrNull { it.relation == Relation.SELF } ?: people.firstOrNull()
+                val savedActiveId = repository.activePersonFlow().first()
+                val active = people.firstOrNull { it.id == savedActiveId }
+                    ?: people.firstOrNull { it.relation == Relation.SELF }
+                    ?: people.firstOrNull()
+
+                if (active != null && active.id != savedActiveId) {
+                    repository.setActivePerson(active.id)
+                }
 
                 loadForPerson(people, active)
             } catch (e: Exception) {
