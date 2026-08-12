@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Family{% endblock %}
+{% block content %}
+<div class="eyebrow">Health Vault</div>
+<div class="page-title">Family</div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); margin-bottom:28px;">
+  {% for p in people %}
+    <div class="surface" style="display:flex; align-items:center; gap:14px;">
+      <div class="chip" style="border:none; padding:0;"><span class="avatar" style="width:44px; height:44px; font-size:14px;">{{ p.avatar_initials or '?' }}</span></div>
+      <div style="flex:1;">
+        <div style="font-weight:600;">{{ p.name }}</div>
+        <div class="mono" style="font-size:11.5px; color:var(--ink-soft); text-transform:capitalize;">{{ p.relation }}</div>
+      </div>
+      <a class="tag tag-sage" href="/admin?person={{ p.id }}">Open</a>
+      {% if p.relation != 'self' %}
+      <form method="post" action="/admin/people/{{ p.id }}/delete" onsubmit="return confirm('Remove {{ p.name }}?');">
+        <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Remove</button>
+      </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+
+<div class="section-head"><h2>Add family member</h2></div>
+<div class="surface" style="max-width:480px;">
+  <form method="post" action="/admin/family/add">
+    <div class="field"><label>Name*</label><input type="text" name="name" required></div>
+    <div class="field">
+      <label>Relation</label>
+      <select name="relation">
+        <option value="spouse">Spouse</option>
+        <option value="child">Child</option>
+        <option value="parent">Parent</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="field"><label>Blood group</label><input type="text" name="blood_group"></div>
+    <button class="btn" type="submit">Add family member</button>
+  </form>
+</div>
+{% endblock %}

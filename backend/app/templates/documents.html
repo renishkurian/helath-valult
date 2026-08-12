@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Documents{% endblock %}
+{% block content %}
+{% set cat_colors = {'hospital_card':'#2C4256','prescription':'#5E7C50','lab_report':'#3E5A70','insurance':'#8A6A9C','vaccination':'#6E8B5D','bill':'#B23B36','medicine':'#C68A2E','other':'#5B6152'} %}
+{% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
+{% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+
+<div class="eyebrow"><a href="/admin?person={{ active_person.id }}">← {{ active_person.name }}</a></div>
+<div class="page-title">{{ folder_label.get(category, 'All documents') if category else 'All documents' }}</div>
+
+<details style="margin-bottom:24px;">
+  <summary>+ Add document</summary>
+  <div class="surface">
+    <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <input type="hidden" name="redirect_to" value="folder">
+      <input type="hidden" name="redirect_category" value="{{ category or '' }}">
+      <div class="form-grid">
+        <div class="field"><label>Title*</label><input type="text" name="title" required></div>
+        <div class="field">
+          <label>Category*</label>
+          <select name="category" required>
+            {% for cat, label in folder_label.items() %}
+              <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="field"><label>Hospital / clinic</label><input type="text" name="hospital_name"></div>
+        <div class="field"><label>Date</label><input type="date" name="doc_date"></div>
+      </div>
+      <div class="field"><label>Notes (encrypted)</label><textarea name="notes" rows="2"></textarea></div>
+      <div class="field"><label>File*</label><input type="file" name="file" required></div>
+      <button class="btn" type="submit">Upload document</button>
+    </form>
+  </div>
+</details>
+
+<table class="ledger surface">
+  <thead><tr><th>Document</th><th>Date</th><th>Hospital</th><th>Notes</th><th>Size</th><th></th><th></th></tr></thead>
+  <tbody>
+    {% for doc in documents %}
+    <tr>
+      <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title }}</td>
+      <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
+      <td>{{ doc.hospital_name or '—' }}</td>
+      <td style="max-width:180px; color:var(--ink-soft); font-size:12.5px;">{{ doc.notes or '—' }}</td>
+      <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
+      <td><a href="/admin/documents/{{ doc.id }}/download" class="tag tag-sage">Download</a></td>
+      <td>
+        <form method="post" action="/admin/documents/{{ doc.id }}/delete" onsubmit="return confirm('Delete this document?');">
+          <input type="hidden" name="person_id" value="{{ active_person.id }}">
+          <input type="hidden" name="category" value="{{ category or '' }}">
+          <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="empty">Nothing here yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

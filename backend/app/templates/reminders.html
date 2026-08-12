@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Reminders{% endblock %}
+{% block content %}
+<div class="eyebrow">Health Vault</div>
+<div class="page-title">Reminders</div>
+
+<details style="margin-bottom:24px;">
+  <summary>+ Add reminder</summary>
+  <div class="surface" style="max-width:520px;">
+    <form method="post" action="/admin/reminders/add">
+      <input type="hidden" name="person_id" value="{{ active_person.id if active_person else '' }}">
+      <div class="field"><label>Title*</label><input type="text" name="title" required placeholder="e.g. Take BP medicine"></div>
+      <div class="field"><label>When*</label><input type="datetime-local" name="remind_at" required></div>
+      <div class="field">
+        <label>Repeat</label>
+        <select name="repeat_rule">
+          <option value="none">None</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </div>
+      <div class="field"><label>Notes</label><textarea name="description" rows="2"></textarea></div>
+      <button class="btn" type="submit">Save reminder</button>
+    </form>
+  </div>
+</details>
+
+<table class="ledger surface">
+  <thead><tr><th>Title</th><th>Person</th><th>When</th><th>Repeat</th><th></th></tr></thead>
+  <tbody>
+    {% for r in reminders %}
+    <tr>
+      <td>{{ r.title }}{% if r.description %}<div style="font-size:12px; color:var(--ink-soft);">{{ r.description }}</div>{% endif %}</td>
+      <td>{{ person_names.get(r.person_id, '—') }}</td>
+      <td class="mono">{{ r.remind_at.strftime('%d %b, %I:%M %p') }}</td>
+      <td class="mono">{{ r.repeat_rule }}</td>
+      <td>
+        <form method="post" action="/admin/reminders/{{ r.id }}/delete">
+          <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Delete</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="empty">No reminders yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

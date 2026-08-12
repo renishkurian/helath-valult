@@ -1,0 +1,23 @@
+services:
+  healthvault-api:
+    # Pulls the image built by .github/workflows/backend-ci.yml on every
+    # push to main (multi-arch, includes arm64 for the Pi) — no build step
+    # needed on-device. Replace <your-github-username> below, or swap this
+    # `image:` line for `build: .` if you'd rather build locally instead of
+    # using GitHub Container Registry.
+    image: ghcr.io/<your-github-username>/healthvault-backend:latest
+    # build: .
+    container_name: healthvault-api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - healthvault_storage:/app/storage
+      - healthvault_db:/app/db   # only used if you point DATABASE_URL at a sqlite file in here
+    # If you point DATABASE_URL at your existing MySQL container instead,
+    # add: networks: [ marketmind_default ]  (or whatever your MySQL network is called)
+
+volumes:
+  healthvault_storage:
+  healthvault_db:

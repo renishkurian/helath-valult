@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+{% set cat_colors = {'hospital_card':'#2C4256','prescription':'#5E7C50','lab_report':'#3E5A70','insurance':'#8A6A9C','vaccination':'#6E8B5D','bill':'#B23B36','medicine':'#C68A2E','other':'#5B6152'} %}
+{% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
+{% set folder_bg = {'hospital_card':'#EFE3C4','prescription':'#E7EEDD','lab_report':'#EAE0EC','insurance':'#DDE8EC','vaccination':'#E3ECD9','bill':'#F1DEDA','medicine':'#F5E9D0','other':'#EAE2D0'} %}
+{% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+
+<div class="eyebrow">Health Vault</div>
+<div class="page-title">Hi, {{ session_user.full_name.split(' ')[0] }}</div>
+
+<div class="family-row">
+  {% for p in people %}
+    <a class="chip {% if p.id == active_person.id %}active{% endif %}" href="/admin?person={{ p.id }}">
+      <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name }}
+    </a>
+  {% endfor %}
+  <a class="chip" href="/admin/family">+ Add family member</a>
+</div>
+
+{% if not active_person %}
+  <div class="empty surface">No profile yet — add a family member to get started.</div>
+{% else %}
+
+  {% for c in expiring_cards %}
+    <div class="alert"><span class="dot"></span> {{ c.hospital_name }} card expires {{ c.valid_till }}</div>
+  {% endfor %}
+
+  <div class="section-head"><h2>Hospital Cards — {{ active_person.name }}</h2></div>
+  <div class="grid grid-cards" style="margin-bottom:28px;">
+    {% for card in cards %}
+      <div class="id-card">
+        <div class="stamp">VERIFIED<br>COPY</div>
+        <div class="hosp">{{ card.hospital_name.upper() }}</div>
+        <div class="label">Patient Health ID</div>
+        <div class="name">{{ active_person.name }}</div>
+        <div class="pid">ID {{ card.patient_id or '—' }}</div>
+        <div class="meta-row">
+          <div><div class="meta-label">BLOOD GROUP</div><div class="meta-value">{{ card.blood_group or '—' }}</div></div>
+          <div><div class="meta-label">VALID TILL</div><div class="meta-value">{{ card.valid_till or '—' }}</div></div>
+          <div><div class="meta-label">WARD</div><div class="meta-value">{{ card.ward or '—' }}</div></div>
+        </div>
+        <form method="post" action="/admin/cards/{{ card.id }}/delete" onsubmit="return confirm('Delete this card?');">
+          <input type="hidden" name="person_id" value="{{ active_person.id }}">
+          <button class="btn-del" type="submit">Delete card</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="empty surface">No hospital cards yet for {{ active_person.name }}.</div>
+    {% endfor %}
+  </div>
+
+  <details style="margin-bottom:28px;">
+    <summary>+ Add hospital card</summary>
+    <div class="surface">
+      <form method="post" action="/admin/cards/add">
+        <input type="hidden" name="person_id" value="{{ active_person.id }}">
+        <div class="form-grid">
+          <div class="field"><label>Hospital name*</label><input type="text" name="hospital_name" required></div>
+          <div class="field"><label>Ward</label><input type="text" name="ward"></div>
+          <div class="field"><label>Blood group</label><input type="text" name="blood_group"></div>
+          <div class="field"><label>Patient ID (encrypted)</label><input type="text" name="patient_id"></div>
+          <div class="field"><label>Valid from</label><input type="date" name="valid_from"></div>
+          <div class="field"><label>Valid till</label><input type="date" name="valid_till"></div>
+        </div>
+        <div class="field"><label>Notes (encrypted)</label><textarea name="notes" rows="2"></textarea></div>
+        <button class="btn" type="submit">Save card</button>
+      </form>
+    </div>
+  </details>
+
+  <div class="section-head"><h2>Folders</h2></div>
+  <div class="folders">
+    {% for cat, count in folder_counts.items() %}
+      <a class="folder" style="background:{{ folder_bg[cat] }}; color:#21281F;" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}">
+        {{ folder_label[cat] }}
+        <span class="fcount">{{ '%02d'|format(count) }}</span>
+      </a>
+    {% endfor %}
+  </div>
+
+  <details style="margin-bottom:28px;">
+    <summary>+ Add document</summary>
+    <div class="surface">
+      <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
+        <input type="hidden" name="person_id" value="{{ active_person.id }}">
+        <input type="hidden" name="redirect_to" value="dashboard">
+        <div class="form-grid">
+          <div class="field"><label>Title*</label><input type="text" name="title" required></div>
+          <div class="field">
+            <label>Category*</label>
+            <select name="category" required>
+              {% for cat, label in folder_label.items() %}<option value="{{ cat }}">{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="field"><label>Hospital / clinic</label><input type="text" name="hospital_name"></div>
+          <div class="field"><label>Date</label><input type="date" name="doc_date"></div>
+        </div>
+        <div class="field"><label>Notes (encrypted)</label><textarea name="notes" rows="2"></textarea></div>
+        <div class="field"><label>File*</label><input type="file" name="file" required></div>
+        <button class="btn" type="submit">Upload document</button>
+      </form>
+    </div>
+  </details>
+
+  <div class="section-head"><h2>Recently added</h2></div>
+  <table class="ledger surface">
+    <thead><tr><th>Document</th><th>Date</th><th>Hospital</th><th>Size</th><th></th></tr></thead>
+    <tbody>
+      {% for doc in recent_documents %}
+      <tr>
+        <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title }}</td>
+        <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
+        <td>{{ doc.hospital_name or '—' }}</td>
+        <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
+        <td><a href="/admin/documents/{{ doc.id }}/download" class="tag tag-sage">Download</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No documents yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The server address is configured at runtime (not known at build time), so
+  we can't allowlist a specific domain for cleartext HTTP the way you'd do
+  for a fixed backend. This allows cleartext traffic app-wide instead — the
+  same trade-off self-hosted apps like Immich make to support plain-HTTP
+  servers on a home LAN.
+
+  This only matters if you point the app at a plain http:// address. If your
+  server is behind HTTPS (e.g. a reverse-proxied domain with a real cert),
+  traffic is encrypted regardless of this file. Prefer HTTPS or keeping
+  cleartext traffic confined to your LAN/WireGuard where possible.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

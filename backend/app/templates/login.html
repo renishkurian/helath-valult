@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Health Vault — Admin Login</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400&display=swap');
+  :root{ --paper:#F3EEE3; --ink:#21281F; --ink-soft:#5B6152; --navy:#2C4256; --navy-deep:#1E313F; --stamp:#B23B36; --line:#D9CDAE; --white:#FCFAF4; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{ font-family:'IBM Plex Sans', sans-serif; background:var(--paper); min-height:100vh; display:flex; align-items:center; justify-content:center; }
+  .box{ width:360px; background:var(--white); border:1px solid var(--line); border-radius:16px; padding:32px; }
+  .eyebrow{ font-family:'IBM Plex Mono', monospace; font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--ink-soft); margin-bottom:6px; }
+  h1{ font-family:'Roboto Slab', serif; font-size:24px; margin-bottom:18px; color:var(--ink); }
+  label{ font-size:12px; color:var(--ink-soft); display:block; margin-bottom:4px; }
+  input{ width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:14px; margin-bottom:14px; }
+  .btn{ width:100%; background:var(--navy); color:var(--white); border:none; padding:11px; border-radius:9px; font-size:14px; font-weight:600; cursor:pointer; }
+  .error{ color:var(--stamp); font-size:12.5px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="eyebrow">Health Vault</div>
+    <h1>Admin sign in</h1>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post" action="/admin/login">
+      <label>Email</label>
+      <input type="email" name="email" required autofocus>
+      <label>Password</label>
+      <input type="password" name="password" required>
+      <button class="btn" type="submit">Log in</button>
+    </form>
+  </div>
+</body>
+</html>

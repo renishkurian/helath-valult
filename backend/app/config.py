@@ -1,0 +1,40 @@
+import os
+from pathlib import Path
+
+class Settings:
+    # --- Database ---
+    # MySQL (matches your existing Pi stack), falls back to SQLite for local testing.
+    DATABASE_URL: str = os.getenv(
+        "DATABASE_URL",
+        "sqlite:///./healthvault.db"
+        # Example for MySQL on the Pi:
+        # "mysql+pymysql://healthvault:CHANGE_ME@127.0.0.1:3306/healthvault"
+    )
+
+    # --- Auth ---
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "CHANGE_ME_dev_only_secret")
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+    REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+
+    # --- Encryption ---
+    # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    MASTER_KEY: str = os.getenv("MASTER_KEY", "")
+
+    # --- Storage ---
+    STORAGE_DIR: Path = Path(os.getenv("STORAGE_DIR", "./storage")).resolve()
+    MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "25"))
+
+    # --- CORS ---
+    CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
+
+settings = Settings()
+settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+if not settings.MASTER_KEY:
+    # Fail loudly rather than silently storing medical data unencrypted.
+    raise RuntimeError(
+        "MASTER_KEY is not set. Generate one with:\n"
+        "  python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"\n"
+        "and put it in your .env as MASTER_KEY=..."
+    )
