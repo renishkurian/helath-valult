@@ -1,5 +1,6 @@
 package com.rklab.healthvault.ui.screens.documents
-
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
