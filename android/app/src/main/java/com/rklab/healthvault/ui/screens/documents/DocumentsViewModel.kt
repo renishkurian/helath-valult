@@ -5,12 +5,15 @@ import androidx.lifecycle.viewModelScope
 import com.rklab.healthvault.data.model.DocCategory
 import com.rklab.healthvault.data.model.DocumentOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.data.repository.UploadResult
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import java.io.File
-import java.io.IOException
 
 data class DocumentsUiState(
     val loading: Boolean = true,
@@ -27,7 +30,7 @@ data class DocumentsUiState(
  * nothing" — a 401 (expired session), 413 (file too big), 422 (bad field),
  * and a dropped network connection all need different fixes.
  */
-private fun describeUploadError(e: Exception): String = when (e) {
+private fun describeError(e: Exception): String = when (e) {
     is HttpException -> {
         val body = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
         val detail = body?.let { Regex("\"detail\"\\s*:\\s*\"([^\"]*)\"").find(it)?.groupValues?.get(1) }
@@ -39,7 +42,6 @@ private fun describeUploadError(e: Exception): String = when (e) {
             else -> "Request failed (HTTP ${e.code()})" + (detail?.let { ": $it" } ?: "")
         }
     }
-    is IOException -> "Couldn't reach the server. Check you're on the same network/VPN as your Pi."
     else -> e.message ?: "Something went wrong."
 }
 
@@ -47,14 +49,24 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
     private val _state = MutableStateFlow(DocumentsUiState())
     val state: StateFlow<DocumentsUiState> = _state
 
+    /** true when device has no internet / Pi unreachable. */
+    val isOffline: StateFlow<Boolean> = repository.connectivityObserver.isConnected
+        .map { !it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Live count of queued offline uploads. */
+    val pendingUploadCount: StateFlow<Int> = repository.pendingUploadCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
+
     fun load(personId: String, category: DocCategory?) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             try {
+                // Repository is cache-first: IOException returns cached data instead of throwing.
                 val docs = repository.listDocuments(personId, category)
                 _state.value = _state.value.copy(loading = false, documents = docs)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(loading = false, error = describeUploadError(e))
+                _state.value = _state.value.copy(loading = false, error = describeError(e))
             }
         }
     }
@@ -74,12 +86,23 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         viewModelScope.launch {
             _state.value = _state.value.copy(uploading = true, error = null)
             try {
-                repository.uploadDocument(personId, category, title, hospitalName, docDate, notes, file, mimeType)
-                _state.value = _state.value.copy(uploading = false)
-                load(personId, reloadCategory)
-                onDone()
+                when (repository.uploadDocument(personId, category, title, hospitalName, docDate, notes, file, mimeType)) {
+                    is UploadResult.Success -> {
+                        _state.value = _state.value.copy(uploading = false)
+                        load(personId, reloadCategory)
+                        onDone()
+                    }
+                    is UploadResult.QueuedOffline -> {
+                        // File saved locally — inform the user and navigate away.
+                        _state.value = _state.value.copy(
+                            uploading = false,
+                            error = "You're offline — this document will upload automatically when your Pi is reachable again."
+                        )
+                        onDone()
+                    }
+                }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(uploading = false, error = describeUploadError(e))
+                _state.value = _state.value.copy(uploading = false, error = describeError(e))
             }
         }
     }
@@ -90,7 +113,7 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
                 repository.deleteDocument(documentId)
                 load(personId, category)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(error = describeUploadError(e))
+                _state.value = _state.value.copy(error = describeError(e))
             }
         }
     }

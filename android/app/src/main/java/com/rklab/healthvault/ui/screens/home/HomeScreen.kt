@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,37 +41,44 @@ fun HomeScreen(
 ) {
     val viewModel: HomeViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
+    val isOffline by viewModel.isOffline.collectAsState()
+    val pendingCount by viewModel.pendingUploadCount.collectAsState()
 
     LaunchedEffect(Unit) { viewModel.load() }
 
-    Box(modifier = Modifier.fillMaxSize().background(Paper)) {
-        if (state.loading) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Navy)
-            return@Box
-        }
-        if (state.error != null) {
-            Column(
-                modifier = Modifier.align(Alignment.Center).padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(state.error!!, color = InkSoft, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(12.dp))
-                Button(onClick = { viewModel.load() }, colors = ButtonDefaults.buttonColors(containerColor = Navy)) {
-                    Text("Retry", color = White)
-                }
+    Column(modifier = Modifier.fillMaxSize().background(Paper)) {
+        // Offline banner slides in at the very top when the Pi is unreachable.
+        OfflineBanner(isOffline = isOffline, pendingCount = pendingCount)
+
+        Box(modifier = Modifier.weight(1f)) {
+            if (state.loading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Navy)
+                return@Box
             }
-            return@Box
-        }
+            if (state.error != null) {
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(state.error!!, color = InkSoft, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { viewModel.load() }, colors = ButtonDefaults.buttonColors(containerColor = Navy)) {
+                        Text("Retry", color = White)
+                    }
+                }
+                return@Box
+            }
 
-        LazyColumnContent(state, viewModel, onAddFamily, onOpenFolder, onAddDocument, onOpenDocument, onAddCard, onOpenSettings)
+            LazyColumnContent(state, viewModel, onAddFamily, onOpenFolder, onAddDocument, onOpenDocument, onAddCard, onOpenSettings)
 
-        FloatingActionButton(
-            onClick = onAddDocument,
-            containerColor = Navy,
-            contentColor = White,
-            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
-        ) {
-            Icon(Icons.Filled.Add, contentDescription = "Add document")
+            FloatingActionButton(
+                onClick = onAddDocument,
+                containerColor = Navy,
+                contentColor = White,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "Add document")
+            }
         }
     }
 }
@@ -209,7 +217,7 @@ private fun LazyColumnContent(
                             title = doc.title,
                             metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${formatSize(doc.file_size)}",
                             category = doc.category,
-                            tagLabel = "Synced",
+                            tagLabel = "Cached",
                             tagColor = Sage,
                             tagBg = SageBg,
                             onClick = { onOpenDocument(doc) }

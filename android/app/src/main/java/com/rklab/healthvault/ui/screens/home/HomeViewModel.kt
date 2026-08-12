@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -27,6 +30,15 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state
+
+    /** true when the device has no internet (or the Pi is unreachable). */
+    val isOffline: StateFlow<Boolean> = repository.connectivityObserver.isConnected
+        .map { !it }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Number of uploads waiting to be sent when the Pi is back online. */
+    val pendingUploadCount: StateFlow<Int> = repository.pendingUploadCount
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     fun load() {
         viewModelScope.launch {
