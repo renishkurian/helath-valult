@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 
+load_dotenv()
+load_dotenv()
 class Settings:
     # --- Database ---
     # MySQL (matches your existing Pi stack), falls back to SQLite for local testing.
