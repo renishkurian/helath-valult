@@ -168,6 +168,5 @@ private fun AddFamilyMemberDialog(
     )
 }
 
-@Composable
 private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
-    this.clickable(onClick = onClick)rememberScrollState
+    this.clickable(onClick = onClick)

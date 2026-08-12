@@ -174,8 +174,8 @@ private fun SourceButton(icon: androidx.compose.ui.graphics.vector.ImageVector, 
 
 private fun categoryLabel(cat: DocCategory): String = cat.name.lowercase().split("_").joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
 
-@Composable
 private fun Modifier.clickableOpen(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
 
+@Composable
 private fun Modifier.verticalScrollWorkaround(): Modifier =
     this.verticalScroll(rememberScrollState())
