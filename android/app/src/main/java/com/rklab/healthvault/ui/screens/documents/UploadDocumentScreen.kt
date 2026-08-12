@@ -1,4 +1,7 @@
 package com.rklab.healthvault.ui.screens.documents
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -49,6 +52,7 @@ fun UploadDocumentScreen(
     var pickedMime by remember { mutableStateOf("application/octet-stream") }
     var captureUri by remember { mutableStateOf<Uri?>(null) }
     var categoryMenuOpen by remember { mutableStateOf(false) }
+    var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
 
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri ?: return@rememberLauncherForActivityResult
@@ -66,6 +70,39 @@ fun UploadDocumentScreen(
                 }
                 dest
             }
+        }
+    }
+
+    fun launchCamera() {
+        val file = FileUtil.newCaptureFile(context)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        captureUri = uri
+        cameraLauncher.launch(uri)
+    }
+
+    // The manifest declares android.permission.CAMERA, which makes it a
+    // runtime-requestable "dangerous" permission on API 23+. Launching the
+    // camera intent without requesting it first throws SecurityException
+    // and crashes the app — this is what was happening before.
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            permissionDeniedMessage = null
+            launchCamera()
+        } else {
+            permissionDeniedMessage = "Camera permission is needed to take a photo. You can still use Gallery / Files, or grant camera access in system Settings."
+        }
+    }
+
+    fun onCameraTapped() {
+        val hasPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (hasPermission) {
+            permissionDeniedMessage = null
+            launchCamera()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
@@ -88,17 +125,17 @@ fun UploadDocumentScreen(
                     icon = Icons.Filled.CameraAlt,
                     label = "Camera",
                     modifier = Modifier.weight(1f)
-                ) {
-                    val file = FileUtil.newCaptureFile(context)
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                    captureUri = uri
-                    cameraLauncher.launch(uri)
-                }
+                ) { onCameraTapped() }
                 SourceButton(
                     icon = Icons.Filled.InsertDriveFile,
                     label = "Gallery / Files",
                     modifier = Modifier.weight(1f)
                 ) { galleryLauncher.launch("*/*") }
+            }
+
+            if (permissionDeniedMessage != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(permissionDeniedMessage!!, color = StampRed, style = MaterialTheme.typography.bodySmall)
             }
 
             if (pickedFile != null) {
