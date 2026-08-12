@@ -58,6 +58,13 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
     val pendingUploadCount: StateFlow<Int> = repository.pendingUploadCount
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
+    val hospitals: StateFlow<List<String>> = repository.getAllHospitals()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val people: StateFlow<List<com.rklab.healthvault.data.model.PersonOut>> = kotlinx.coroutines.flow.flow {
+        emit(repository.listPeople()) // Simple fetch; real app might observe a DB flow
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     fun load(personId: String, category: DocCategory?) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)

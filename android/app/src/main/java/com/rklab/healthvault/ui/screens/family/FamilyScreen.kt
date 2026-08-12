@@ -121,6 +121,7 @@ private fun AddFamilyMemberDialog(
     var name by remember { mutableStateOf("") }
     var relation by remember { mutableStateOf(Relation.SPOUSE) }
     var bloodGroup by remember { mutableStateOf("") }
+    var dob by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
 
     AlertDialog(
@@ -151,6 +152,13 @@ private fun AddFamilyMemberDialog(
                     }
                 }
                 Spacer(Modifier.height(10.dp))
+                com.rklab.healthvault.ui.components.DatePickerField(
+                    label = "Date of Birth (optional)",
+                    value = dob,
+                    onValueChange = { dob = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = bloodGroup, onValueChange = { bloodGroup = it },
                     label = { Text("Blood group (optional)") }, singleLine = true,
@@ -160,7 +168,7 @@ private fun AddFamilyMemberDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name, relation, null, bloodGroup.ifBlank { null }) },
+                onClick = { onConfirm(name, relation, dob.ifBlank { null }, bloodGroup.ifBlank { null }) },
                 enabled = name.isNotBlank() && !saving
             ) { Text(if (saving) "Adding…" else "Add", color = Navy) }
         },

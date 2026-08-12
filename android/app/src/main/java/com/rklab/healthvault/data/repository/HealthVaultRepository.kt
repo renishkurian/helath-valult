@@ -41,6 +41,14 @@ class HealthVaultRepository(
     /** Live count of uploads waiting to be sent when the server is back. */
     val pendingUploadCount: Flow<Int> = db.pendingUploadDao().count()
 
+    /** Returns a live list of all distinct hospital names ever entered by this account. */
+    fun getAllHospitals(): Flow<List<String>> = combine(
+        db.documentDao().getHospitalNames(),
+        db.cardDao().getHospitalNames()
+    ) { docHospitals, cardHospitals ->
+        (docHospitals + cardHospitals).distinct().sorted()
+    }
+
     // ---------- Server configuration ----------
     fun isServerConfigured(): Boolean = serverConfig.isConfigured()
     fun getServerUrl(): String? = serverConfig.getServerUrl()

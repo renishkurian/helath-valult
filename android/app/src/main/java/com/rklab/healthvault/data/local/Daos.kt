@@ -28,6 +28,9 @@ interface CardDao {
 
     @Query("DELETE FROM cards")
     suspend fun deleteAll()
+
+    @Query("SELECT DISTINCT hospital_name FROM cards WHERE hospital_name IS NOT NULL AND hospital_name != ''")
+    fun getHospitalNames(): Flow<List<String>>
 }
 
 @Dao
@@ -46,6 +49,9 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents")
     suspend fun deleteAll()
+
+    @Query("SELECT DISTINCT hospital_name FROM documents WHERE hospital_name IS NOT NULL AND hospital_name != ''")
+    fun getHospitalNames(): Flow<List<String>>
 }
 
 @Dao

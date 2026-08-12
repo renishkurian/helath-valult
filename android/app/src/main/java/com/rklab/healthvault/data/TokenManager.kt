@@ -60,11 +60,24 @@ class TokenManager(private val context: Context) {
     fun activePersonFlow(): Flow<String?> =
         context.dataStore.data.map { it[ACTIVE_PERSON] }
 
-    suspend fun getActivePersonOnce(): String? = activePersonFlow().first()
+    val activePersonId: Flow<String?>
+        get() = activePersonFlow()
+
+    suspend fun setActivePersonId(id: String) {
+        context.dataStore.edit { it[ACTIVE_PERSON] = id }
+    }
+
+    suspend fun setBiometricEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[BIOMETRIC_ENABLED] = enabled }
+    }
+
+    val isBiometricEnabled: Flow<Boolean> =
+        context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: false }
 
     companion object {
         private const val KEY_ACCESS = "access_token"
         private const val KEY_REFRESH = "refresh_token"
         private val ACTIVE_PERSON = stringPreferencesKey("active_person_id")
+        private val BIOMETRIC_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("biometric_enabled")
     }
 }

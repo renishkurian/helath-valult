@@ -41,8 +41,11 @@ fun UploadDocumentScreen(
 ) {
     val viewModel: DocumentsViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
+    val hospitals by viewModel.hospitals.collectAsState()
+    val people by viewModel.people.collectAsState()
     val context = LocalContext.current
 
+    var selectedPersonId by remember { mutableStateOf(personId) }
     var category by remember { mutableStateOf(defaultCategory ?: DocCategory.OTHER) }
     var title by remember { mutableStateOf("") }
     var hospitalName by remember { mutableStateOf("") }
@@ -162,9 +165,33 @@ fun UploadDocumentScreen(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title*") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(value = hospitalName, onValueChange = { hospitalName = it }, label = { Text("Hospital / clinic (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            
+            if (people.isNotEmpty()) {
+                com.rklab.healthvault.ui.components.PersonDropdownField(
+                    label = "Family Member",
+                    selectedPersonId = selectedPersonId,
+                    onPersonSelected = { selectedPersonId = it },
+                    people = people,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+
+            com.rklab.healthvault.ui.components.HospitalDropdownField(
+                label = "Hospital / clinic (optional)",
+                value = hospitalName,
+                onValueChange = { hospitalName = it },
+                suggestions = hospitals,
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(value = docDate, onValueChange = { docDate = it }, label = { Text("Date (YYYY-MM-DD, optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            
+            com.rklab.healthvault.ui.components.DatePickerField(
+                label = "Date (optional)",
+                value = docDate,
+                onValueChange = { docDate = it },
+                modifier = Modifier.fillMaxWidth()
+            )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (optional, stored encrypted)") }, modifier = Modifier.fillMaxWidth())
 
@@ -178,7 +205,7 @@ fun UploadDocumentScreen(
                 onClick = {
                     val file = pickedFile ?: return@Button
                     viewModel.upload(
-                        personId, category, title.ifBlank { file.name }, hospitalName.ifBlank { null },
+                        selectedPersonId, category, title.ifBlank { file.name }, hospitalName.ifBlank { null },
                         docDate.ifBlank { null }, notes.ifBlank { null }, file, pickedMime, null, onDone
                     )
                 },

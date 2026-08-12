@@ -30,12 +30,22 @@ data class SearchUiState(
     val query: String = "",
     val loading: Boolean = false,
     val cards: List<CardOut> = emptyList(),
-    val documents: List<DocumentOut> = emptyList()
+    val documents: List<DocumentOut> = emptyList(),
+    val peopleMap: Map<String, String> = emptyMap()
 )
 
 class SearchViewModel(private val repository: HealthVaultRepository) : ViewModel() {
     private val _state = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = _state
+
+    init {
+        viewModelScope.launch {
+            try {
+                val map = repository.listPeople().associate { it.id to it.name }
+                _state.value = _state.value.copy(peopleMap = map)
+            } catch (e: Exception) {}
+        }
+    }
 
     fun search(query: String) {
         _state.value = _state.value.copy(query = query)
@@ -84,7 +94,11 @@ fun SearchScreen(repository: HealthVaultRepository) {
             if (state.cards.isNotEmpty()) {
                 item { Text("HOSPITAL CARDS", style = MaterialTheme.typography.labelMedium, color = InkSoft) }
                 items(state.cards) { card ->
-                    HealthIdCard(card = card, patientName = "", modifier = Modifier.fillMaxWidth())
+                    HealthIdCard(
+                        card = card,
+                        patientName = state.peopleMap[card.person_id] ?: "Unknown",
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
             if (state.documents.isNotEmpty()) {
@@ -94,9 +108,11 @@ fun SearchScreen(repository: HealthVaultRepository) {
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White)
                     ) {
                         state.documents.forEach { doc ->
+                            val ownerName = state.peopleMap[doc.person_id] ?: "Unknown"
+                            val date = doc.doc_date ?: doc.created_at.take(10)
                             LedgerRow(
                                 title = doc.title,
-                                metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${doc.hospital_name ?: "—"}",
+                                metaLine = "$ownerName · $date",
                                 category = doc.category,
                                 tagLabel = "Open",
                                 tagColor = Sage,

@@ -97,6 +97,9 @@ dependencies {
     // Background reminders + offline sync
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 
+    // Biometric authentication
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))

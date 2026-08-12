@@ -27,6 +27,9 @@ fun SettingsScreen(
     val state by viewModel.state.collectAsState()
     var url by remember { mutableStateOf(repository.getServerUrl().orEmpty()) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    
+    val isBiometricEnabled by repository.tokenManager.isBiometricEnabled.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state) {
         if (state is ServerSetupState.Success && !repository.isLoggedIn) {
@@ -70,6 +73,28 @@ fun SettingsScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = Navy)
             ) {
                 Text(if (state is ServerSetupState.Testing) "Checking…" else "Test & save", color = White)
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+        Text("SECURITY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White).padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text("Enable Biometric Login", style = MaterialTheme.typography.bodyMedium, color = Ink)
+                Switch(
+                    checked = isBiometricEnabled,
+                    onCheckedChange = { 
+                        scope.launch { repository.tokenManager.setBiometricEnabled(it) } 
+                    },
+                    colors = SwitchDefaults.colors(checkedThumbColor = Navy, checkedTrackColor = SageBg)
+                )
             }
         }
 
