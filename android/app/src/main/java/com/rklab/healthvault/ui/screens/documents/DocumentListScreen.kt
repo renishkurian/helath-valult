@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +43,9 @@ fun DocumentListScreen(
     customCategory: String? = null,
     title: String,
     onBack: () -> Unit,
-    onAddDocument: () -> Unit
+    onAddDocument: () -> Unit,
+    onOpenFile: (String, String?) -> Unit,
+    onEditDocument: (String) -> Unit
 ) {
     val viewModel: DocumentsViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
@@ -78,62 +81,9 @@ fun DocumentListScreen(
         }
     }
 
-    // Helper function to download and open a file
-    fun openFile(docId: String, fileId: String?, originalFilename: String, fileType: String?) {
-        if (downloadingDocId != null) return
-        scope.launch {
-            downloadingDocId = docId
-            try {
-                val safeName = originalFilename
-                    .replace(Regex("[^a-zA-Z0-9.\\-]"), "_")
-                    .take(80)
-                val downloadsDir = context.cacheDir.resolve("downloads")
-                downloadsDir.mkdirs()
-                val dest = File(downloadsDir, "${fileId ?: docId}_$safeName")
-                
-                val file = withContext(Dispatchers.IO) {
-                    if (fileId != null) {
-                        repository.downloadDocumentFile(docId, fileId, dest)
-                    } else {
-                        viewModel.download(docId, dest)
-                    }
-                }
-                
-                val uri = FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    file
-                )
-                val mimeType = when {
-                    !fileType.isNullOrBlank() -> fileType
-                    safeName.endsWith(".pdf", true) -> "application/pdf"
-                    safeName.endsWith(".jpg", true) || safeName.endsWith(".jpeg", true) -> "image/jpeg"
-                    safeName.endsWith(".png", true) -> "image/png"
-                    else -> "*/*"
-                }
-                val intent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mimeType)
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
-                context.startActivity(Intent.createChooser(intent, "Open with"))
-            } catch (e: retrofit2.HttpException) {
-                val errorBody = try { e.response()?.errorBody()?.string() } catch (_: Exception) { null }
-                val detail = errorBody?.let { Regex("\"detail\"\\s*:\\s*\"([^\"]*)\"").find(it)?.groupValues?.get(1) }
-                Toast.makeText(context, "Server error (${e.code()}): ${detail ?: e.message()}", Toast.LENGTH_LONG).show()
-            } catch (e: android.content.ActivityNotFoundException) {
-                Toast.makeText(context, "No app found to open this file type.", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) {
-                val msg = when {
-                    isOffline -> "You're offline. Cannot download this file right now."
-                    e.message?.contains("No Activity found", ignoreCase = true) == true ->
-                        "No app found to open this file type."
-                    else -> "Could not open file: ${e.javaClass.simpleName}: ${e.message ?: "(no detail)"}"
-                }
-                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-            } finally {
-                downloadingDocId = null
-            }
-        }
+    // Helper function to open a file using our new in-app viewer
+    fun openFile(docId: String, fileId: String?) {
+        onOpenFile(docId, fileId)
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Paper)) {
@@ -184,6 +134,9 @@ fun DocumentListScreen(
                                     if (value == SwipeToDismissBoxValue.EndToStart) {
                                         docToDelete = doc
                                         false // Don't dismiss immediately, wait for confirmation
+                                    } else if (value == SwipeToDismissBoxValue.StartToEnd) {
+                                        onEditDocument(doc.id)
+                                        false
                                     } else {
                                         false
                                     }
@@ -192,16 +145,29 @@ fun DocumentListScreen(
 
                             SwipeToDismissBox(
                                 state = dismissState,
-                                enableDismissFromStartToEnd = false,
+                                enableDismissFromStartToEnd = true,
                                 backgroundContent = {
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize()
-                                            .background(StampRed)
-                                            .padding(horizontal = 20.dp),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = White)
+                                    val direction = dismissState.dismissDirection
+                                    if (direction == SwipeToDismissBoxValue.StartToEnd) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .background(Navy)
+                                                .padding(horizontal = 20.dp),
+                                            contentAlignment = Alignment.CenterStart
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.White)
+                                        }
+                                    } else {
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .background(Color(0xFFE53935))
+                                                .padding(horizontal = 20.dp),
+                                            contentAlignment = Alignment.CenterEnd
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
+                                        }
                                     }
                                 }
                             ) {
@@ -217,7 +183,7 @@ fun DocumentListScreen(
                                         if (doc.file_count > 1) {
                                             selectedDocForFiles = doc
                                         } else {
-                                            openFile(doc.id, null, doc.title, doc.file_type)
+                                            openFile(doc.id, null)
                                         }
                                     }
                                 )
@@ -310,7 +276,7 @@ fun DocumentListScreen(
                                 tagBg = SageBg,
                                 onClick = {
                                     selectedDocForFiles?.id?.let { docId ->
-                                        openFile(docId, file.id, file.original_filename, file.file_type)
+                                        openFile(docId, file.id)
                                     }
                                 }
                             )

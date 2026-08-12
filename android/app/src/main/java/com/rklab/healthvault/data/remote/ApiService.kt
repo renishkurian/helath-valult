@@ -63,6 +63,12 @@ interface ApiService {
         @Part files: List<MultipartBody.Part>  // supports 1..N files
     ): DocumentOut
 
+    @PUT("documents/{id}")
+    suspend fun updateDocument(
+        @Path("id") id: String,
+        @Body body: DocumentUpdate
+    ): DocumentOut
+
     @GET("documents/{id}/files")
     suspend fun listDocumentFiles(@Path("id") id: String): List<DocumentFileOut>
 

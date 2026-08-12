@@ -145,6 +145,33 @@ def get_document(
     return _to_out(doc)
 
 
+@router.put("/{document_id}", response_model=schemas.DocumentOut)
+def update_document(
+    document_id: str,
+    update_data: schemas.DocumentUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    doc = _get_owned_document(document_id, db, current_user)
+
+    if update_data.title is not None:
+        doc.title = update_data.title
+    if update_data.category is not None:
+        doc.category = update_data.category
+    if update_data.custom_category is not None:
+        doc.custom_category = update_data.custom_category if update_data.custom_category != "" else None
+    if update_data.hospital_name is not None:
+        doc.hospital_name = update_data.hospital_name if update_data.hospital_name != "" else None
+    if update_data.doc_date is not None:
+        doc.doc_date = update_data.doc_date if update_data.doc_date != "" else None
+    if update_data.notes is not None:
+        doc.notes_enc = crypto.encrypt_text(update_data.notes if update_data.notes != "" else None)
+
+    db.commit()
+    db.refresh(doc)
+    return _to_out(doc)
+
+
 @router.get("/{document_id}/files", response_model=List[schemas.DocumentFileOut])
 def list_document_files(
     document_id: str,

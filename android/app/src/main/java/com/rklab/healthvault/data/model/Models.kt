@@ -84,6 +84,15 @@ data class DocumentOut(
     val created_at: String
 )
 
+data class DocumentUpdate(
+    val title: String? = null,
+    val category: DocCategory? = null,
+    val custom_category: String? = null,
+    val hospital_name: String? = null,
+    val doc_date: String? = null,
+    val notes: String? = null
+)
+
 data class DocumentFileOut(
     val id: String,
     val document_id: String,

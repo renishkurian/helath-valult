@@ -35,7 +35,7 @@ fun HomeScreen(
     onAddFamily: () -> Unit,
     onOpenFolder: (String, DocCategory, String?) -> Unit,
     onAddDocument: (String) -> Unit,
-    onOpenDocument: (DocumentOut) -> Unit,
+    onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -104,7 +104,7 @@ private fun LazyColumnContent(
     onAddFamily: () -> Unit,
     onOpenFolder: (DocCategory, String?) -> Unit,
     onAddDocument: () -> Unit,
-    onOpenDocument: (DocumentOut) -> Unit,
+    onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -205,6 +205,37 @@ private fun LazyColumnContent(
                         onOpenFolder(def.category, def.customCategory)
                     }
                 }
+                item {
+                    Column(
+                        modifier = Modifier
+                            .width(110.dp)
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(CardSurface)
+                            .border(1.dp, CardOutline, RoundedCornerShape(16.dp))
+                            .clickable(onClick = { onAddDocument() })
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(Color.Transparent)
+                                .border(1.dp, TextGray, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Filled.Add, contentDescription = "Add Folder", tint = TextGray)
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "New Folder",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = TextGray
+                        )
+                    }
+                }
             }
             Spacer(Modifier.height(28.dp))
         }
@@ -235,12 +266,16 @@ private fun LazyColumnContent(
                     state.recentDocuments.forEachIndexed { idx, doc ->
                         LedgerRow(
                             title = doc.title,
-                            metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${formatSize(doc.file_size)}",
+                            metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${doc.hospital_name ?: "—"}",
                             category = doc.category,
-                            tagLabel = "Cached",
-                            tagColor = Sage,
-                            tagBg = SageBg,
-                            onClick = { onOpenDocument(doc) }
+                            tagLabel = if (doc.file_count > 1) "${doc.file_count} files" else "Open",
+                            onClick = { 
+                                if (doc.file_count > 1) {
+                                    onOpenFolder(doc.category, doc.custom_category)
+                                } else {
+                                    onOpenDocument(doc, null) 
+                                }
+                            }
                         )
                         if (idx != state.recentDocuments.lastIndex) {
                             Divider(color = PaperDeep, thickness = 1.dp)

@@ -198,6 +198,14 @@ class HealthVaultRepository(
                 files = fileParts
             )
             db.documentDao().upsertAll(listOf(doc.toEntity()))
+            
+            if (files.isNotEmpty()) {
+                val documentsDir = File(appContext.filesDir, "documents")
+                documentsDir.mkdirs()
+                val dest = File(documentsDir, doc.id)
+                files.first().copyTo(dest, overwrite = true)
+            }
+            
             UploadResult.Success(doc)
         } catch (e: IOException) {
             // Queue the first file locally for offline sync
@@ -218,6 +226,15 @@ class HealthVaultRepository(
             SyncWorker.enqueueNow(appContext)
             UploadResult.QueuedOffline
         }
+    }
+
+    suspend fun updateDocument(
+        documentId: String,
+        update: DocumentUpdate
+    ): DocumentOut {
+        val updated = api.updateDocument(documentId, update)
+        db.documentDao().upsertAll(listOf(updated.toEntity()))
+        return updated
     }
 
     suspend fun listDocumentFiles(documentId: String): List<com.rklab.healthvault.data.model.DocumentFileOut> =
@@ -328,6 +345,12 @@ class HealthVaultRepository(
                     files = listOf(filePart)
                 )
                 db.documentDao().upsertAll(listOf(doc.toEntity()))
+                
+                val documentsDir = File(appContext.filesDir, "documents")
+                documentsDir.mkdirs()
+                val dest = File(documentsDir, doc.id)
+                file.copyTo(dest, overwrite = true)
+                
                 db.pendingUploadDao().delete(upload)
             } catch (e: Exception) {
                 // Leave this row in the queue; SyncWorker will retry.

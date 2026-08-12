@@ -116,8 +116,8 @@ fun LedgerRow(
     metaLine: String,
     category: DocCategory,
     tagLabel: String,
-    tagColor: Color,
-    tagBg: Color,
+    tagColor: Color = Sage,
+    tagBg: Color = SageBg,
     onClick: () -> Unit
 ) {
     Row(

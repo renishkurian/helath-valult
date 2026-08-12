@@ -34,11 +34,15 @@ private object Routes {
     const val CARDS = "cards/{personId}/{personName}"
     const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}"
     const val UPLOAD = "upload/{personId}?category={category}"
+    const val VIEWER = "viewer/{docId}?fileId={fileId}"
+    const val EDIT = "edit/{docId}"
 
     fun cards(personId: String, personName: String) = "cards/$personId/$personName"
     fun documents(personId: String, category: DocCategory?, customCategory: String?) =
         "documents/$personId?category=${category?.name ?: ""}&custom_category=${customCategory ?: ""}&label=${customCategory ?: category?.name ?: "Documents"}"
     fun upload(personId: String, category: DocCategory?) = "upload/$personId?category=${category?.name ?: ""}"
+    fun viewer(docId: String, fileId: String?) = "viewer/$docId?fileId=${fileId ?: ""}"
+    fun edit(docId: String) = "edit/$docId"
 }
 
 @Composable
@@ -127,7 +131,9 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     onAddDocument = { personId ->
                         navController.navigate(Routes.upload(personId, null))
                     },
-                    onOpenDocument = { /* handled inside folder view; home tap is informational */ },
+                    onOpenDocument = { doc, fileId -> 
+                        navController.navigate(Routes.viewer(doc.id, fileId))
+                    },
                     onAddCard = { navController.navigate(Routes.FAMILY) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) }
                 )
@@ -193,9 +199,29 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         customCategory = customCategory,
                         title = label,
                         onBack = { navController.popBackStack() },
-                        onAddDocument = { navController.navigate(Routes.upload(resolvedPersonId, category)) }
+                        onAddDocument = { navController.navigate(Routes.upload(resolvedPersonId, category)) },
+                        onOpenFile = { docId, fileId -> navController.navigate(Routes.viewer(docId, fileId)) },
+                        onEditDocument = { docId -> navController.navigate(Routes.edit(docId)) }
                     )
                 }
+            }
+
+            composable(
+                Routes.VIEWER,
+                arguments = listOf(
+                    navArgument("docId") { type = NavType.StringType },
+                    navArgument("fileId") { type = NavType.StringType; nullable = true; defaultValue = "" }
+                )
+            ) { entry ->
+                val docId = entry.arguments?.getString("docId").orEmpty()
+                val fileId = entry.arguments?.getString("fileId")?.takeIf { it.isNotBlank() }
+                
+                com.rklab.healthvault.ui.screens.documents.DocumentViewerScreen(
+                    repository = repository,
+                    docId = docId,
+                    fileId = fileId,
+                    onBack = { navController.popBackStack() }
+                )
             }
 
             composable(
@@ -231,6 +257,21 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         onBack = { navController.popBackStack() }
                     )
                 }
+            }
+
+            composable(
+                Routes.EDIT,
+                arguments = listOf(
+                    navArgument("docId") { type = NavType.StringType }
+                )
+            ) { entry ->
+                val docId = entry.arguments?.getString("docId").orEmpty()
+                com.rklab.healthvault.ui.screens.documents.EditDocumentScreen(
+                    repository = repository,
+                    docId = docId,
+                    onDone = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }

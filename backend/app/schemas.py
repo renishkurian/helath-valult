@@ -104,6 +104,15 @@ class DocumentFileOut(BaseModel):
         from_attributes = True
 
 
+class DocumentUpdate(BaseModel):
+    title: Optional[str] = None
+    category: Optional[DocCategory] = None
+    custom_category: Optional[str] = None
+    hospital_name: Optional[str] = None
+    doc_date: Optional[str] = None
+    notes: Optional[str] = None
+
+
 class DocumentOut(BaseModel):
     id: str
     person_id: str

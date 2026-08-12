@@ -17,6 +17,8 @@ import com.rklab.healthvault.ui.screens.server.ServerSetupState
 import com.rklab.healthvault.ui.screens.server.ServerSetupViewModel
 import com.rklab.healthvault.ui.theme.*
 import com.rklab.healthvault.util.ViewModelFactory
+import androidx.compose.ui.platform.LocalContext
+import android.widget.Toast
 
 @Composable
 fun SettingsScreen(
@@ -31,6 +33,7 @@ fun SettingsScreen(
     
     val isBiometricEnabled by repository.tokenManager.isBiometricEnabled.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     LaunchedEffect(state) {
         if (state is ServerSetupState.Success && !repository.isLoggedIn) {
@@ -96,6 +99,30 @@ fun SettingsScreen(
                     },
                     colors = SwitchDefaults.colors(checkedThumbColor = Navy, checkedTrackColor = SageBg)
                 )
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+        Text("DATA SYNC", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White).padding(16.dp)
+        ) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        try {
+                            repository.syncAll()
+                            Toast.makeText(context, "Sync completed successfully.", Toast.LENGTH_SHORT).show()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Sync failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Navy)
+            ) {
+                Text("Force Sync", color = White)
             }
         }
 
