@@ -544,6 +544,7 @@ class GoogleDriveStatus(BaseModel):
     keep_days: int = 14
     has_password: bool = False
     has_client: bool = False
+    server_oauth: bool = False
     last_run_at: Optional[str] = None
     last_ok: Optional[bool] = None
     last_error: Optional[str] = None

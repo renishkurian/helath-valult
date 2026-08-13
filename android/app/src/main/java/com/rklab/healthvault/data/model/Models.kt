@@ -377,6 +377,7 @@ data class GoogleDriveStatus(
     val keep_days: Int = 14,
     val has_password: Boolean = false,
     val has_client: Boolean = false,
+    val server_oauth: Boolean = false,
     val last_run_at: String? = null,
     val last_ok: Boolean? = null,
     val last_error: String? = null,

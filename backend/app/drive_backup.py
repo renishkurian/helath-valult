@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app import crypto, gdrive, models
+from app.config import settings
 from app.deps import vault_id
 
 log = logging.getLogger("vault.gdrive")
@@ -31,13 +32,30 @@ def get_or_create(db: Session, user: models.User) -> models.GoogleDriveBackup:
     return row
 
 
+def oauth_creds(row: models.GoogleDriveBackup | None = None) -> tuple[str, str]:
+    """Server .env first so every vault user shares one Google app."""
+    cid = (settings.GOOGLE_CLIENT_ID or "").strip()
+    secret = (settings.GOOGLE_CLIENT_SECRET or "").strip()
+    if cid and secret:
+        return cid, secret
+    if row:
+        return (row.client_id or "").strip(), crypto.decrypt_text(row.client_secret_enc) or ""
+    return "", ""
+
+
+def oauth_ready(row: models.GoogleDriveBackup | None = None) -> bool:
+    cid, secret = oauth_creds(row)
+    return bool(cid and secret)
+
+
 def status_dict(row: models.GoogleDriveBackup | None) -> dict:
     if not row:
         return {
             "connected": False, "email": None, "enabled": False, "hour": 3, "keep_days": 14,
-            "has_password": False, "has_client": False,
+            "has_password": False, "has_client": False, "server_oauth": False,
             "last_run_at": None, "last_ok": None, "last_error": None, "last_file_name": None,
         }
+    server = bool((settings.GOOGLE_CLIENT_ID or "").strip() and (settings.GOOGLE_CLIENT_SECRET or "").strip())
     return {
         "connected": bool(row.refresh_token_enc),
         "email": row.connected_email,
@@ -45,7 +63,8 @@ def status_dict(row: models.GoogleDriveBackup | None) -> dict:
         "hour": int(row.hour or 3),
         "keep_days": int(row.keep_days or 14),
         "has_password": bool(row.password_enc),
-        "has_client": bool(row.client_id and row.client_secret_enc),
+        "has_client": oauth_ready(row),
+        "server_oauth": server,
         "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
         "last_ok": row.last_ok,
         "last_error": row.last_error,
@@ -71,8 +90,9 @@ def run_backup(db: Session, user: models.User) -> dict:
     password = crypto.decrypt_text(row.password_enc)
     if not password:
         raise RuntimeError("Set a backup password before uploading to Drive")
-    client_id = row.client_id or ""
-    client_secret = crypto.decrypt_text(row.client_secret_enc) or ""
+    client_id, client_secret = oauth_creds(row)
+    if not client_id or not client_secret:
+        raise RuntimeError("Google Drive is not configured on this server")
     refresh = crypto.decrypt_text(row.refresh_token_enc) or ""
     from app.routers.backup import _build_zip
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()

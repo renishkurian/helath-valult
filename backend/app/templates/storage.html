@@ -86,7 +86,7 @@
       <div class="card-body">
         {% if ok=='connected' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Google Drive connected.</span></div>{% endif %}
         {% if ok=='backedup' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Backup uploaded to Drive.</span></div>{% endif %}
-        {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Save Client ID and secret first.</span></div>{% endif %}
+        {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google Drive is not set up on this server yet. Ask the admin to add the Google app to the Pi <code>.env</code>.</span></div>{% endif %}
         {% if err=='denied' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google access was denied.</span></div>{% endif %}
         {% if err=='state' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Login expired — try Connect again.</span></div>{% endif %}
         {% if err=='token' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Could not get a Drive token. Check the redirect URI and that Drive API is enabled.</span></div>{% endif %}
@@ -128,19 +128,24 @@
             </div>
             {% endif %}
           </div>
+        {% elif drive.has_client %}
+          <p class="text-muted mb-4">Sign in with Google. Encrypted backups go to a folder named Health Vault Backups on <em>your</em> Drive.</p>
+          <form method="get" action="/admin/storage/google/connect" class="mb-4">
+            <button class="btn btn-primary btn-lg" type="submit"><i class="bi bi-google"></i> Connect Google Drive</button>
+          </form>
         {% else %}
-          <p class="text-muted">
-            In Google Cloud Console: enable <strong>Google Drive API</strong>, create an OAuth <strong>Web</strong> client,
-            and add this exact redirect URI:
-          </p>
-          <div class="mb-4">
-            <label class="form-label" for="drive-redirect">Redirect URI</label>
-            <input class="form-control js-copyable" id="drive-redirect" type="text" readonly value="{{ redirect_uri }}">
+          <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i>
+            <span>Ask the person who runs this server to add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the Pi <code>.env</code>. After that, you only click Connect.</span>
           </div>
         {% endif %}
 
         <form method="post" action="/admin/storage/google">
           <div class="row g-3">
+            {% if not drive.server_oauth and session_user.role == 'superadmin' %}
+            <div class="col-12">
+              <p class="text-faint small mb-0">Server owner only — end users never see this once the Pi <code>.env</code> has the Google app.</p>
+            </div>
             <div class="col-md-6">
               <label class="form-label" for="d-client-id">OAuth client ID</label>
               <input class="form-control" id="d-client-id" type="text" name="client_id" value="" placeholder="{{ 'saved' if drive.has_client else 'xxxx.apps.googleusercontent.com' }}">
@@ -149,6 +154,11 @@
               <label class="form-label" for="d-client-secret">OAuth client secret</label>
               <input class="form-control" id="d-client-secret" name="client_secret" type="password" placeholder="{{ 'unchanged' if drive.has_client else 'secret' }}">
             </div>
+            <div class="col-12">
+              <label class="form-label" for="drive-redirect">Redirect URI to paste in Google Cloud</label>
+              <input class="form-control js-copyable" id="drive-redirect" type="text" readonly value="{{ redirect_uri }}">
+            </div>
+            {% endif %}
             <div class="col-md-6">
               <label class="form-label" for="d-password">Backup password</label>
               <input class="form-control" id="d-password" name="password" type="password" placeholder="{{ 'unchanged' if drive.has_password else 'required — encrypts the Drive file' }}">
@@ -174,22 +184,17 @@
           </div>
         </form>
 
+        {% if drive.connected %}
         <div class="divider"></div>
-
         <div class="row-gap">
-          {% if not drive.connected %}
-          <form method="get" action="/admin/storage/google/connect">
-            <button class="btn btn-outline-light" type="submit"><i class="bi bi-google"></i> Connect Google Drive</button>
-          </form>
-          {% else %}
           <form method="post" action="/admin/storage/google/run">
             <button class="btn btn-outline-light" type="submit"><i class="bi bi-cloud-arrow-up"></i> Backup now</button>
           </form>
           <form method="post" action="/admin/storage/google/disconnect">
             <button class="btn btn-outline-danger" type="submit"><i class="bi bi-plug"></i> Disconnect</button>
           </form>
-          {% endif %}
         </div>
+        {% endif %}
 
         <p class="text-faint small mt-3 mb-0">
           Files land in a Drive folder named <strong>Health Vault Backups</strong>, encrypted with your backup password.

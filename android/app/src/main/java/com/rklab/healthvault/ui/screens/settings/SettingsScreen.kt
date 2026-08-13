@@ -298,7 +298,7 @@ fun SettingsScreen(
                         "Daily backup on${drive?.email?.let { " · $it" } ?: ""}${drive?.last_file_name?.let { " · last $it" } ?: ""}"
                     drive?.connected == true ->
                         "Connected${drive?.email?.let { " as $it" } ?: ""}. Daily upload is off."
-                    else -> "Not connected. Open Storage in the web app on the Pi, add your Google client, then Connect."
+                    else -> "Not connected. On the website: Storage → Connect Google Drive."
                 },
                 color = InkSoft,
                 style = MaterialTheme.typography.bodySmall,

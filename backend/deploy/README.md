@@ -69,9 +69,14 @@ the tunnel straight at `8076` unless you skip nginx.
 ## 5. App + Drive
 
 - Android server URL: `https://vault.rklab.online`
-- Google Drive OAuth redirect (copy from Storage page after it is live):
+- Put **one** OAuth Web client in the Pi `.env` (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`).
+  End users then only click **Connect Google Drive**.
+- Authorized redirect URIs (add every hostname you use):
 
-  `https://vault.rklab.online/admin/storage/google/callback`
+  `https://vault.rklab.online/admin/storage/google/callback`  
+  `https://bucket.rklab.online/admin/storage/google/callback`
+
+- OAuth consent screen stays in **Testing**. Add each family Gmail as a test user.
 
 Want LAN access without the tunnel? Change `--host 127.0.0.1` in the
 service to `--host 0.0.0.0` and `sudo systemctl restart healthvault`.

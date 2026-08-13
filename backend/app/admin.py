@@ -1091,19 +1091,18 @@ def storage_google_save(
 @router.get("/storage/google/connect")
 def storage_google_connect(request: Request, db: Session = Depends(get_db)):
     import secrets
-    from app.drive_backup import get_or_create
+    from app.drive_backup import get_or_create, oauth_creds, oauth_ready
     from app import gdrive
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     row = get_or_create(db, user)
-    if not row.client_id or not row.client_secret_enc:
+    if not oauth_ready(row):
         return RedirectResponse("/admin/storage?err=client", status_code=302)
+    client_id, _secret = oauth_creds(row)
     state = secrets.token_urlsafe(16)
     request.session["gdrive_oauth_state"] = state
-    secret = crypto.decrypt_text(row.client_secret_enc) or ""
-    url = gdrive.auth_url(row.client_id, _drive_redirect_uri(request), state)
-    _ = secret
+    url = gdrive.auth_url(client_id, _drive_redirect_uri(request), state)
     return RedirectResponse(url, status_code=302)
 
 
@@ -1115,7 +1114,7 @@ def storage_google_callback(
     error: str = "",
     db: Session = Depends(get_db),
 ):
-    from app.drive_backup import get_or_create
+    from app.drive_backup import get_or_create, oauth_creds, oauth_ready
     from app import gdrive
     user = require_login(request, db)
     if not user:
@@ -1125,9 +1124,11 @@ def storage_google_callback(
     if not code or state != request.session.get("gdrive_oauth_state"):
         return RedirectResponse("/admin/storage?err=state", status_code=302)
     row = get_or_create(db, user)
-    secret = crypto.decrypt_text(row.client_secret_enc) or ""
+    if not oauth_ready(row):
+        return RedirectResponse("/admin/storage?err=client", status_code=302)
+    client_id, secret = oauth_creds(row)
     try:
-        tokens = gdrive.exchange_code(row.client_id or "", secret, code, _drive_redirect_uri(request))
+        tokens = gdrive.exchange_code(client_id, secret, code, _drive_redirect_uri(request))
         refresh = tokens.get("refresh_token")
         access = tokens.get("access_token")
         if not refresh:

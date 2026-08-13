@@ -320,6 +320,15 @@ def test_encrypted_backup_roundtrip():
     assert r.json()["ok"] is True
 
 
+def test_google_oauth_creds_prefer_server_env(monkeypatch):
+    from app.config import settings
+    from app.drive_backup import oauth_creds, oauth_ready
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_ID", "env-id.apps.googleusercontent.com")
+    monkeypatch.setattr(settings, "GOOGLE_CLIENT_SECRET", "env-secret")
+    assert oauth_ready(None) is True
+    assert oauth_creds(None) == ("env-id.apps.googleusercontent.com", "env-secret")
+
+
 def test_google_drive_status_disconnected():
     data = _register("gdrive@example.com", "password123", "Drive User")
     headers = _auth_headers(data["access_token"])

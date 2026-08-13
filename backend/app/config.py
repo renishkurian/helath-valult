@@ -46,6 +46,11 @@ class Settings:
     # Leave empty to rely on on-device AlarmManager notifications only.
     FCM_SERVER_KEY: str = os.getenv("FCM_SERVER_KEY", "")
 
+    # One OAuth Web client for the whole server. Users only click Connect.
+    # Create in Google Cloud → APIs & Services → Credentials (Drive API on).
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+
     # Folder Syncthing / a USB disk can watch. Empty = no on-disk snapshot.
     BACKUP_DIR: Path | None = Path(p).resolve() if (p := os.getenv("BACKUP_DIR", "").strip()) else None
     SHARE_IDLE_DAYS: int = int(os.getenv("SHARE_IDLE_DAYS", "14"))
