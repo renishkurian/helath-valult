@@ -1,3 +1,5 @@
+import calendar
+import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
@@ -1095,6 +1097,7 @@ def finance_trans(
 def finance_add_page(
     request: Request,
     txn_type: str = "expense",
+    account_id: str = "",
     db: Session = Depends(get_db),
 ):
     from app.routers import finance as fn
@@ -1106,10 +1109,18 @@ def finance_add_page(
     categories = fn.list_categories(db=db, current_user=user)
     if txn_type not in ("income", "expense", "transfer"):
         txn_type = "expense"
+    cats_json = json.dumps([
+        {
+            "id": c.id, "name": c.name, "kind": c.kind,
+            "parent_id": c.parent_id, "account_id": c.account_id,
+        }
+        for c in categories
+    ])
     return templates.TemplateResponse("finance_add.html", _fn_ctx(
         request, user, "fn_trans", accounts=accounts, categories=categories,
         txn_type=txn_type, today=datetime.utcnow().strftime("%Y-%m-%d"),
         now=datetime.utcnow().strftime("%H:%M"), inr=inr,
+        prefill_account_id=account_id or None, cats_json=cats_json,
     ))
 
 
@@ -1246,6 +1257,66 @@ def finance_account_delete(account_id: str, request: Request, db: Session = Depe
         return RedirectResponse("/admin/login", status_code=302)
     delete_account(account_id, db=db, current_user=user)
     return RedirectResponse("/admin/finance/accounts", status_code=302)
+
+
+@router.get("/finance/accounts/{account_id}", response_class=HTMLResponse)
+def finance_account_detail(
+    account_id: str,
+    request: Request,
+    month: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers import finance as fn
+    from app.routers.finance import inr, _shift_month
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    account = next((a for a in accounts if a.id == account_id), None)
+    if not account:
+        return RedirectResponse("/admin/finance/accounts", status_code=302)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    try:
+        y, m = [int(p) for p in ym.split("-")]
+        datetime(y, m, 1)
+    except ValueError:
+        y, m = datetime.utcnow().year, datetime.utcnow().month
+        ym = f"{y:04d}-{m:02d}"
+    last = calendar.monthrange(y, m)[1]
+    txns = fn.list_transactions(year_month=ym, account_id=account_id, db=db, current_user=user)
+    days: dict[str, dict] = {}
+    deposit = withdrawal = 0.0
+    for t in txns:
+        incoming = t.txn_type == "income" or (t.txn_type == "transfer" and t.to_account_id == account_id)
+        if incoming:
+            deposit += t.amount
+        else:
+            withdrawal += t.amount
+        bucket = days.setdefault(t.txn_date, {"date": t.txn_date, "income": 0.0, "expense": 0.0, "txns": []})
+        if incoming:
+            bucket["income"] += t.amount
+        else:
+            bucket["expense"] += t.amount
+        bucket["txns"].append({"txn": t, "incoming": incoming})
+    day_list = []
+    for date in sorted(days.keys(), reverse=True):
+        bucket = days[date]
+        try:
+            dt = datetime.strptime(date, "%Y-%m-%d")
+            bucket["daynum"] = dt.strftime("%d")
+            bucket["weekday"] = dt.strftime("%a")
+            bucket["month"] = dt.strftime("%m.%Y")
+        except ValueError:
+            bucket["daynum"], bucket["weekday"], bucket["month"] = date, "", ""
+        day_list.append(bucket)
+    return templates.TemplateResponse("finance_account_detail.html", _fn_ctx(
+        request, user, "fn_accounts", account=account, inr=inr, days=day_list,
+        year_month=ym, label=datetime(y, m, 1).strftime("%b %Y"),
+        prev=_shift_month(ym, -1), next=_shift_month(ym, 1),
+        prev_year=f"{y - 1:04d}-{m:02d}", next_year=f"{y + 1:04d}-{m:02d}",
+        range_start=f"01.{m:02d}.{str(y)[2:]}", range_end=f"{last:02d}.{m:02d}.{str(y)[2:]}",
+        deposit=deposit, withdrawal=withdrawal, total=deposit - withdrawal,
+    ))
 
 
 @router.get("/finance/more", response_class=HTMLResponse)
@@ -1482,3 +1553,90 @@ def finance_recurring_pay(rid: str, request: Request, db: Session = Depends(get_
         return RedirectResponse("/admin/login", status_code=302)
     pay_recurring(rid, db=db, current_user=user)
     return RedirectResponse("/admin/finance/plan", status_code=302)
+
+
+@router.get("/finance/recurring", response_class=HTMLResponse)
+def finance_recurring_page(
+    request: Request,
+    status: str = "pending",
+    kind: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.routers import finance as fn
+    from app.routers.finance import inr
+    from app.emi import EMI_KINDS
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    st = status if status in ("pending", "completed", "overdue") else None
+    rows = fn.list_emis(status=st, kind=kind or None, db=db, current_user=user)
+    return templates.TemplateResponse("finance_recurring.html", _fn_ctx(
+        request, user, "fn_more", emis=rows, inr=inr, status=status or "pending",
+        kind=kind, kinds=EMI_KINDS,
+        accounts=fn.list_accounts(db=db, current_user=user),
+        today=datetime.utcnow().strftime("%Y-%m-%d"),
+        end_default=(datetime.utcnow().replace(year=datetime.utcnow().year + 1)).strftime("%Y-%m-%d"),
+    ))
+
+
+@router.post("/finance/recurring")
+def finance_recurring_create(
+    request: Request,
+    name: str = Form(...),
+    kind: str = Form("emi"),
+    account_id: str = Form(...),
+    amount: str = Form(...),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    day_of_month: str = Form(""),
+    notify_days: str = Form("2"),
+    auto_post: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_emi
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    day = int(day_of_month) if day_of_month.strip().isdigit() else None
+    create_emi(sc.FinanceEmiIn(
+        name=name, kind=kind, account_id=account_id, amount=float(amount or 0),
+        start_date=start_date, end_date=end_date, day_of_month=day,
+        notify_days=int(notify_days or 2), auto_post=bool(auto_post),
+        notes=notes or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/recurring", status_code=302)
+
+
+@router.post("/finance/recurring/{emi_id}/post")
+def finance_recurring_post(emi_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import post_emi_now
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        post_emi_now(emi_id, db=db, current_user=user)
+    except Exception:
+        pass
+    return RedirectResponse("/admin/finance/recurring", status_code=302)
+
+
+@router.post("/finance/recurring/{emi_id}/pause")
+def finance_recurring_pause(emi_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import pause_emi
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    pause_emi(emi_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/recurring", status_code=302)
+
+
+@router.post("/finance/recurring/{emi_id}/delete")
+def finance_recurring_delete(emi_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_emi
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_emi(emi_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/recurring", status_code=302)

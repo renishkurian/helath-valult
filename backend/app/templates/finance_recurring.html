@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Recurring payments{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a href="/admin/finance/more" style="color:var(--ink-soft);">← More</a></div>
+    <div class="page-title">Recurring payments</div>
+  </div>
+  <a class="btn" href="#new">+ Add</a>
+</div>
+<p class="mm-muted">EMI, chitty, loan, rent, insurance, and the rest. On the due day the Pi posts the expense; pending vs completed is below.</p>
+
+<div class="mm-tabs">
+  <a class="{% if status=='pending' %}active{% endif %}" href="/admin/finance/recurring?status=pending{% if kind %}&kind={{ kind }}{% endif %}">Pending</a>
+  <a class="{% if status=='completed' %}active{% endif %}" href="/admin/finance/recurring?status=completed{% if kind %}&kind={{ kind }}{% endif %}">Completed</a>
+  <a class="{% if status=='all' %}active{% endif %}" href="/admin/finance/recurring?status=all{% if kind %}&kind={{ kind }}{% endif %}">All</a>
+</div>
+<div class="toolbar" style="margin-bottom:16px; flex-wrap:wrap;">
+  <a class="btn-outline" href="/admin/finance/recurring?status={{ status }}" style="padding:6px 10px;{% if not kind %} border-color:var(--navy);{% endif %}">All tags</a>
+  {% for key, label in kinds.items() %}
+  <a class="btn-outline" href="/admin/finance/recurring?status={{ status }}&kind={{ key }}" style="padding:6px 10px;{% if kind==key %} border-color:var(--navy);{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+{% for e in emis %}
+<div class="mm-row" style="grid-template-columns:1fr auto;">
+  <div>
+    <div class="payee">{{ e.name }}</div>
+    <div class="acct">{{ e.kind_label }} · {{ e.account_name }} · day {{ e.day_of_month }} · {{ e.paid_count }}/{{ e.total_installments }} paid</div>
+    <div class="acct">
+      {% if e.status=='completed' %}Completed
+      {% elif e.status=='overdue' %}<span class="mm-expense">Overdue · {{ e.next_due }}</span>
+      {% else %}Next {{ e.next_due or '—' }}{% endif %}
+      {% if not e.auto_post %} · auto-add off{% endif %}
+      {% if not e.active %} · paused{% endif %}
+    </div>
+    <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
+      {% if e.status != 'completed' and e.active %}
+      <form method="post" action="/admin/finance/recurring/{{ e.id }}/post"><button class="btn-outline" type="submit" style="padding:4px 10px; font-size:12px;">Add this month</button></form>
+      {% endif %}
+      <form method="post" action="/admin/finance/recurring/{{ e.id }}/pause"><button class="btn-outline" type="submit" style="padding:4px 10px; font-size:12px;">{{ 'Pause' if e.active and e.status!='completed' else 'Resume' }}</button></form>
+      <form method="post" action="/admin/finance/recurring/{{ e.id }}/delete" onsubmit="return confirm('Remove {{ e.name }}? Past entries stay.');"><button class="btn-outline" type="submit" style="padding:4px 10px; font-size:12px;">Remove</button></form>
+    </div>
+  </div>
+  <div class="amt mm-expense">{{ inr(e.amount) }}</div>
+</div>
+{% else %}
+<div class="empty-state surface"><p>No recurring payments in this view. Add EMI, chitty, loan, rent…</p></div>
+{% endfor %}
+
+<div class="surface" id="new" style="max-width:640px; margin-top:28px;">
+  <div class="group-label">Set up recurring payment</div>
+  <form method="post" action="/admin/finance/recurring">
+    <div class="field">
+      <label>Tag</label>
+      <select name="kind">
+        {% for key, label in kinds.items() %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input name="name" required placeholder="Bike EMI, office chitty…"></div>
+      <div class="field"><label>Monthly amount</label><input name="amount" required inputmode="decimal" placeholder="0.00"></div>
+      <div class="field">
+        <label>Account</label>
+        <select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+      </div>
+      <div class="field"><label>Day of each month</label><input name="day_of_month" inputmode="numeric" placeholder="e.g. 5" min="1" max="31"></div>
+      <div class="field"><label>Start date</label><input type="date" name="start_date" value="{{ today }}" required></div>
+      <div class="field"><label>End date</label><input type="date" name="end_date" value="{{ end_default }}" required></div>
+      <div class="field">
+        <label>Remind before due</label>
+        <select name="notify_days">
+          <option value="0">Off</option>
+          <option value="1">1 day</option>
+          <option value="2" selected>2 days</option>
+          <option value="3">3 days</option>
+          <option value="7">7 days</option>
+        </select>
+      </div>
+      <div class="field"><label>Notes</label><input name="notes" placeholder="optional"></div>
+    </div>
+    <label class="check" style="display:flex; gap:8px; align-items:center; margin:12px 0;">
+      <input type="checkbox" name="auto_post" value="1" checked> Auto-add on the due day
+    </label>
+    <button class="btn" type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}

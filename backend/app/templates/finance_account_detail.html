@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ account.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a href="/admin/finance/accounts" style="color:var(--ink-soft);">← Accounts</a></div>
+    <div class="page-title">{{ account.name }}</div>
+  </div>
+  <div class="toolbar" style="margin:0; gap:8px; align-items:center;">
+    <a href="/admin/finance/accounts/{{ account.id }}?month={{ prev_year }}" class="btn-outline" style="padding:6px 10px;">‹‹</a>
+    <a href="/admin/finance/accounts/{{ account.id }}?month={{ prev }}" class="btn-outline" style="padding:6px 10px;">‹</a>
+    <strong>{{ label }}</strong>
+    <a href="/admin/finance/accounts/{{ account.id }}?month={{ next }}" class="btn-outline" style="padding:6px 10px;">›</a>
+    <a href="/admin/finance/accounts/{{ account.id }}?month={{ next_year }}" class="btn-outline" style="padding:6px 10px;">››</a>
+  </div>
+</div>
+
+<div class="mm-muted" style="margin-bottom:12px;">Statement · {{ range_start }} ~ {{ range_end }} · {{ account.account_type.replace('_',' ') }}</div>
+
+<div class="mm-summary">
+  <div class="cell"><div class="lbl">Deposit</div><div class="val mm-income">{{ inr(deposit) }}</div></div>
+  <div class="cell"><div class="lbl">Withdrawal</div><div class="val mm-expense">{{ inr(withdrawal) }}</div></div>
+  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(total) }}</div></div>
+  <div class="cell"><div class="lbl">Balance</div><div class="val {% if account.is_liability or account.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(account.balance) }}</div></div>
+</div>
+
+{% for day in days %}
+<div class="mm-day">
+  <div class="mm-day-head">
+    <span><strong>{{ day.daynum }}</strong> <span class="mm-expense" style="padding:2px 6px; border-radius:4px; background:rgba(255,107,122,0.15);">{{ day.weekday }}</span> {{ day.month }}</span>
+    <span><span class="mm-income">{{ inr(day.income) }}</span> &nbsp; <span class="mm-expense">{{ inr(day.expense) }}</span></span>
+  </div>
+  {% for item in day.txns %}
+  <div class="mm-row">
+    <div class="cat">{{ item.txn.category_name or item.txn.txn_type }}</div>
+    <div>
+      <div class="payee">{{ item.txn.payee or item.txn.description or '—' }}</div>
+      <div class="acct">{% if item.txn.description and item.txn.payee %}{{ item.txn.description }}{% endif %}</div>
+    </div>
+    <div class="amt {% if item.incoming %}mm-income{% else %}mm-expense{% endif %}">{{ inr(item.txn.amount) }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state surface"><p>No entries this month.</p></div>
+{% endfor %}
+
+<a class="mm-fab" href="/admin/finance/add?account_id={{ account.id }}" aria-label="Add">+</a>
+{% endblock %}

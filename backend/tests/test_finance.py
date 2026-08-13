@@ -292,6 +292,46 @@ def test_admin_finance_daily_and_monthly_view():
     assert "Tea stall" in r.text
 
 
+def test_admin_account_statement_and_recurring_pages():
+    r = client.post("/auth/register", json={
+        "email": "webmm@example.com", "password": "password123", "full_name": "Web MM",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    bank = next(a for a in accounts if a["account_type"] == "bank")
+    client.post("/finance/transactions", headers=headers, json={
+        "account_id": bank["id"], "txn_type": "expense",
+        "amount": 40, "txn_date": "2026-08-13", "payee": "Bus",
+    })
+    client.post("/finance/emis", headers=headers, json={
+        "name": "Office chitty", "kind": "chitty", "account_id": bank["id"],
+        "amount": 1000, "start_date": "2026-09-01", "end_date": "2027-08-01", "day_of_month": 1,
+    })
+    client.post(
+        "/admin/login",
+        data={"email": "webmm@example.com", "password": "password123"},
+        follow_redirects=False,
+    )
+    r = client.get(f"/admin/finance/accounts/{bank['id']}?month=2026-08")
+    assert r.status_code == 200, r.text
+    assert "Internal Server Error" not in r.text
+    assert "Bus" in r.text
+    assert "Statement" in r.text
+    r = client.get("/admin/finance/recurring")
+    assert r.status_code == 200, r.text
+    assert "Internal Server Error" not in r.text
+    assert "Office chitty" in r.text
+    assert "Chitty" in r.text
+    r = client.get("/admin/finance/add")
+    assert r.status_code == 200, r.text
+    assert "Internal Server Error" not in r.text
+    assert "Category" in r.text
+    r = client.get("/admin/finance/more")
+    assert r.status_code == 200, r.text
+    assert "Recurring" in r.text
+
+
 def test_transaction_optional_image():
     r = client.post("/auth/register", json={
         "email": "photo@example.com", "password": "password123", "full_name": "Photo User",

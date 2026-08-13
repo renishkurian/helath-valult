@@ -9,109 +9,115 @@
 </div>
 
 <div class="mm-type">
-  <a class="{% if txn_type=='income' %}on-income{% endif %}" href="/admin/finance/add?txn_type=income">Income</a>
-  <a class="{% if txn_type=='expense' %}on-expense{% endif %}" href="/admin/finance/add?txn_type=expense">Expense</a>
-  <a class="{% if txn_type=='transfer' %}on-transfer{% endif %}" href="/admin/finance/add?txn_type=transfer">Transfer</a>
+  <a class="{% if txn_type=='income' %}on-income{% endif %}" href="/admin/finance/add?txn_type=income{% if prefill_account_id %}&account_id={{ prefill_account_id }}{% endif %}">Income</a>
+  <a class="{% if txn_type=='expense' %}on-expense{% endif %}" href="/admin/finance/add?txn_type=expense{% if prefill_account_id %}&account_id={{ prefill_account_id }}{% endif %}">Expense</a>
+  <a class="{% if txn_type=='transfer' %}on-transfer{% endif %}" href="/admin/finance/add?txn_type=transfer{% if prefill_account_id %}&account_id={{ prefill_account_id }}{% endif %}">Transfer</a>
 </div>
 
-<form method="post" action="/admin/finance/add" class="surface" style="max-width:640px;" enctype="multipart/form-data">
+<form method="post" action="/admin/finance/add" class="surface" style="max-width:640px;" enctype="multipart/form-data" id="entry-form">
   <input type="hidden" name="txn_type" value="{{ txn_type }}">
-  <div class="form-grid">
-    <div class="field"><label>Date</label><input type="date" name="txn_date" value="{{ today }}" required></div>
-    <div class="field"><label>Time</label><input type="time" name="txn_time" value="{{ now }}"></div>
-  </div>
+  <input type="hidden" name="category_id" id="category_id" value="">
 
-  <div class="field">
-    <label>{% if txn_type=='transfer' %}From account{% else %}Account{% endif %}</label>
-    <div class="mm-picker">
-      {% for a in accounts %}
-      <label style="margin:0;">
-        <input type="radio" name="account_id" value="{{ a.id }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="document.querySelectorAll('.acct-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on'); filterCats();">
-        <span class="acct-pick {% if loop.first %}on{% endif %}">{{ a.name }}</span>
-      </label>
-      {% endfor %}
+  <div class="entry-row">
+    <label>Date</label>
+    <div class="form-grid" style="margin:0;">
+      <input type="date" name="txn_date" value="{{ today }}" required>
+      <input type="time" name="txn_time" value="{{ now }}">
     </div>
   </div>
 
+  <div class="entry-row">
+    <label>{% if txn_type=='transfer' %}From account{% else %}Account{% endif %}</label>
+    <select name="account_id" id="account_id" required onchange="refreshCats()">
+      {% for a in accounts %}
+      <option value="{{ a.id }}" {% if prefill_account_id==a.id or (not prefill_account_id and loop.first) %}selected{% endif %}>{{ a.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
   {% if txn_type=='transfer' %}
-  <div class="field">
+  <div class="entry-row">
     <label>To account</label>
     <select name="to_account_id" required>
       {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
     </select>
   </div>
   {% else %}
-  <div class="field">
+  <div class="entry-row">
     <label>Category</label>
-    <div class="mm-picker">
-      {% for c in categories if c.kind==txn_type %}
-      <label class="cat-opt" style="margin:0;" data-account="{{ c.account_id or '' }}">
-        <input type="radio" name="category_id" value="{{ c.id }}" {% if loop.first and not c.account_id %}checked{% endif %} style="display:none;" onchange="this.form.querySelectorAll('.cat-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
-        <span class="cat-pick {% if loop.first and not c.account_id %}on{% endif %}">{{ c.name }}{% if c.account_name %}<br><small>{{ c.account_name }}</small>{% endif %}</span>
-      </label>
-      {% endfor %}
+    <div class="form-grid" style="margin:0;">
+      <select id="cat_parent" onchange="refreshSubs()"></select>
+      <select id="cat_child" onchange="setCategory()"></select>
     </div>
+    <div class="field-hint">Left is the main category; right is the subcategory. Add more under More → Categories.</div>
   </div>
   {% endif %}
 
-  <div class="field"><label>Amount</label><input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00"></div>
-  <div class="field">
-    <label>Paid by</label>
-    <div class="mm-picker">
-      {% for key, label in [('upi','UPI'),('debit_card','Debit card'),('credit_card','Credit card'),('atm','ATM cash'),('netbanking','Net banking'),('cash','Cash'),('other','Other')] %}
-      <label style="margin:0;">
-        <input type="radio" name="payment_method" value="{{ key }}" {% if key=='other' %}checked{% endif %} style="display:none;" onchange="this.form.querySelectorAll('.pay-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
-        <span class="pay-pick {% if key=='other' %}on{% endif %}">{{ label }}</span>
-      </label>
-      {% endfor %}
-    </div>
+  <div class="entry-row">
+    <label>Amount</label>
+    <input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00">
   </div>
-  <div class="field"><label>Note</label><input type="text" name="payee" placeholder="Swiggy, salary, Mixi…"></div>
-  <div class="field"><label>Description</label><textarea name="description" rows="2" placeholder="Optional details"></textarea></div>
-  <div class="field">
-    <label>Repeat / installment</label>
-    <select name="frequency">
-      <option value="">None</option>
-      <option value="weekly">Weekly</option>
-      <option value="monthly">Monthly</option>
-      <option value="yearly">Yearly</option>
+
+  <div class="entry-row">
+    <label>Paid by</label>
+    <select name="payment_method">
+      <option value="upi">UPI</option>
+      <option value="debit_card">Debit card</option>
+      <option value="credit_card">Credit card</option>
+      <option value="atm">ATM cash</option>
+      <option value="netbanking">Net banking</option>
+      <option value="cash">Cash</option>
+      <option value="other" selected>Other</option>
     </select>
   </div>
-  <div class="field"><label>Internal notes</label><textarea name="notes" rows="2"></textarea></div>
-  <div class="field">
+
+  <div class="entry-row"><label>Note</label><input type="text" name="payee" placeholder="Swiggy, salary, Mixi…"></div>
+  <div class="entry-row"><label>Description</label><textarea name="description" rows="2" placeholder="Optional details"></textarea></div>
+  <div class="entry-row">
     <label>Photo / receipt</label>
     <input type="file" name="image" accept="image/*">
-    <div class="field-hint">Optional. Bill, receipt, or screenshot.</div>
   </div>
-  <button class="btn" type="submit">Save {{ txn_type }}</button>
+  <button class="btn" type="submit" style="margin-top:16px;">Save {{ txn_type }}</button>
 </form>
 <style>
-  .mm-picker label span{ display:block; background:#121826; border:1px solid var(--line); border-radius:12px; padding:16px 10px; }
-  .mm-picker label span.on{ border-color:var(--navy); background:var(--accent-soft); }
-  .mm-picker small{ color:var(--ink-soft); font-size:11px; }
+  .entry-row{ padding:14px 0; border-bottom:1px solid var(--line); }
+  .entry-row label{ display:block; font-size:12px; color:var(--ink-soft); font-weight:600; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.06em; }
+  .entry-row select, .entry-row input, .entry-row textarea{ width:100%; }
 </style>
 <script>
-function filterCats(){
-  const acc = document.querySelector('input[name=account_id]:checked');
-  const id = acc ? acc.value : '';
-  let firstVisible = null;
-  document.querySelectorAll('.cat-opt').forEach(el => {
-    const scope = el.getAttribute('data-account') || '';
-    const ok = !scope || scope === id;
-    el.style.display = ok ? '' : 'none';
-    const radio = el.querySelector('input');
-    if(!ok && radio) radio.checked = false;
-    if(ok && !firstVisible) firstVisible = el;
-  });
-  const anyOn = document.querySelector('.cat-opt input:checked');
-  if(!anyOn && firstVisible){
-    const radio = firstVisible.querySelector('input');
-    if(radio){ radio.checked = true; firstVisible.querySelector('.cat-pick')?.classList.add('on'); }
-  }
-  document.querySelectorAll('.cat-opt').forEach(el => {
-    if(el.style.display === 'none') el.querySelector('.cat-pick')?.classList.remove('on');
-  });
+const CATS = {{ cats_json|safe }};
+const KIND = "{{ txn_type }}";
+function visibleCats(){
+  const acc = document.getElementById('account_id')?.value || '';
+  return CATS.filter(c => c.kind === KIND && (!c.account_id || c.account_id === acc));
 }
-filterCats();
+function refreshCats(){
+  const parent = document.getElementById('cat_parent');
+  const child = document.getElementById('cat_child');
+  if(!parent || !child) return;
+  const all = visibleCats();
+  const parents = all.filter(c => !c.parent_id);
+  parent.innerHTML = parents.map(c => `<option value="${c.id}">${c.name}</option>`).join('') || '<option value="">—</option>';
+  refreshSubs();
+}
+function refreshSubs(){
+  const parentId = document.getElementById('cat_parent')?.value;
+  const child = document.getElementById('cat_child');
+  if(!child) return;
+  const all = visibleCats();
+  const kids = all.filter(c => c.parent_id === parentId);
+  const parent = all.find(c => c.id === parentId);
+  const opts = [];
+  if(parent) opts.push(`<option value="${parent.id}">${parent.name}</option>`);
+  kids.forEach(c => opts.push(`<option value="${c.id}">${c.name}</option>`));
+  child.innerHTML = opts.join('') || '<option value="">—</option>';
+  setCategory();
+}
+function setCategory(){
+  const el = document.getElementById('category_id');
+  const child = document.getElementById('cat_child');
+  if(el && child) el.value = child.value || '';
+}
+refreshCats();
 </script>
 {% endblock %}

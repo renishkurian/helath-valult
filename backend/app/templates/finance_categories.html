@@ -39,12 +39,17 @@
 
 <div class="panel" style="margin-bottom:18px;">
   <div class="group-label">General — all accounts</div>
-  {% for c in categories if not c.account_id %}
+  {% for c in categories if not c.account_id and not c.parent_id %}
   <div class="record">
     <span class="record-dot" style="background:{{ c.color or 'var(--mm-expense)' }};"></span>
     <div>
-      <div class="record-title">{{ c.name }}{% if c.parent_name %} <span class="mm-muted">· {{ c.parent_name }}</span>{% endif %}</div>
-      <div class="record-meta">{{ c.kind }}{% if c.parent_name %} · subcategory{% endif %} · all accounts</div>
+      <div class="record-title">{{ c.name }}</div>
+      <div class="record-meta">{{ c.kind }} · all accounts</div>
+      {% for sub in categories if sub.parent_id == c.id %}
+      <div class="acct" style="margin-top:4px;">↳ {{ sub.name }}{% if not sub.is_system %}
+        <form method="post" action="/admin/finance/categories/{{ sub.id }}/delete" style="display:inline;"><button class="btn-outline" type="submit" style="padding:2px 8px; font-size:11px;">Remove</button></form>
+      {% endif %}</div>
+      {% endfor %}
     </div>
     {% if not c.is_system %}
     <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
