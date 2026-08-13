@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -59,6 +60,9 @@ fun DocumentListScreen(
     
     // Delete confirmation state
     var docToDelete by remember { mutableStateOf<DocumentOut?>(null) }
+
+    // Share link state
+    var docToShare by remember { mutableStateOf<DocumentOut?>(null) }
     
     // Multi-file bottom sheet state
     var selectedDocForFiles by remember { mutableStateOf<DocumentOut?>(null) }
@@ -185,6 +189,11 @@ fun DocumentListScreen(
                                         } else {
                                             openFile(doc.id, null)
                                         }
+                                    },
+                                    trailingAction = {
+                                        IconButton(onClick = { docToShare = doc }) {
+                                            Icon(Icons.Filled.Share, contentDescription = "Share", tint = Navy)
+                                        }
                                     }
                                 )
                             }
@@ -245,6 +254,15 @@ fun DocumentListScreen(
             dismissButton = {
                 TextButton(onClick = { docToDelete = null }) { Text("Cancel", color = Navy) }
             }
+        )
+    }
+
+    // Share link dialog
+    if (docToShare != null) {
+        ShareLinkDialog(
+            repository = repository,
+            doc = docToShare!!,
+            onDismiss = { docToShare = null }
         )
     }
 

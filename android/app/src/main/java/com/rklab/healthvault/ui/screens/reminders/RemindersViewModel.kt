@@ -64,4 +64,15 @@ class RemindersViewModel(private val repository: HealthVaultRepository) : ViewMo
             }
         }
     }
+
+    fun completeReminder(id: String) {
+        viewModelScope.launch {
+            try {
+                repository.completeReminder(id)
+                load()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(error = "Couldn't update reminder.")
+            }
+        }
+    }
 }

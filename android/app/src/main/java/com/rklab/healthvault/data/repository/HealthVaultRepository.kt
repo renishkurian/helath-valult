@@ -179,7 +179,9 @@ class HealthVaultRepository(
         docDate: String?,
         notes: String?,
         files: List<File>,
-        mimeTypes: List<String>
+        mimeTypes: List<String>,
+        expiryDate: String? = null,
+        tags: String? = null
     ): UploadResult {
         fun text(v: String) = v.toRequestBody("text/plain".toMediaTypeOrNull())
         val fileParts = files.mapIndexed { idx, file ->
@@ -195,6 +197,8 @@ class HealthVaultRepository(
                 hospitalName = hospitalName?.let { text(it) },
                 docDate = docDate?.let { text(it) },
                 notes = notes?.let { text(it) },
+                expiryDate = expiryDate?.let { text(it) },
+                tags = tags?.let { text(it) },
                 files = fileParts
             )
             db.documentDao().upsertAll(listOf(doc.toEntity()))
@@ -239,6 +243,53 @@ class HealthVaultRepository(
 
     suspend fun listDocumentFiles(documentId: String): List<com.rklab.healthvault.data.model.DocumentFileOut> =
         api.listDocumentFiles(documentId)
+
+    // ---------- Versions ----------
+    suspend fun replaceDocumentVersion(
+        documentId: String, title: String?, notes: String?,
+        files: List<File>, mimeTypes: List<String>
+    ): DocumentOut {
+        fun text(v: String) = v.toRequestBody("text/plain".toMediaTypeOrNull())
+        val fileParts = files.mapIndexed { idx, file ->
+            val mime = mimeTypes.getOrElse(idx) { "application/octet-stream" }
+            MultipartBody.Part.createFormData("files", file.name, file.asRequestBody(mime.toMediaTypeOrNull()))
+        }
+        val doc = api.replaceDocumentVersion(documentId, title?.let { text(it) }, notes?.let { text(it) }, fileParts)
+        db.documentDao().upsertAll(listOf(doc.toEntity()))
+        return doc
+    }
+
+    suspend fun listDocumentVersions(documentId: String): List<com.rklab.healthvault.data.model.DocumentVersionOut> =
+        api.listDocumentVersions(documentId)
+
+    suspend fun downloadDocumentVersionFile(documentId: String, versionId: String, index: Int, destination: File): File {
+        val body = api.downloadDocumentVersionFile(documentId, versionId, index)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
+
+    // ---------- Share links ----------
+    suspend fun createShareLink(documentId: String, expiresInHours: Int = 48, maxViews: Int? = null) =
+        api.createShareLink(com.rklab.healthvault.data.model.ShareLinkCreate(documentId, expiresInHours, maxViews))
+
+    suspend fun listMyShareLinks() = api.listMyShareLinks()
+
+    suspend fun revokeShareLink(id: String) = api.revokeShareLink(id)
+
+    // ---------- Audit log ----------
+    suspend fun listAuditLog(documentId: String? = null, limit: Int = 100) =
+        api.listAuditLog(documentId, limit)
+
+    // ---------- Backup ----------
+    suspend fun exportBackup(destination: File): File {
+        val body = api.exportBackup()
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
 
     suspend fun downloadDocumentFile(documentId: String, fileId: String, destination: File): File {
         val body = api.downloadDocumentFile(documentId, fileId)
@@ -288,6 +339,12 @@ class HealthVaultRepository(
     suspend fun deleteReminder(id: String) {
         api.deleteReminder(id)
         db.reminderDao().deleteById(id)
+    }
+
+    suspend fun completeReminder(id: String): ReminderOut {
+        val updated = api.completeReminder(id)
+        db.reminderDao().upsertAll(listOf(updated.toEntity()))
+        return updated
     }
 
     // ---------- Search ----------

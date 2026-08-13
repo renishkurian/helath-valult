@@ -118,7 +118,8 @@ fun LedgerRow(
     tagLabel: String,
     tagColor: Color = Sage,
     tagBg: Color = SageBg,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    trailingAction: (@Composable () -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -154,6 +155,10 @@ fun LedgerRow(
                 .padding(horizontal = 7.dp, vertical = 3.dp)
         ) {
             Text(tagLabel, style = MaterialTheme.typography.labelSmall, color = tagColor, fontWeight = FontWeight.Medium)
+        }
+        if (trailingAction != null) {
+            Spacer(Modifier.width(4.dp))
+            trailingAction()
         }
     }
 }

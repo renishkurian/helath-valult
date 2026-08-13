@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
@@ -57,6 +58,10 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
                             onDelete = {
                                 ReminderScheduler.cancel(context, reminder.id)
                                 viewModel.deleteReminder(reminder.id)
+                            },
+                            onComplete = {
+                                ReminderScheduler.cancel(context, reminder.id)
+                                viewModel.completeReminder(reminder.id)
                             }
                         )
                     }
@@ -86,7 +91,7 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
 }
 
 @Composable
-private fun ReminderRow(title: String, description: String?, remindAt: String, repeatRule: RepeatRule, onDelete: () -> Unit) {
+private fun ReminderRow(title: String, description: String?, remindAt: String, repeatRule: RepeatRule, onDelete: () -> Unit, onComplete: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -112,6 +117,9 @@ private fun ReminderRow(title: String, description: String?, remindAt: String, r
                 Spacer(Modifier.height(2.dp))
                 Text(description, style = MaterialTheme.typography.bodySmall, color = InkSoft)
             }
+        }
+        IconButton(onClick = onComplete) {
+            Icon(Icons.Filled.Check, contentDescription = "Mark done", tint = Sage)
         }
         IconButton(onClick = onDelete) {
             Icon(Icons.Filled.Delete, contentDescription = "Delete reminder", tint = StampRed)

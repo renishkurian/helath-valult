@@ -39,6 +39,8 @@ fun EditDocumentScreen(
     var hospitalName by remember { mutableStateOf("") }
     var docDate by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var expiryDate by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf("") }
 
     var categoryMenuOpen by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
@@ -54,6 +56,8 @@ fun EditDocumentScreen(
             hospitalName = doc.hospital_name ?: ""
             docDate = doc.doc_date ?: ""
             notes = doc.notes ?: ""
+            expiryDate = doc.expiry_date ?: ""
+            tags = doc.tags ?: ""
             initialized = true
         } else {
             loadError = "Document not found."
@@ -131,6 +135,21 @@ fun EditDocumentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = expiryDate,
+                onValueChange = { expiryDate = it },
+                label = { Text("Expiry date (optional, YYYY-MM-DD)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = tags,
+                onValueChange = { tags = it },
+                label = { Text("Tags (optional, comma-separated)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (optional, stored encrypted)") }, modifier = Modifier.fillMaxWidth())
 
             if (saveError != null) {
@@ -151,7 +170,9 @@ fun EditDocumentScreen(
                                 custom_category = customCategory.ifBlank { null },
                                 hospital_name = hospitalName.ifBlank { null },
                                 doc_date = docDate.ifBlank { null },
-                                notes = notes.ifBlank { null }
+                                notes = notes.ifBlank { null },
+                                expiry_date = expiryDate.ifBlank { null },
+                                tags = tags.ifBlank { null }
                             )
                             repository.updateDocument(docId, update)
                             // Simply navigate back; the list reloads on re-entry

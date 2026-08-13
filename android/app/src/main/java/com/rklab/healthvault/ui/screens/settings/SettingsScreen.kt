@@ -24,7 +24,8 @@ import android.widget.Toast
 fun SettingsScreen(
     repository: HealthVaultRepository,
     onBack: () -> Unit,
-    onLoggedOut: () -> Unit
+    onLoggedOut: () -> Unit,
+    onOpenAuditLog: () -> Unit
 ) {
     val viewModel: ServerSetupViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
@@ -124,6 +125,52 @@ fun SettingsScreen(
             ) {
                 Text("Force Sync", color = White)
             }
+        }
+
+        Spacer(Modifier.height(28.dp))
+        Text("BACKUP & ACTIVITY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Spacer(Modifier.height(10.dp))
+        Column(
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White).padding(16.dp)
+        ) {
+            var exporting by remember { mutableStateOf(false) }
+            Button(
+                onClick = {
+                    exporting = true
+                    scope.launch {
+                        try {
+                            val dest = java.io.File(
+                                context.getExternalFilesDir(null),
+                                "healthvault-backup-${System.currentTimeMillis()}.zip"
+                            )
+                            repository.exportBackup(dest)
+                            val uri = androidx.core.content.FileProvider.getUriForFile(
+                                context, "${context.packageName}.fileprovider", dest
+                            )
+                            val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "application/zip"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(shareIntent, "Save backup"))
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                        } finally {
+                            exporting = false
+                        }
+                    }
+                },
+                enabled = !exporting,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Sage)
+            ) {
+                Text(if (exporting) "Exporting…" else "Export full backup (.zip)", color = White)
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onOpenAuditLog,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("View activity log", color = Navy) }
         }
 
         Spacer(Modifier.height(28.dp))

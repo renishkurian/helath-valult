@@ -98,12 +98,14 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         files: List<File>,
         mimeTypes: List<String>,
         reloadCategory: DocCategory?,
-        onDone: () -> Unit
+        onDone: () -> Unit,
+        expiryDate: String? = null,
+        tags: String? = null
     ) {
         viewModelScope.launch {
             _state.value = _state.value.copy(uploading = true, error = null)
             try {
-                when (repository.uploadDocument(personId, category, customCategory, title, hospitalName, docDate, notes, files, mimeTypes)) {
+                when (repository.uploadDocument(personId, category, customCategory, title, hospitalName, docDate, notes, files, mimeTypes, expiryDate, tags)) {
                     is UploadResult.Success -> {
                         _state.value = _state.value.copy(uploading = false)
                         load(personId, reloadCategory)

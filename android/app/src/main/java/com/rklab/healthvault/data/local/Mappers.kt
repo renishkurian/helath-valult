@@ -34,6 +34,7 @@ fun DocumentOut.toEntity() = DocumentEntity(
     id = id, person_id = person_id, category = category.name.lowercase(),
     custom_category = custom_category,
     title = title, hospital_name = hospital_name, doc_date = doc_date,
+    expiry_date = expiry_date, tags = tags, version = version,
     file_type = file_type, file_size = file_size, file_count = file_count, 
     notes = notes, created_at = created_at
 )
@@ -43,6 +44,7 @@ fun DocumentEntity.toModel() = DocumentOut(
     category = runCatching { DocCategory.valueOf(category.uppercase()) }.getOrDefault(DocCategory.OTHER),
     custom_category = custom_category,
     title = title, hospital_name = hospital_name, doc_date = doc_date,
+    expiry_date = expiry_date, tags = tags, version = version,
     file_type = file_type, file_size = file_size, file_count = file_count, 
     notes = notes, created_at = created_at
 )

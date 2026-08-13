@@ -31,6 +31,7 @@ private object Routes {
     const val REMINDERS = "reminders"
     const val FAMILY = "family"
     const val SETTINGS = "settings"
+    const val AUDIT = "audit"
     const val CARDS = "cards/{personId}/{personName}"
     const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}"
     const val UPLOAD = "upload/{personId}?category={category}"
@@ -117,7 +118,15 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     onBack = { navController.popBackStack() },
                     onLoggedOut = {
                         navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
-                    }
+                    },
+                    onOpenAuditLog = { navController.navigate(Routes.AUDIT) }
+                )
+            }
+
+            composable(Routes.AUDIT) {
+                com.rklab.healthvault.ui.screens.audit.AuditLogScreen(
+                    repository = repository,
+                    onBack = { navController.popBackStack() }
                 )
             }
 

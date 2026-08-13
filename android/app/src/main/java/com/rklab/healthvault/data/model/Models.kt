@@ -77,6 +77,9 @@ data class DocumentOut(
     val title: String,
     val hospital_name: String?,
     val doc_date: String?,
+    val expiry_date: String? = null,
+    val tags: String? = null,
+    val version: Int = 1,
     val file_type: String?,
     val file_size: Long?,
     val file_count: Int = 1,
@@ -90,7 +93,9 @@ data class DocumentUpdate(
     val custom_category: String? = null,
     val hospital_name: String? = null,
     val doc_date: String? = null,
-    val notes: String? = null
+    val notes: String? = null,
+    val expiry_date: String? = null,
+    val tags: String? = null
 )
 
 data class DocumentFileOut(
@@ -102,12 +107,56 @@ data class DocumentFileOut(
     val created_at: String
 )
 
+data class DocumentVersionOut(
+    val id: String,
+    val document_id: String,
+    val version: Int,
+    val title: String,
+    val notes: String?,
+    val created_at: String
+)
+
+// ---------- Share links ----------
+data class ShareLinkCreate(
+    val document_id: String,
+    val expires_in_hours: Int = 48,
+    val max_views: Int? = null
+)
+
+data class ShareLinkOut(
+    val id: String,
+    val token: String,
+    val document_id: String,
+    val expires_at: String,
+    val max_views: Int?,
+    val view_count: Int,
+    val revoked: Boolean,
+    val created_at: String
+)
+
+// ---------- Audit log ----------
+enum class AuditAction {
+    @SerializedName("view") VIEW,
+    @SerializedName("download") DOWNLOAD,
+    @SerializedName("share_create") SHARE_CREATE,
+    @SerializedName("share_view") SHARE_VIEW
+}
+
+data class AuditLogOut(
+    val id: String,
+    val document_id: String?,
+    val action: AuditAction,
+    val detail: String?,
+    val created_at: String
+)
+
 // ---------- Reminders ----------
 enum class RepeatRule {
     @SerializedName("none") NONE,
     @SerializedName("daily") DAILY,
     @SerializedName("weekly") WEEKLY,
-    @SerializedName("monthly") MONTHLY
+    @SerializedName("monthly") MONTHLY,
+    @SerializedName("yearly") YEARLY
 }
 
 data class ReminderOut(

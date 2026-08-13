@@ -64,6 +64,8 @@ fun UploadDocumentScreen(
     var hospitalName by remember { mutableStateOf("") }
     var docDate by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var expiryDate by remember { mutableStateOf("") }
+    var tags by remember { mutableStateOf("") }
 
     // Multi-file: list of (File, mimeType) pairs
     var pickedFiles by remember { mutableStateOf<List<Pair<File, String>>>(emptyList()) }
@@ -246,6 +248,21 @@ fun UploadDocumentScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))
+            com.rklab.healthvault.ui.components.DatePickerField(
+                label = "Expiry date (optional — insurance, prescription validity etc.)",
+                value = expiryDate,
+                onValueChange = { expiryDate = it },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = tags,
+                onValueChange = { tags = it },
+                label = { Text("Tags (optional, comma-separated)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (optional, stored encrypted)") }, modifier = Modifier.fillMaxWidth())
 
             if (state.error != null) {
@@ -268,7 +285,9 @@ fun UploadDocumentScreen(
                         files = pickedFiles.map { it.first },
                         mimeTypes = pickedFiles.map { it.second },
                         reloadCategory = null,
-                        onDone = onDone
+                        onDone = onDone,
+                        expiryDate = expiryDate.ifBlank { null },
+                        tags = tags.ifBlank { null }
                     )
                 },
                 enabled = pickedFiles.isNotEmpty() && !state.uploading,
