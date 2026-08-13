@@ -20,6 +20,8 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("vault_owner_id", "VARCHAR(32)"),
         ("totp_secret_enc", "TEXT"),
         ("totp_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("app_approve", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("blocked", "BOOLEAN NOT NULL DEFAULT 0"),
         ("last_seen_at", "DATETIME"),
     ],
     "people": [
@@ -68,6 +70,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "finance_emis": [
         ("kind", "VARCHAR(30) NOT NULL DEFAULT 'emi'"),
     ],
+    "login_challenges": [
+        ("kind", "VARCHAR(20) NOT NULL DEFAULT 'app'"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [
@@ -90,6 +95,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_login_challenges_user_id", "login_challenges", "user_id"),
     ("ix_login_challenges_status", "login_challenges", "status"),
     ("ix_login_challenges_expires_at", "login_challenges", "expires_at"),
+    ("ix_login_challenges_kind", "login_challenges", "kind"),
 ]
 
 

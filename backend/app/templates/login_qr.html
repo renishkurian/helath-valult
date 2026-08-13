@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vault — App sign-in</title>
+<meta name="theme-color" content="#0A0C11">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css?v=9">
+</head>
+<body>
+<div class="auth-wrap">
+  <section class="auth-hero">
+    <a class="brand" href="/admin">
+      <span class="brand-mark">V</span>
+      <span>
+        <span class="brand-name d-block">Vault</span>
+        <span class="brand-sub">Private archive</span>
+      </span>
+    </a>
+    <div class="auth-hero-body">
+      <div class="eyebrow">Alternate sign-in</div>
+      <h1>Open the vault<br>from your phone.</h1>
+      <p>{% if waiting %}Scan this code in the Vault app, then tap Allow. This page will open your vault by itself.{% else %}Enter the email for this vault. We show a QR that only your signed-in phone can grant.{% endif %}</p>
+    </div>
+  </section>
+
+  <section class="auth-form">
+    <div class="auth-box">
+      {% if waiting %}
+      <div class="eyebrow">Waiting on your phone</div>
+      <h2>Scan to sign in</h2>
+      <p class="text-muted mb-3">Signed in as <strong>{{ email }}</strong>.</p>
+
+      {% if error %}
+      <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>{{ error }}</span>
+      </div>
+      {% endif %}
+
+      <div class="text-center mb-4">
+        {% if qr_image %}
+        <div class="qr-frame qr-frame-lg mx-auto">
+          <img src="{{ qr_image }}" alt="QR code to approve this browser" width="200" height="200">
+        </div>
+        {% else %}
+        <p class="text-muted">QR image could not be drawn. Open the Vault app and approve the waiting request.</p>
+        {% endif %}
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body d-flex align-items-start gap-3">
+          <span class="pulse-dot mt-1" aria-hidden="true"></span>
+          <div>
+            <div class="fw-semibold">In the Vault app</div>
+            <p class="text-muted mb-0" style="font-size:.875rem;">Modules → scan icon, then Allow. Keep this tab open.</p>
+          </div>
+        </div>
+      </div>
+
+      <a class="link-quiet" href="/admin/login/qr/cancel">Use password instead</a>
+      {% else %}
+      <div class="eyebrow">App sign-in</div>
+      <h2>Scan from the phone</h2>
+      <p class="text-muted mb-4">No password on this computer. The already-signed-in Vault app grants this browser.</p>
+
+      {% if error %}
+      <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>{{ error }}</span>
+      </div>
+      {% endif %}
+
+      <form method="post" action="/admin/login/qr" class="stack">
+        <div>
+          <label class="form-label" for="email">Email</label>
+          <input class="form-control" id="email" type="email" name="email" required autofocus
+                 autocomplete="username" placeholder="you@example.com" value="{{ email or '' }}">
+        </div>
+        {% if recaptcha_site_key %}
+        <div>
+          <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+          <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}" data-theme="dark"></div>
+        </div>
+        {% endif %}
+        <button class="btn btn-primary btn-lg btn-block" type="submit">
+          <i class="bi bi-qr-code"></i>
+          Show QR code
+        </button>
+      </form>
+
+      <p class="text-faint mt-4 mb-0" style="font-size:.75rem;">
+        <a class="link-quiet" href="/admin/login">Use email and password</a>
+      </p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% if waiting %}
+<script>
+(function () {
+  async function tick() {
+    try {
+      const r = await fetch("/admin/login/qr/status", { credentials: "same-origin" });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.redirect && data.status !== "pending") {
+        window.location.href = data.redirect;
+      }
+    } catch (e) {}
+  }
+  setInterval(tick, 2000);
+  tick();
+})();
+</script>
+{% endif %}
+</body>
+</html>

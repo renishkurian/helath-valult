@@ -24,7 +24,7 @@
     <div class="auth-hero-body">
       <div class="eyebrow">Second factor</div>
       <h1>Approve this sign-in<br>from your phone.</h1>
-      <p>Open the Vault app while you are already signed in. Tap Allow, or type an authenticator code here.</p>
+      <p>{% if has_totp %}Open the Vault app and tap Allow, or type an authenticator code.{% else %}Open the Vault app while you are already signed in, then tap Allow.{% endif %}</p>
     </div>
   </section>
 
@@ -57,6 +57,7 @@
         </div>
       </div>
 
+      {% if has_totp %}
       <form method="post" action="/admin/login/2fa" class="stack">
         <div>
           <label class="form-label" for="code">Or enter a 6-digit code</label>
@@ -69,9 +70,10 @@
           Verify code
         </button>
       </form>
+      {% endif %}
 
       <p class="text-faint mt-4 mb-0" style="font-size:.75rem;">
-        Lost the app? Ask a super admin to turn 2FA off for this account.
+        {% if has_totp %}Lost the phone? Ask a super admin to turn 2FA off.{% else %}Lost the phone? Ask a super admin to turn off app approval or unblock you.{% endif %}
         <a class="link-quiet" href="/admin/logout">Use a different account</a>
       </p>
     </div>

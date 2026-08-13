@@ -64,6 +64,8 @@ class User(Base):
     vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     totp_secret_enc = Column(Text, nullable=True)
     totp_enabled = Column(Boolean, default=False, nullable=False)
+    app_approve = Column(Boolean, default=False, nullable=False)
+    blocked = Column(Boolean, default=False, nullable=False, index=True)
     last_seen_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -90,6 +92,7 @@ class LoginChallenge(Base):
     ip = Column(String(64), nullable=True)
     user_agent = Column(String(400), nullable=True)
     status = Column(String(20), default="pending", nullable=False, index=True)
+    kind = Column(String(20), default="app", nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False, index=True)
     decided_at = Column(DateTime, nullable=True)

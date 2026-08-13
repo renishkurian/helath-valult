@@ -53,7 +53,11 @@ def _stats(db: Session) -> dict:
     ).scalar() or 0
     owners = db.query(func.count(models.User.id)).filter(models.User.role == models.UserRole.owner.value).scalar() or 0
     totp_on = db.query(func.count(models.User.id)).filter(models.User.totp_enabled.is_(True)).scalar() or 0
-    return {"total": total, "online": online, "failed_24h": failed_24h, "owners": owners, "totp_on": totp_on}
+    blocked = db.query(func.count(models.User.id)).filter(models.User.blocked.is_(True)).scalar() or 0
+    return {
+        "total": total, "online": online, "failed_24h": failed_24h,
+        "owners": owners, "totp_on": totp_on, "blocked": blocked,
+    }
 
 
 @router.get("", response_class=HTMLResponse)
@@ -82,7 +86,7 @@ def sa_home(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/users", response_class=HTMLResponse)
-def sa_users(request: Request, q: str = "", role: str = "", cleared: str = "", db: Session = Depends(get_db)):
+def sa_users(request: Request, q: str = "", role: str = "", cleared: str = "", notice: str = "", who: str = "", db: Session = Depends(get_db)):
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
@@ -95,7 +99,7 @@ def sa_users(request: Request, q: str = "", role: str = "", cleared: str = "", d
     rows = query.order_by(models.User.created_at.desc()).limit(500).all()
     return templates.TemplateResponse("sa_users.html", _sa_ctx(
         request, user, "sa_users", users=rows, q=q, role=role, stats=_stats(db),
-        cleared=cleared or None,
+        cleared=cleared or None, notice=notice or None, who=who or None,
     ))
 
 
@@ -117,6 +121,73 @@ def sa_disable_2fa(user_id: str, request: Request, db: Session = Depends(get_db)
         success=True, reason="sa_2fa_off",
     )
     return RedirectResponse(f"/admin/sa/users?cleared={quote(target.email)}", status_code=302)
+
+
+@router.post("/users/{user_id}/disable-app-approve")
+def sa_disable_app_approve(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.login_guard import client_ip, log_attempt
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    target.app_approve = False
+    db.query(models.LoginChallenge).filter(
+        models.LoginChallenge.user_id == target.id,
+        models.LoginChallenge.status == "pending",
+    ).update({"status": "expired"}, synchronize_session=False)
+    db.commit()
+    log_attempt(
+        db, email=target.email, ip=client_ip(request),
+        user_agent=f"app approval cleared by {user.email}",
+        success=True, reason="sa_app_off",
+    )
+    return RedirectResponse(f"/admin/sa/users?notice=app-off&who={quote(target.email)}", status_code=302)
+
+
+@router.post("/users/{user_id}/block")
+def sa_block_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.login_guard import client_ip, log_attempt
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    if target.id == user.id:
+        return RedirectResponse("/admin/sa/users?notice=self", status_code=302)
+    target.blocked = True
+    db.query(models.LoginChallenge).filter(
+        models.LoginChallenge.user_id == target.id,
+        models.LoginChallenge.status == "pending",
+    ).update({"status": "expired"}, synchronize_session=False)
+    db.commit()
+    log_attempt(
+        db, email=target.email, ip=client_ip(request),
+        user_agent=f"blocked by {user.email}",
+        success=False, reason="sa_blocked",
+    )
+    return RedirectResponse(f"/admin/sa/users?notice=blocked&who={quote(target.email)}", status_code=302)
+
+
+@router.post("/users/{user_id}/unblock")
+def sa_unblock_user(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.login_guard import client_ip, log_attempt
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    target.blocked = False
+    db.commit()
+    log_attempt(
+        db, email=target.email, ip=client_ip(request),
+        user_agent=f"unblocked by {user.email}",
+        success=True, reason="sa_unblocked",
+    )
+    return RedirectResponse(f"/admin/sa/users?notice=unblocked&who={quote(target.email)}", status_code=302)
 
 
 @router.get("/online", response_class=HTMLResponse)

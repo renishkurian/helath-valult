@@ -16,13 +16,34 @@
   <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">Total</div><div class="val">{{ stats.total }}</div></div></div>
   <div class="col-6 col-lg-3"><div class="stat accent"><div class="lbl">Online</div><div class="val">{{ stats.online }}</div></div></div>
   <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">Owners</div><div class="val">{{ stats.owners }}</div></div></div>
-  <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">2FA on</div><div class="val">{{ stats.totp_on }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">Blocked</div><div class="val">{{ stats.blocked }}</div></div></div>
 </div>
 
 {% if cleared %}
 <div class="alert alert-success" role="alert">
   <i class="bi bi-check2-circle"></i>
   <span>Two-factor turned off for <strong>{{ cleared }}</strong>. They can sign in with password only.</span>
+</div>
+{% endif %}
+{% if notice == 'blocked' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-slash-circle"></i>
+  <span>Blocked <strong>{{ who }}</strong>. They cannot sign in until you unblock them.</span>
+</div>
+{% elif notice == 'unblocked' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Restored <strong>{{ who }}</strong>. They can sign in again.</span>
+</div>
+{% elif notice == 'app-off' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>App approval turned off for <strong>{{ who }}</strong>. Password is enough unless 2FA is still on.</span>
+</div>
+{% elif notice == 'self' %}
+<div class="alert alert-danger" role="alert">
+  <i class="bi bi-exclamation-triangle"></i>
+  <span>You cannot block your own account.</span>
 </div>
 {% endif %}
 
@@ -47,9 +68,9 @@
         <tr>
           <th>Person</th>
           <th>Role</th>
-          <th>2FA</th>
+          <th>2FA / app</th>
+          <th>Access</th>
           <th>Last seen</th>
-          <th>Created</th>
         </tr>
       </thead>
       <tbody>
@@ -67,22 +88,42 @@
           <td>
             <span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span>
             {% if is_online(u) %}<span class="badge badge-good ms-1">online</span>{% endif %}
+            {% if u.blocked %}<span class="badge badge-bad ms-1">blocked</span>{% endif %}
           </td>
           <td>
-            {% if u.totp_enabled %}
             <div class="d-flex align-items-center gap-2 flex-wrap">
-              <span class="badge badge-good">on</span>
+              {% if u.totp_enabled %}
+              <span class="badge badge-good">2FA</span>
               <form method="post" action="/admin/sa/users/{{ u.id }}/disable-2fa" class="d-inline"
-                    onsubmit="return confirm('Turn off 2FA for this account? They can sign in with password only until they set it up again.');">
-                <button class="btn btn-ghost btn-sm" type="submit">Turn off</button>
+                    onsubmit="return confirm('Turn off 2FA for this account?');">
+                <button class="btn btn-ghost btn-sm" type="submit">Clear 2FA</button>
               </form>
+              {% endif %}
+              {% if u.app_approve %}
+              <span class="badge badge-info">app</span>
+              <form method="post" action="/admin/sa/users/{{ u.id }}/disable-app-approve" class="d-inline"
+                    onsubmit="return confirm('Turn off app approval for this account?');">
+                <button class="btn btn-ghost btn-sm" type="submit">Clear app</button>
+              </form>
+              {% endif %}
+              {% if not u.totp_enabled and not u.app_approve %}<span class="text-faint">off</span>{% endif %}
             </div>
+          </td>
+          <td>
+            {% if u.id == session_user.id %}
+            <span class="text-faint">you</span>
+            {% elif u.blocked %}
+            <form method="post" action="/admin/sa/users/{{ u.id }}/unblock">
+              <button class="btn btn-outline-light btn-sm" type="submit">Unblock</button>
+            </form>
             {% else %}
-            <span class="text-faint">off</span>
+            <form method="post" action="/admin/sa/users/{{ u.id }}/block"
+                  onsubmit="return confirm('Block this account? They will not be able to sign in.');">
+              <button class="btn btn-ghost btn-sm" type="submit">Block</button>
+            </form>
             {% endif %}
           </td>
           <td class="mono text-muted">{{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') if u.last_seen_at else '—' }}</td>
-          <td class="mono text-muted">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
         </tr>
         {% else %}
         <tr>

@@ -95,6 +95,14 @@ dependencies {
     // Image loading (avatars, doc thumbnails)
     implementation("io.coil-kt:coil-compose:2.6.0")
 
+    // QR scan for web login
+    val cameraX = "1.3.4"
+    implementation("androidx.camera:camera-core:$cameraX")
+    implementation("androidx.camera:camera-camera2:$cameraX")
+    implementation("androidx.camera:camera-lifecycle:$cameraX")
+    implementation("androidx.camera:camera-view:$cameraX")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     // Background reminders + offline sync
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 

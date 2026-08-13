@@ -41,6 +41,7 @@ import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
@@ -106,6 +107,7 @@ fun ModulePickerScreen(
     onLocker: () -> Unit,
     onUrls: () -> Unit,
     onSettings: () -> Unit,
+    onScanQr: () -> Unit = {},
     onVaultHealth: () -> Unit = {}
 ) {
     val viewModel: ModulePickerViewModel = viewModel(factory = ViewModelFactory(repository))
@@ -137,6 +139,7 @@ fun ModulePickerScreen(
             HubTopBar(
                 greeting = state.greeting,
                 title = state.vaultTitle,
+                onScanQr = onScanQr,
                 onSettings = onSettings
             )
             Spacer(Modifier.height(22.dp))
@@ -309,7 +312,7 @@ fun ModulePickerScreen(
 }
 
 @Composable
-private fun HubTopBar(greeting: String, title: String, onSettings: () -> Unit) {
+private fun HubTopBar(greeting: String, title: String, onScanQr: () -> Unit, onSettings: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -335,17 +338,31 @@ private fun HubTopBar(greeting: String, title: String, onSettings: () -> Unit) {
                 letterSpacing = (-0.2).sp
             )
         }
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(SettingsShape)
-                .background(HubGlass)
-                .border(1.dp, HubStroke, SettingsShape)
-                .clickable(role = Role.Button, onClick = onSettings)
-                .semantics { contentDescription = "Settings" },
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Outlined.Settings, contentDescription = null, tint = HubTextDim, modifier = Modifier.size(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(SettingsShape)
+                    .background(HubGlass)
+                    .border(1.dp, HubStroke, SettingsShape)
+                    .clickable(role = Role.Button, onClick = onScanQr)
+                    .semantics { contentDescription = "Scan web login QR" },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.QrCodeScanner, contentDescription = null, tint = HubTextDim, modifier = Modifier.size(18.dp))
+            }
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(SettingsShape)
+                    .background(HubGlass)
+                    .border(1.dp, HubStroke, SettingsShape)
+                    .clickable(role = Role.Button, onClick = onSettings)
+                    .semantics { contentDescription = "Settings" },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Settings, contentDescription = null, tint = HubTextDim, modifier = Modifier.size(18.dp))
+            }
         }
     }
 }

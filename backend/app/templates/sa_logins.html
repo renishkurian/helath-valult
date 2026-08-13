@@ -46,16 +46,26 @@
             <span class="badge badge-info">2FA pending</span>
             {% elif a.reason == 'sa_2fa_off' %}
             <span class="badge badge-warn">2FA cleared</span>
+            {% elif a.reason == 'sa_app_off' %}
+            <span class="badge badge-warn">app cleared</span>
+            {% elif a.reason == 'sa_unblocked' %}
+            <span class="badge badge-good">unblocked</span>
             {% elif a.reason == 'app_ok' %}
             <span class="badge badge-good">app approved</span>
+            {% elif a.reason == 'qr_ok' %}
+            <span class="badge badge-good">QR approved</span>
+            {% elif a.reason == 'qr_pending' %}
+            <span class="badge badge-info">QR pending</span>
             {% elif a.success %}
             <span class="badge badge-good">ok</span>
             {% elif a.reason == 'rate_limited' %}
             <span class="badge badge-warn">rate limited</span>
             {% elif a.reason == 'recaptcha' %}
             <span class="badge badge-plum">recaptcha</span>
-            {% elif a.reason == 'app_denied' %}
-            <span class="badge badge-bad">app denied</span>
+            {% elif a.reason == 'blocked' or a.reason == 'sa_blocked' %}
+            <span class="badge badge-bad">blocked</span>
+            {% elif a.reason == 'app_denied' or a.reason == 'qr_denied' %}
+            <span class="badge badge-bad">{{ 'QR denied' if a.reason == 'qr_denied' else 'app denied' }}</span>
             {% elif a.reason == 'totp_bad' %}
             <span class="badge badge-bad">2FA failed</span>
             {% else %}

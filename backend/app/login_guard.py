@@ -162,12 +162,74 @@ def authenticate(
         log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="bad_credentials")
         return None, "Incorrect email or password"
 
-    from app.totp import is_enabled as totp_on
-    needs_totp = totp_on(user)
+    from app.totp import is_blocked, needs_step_up
+    if is_blocked(user):
+        log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="blocked")
+        return None, "This account is blocked. Ask a super admin to restore access."
+
+    pending = needs_step_up(user)
     log_attempt(
         db, email=email_norm, ip=ip, user_agent=ua, success=True,
-        reason="totp_pending" if needs_totp else "ok",
+        reason="totp_pending" if pending else "ok",
     )
-    if not needs_totp:
+    if not pending:
         touch_last_seen(user)
+    return user, None
+
+
+def qr_start_limited(db: Session, ip: str | None) -> tuple[bool, int]:
+    """Cap how often one IP can mint QR wait pages."""
+    if not ip:
+        return False, 0
+    limit = max(1, settings.LOGIN_MAX_ATTEMPTS)
+    window = max(1, settings.LOGIN_LOCKOUT_MINUTES)
+    hits = (
+        db.query(models.LoginAttempt)
+        .filter(
+            models.LoginAttempt.ip == ip,
+            models.LoginAttempt.created_at >= _window_start(),
+            models.LoginAttempt.reason.in_(("qr_pending", "qr_unknown")),
+        )
+        .count()
+    )
+    if hits < limit:
+        return False, 0
+    return True, window
+
+
+def begin_qr_login(
+    db: Session,
+    request: Request,
+    *,
+    email: str,
+    recaptcha_token: str = "",
+) -> tuple[models.User | None, str | None]:
+    """Email-only QR start. (user, None) = real wait. (None, None) = dummy wait. (None, err) = form error."""
+    from app.totp import is_blocked
+    email_norm = (email or "").strip().lower()
+    ip = client_ip(request)
+    ua = client_ua(request)
+    if not email_norm or "@" not in email_norm:
+        return None, "Enter the email for this vault."
+
+    locked, retry = rate_limited(db, email_norm, ip)
+    if locked:
+        log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="rate_limited")
+        return None, f"Too many failed attempts. Try again in {retry} minute(s)."
+    locked, retry = qr_start_limited(db, ip)
+    if locked:
+        log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="rate_limited")
+        return None, f"Too many QR sign-in tries. Try again in {retry} minute(s)."
+
+    if not verify_recaptcha(recaptcha_token, ip):
+        log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="recaptcha")
+        return None, "Please confirm you are not a robot."
+
+    user = db.query(models.User).filter(models.User.email == email_norm).first()
+    if not user:
+        user = db.query(models.User).filter(models.User.email == (email or "").strip()).first()
+    if not user or is_blocked(user):
+        log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="qr_unknown")
+        return None, None
+    log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=True, reason="qr_pending")
     return user, None

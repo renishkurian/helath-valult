@@ -32,7 +32,8 @@ fun SettingsScreen(
     onLoggedOut: () -> Unit,
     onOpenAuditLog: () -> Unit,
     onOpenShareHistory: () -> Unit,
-    onOpenModules: () -> Unit = {}
+    onOpenModules: () -> Unit = {},
+    onScanQr: () -> Unit = {}
 ) {
     val viewModel: ServerSetupViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
@@ -100,6 +101,10 @@ fun SettingsScreen(
         Column(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White).padding(16.dp)
         ) {
+            OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) {
+                Text("Scan web login QR", color = Navy)
+            }
+            Spacer(Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

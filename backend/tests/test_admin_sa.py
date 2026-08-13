@@ -186,7 +186,7 @@ def test_security_page_enables_2fa():
         db.close()
     done = session.post("/admin/security/enable", data={"code": totp_code(secret)}, follow_redirects=True)
     assert done.status_code == 200
-    assert "Two-factor is on" in done.text
+    assert "Authenticator is on" in done.text
     session.post("/admin/logout")
     gated = session.post("/admin/login", data={"email": email, "password": "password123"}, follow_redirects=False)
     assert gated.headers["location"].endswith("/admin/login/2fa")
@@ -274,3 +274,240 @@ def test_signup_rejects_duplicate_and_short_password():
     )
     assert again.status_code == 409
     assert "already exists" in again.text
+
+
+def _user_id(email: str) -> str:
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        assert user is not None
+        return user.id
+    finally:
+        db.close()
+
+
+def test_superadmin_can_block_and_unblock_user():
+    sa = _sa_client()
+    created = client.post(
+        "/auth/register",
+        json={"email": "blocked@example.com", "password": "password123", "full_name": "Soon Blocked"},
+    )
+    assert created.status_code == 201, created.text
+    uid = _user_id("blocked@example.com")
+
+    blocked = sa.post(f"/admin/sa/users/{uid}/block", follow_redirects=False)
+    assert blocked.status_code in (302, 303)
+    assert "notice=blocked" in blocked.headers["location"]
+    users = sa.get("/admin/sa/users")
+    assert "blocked@example.com" in users.text
+    assert "Unblock" in users.text
+
+    web = TestClient(app)
+    login = web.post("/admin/login", data={"email": "blocked@example.com", "password": "password123"})
+    assert login.status_code == 401
+    assert "blocked" in login.text.lower()
+
+    api = client.post("/auth/login", data={"username": "blocked@example.com", "password": "password123"})
+    assert api.status_code == 401
+    assert "blocked" in api.json()["detail"].lower()
+
+    restored = sa.post(f"/admin/sa/users/{uid}/unblock", follow_redirects=False)
+    assert restored.status_code in (302, 303)
+    ok = web.post("/admin/login", data={"email": "blocked@example.com", "password": "password123"}, follow_redirects=False)
+    assert ok.status_code in (302, 303)
+    assert ok.headers["location"].endswith("/admin/modules")
+
+
+def test_superadmin_cannot_block_self():
+    sa = _sa_client()
+    uid = _user_id("root@example.com")
+    r = sa.post(f"/admin/sa/users/{uid}/block", follow_redirects=False)
+    assert r.status_code in (302, 303)
+    assert "notice=self" in r.headers["location"]
+    db = SessionLocal()
+    try:
+        me = db.query(models.User).filter(models.User.email == "root@example.com").first()
+        assert me.blocked is False
+    finally:
+        db.close()
+
+
+def test_app_approve_without_totp_gates_web_login():
+    email = "deviceonly@example.com"
+    data = client.post(
+        "/auth/register",
+        json={"email": email, "password": "password123", "full_name": "Device Only"},
+    ).json()
+    headers = {"Authorization": f"Bearer {data['access_token']}"}
+
+    session = TestClient(app)
+    first = session.post("/admin/login", data={"email": email, "password": "password123"}, follow_redirects=False)
+    assert first.headers["location"].endswith("/admin/modules")
+    on = session.post("/admin/security/app-approve", data={"enabled": "1"}, follow_redirects=False)
+    assert on.status_code in (302, 303)
+    assert "app-on" in on.headers["location"]
+    page = session.get("/admin/security")
+    assert page.status_code == 200
+    assert "Approve from the app" in page.text
+    session.post("/admin/logout")
+
+    web = TestClient(app)
+    step = web.post("/admin/login", data={"email": email, "password": "password123"}, follow_redirects=False)
+    assert step.headers["location"].endswith("/admin/login/2fa")
+    wait = web.get("/admin/login/2fa")
+    assert wait.status_code == 200
+    assert "Verify code" not in wait.text
+    assert "Vault app" in wait.text
+
+    pending = client.get("/auth/login-challenges", headers=headers)
+    assert pending.status_code == 200
+    rows = pending.json()
+    assert len(rows) == 1
+    cid = rows[0]["id"]
+    assert client.post(f"/auth/login-challenges/{cid}/approve", headers=headers).status_code == 204
+    status = web.get("/admin/login/2fa/status")
+    assert status.json()["status"] == "approved"
+    modules = web.get("/admin/modules")
+    assert modules.status_code == 200
+    assert "Your five vaults" in modules.text
+
+
+def test_superadmin_can_clear_app_approve():
+    email = "lostphone@example.com"
+    created = client.post(
+        "/auth/register",
+        json={"email": email, "password": "password123", "full_name": "Lost Phone"},
+    )
+    assert created.status_code == 201
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        user.app_approve = True
+        db.commit()
+        uid = user.id
+    finally:
+        db.close()
+    sa = _sa_client()
+    cleared = sa.post(f"/admin/sa/users/{uid}/disable-app-approve", follow_redirects=False)
+    assert cleared.status_code in (302, 303)
+    assert "app-off" in cleared.headers["location"]
+    web = TestClient(app)
+    login = web.post("/admin/login", data={"email": email, "password": "password123"}, follow_redirects=False)
+    assert login.status_code in (302, 303)
+    assert login.headers["location"].endswith("/admin/modules")
+
+
+def _pending_qr_id(email: str) -> str | None:
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        if not user:
+            return None
+        row = (
+            db.query(models.LoginChallenge)
+            .filter(
+                models.LoginChallenge.user_id == user.id,
+                models.LoginChallenge.kind == "qr",
+                models.LoginChallenge.status == "pending",
+            )
+            .order_by(models.LoginChallenge.created_at.desc())
+            .first()
+        )
+        return row.id if row else None
+    finally:
+        db.close()
+
+
+def test_qr_payload_parse():
+    from app.login_challenge import parse_qr_payload, qr_payload
+    cid = "a" * 32
+    assert parse_qr_payload(qr_payload(cid)) == cid
+    assert parse_qr_payload(cid.upper()) == cid
+    assert parse_qr_payload("https://evil.example/" + cid) is None
+
+
+def test_qr_login_unknown_email_does_not_leak():
+    web = TestClient(app)
+    page = web.get("/admin/login/qr")
+    assert page.status_code == 200
+    assert "Scan from the phone" in page.text
+    wait = web.post("/admin/login/qr", data={"email": "missing-qr@example.com"})
+    assert wait.status_code == 200
+    assert "Scan to sign in" in wait.text
+    assert "qr-frame" in wait.text
+    assert _pending_qr_id("missing-qr@example.com") is None
+
+
+def test_qr_login_app_grant_redirects_home():
+    email = "qrlogin@example.com"
+    data = client.post(
+        "/auth/register",
+        json={"email": email, "password": "password123", "full_name": "QR Login"},
+    ).json()
+    headers = {"Authorization": f"Bearer {data['access_token']}"}
+
+    web = TestClient(app)
+    wait = web.post("/admin/login/qr", data={"email": email})
+    assert wait.status_code == 200
+    assert "Scan to sign in" in wait.text
+    assert "Verify code" not in wait.text
+    cid = _pending_qr_id(email)
+    assert cid
+    listed = client.get("/auth/login-challenges", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json() == []
+    peeked = client.get(f"/auth/login-challenges/{cid}", headers=headers)
+    assert peeked.status_code == 200
+    assert peeked.json()["id"] == cid
+    assert client.post(f"/auth/login-challenges/{cid}/approve", headers=headers).status_code == 204
+    status = web.get("/admin/login/qr/status")
+    assert status.status_code == 200
+    body = status.json()
+    assert body["status"] == "approved"
+    assert body["redirect"] == "/admin/modules"
+    home = web.get("/admin/modules")
+    assert home.status_code == 200
+    assert "Your five vaults" in home.text
+
+
+def test_qr_login_wrong_account_cannot_grant():
+    owner = client.post(
+        "/auth/register",
+        json={"email": "qrowner@example.com", "password": "password123", "full_name": "QR Owner"},
+    ).json()
+    other = client.post(
+        "/auth/register",
+        json={"email": "qrother@example.com", "password": "password123", "full_name": "QR Other"},
+    ).json()
+    web = TestClient(app)
+    web.post("/admin/login/qr", data={"email": "qrowner@example.com"})
+    cid = _pending_qr_id("qrowner@example.com")
+    assert cid
+    other_headers = {"Authorization": f"Bearer {other['access_token']}"}
+    assert client.get(f"/auth/login-challenges/{cid}", headers=other_headers).status_code == 404
+    assert client.post(f"/auth/login-challenges/{cid}/approve", headers=other_headers).status_code == 404
+    owner_headers = {"Authorization": f"Bearer {owner['access_token']}"}
+    assert client.post(f"/auth/login-challenges/{cid}/deny", headers=owner_headers).status_code == 204
+    status = web.get("/admin/login/qr/status")
+    assert status.json()["status"] == "denied"
+
+
+def test_qr_login_blocked_account_is_dummy_wait():
+    email = "qrblocked@example.com"
+    created = client.post(
+        "/auth/register",
+        json={"email": email, "password": "password123", "full_name": "QR Blocked"},
+    )
+    assert created.status_code == 201
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        user.blocked = True
+        db.commit()
+    finally:
+        db.close()
+    web = TestClient(app)
+    wait = web.post("/admin/login/qr", data={"email": email})
+    assert wait.status_code == 200
+    assert "Scan to sign in" in wait.text
+    assert _pending_qr_id(email) is None

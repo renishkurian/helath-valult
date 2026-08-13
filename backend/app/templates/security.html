@@ -9,19 +9,29 @@
       Account
     </div>
     <h1 class="page-title">Security &amp; 2FA</h1>
-    <p class="page-lead">Protect this login with an authenticator app. Super Admin can turn it off if the device is lost.</p>
+    <p class="page-lead">Approve web sign-in from the Vault app, or add an authenticator code. Super Admin can undo either if a device is lost.</p>
   </div>
 </div>
 
 {% if saved == 'on' %}
 <div class="alert alert-success" role="alert">
   <i class="bi bi-check2-circle"></i>
-  <span>Two-factor is on. The next sign-in will ask for a code.</span>
+  <span>Authenticator is on. The next sign-in will ask for a code or a tap on the phone.</span>
 </div>
 {% elif saved == 'off' %}
 <div class="alert alert-success" role="alert">
   <i class="bi bi-check2-circle"></i>
-  <span>Two-factor is off. This account signs in with password only.</span>
+  <span>Authenticator is off.</span>
+</div>
+{% elif saved == 'app-on' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Web sign-in now waits for Allow on the Vault app.</span>
+</div>
+{% elif saved == 'app-off' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>App approval is off. Password{% if totp_on %} plus authenticator{% endif %} is enough.</span>
 </div>
 {% endif %}
 {% if error %}
@@ -33,6 +43,30 @@
 
 <div class="row g-3">
   <div class="col-lg-7 col-xl-6">
+    <div class="card mb-3">
+      <div class="card-header">
+        <span class="card-ico {% if app_approve %}good{% else %}gold{% endif %}"><i class="bi bi-phone"></i></span>
+        <div>
+          <h2>Approve from the app</h2>
+          <div class="card-sub">Device login — no authenticator code needed</div>
+        </div>
+        <span class="badge {% if app_approve %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if app_approve %}On{% else %}Off{% endif %}</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">After you type your password on the website, the already-signed-in Vault app asks you to Allow or Deny. Keep the app open.</p>
+        {% if app_approve %}
+        <form method="post" action="/admin/security/app-approve">
+          <input type="hidden" name="enabled" value="0">
+          <button class="btn btn-outline-light" type="submit">Turn off app approval</button>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/security/app-approve">
+          <input type="hidden" name="enabled" value="1">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-phone"></i> Turn on app approval</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
     <div class="card">
       <div class="card-header">
         <span class="card-ico {% if totp_on %}good{% else %}gold{% endif %}"><i class="bi bi-shield-lock"></i></span>
@@ -95,7 +129,7 @@
       <div class="card-body">
         <div class="stack-sm text-muted" style="font-size:.875rem;">
           <p class="mb-0">There is no email reset. A super admin can turn 2FA off for your account from All users, then you sign in with password and set it up again.</p>
-          <p class="mb-0">Android uses the same authenticator. A web sign-in also sends an Allow / Deny request to the Vault app if you are already signed in there.</p>
+          <p class="mb-0">App approval and authenticator are separate. You can use the phone tap instead of a 6-digit code, or both.</p>
         </div>
       </div>
     </div>

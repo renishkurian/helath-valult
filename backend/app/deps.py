@@ -50,6 +50,9 @@ def get_current_user(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None:
         raise credentials_error
+    from app.totp import is_blocked
+    if is_blocked(user):
+        raise HTTPException(status_code=403, detail="This account is blocked")
     touch_last_seen(user)
     return user
 

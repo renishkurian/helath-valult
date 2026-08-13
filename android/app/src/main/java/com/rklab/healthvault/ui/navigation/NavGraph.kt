@@ -33,6 +33,7 @@ import com.rklab.healthvault.ui.screens.documents.UploadDocumentScreen
 import com.rklab.healthvault.ui.screens.family.FamilyScreen
 import com.rklab.healthvault.ui.screens.home.HomeScreen
 import com.rklab.healthvault.ui.screens.login.LoginScreen
+import com.rklab.healthvault.ui.screens.login.QrLoginScanScreen
 import com.rklab.healthvault.ui.screens.reminders.RemindersScreen
 import com.rklab.healthvault.ui.screens.search.SearchScreen
 import com.rklab.healthvault.ui.screens.server.ServerSetupScreen
@@ -90,6 +91,7 @@ private object Routes {
     const val CARE = "care"
     const val FAMILY = "family"
     const val SETTINGS = "settings"
+    const val QR_SCAN = "qr_scan"
     const val AUDIT = "audit"
     const val SHARES = "shares"
     const val CARDS = "cards/{personId}/{personName}"
@@ -287,7 +289,15 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     },
                     onOpenAuditLog = { navController.navigate(Routes.AUDIT) },
                     onOpenShareHistory = { navController.navigate(Routes.SHARES) },
-                    onOpenModules = { navController.navigate(Routes.MODULES) { popUpTo(Routes.MODULES) { inclusive = false } } }
+                    onOpenModules = { navController.navigate(Routes.MODULES) { popUpTo(Routes.MODULES) { inclusive = false } } },
+                    onScanQr = { navController.navigate(Routes.QR_SCAN) }
+                )
+            }
+
+            composable(Routes.QR_SCAN) {
+                QrLoginScanScreen(
+                    repository = repository,
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -325,6 +335,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         }
                     },
                     onSettings = { navController.navigate(Routes.SETTINGS) },
+                    onScanQr = { navController.navigate(Routes.QR_SCAN) },
                     onVaultHealth = {
                         navController.navigate(Routes.VAULT_HEALTH) {
                             popUpTo(Routes.MODULES) { inclusive = false; saveState = true }

@@ -12,6 +12,19 @@ def is_enabled(user: models.User | None) -> bool:
     return bool(user and user.totp_enabled and user.totp_secret_enc)
 
 
+def is_blocked(user: models.User | None) -> bool:
+    return bool(user and getattr(user, "blocked", False))
+
+
+def app_approve_on(user: models.User | None) -> bool:
+    return bool(user and getattr(user, "app_approve", False))
+
+
+def needs_step_up(user: models.User | None) -> bool:
+    """Web login must wait for the phone and/or an authenticator code."""
+    return is_enabled(user) or app_approve_on(user)
+
+
 def otpauth_url(email: str, secret: str) -> str:
     return f"otpauth://totp/HealthVault:{email}?secret={secret}&issuer=HealthVault"
 

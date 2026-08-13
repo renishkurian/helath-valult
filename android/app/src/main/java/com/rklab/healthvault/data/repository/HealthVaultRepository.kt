@@ -104,6 +104,7 @@ class HealthVaultRepository(
     suspend fun totpSetup() = api.totpSetup()
     suspend fun totpEnable(code: String) = api.totpEnable(TotpVerifyIn(code = code))
     suspend fun pendingLoginChallenges() = api.listLoginChallenges()
+    suspend fun getLoginChallenge(id: String) = api.getLoginChallenge(id)
     suspend fun approveLoginChallenge(id: String) = api.approveLoginChallenge(id)
     suspend fun denyLoginChallenge(id: String) = api.denyLoginChallenge(id)
     suspend fun updatePerson(id: String, update: PersonUpdate) = api.updatePerson(id, update)

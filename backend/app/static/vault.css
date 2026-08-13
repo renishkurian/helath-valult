@@ -1174,6 +1174,7 @@ button.list-row:last-child{ border-bottom:none; }
   padding:.85rem; background:#fff; border-radius:14px;
 }
 .qr-frame img{ display:block; width:168px; height:168px; }
+.qr-frame-lg img{ width:200px; height:200px; }
 @media (max-width:820px){
   .auth-wrap{ grid-template-columns:1fr; }
   .auth-hero{ border-right:none; border-bottom:1px solid var(--v-line); padding:2rem 1.5rem; }

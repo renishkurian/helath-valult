@@ -61,7 +61,7 @@ def refresh(refresh_token: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
     user = db.query(models.User).filter(models.User.id == payload["sub"]).first()
-    if not user:
+    if not user or totp_util.is_blocked(user):
         raise HTTPException(status_code=401, detail="Invalid refresh token")
 
     return schemas.LoginResponse(
@@ -190,7 +190,7 @@ def totp_verify(body: schemas.TotpVerifyIn, request: Request, db: Session = Depe
     if not body.totp_token:
         raise HTTPException(status_code=400, detail="Missing totp token")
     user = totp_util.pending_user(db, body.totp_token)
-    if not user or not totp_util.is_enabled(user):
+    if not user or totp_util.is_blocked(user) or not totp_util.is_enabled(user):
         raise HTTPException(status_code=401, detail="Invalid or expired totp token")
     ip, ua = client_ip(request), client_ua(request)
     blocked, retry = rate_limited(db, user.email, ip)
@@ -217,6 +217,20 @@ def list_login_challenges(
     return pending_for_user(db, current_user.id)
 
 
+@router.get("/login-challenges/{challenge_id}", response_model=schemas.LoginChallengeOut)
+def get_login_challenge(
+    challenge_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.login_challenge import get_challenge, parse_qr_payload
+    cid = parse_qr_payload(challenge_id) or challenge_id
+    row = get_challenge(db, cid)
+    if not row or row.user_id != current_user.id or row.status != "pending":
+        raise HTTPException(status_code=404, detail="Login request not found")
+    return row
+
+
 @router.post("/login-challenges/{challenge_id}/approve", status_code=204)
 def approve_login_challenge(
     challenge_id: str,
@@ -224,15 +238,17 @@ def approve_login_challenge(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    from app.login_challenge import decide, get_challenge
-    row = get_challenge(db, challenge_id)
+    from app.login_challenge import KIND_QR, decide, get_challenge, parse_qr_payload
+    cid = parse_qr_payload(challenge_id) or challenge_id
+    row = get_challenge(db, cid)
     if not row or row.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Login request not found")
     if not decide(db, row, "approved"):
         raise HTTPException(status_code=409, detail="This login request is no longer pending")
+    reason = "qr_ok" if (getattr(row, "kind", None) or "") == KIND_QR else "app_ok"
     log_attempt(
         db, email=current_user.email, ip=client_ip(request),
-        user_agent=client_ua(request), success=True, reason="app_ok",
+        user_agent=client_ua(request), success=True, reason=reason,
     )
 
 
@@ -243,13 +259,15 @@ def deny_login_challenge(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    from app.login_challenge import decide, get_challenge
-    row = get_challenge(db, challenge_id)
+    from app.login_challenge import KIND_QR, decide, get_challenge, parse_qr_payload
+    cid = parse_qr_payload(challenge_id) or challenge_id
+    row = get_challenge(db, cid)
     if not row or row.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Login request not found")
     if not decide(db, row, "denied"):
         raise HTTPException(status_code=409, detail="This login request is no longer pending")
+    reason = "qr_denied" if (getattr(row, "kind", None) or "") == KIND_QR else "app_denied"
     log_attempt(
         db, email=current_user.email, ip=client_ip(request),
-        user_agent=client_ua(request), success=False, reason="app_denied",
+        user_agent=client_ua(request), success=False, reason=reason,
     )

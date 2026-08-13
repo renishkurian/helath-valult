@@ -38,6 +38,9 @@ interface ApiService {
     @GET("auth/login-challenges")
     suspend fun listLoginChallenges(): List<LoginChallengeOut>
 
+    @GET("auth/login-challenges/{id}")
+    suspend fun getLoginChallenge(@Path("id") id: String): LoginChallengeOut
+
     @POST("auth/login-challenges/{id}/approve")
     suspend fun approveLoginChallenge(@Path("id") id: String): Response<Unit>
 

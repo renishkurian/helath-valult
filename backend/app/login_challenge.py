@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
@@ -11,19 +12,57 @@ from app.push import send_fcm
 
 
 CHALLENGE_MINUTES = 5
+KIND_APP = "app"
+KIND_QR = "qr"
+QR_PAYLOAD_PREFIX = "healthvault://login/"
 
 
-def create_challenge(db: Session, user: models.User, ip: str | None, user_agent: str) -> models.LoginChallenge:
+def qr_payload(challenge_id: str) -> str:
+    return f"{QR_PAYLOAD_PREFIX}{challenge_id}"
+
+
+def parse_qr_payload(raw: str | None) -> str | None:
+    text = (raw or "").strip()
+    if text.startswith(QR_PAYLOAD_PREFIX):
+        text = text[len(QR_PAYLOAD_PREFIX):].strip().strip("/")
+    if len(text) == 32 and all(c in "0123456789abcdefABCDEF" for c in text):
+        return text.lower()
+    return None
+
+
+def _is_app_kind(row: models.LoginChallenge) -> bool:
+    return (getattr(row, "kind", None) or KIND_APP) != KIND_QR
+
+
+def create_challenge(
+    db: Session,
+    user: models.User,
+    ip: str | None,
+    user_agent: str,
+    *,
+    kind: str = KIND_APP,
+) -> models.LoginChallenge:
     now = datetime.utcnow()
-    db.query(models.LoginChallenge).filter(
+    kind = KIND_QR if kind == KIND_QR else KIND_APP
+    pending = db.query(models.LoginChallenge).filter(
         models.LoginChallenge.user_id == user.id,
         models.LoginChallenge.status == "pending",
-    ).update({"status": "expired", "decided_at": now}, synchronize_session=False)
+    )
+    if kind == KIND_QR:
+        pending = pending.filter(models.LoginChallenge.kind == KIND_QR)
+    else:
+        pending = pending.filter(or_(
+            models.LoginChallenge.kind == KIND_APP,
+            models.LoginChallenge.kind.is_(None),
+            models.LoginChallenge.kind == "",
+        ))
+    pending.update({"status": "expired", "decided_at": now}, synchronize_session=False)
     row = models.LoginChallenge(
         user_id=user.id,
         ip=ip,
         user_agent=(user_agent or "")[:400],
         status="pending",
+        kind=kind,
         expires_at=now + timedelta(minutes=CHALLENGE_MINUTES),
     )
     db.add(row)
@@ -52,6 +91,11 @@ def pending_for_user(db: Session, user_id: str) -> list[models.LoginChallenge]:
         .filter(
             models.LoginChallenge.user_id == user_id,
             models.LoginChallenge.status == "pending",
+            or_(
+                models.LoginChallenge.kind == KIND_APP,
+                models.LoginChallenge.kind.is_(None),
+                models.LoginChallenge.kind == "",
+            ),
         )
         .order_by(models.LoginChallenge.created_at.desc())
         .all()

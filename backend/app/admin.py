@@ -23,9 +23,14 @@ def get_session_user(request: Request, db: Session = Depends(get_db)) -> Optiona
     if not user_id:
         return None
     user = db.query(models.User).filter(models.User.id == user_id).first()
-    if user:
-        from app.login_guard import touch_last_seen
-        touch_last_seen(user)
+    if not user:
+        return None
+    from app.totp import is_blocked
+    if is_blocked(user):
+        request.session.clear()
+        return None
+    from app.login_guard import touch_last_seen
+    touch_last_seen(user)
     return user
 
 
@@ -68,6 +73,8 @@ def login_form(request: Request):
         return RedirectResponse("/admin/modules", status_code=302)
     if request.session.get("totp_pending"):
         return RedirectResponse("/admin/login/2fa", status_code=302)
+    if request.session.get("qr_email") or request.session.get("qr_payload"):
+        return RedirectResponse("/admin/login/qr", status_code=302)
     return templates.TemplateResponse("login.html", _login_ctx(request))
 
 
@@ -87,7 +94,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
         return templates.TemplateResponse("login.html", _login_ctx(request, err or "Incorrect email or password"), status_code=401)
     request.session.pop("totp_pending", None)
     request.session.pop("login_challenge_id", None)
-    if totp_util.is_enabled(user):
+    if totp_util.needs_step_up(user):
         from app.login_challenge import create_challenge, notify_devices
         from app.login_guard import client_ip, client_ua
         request.session.pop("user_id", None)
@@ -100,12 +107,75 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/admin/modules", status_code=302)
 
 
+def _clear_qr_session(request: Request) -> None:
+    request.session.pop("qr_email", None)
+    request.session.pop("qr_started", None)
+    request.session.pop("qr_payload", None)
+    if not request.session.get("totp_pending"):
+        request.session.pop("login_challenge_id", None)
+
+
+def _qr_ctx(request: Request, error=None, **extra):
+    from app.login_guard import recaptcha_enabled
+    ctx = {
+        "request": request,
+        "error": error,
+        "email": request.session.get("qr_email") or extra.get("email") or "",
+        "waiting": bool(request.session.get("qr_payload")),
+        "qr_image": extra.pop("qr_image", None),
+        "recaptcha_site_key": settings.RECAPTCHA_SITE_KEY if recaptcha_enabled() else "",
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _pending_qr(request: Request, db: Session):
+    from app.login_challenge import CHALLENGE_MINUTES, get_challenge
+    from app.totp import is_blocked
+    if request.session.get("user_id"):
+        return None, None, RedirectResponse("/admin/modules", status_code=302)
+    if request.session.get("totp_pending"):
+        return None, None, RedirectResponse("/admin/login/2fa", status_code=302)
+    payload = request.session.get("qr_payload")
+    email = request.session.get("qr_email")
+    if not payload and not email:
+        return None, None, None
+    challenge = get_challenge(db, request.session.get("login_challenge_id"))
+    if challenge and challenge.status == "approved":
+        user = db.query(models.User).filter(models.User.id == challenge.user_id).first()
+        if user and not is_blocked(user):
+            _finish_web_login(request, db, user, reason="app_ok")
+            _clear_qr_session(request)
+            return None, None, RedirectResponse("/admin/modules", status_code=302)
+        _clear_qr_session(request)
+        return None, None, RedirectResponse("/admin/login", status_code=302)
+    if challenge and challenge.status == "denied":
+        _clear_qr_session(request)
+        return None, None, templates.TemplateResponse(
+            "login.html", _login_ctx(request, "That sign-in was denied on your phone."), status_code=401,
+        )
+    if challenge and challenge.status == "expired":
+        _clear_qr_session(request)
+        return None, None, templates.TemplateResponse(
+            "login.html", _login_ctx(request, "The QR code timed out. Start again."), status_code=401,
+        )
+    started = int(request.session.get("qr_started") or 0)
+    if started and (datetime.utcnow() - datetime.utcfromtimestamp(started)).total_seconds() > CHALLENGE_MINUTES * 60:
+        _clear_qr_session(request)
+        return None, None, templates.TemplateResponse(
+            "login.html", _login_ctx(request, "The QR code timed out. Start again."), status_code=401,
+        )
+    return challenge, payload, None
+
+
 def _two_factor_ctx(request: Request, user: models.User, error=None, **extra):
+    from app import totp as totp_util
     ctx = {
         "request": request,
         "error": error,
         "email": user.email,
-        "has_totp": True,
+        "has_totp": totp_util.is_enabled(user),
+        "app_approve": totp_util.app_approve_on(user),
         "pushed": extra.pop("pushed", 0),
         "challenge": extra.pop("challenge", None),
     }
@@ -134,7 +204,7 @@ def _pending_2fa_user(request: Request, db: Session):
     if request.session.get("user_id"):
         return None, None, RedirectResponse("/admin/modules", status_code=302)
     user = totp_util.pending_user(db, request.session.get("totp_pending"))
-    if not user or not totp_util.is_enabled(user):
+    if not user or totp_util.is_blocked(user) or not totp_util.needs_step_up(user):
         request.session.pop("totp_pending", None)
         request.session.pop("login_challenge_id", None)
         return None, None, RedirectResponse("/admin/login", status_code=302)
@@ -176,7 +246,8 @@ def login_2fa_status(request: Request, db: Session = Depends(get_db)):
         if isinstance(early, RedirectResponse):
             return {"status": "expired", "redirect": "/admin/login"}
         return {"status": "denied", "redirect": "/admin/login"}
-    return {"status": "pending", "has_totp": True}
+    from app import totp as totp_util
+    return {"status": "pending", "has_totp": totp_util.is_enabled(user)}
 
 
 @router.post("/login/2fa/resend")
@@ -210,6 +281,12 @@ async def login_2fa_submit(request: Request, db: Session = Depends(get_db)):
             _two_factor_ctx(request, user, f"Too many failed attempts. Try again in {retry} minute(s).", challenge=challenge),
             status_code=401,
         )
+    if not totp_util.is_enabled(user):
+        return templates.TemplateResponse(
+            "login_2fa.html",
+            _two_factor_ctx(request, user, "Approve this sign-in from the Vault app on your phone.", challenge=challenge),
+            status_code=400,
+        )
     if not totp_util.verify_code(user, code):
         log_attempt(db, email=user.email, ip=ip, user_agent=ua, success=False, reason="totp_bad")
         return templates.TemplateResponse(
@@ -221,6 +298,72 @@ async def login_2fa_submit(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/admin/modules", status_code=302)
 
 
+@router.get("/login/qr", response_class=HTMLResponse)
+def login_qr_form(request: Request, db: Session = Depends(get_db)):
+    from app import totp as totp_util
+    challenge, payload, early = _pending_qr(request, db)
+    if early:
+        return early
+    if payload:
+        return templates.TemplateResponse(
+            "login_qr.html",
+            _qr_ctx(request, waiting=True, qr_image=totp_util.qr_data_uri(payload)),
+        )
+    return templates.TemplateResponse("login_qr.html", _qr_ctx(request))
+
+
+@router.post("/login/qr", response_class=HTMLResponse)
+async def login_qr_submit(request: Request, db: Session = Depends(get_db)):
+    import secrets
+    from app import totp as totp_util
+    from app.login_challenge import KIND_QR, create_challenge, qr_payload
+    from app.login_guard import begin_qr_login, client_ip, client_ua
+    if request.session.get("user_id"):
+        return RedirectResponse("/admin/modules", status_code=302)
+    form = await request.form()
+    email = str(form.get("email") or "")
+    token = str(form.get("g-recaptcha-response") or "")
+    user, err = begin_qr_login(db, request, email=email, recaptcha_token=token)
+    if err:
+        return templates.TemplateResponse("login_qr.html", _qr_ctx(request, err, email=email), status_code=401)
+    request.session.pop("totp_pending", None)
+    request.session.pop("user_id", None)
+    request.session["qr_email"] = (email or "").strip().lower()
+    request.session["qr_started"] = int(datetime.utcnow().timestamp())
+    if user:
+        challenge = create_challenge(db, user, client_ip(request), client_ua(request), kind=KIND_QR)
+        request.session["login_challenge_id"] = challenge.id
+        payload = qr_payload(challenge.id)
+    else:
+        request.session.pop("login_challenge_id", None)
+        payload = qr_payload(secrets.token_hex(16))
+    request.session["qr_payload"] = payload
+    return templates.TemplateResponse(
+        "login_qr.html",
+        _qr_ctx(request, waiting=True, qr_image=totp_util.qr_data_uri(payload)),
+    )
+
+
+@router.get("/login/qr/status")
+def login_qr_status(request: Request, db: Session = Depends(get_db)):
+    challenge, payload, early = _pending_qr(request, db)
+    if early:
+        if isinstance(early, RedirectResponse) and early.headers.get("location", "").endswith("/admin/modules"):
+            return {"status": "approved", "redirect": "/admin/modules"}
+        if isinstance(early, RedirectResponse):
+            return {"status": "expired", "redirect": "/admin/login"}
+        return {"status": "denied", "redirect": "/admin/login"}
+    if not payload:
+        return {"status": "expired", "redirect": "/admin/login/qr"}
+    return {"status": "pending"}
+
+
+@router.get("/login/qr/cancel")
+def login_qr_cancel(request: Request):
+    _clear_qr_session(request)
+    return RedirectResponse("/admin/login", status_code=302)
+
+
 def _security_ctx(request: Request, user: models.User, **extra):
     from app import totp as totp_util
     from app import crypto
@@ -229,6 +372,7 @@ def _security_ctx(request: Request, user: models.User, **extra):
         "active_nav": "security", "active_module": "picker",
         "people": [], "active_person_id": None,
         "totp_on": totp_util.is_enabled(user),
+        "app_approve": totp_util.app_approve_on(user),
         "setup_secret": None, "setup_url": None, "setup_qr": None,
     }
     if (not ctx["totp_on"]) and user.totp_secret_enc:
@@ -306,6 +450,17 @@ def security_cancel(request: Request, db: Session = Depends(get_db)):
         totp_util.disable(user)
         db.commit()
     return RedirectResponse("/admin/security", status_code=302)
+
+
+@router.post("/security/app-approve", response_class=HTMLResponse)
+async def security_app_approve(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    user.app_approve = str(form.get("enabled") or "") in ("1", "on", "true", "yes")
+    db.commit()
+    return RedirectResponse("/admin/security?saved=app-on" if user.app_approve else "/admin/security?saved=app-off", status_code=302)
 
 
 @router.get("/logout")
