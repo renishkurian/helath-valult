@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Care{% endblock %}
 {% block content %}
+{% set allergy_items = (active_person.allergies.split(',') if active_person and active_person.allergies else []) %}
+{% set condition_items = (active_person.conditions.split(',') if active_person and active_person.conditions else []) %}
+
 <div class="eyebrow">Health Vault</div>
-<div class="page-title">Care — {{ active_person.name if active_person else 'Family' }}</div>
+<div class="page-title">Care{% if active_person %} — {{ active_person.name }}{% endif %}</div>
 <div class="family-row">
   {% for p in people %}
   <a class="chip {% if active_person and p.id==active_person.id %}active{% endif %}" href="/admin/care?person={{ p.id }}">
@@ -12,127 +15,379 @@
 </div>
 
 {% if active_person %}
-<div class="surface" style="margin-bottom:18px;">
-  <div class="section-head"><h2>ICE / IDs</h2></div>
-  {% if ice_url %}<p style="margin-bottom:10px; font-size:13px;">Public emergency card: <a href="{{ ice_url }}" style="color:var(--navy); word-break:break-all;">{{ ice_url }}</a></p>{% endif %}
+<div class="ice-wrap">
+  <div class="ice-card">
+    <div class="ice-kicker">In case of emergency</div>
+    <div class="ice-name">{{ active_person.name }}</div>
+    <div class="ice-layout">
+      <div class="blood-badge {% if not active_person.blood_group %}missing{% endif %}">
+        <div class="bg">{{ active_person.blood_group or '—' }}</div>
+        <div class="bl">Blood group</div>
+      </div>
+      <div class="ice-meta">
+        <div class="ice-row">
+          <div class="lbl">Emergency contact</div>
+          <div class="val">
+            {{ active_person.emergency_name or 'Not set' }}
+            {% if active_person.emergency_phone %}
+              · <a href="tel:{{ active_person.emergency_phone }}">{{ active_person.emergency_phone }}</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="ice-row">
+          <div class="lbl">Allergies</div>
+          <div class="val" style="display:flex; flex-wrap:wrap; gap:6px;">
+            {% for a in allergy_items if a.strip() %}
+              <span class="pill pill-danger">{{ a.strip() }}</span>
+            {% else %}
+              <span style="color:var(--ink-soft); font-weight:500;">None listed</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="ice-row">
+          <div class="lbl">Conditions</div>
+          <div class="val" style="display:flex; flex-wrap:wrap; gap:6px;">
+            {% for c in condition_items if c.strip() %}
+              <span class="pill pill-navy">{{ c.strip() }}</span>
+            {% else %}
+              <span style="color:var(--ink-soft); font-weight:500;">None listed</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ice-ids">
+      {% if active_person.abha_id %}<span class="ice-id">ABHA {{ active_person.abha_id }}</span>{% endif %}
+      {% if active_person.ayushman_id %}<span class="ice-id">Ayushman {{ active_person.ayushman_id }}</span>{% endif %}
+      {% if not active_person.abha_id and not active_person.ayushman_id %}<span class="ice-id">No national IDs yet</span>{% endif %}
+      {% if ice_url %}<a class="ice-link" href="{{ ice_url }}" target="_blank" rel="noopener">Open public ICE card</a>{% endif %}
+    </div>
+  </div>
+  <div class="fact-col">
+    <div class="fact">
+      <div class="lbl">Medicines</div>
+      <div class="val">{{ meds|length }}</div>
+      <div class="sub">{% if meds %}Active on this profile{% else %}Nothing tracked yet{% endif %}</div>
+    </div>
+    <div class="fact">
+      <div class="lbl">Vaccinations</div>
+      <div class="val">{{ vax|length }}</div>
+      <div class="sub">{% if vax %}Doses on record{% else %}No doses recorded{% endif %}</div>
+    </div>
+    <div class="fact">
+      <div class="lbl">ICE status</div>
+      <div class="val">{% if active_person.blood_group and active_person.emergency_phone %}Ready{% else %}Incomplete{% endif %}</div>
+      <div class="sub">{% if active_person.blood_group and active_person.emergency_phone %}Blood group and phone saved{% else %}Add blood group and emergency phone{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<div class="surface" style="margin-bottom:22px;">
+  <div class="group-label">Update ICE / IDs</div>
   <form method="post" action="/admin/care/person">
     <input type="hidden" name="person_id" value="{{ active_person.id }}">
-    <div class="form-grid">
-      <div class="field"><label>Blood group</label><input name="blood_group" value="{{ active_person.blood_group or '' }}"></div>
-      <div class="field"><label>Emergency name</label><input name="emergency_name" value="{{ active_person.emergency_name or '' }}"></div>
-      <div class="field"><label>Emergency phone</label><input name="emergency_phone" value="{{ active_person.emergency_phone or '' }}"></div>
-      <div class="field"><label>ABHA ID</label><input name="abha_id" value="{{ active_person.abha_id or '' }}"></div>
-      <div class="field"><label>Ayushman ID</label><input name="ayushman_id" value="{{ active_person.ayushman_id or '' }}"></div>
+    <div class="form-grid-3">
+      <div class="field"><label for="blood_group">Blood group</label><input id="blood_group" name="blood_group" value="{{ active_person.blood_group or '' }}" placeholder="e.g. O+" autocomplete="off"></div>
+      <div class="field"><label for="emergency_name">Emergency name</label><input id="emergency_name" name="emergency_name" value="{{ active_person.emergency_name or '' }}" autocomplete="name"></div>
+      <div class="field"><label for="emergency_phone">Emergency phone</label><input id="emergency_phone" type="tel" name="emergency_phone" value="{{ active_person.emergency_phone or '' }}" autocomplete="tel"></div>
+      <div class="field"><label for="abha_id">ABHA ID</label><input id="abha_id" name="abha_id" value="{{ active_person.abha_id or '' }}" class="mono"></div>
+      <div class="field"><label for="ayushman_id">Ayushman ID</label><input id="ayushman_id" name="ayushman_id" value="{{ active_person.ayushman_id or '' }}" class="mono"></div>
     </div>
-    <div class="field"><label>Allergies</label><input name="allergies" value="{{ active_person.allergies or '' }}"></div>
-    <div class="field"><label>Conditions</label><input name="conditions" value="{{ active_person.conditions or '' }}"></div>
+    <div class="form-grid">
+      <div class="field"><label for="allergies">Allergies</label><input id="allergies" name="allergies" value="{{ active_person.allergies or '' }}" placeholder="Comma-separated"><div class="field-hint">Shown as warning chips on the ICE card</div></div>
+      <div class="field"><label for="conditions">Conditions</label><input id="conditions" name="conditions" value="{{ active_person.conditions or '' }}" placeholder="Comma-separated"></div>
+    </div>
     <button class="btn" type="submit">Save ICE card</button>
   </form>
 </div>
 
-<div class="grid" style="grid-template-columns:1fr 1fr; margin-bottom:18px;">
-  <div class="surface">
-    <div class="section-head"><h2>Medicines</h2></div>
-    {% for m in meds %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ m.name }} · {{ m.dose or '' }} · left {{ m.remaining if m.remaining is not none else '—' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-    <form method="post" action="/admin/care/medicine" style="margin-top:12px;">
+<div class="grid grid-2" style="margin-bottom:18px;">
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon" style="background:rgba(245,185,66,0.14); color:var(--mustard);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="18" rx="3"/><path d="M8 8h8M8 16h8"/></svg>
+      </div>
+      <h2>Medicines</h2>
+      <span class="count">{{ meds|length }}</span>
+    </div>
+    <div class="panel-body">
+      {% for m in meds %}
+      <div class="record">
+        <span class="record-dot" style="background:var(--mustard);"></span>
+        <div>
+          <div class="record-title">{{ m.name }}</div>
+          <div class="record-meta">{{ m.dose or 'Dose not set' }}{% if m.timing %} · {{ m.timing }}{% endif %}</div>
+        </div>
+        <div class="record-side">
+          {% if m.remaining is not none and m.remaining|int < 5 %}
+            <span class="pill pill-warn">{{ m.remaining }} left</span>
+          {% else %}
+            left {{ m.remaining if m.remaining is not none else '—' }}
+          {% endif %}
+          {% if m.refill_at %}<div class="record-meta">refill {{ m.refill_at }}</div>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="18" rx="3"/></svg></div>
+        <p>No medicines yet. Add the first one below.</p>
+      </div>
+      {% endfor %}
+    </div>
+    <form class="panel-form" method="post" action="/admin/care/medicine">
       <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="field"><input name="name" placeholder="Name*" required></div>
+      <div class="field"><label>Name</label><input name="name" required></div>
       <div class="form-grid">
-        <input name="dose" placeholder="Dose">
-        <input name="timing" placeholder="Timing">
-        <input name="remaining" placeholder="Remaining">
-        <input type="date" name="refill_at">
+        <div class="field"><label>Dose</label><input name="dose" placeholder="500 mg"></div>
+        <div class="field"><label>Timing</label><input name="timing" placeholder="After meals"></div>
+        <div class="field"><label>Remaining</label><input name="remaining" inputmode="numeric"></div>
+        <div class="field"><label>Refill date</label><input type="date" name="refill_at"></div>
       </div>
       <button class="btn" type="submit">Add medicine</button>
     </form>
   </div>
-  <div class="surface">
-    <div class="section-head"><h2>Vaccinations</h2></div>
-    {% for v in vax %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ v.vaccine_name }} · {{ v.given_on or '' }} · next {{ v.next_due or '—' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-    <form method="post" action="/admin/care/vaccine" style="margin-top:12px;">
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon" style="background:var(--sage-bg); color:var(--sage);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V6l-8-3-8 3v6c0 6 8 10 8 10z"/></svg>
+      </div>
+      <h2>Vaccinations</h2>
+      <span class="count">{{ vax|length }}</span>
+    </div>
+    <div class="panel-body">
+      {% for v in vax %}
+      <div class="record">
+        <span class="record-dot" style="background:var(--sage);"></span>
+        <div>
+          <div class="record-title">{{ v.vaccine_name }}</div>
+          <div class="record-meta">given {{ v.given_on or '—' }}</div>
+        </div>
+        <div class="record-side">next {{ v.next_due or '—' }}</div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V6l-8-3-8 3v6c0 6 8 10 8 10z"/></svg></div>
+        <p>No vaccinations recorded.</p>
+      </div>
+      {% endfor %}
+    </div>
+    <form class="panel-form" method="post" action="/admin/care/vaccine">
       <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="field"><input name="vaccine_name" placeholder="Vaccine*" required></div>
+      <div class="field"><label>Vaccine</label><input name="vaccine_name" required></div>
       <div class="form-grid">
-        <input type="date" name="given_on">
-        <input type="date" name="next_due">
+        <div class="field"><label>Given on</label><input type="date" name="given_on"></div>
+        <div class="field"><label>Next due</label><input type="date" name="next_due"></div>
       </div>
       <button class="btn" type="submit">Add vaccination</button>
     </form>
   </div>
 </div>
 
-<div class="grid" style="grid-template-columns:1fr 1fr; margin-bottom:18px;">
-  <div class="surface">
-    <div class="section-head"><h2>Visits</h2></div>
-    {% for v in visits %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ v.visit_date or '' }} · {{ v.hospital_name or '' }} · {{ v.reason or '' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-    <form method="post" action="/admin/care/visit" style="margin-top:12px;">
+<div class="grid grid-2" style="margin-bottom:18px;">
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon" style="background:var(--accent-soft); color:var(--navy);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V8l8-4 8 4v13"/><path d="M9 21v-7h6v7"/></svg>
+      </div>
+      <h2>Visits</h2>
+      <span class="count">{{ visits|length }}</span>
+    </div>
+    <div class="panel-body">
+      {% for v in visits %}
+      <div class="record">
+        <span class="record-dot"></span>
+        <div>
+          <div class="record-title">{{ v.hospital_name or 'Visit' }}</div>
+          <div class="record-meta">{{ v.reason or 'No reason noted' }}{% if v.doctor_name %} · {{ v.doctor_name }}{% endif %}</div>
+        </div>
+        <div class="record-side">{{ v.visit_date or '—' }}</div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l8-4 8 4v13"/></svg></div>
+        <p>No hospital visits yet.</p>
+      </div>
+      {% endfor %}
+    </div>
+    <form class="panel-form" method="post" action="/admin/care/visit">
       <input type="hidden" name="person_id" value="{{ active_person.id }}">
       <div class="form-grid">
-        <input name="hospital_name" placeholder="Hospital">
-        <input name="doctor_name" placeholder="Doctor">
-        <input type="date" name="visit_date">
-        <input name="reason" placeholder="Reason">
+        <div class="field"><label>Hospital</label><input name="hospital_name"></div>
+        <div class="field"><label>Doctor</label><input name="doctor_name"></div>
+        <div class="field"><label>Date</label><input type="date" name="visit_date"></div>
+        <div class="field"><label>Reason</label><input name="reason"></div>
       </div>
       <button class="btn" type="submit">Add visit</button>
     </form>
   </div>
-  <div class="surface">
-    <div class="section-head"><h2>Insurance claims</h2></div>
-    {% for c in claims %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ c.insurer or '—' }} · {{ c.amount or '' }} · {{ c.status }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-    <form method="post" action="/admin/care/claim" style="margin-top:12px;">
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon" style="background:rgba(122,108,255,0.16); color:#A89BFF;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>
+      </div>
+      <h2>Insurance claims</h2>
+      <span class="count">{{ claims|length }}</span>
+    </div>
+    <div class="panel-body">
+      {% for c in claims %}
+      <div class="record">
+        <span class="record-dot" style="background:#A89BFF;"></span>
+        <div>
+          <div class="record-title">{{ c.insurer or 'Claim' }}</div>
+          <div class="record-meta">{{ c.claim_number or 'No claim no.' }}{% if c.amount %} · {{ c.amount }}{% endif %}</div>
+        </div>
+        <div class="record-side">
+          {% if c.status == 'approved' or c.status == 'paid' %}
+            <span class="pill pill-sage">{{ c.status }}</span>
+          {% elif c.status == 'rejected' %}
+            <span class="pill pill-danger">{{ c.status }}</span>
+          {% elif c.status == 'submitted' %}
+            <span class="pill pill-navy">{{ c.status }}</span>
+          {% else %}
+            <span class="pill">{{ c.status }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/></svg></div>
+        <p>No claims filed.</p>
+      </div>
+      {% endfor %}
+    </div>
+    <form class="panel-form" method="post" action="/admin/care/claim">
       <input type="hidden" name="person_id" value="{{ active_person.id }}">
       <div class="form-grid">
-        <input name="insurer" placeholder="Insurer">
-        <input name="amount" placeholder="Amount">
-        <input name="claim_number" placeholder="Claim no.">
-        <select name="status"><option>draft</option><option>submitted</option><option>approved</option><option>rejected</option><option>paid</option></select>
+        <div class="field"><label>Insurer</label><input name="insurer"></div>
+        <div class="field"><label>Amount</label><input name="amount"></div>
+        <div class="field"><label>Claim no.</label><input name="claim_number"></div>
+        <div class="field">
+          <label>Status</label>
+          <select name="status">
+            <option>draft</option><option>submitted</option><option>approved</option><option>rejected</option><option>paid</option>
+          </select>
+        </div>
       </div>
       <button class="btn" type="submit">Add claim</button>
     </form>
   </div>
 </div>
 
-<div class="grid" style="grid-template-columns:1fr 1fr; margin-bottom:18px;">
-  <div class="surface">
-    <div class="section-head"><h2>Growth</h2></div>
-    {% for g in growth %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ g.measured_at }} · {{ g.height_cm or '—' }} cm · {{ g.weight_kg or '—' }} kg</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-    <form method="post" action="/admin/care/growth" style="margin-top:12px;">
+<div class="grid grid-2" style="margin-bottom:18px;">
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon" style="background:var(--sage-bg); color:var(--sage);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M7 20V8m5 12V4m5 16v-7"/></svg>
+      </div>
+      <h2>Growth</h2>
+      <span class="count">{{ growth|length }}</span>
+    </div>
+    <div class="panel-body">
+      {% for g in growth %}
+      <div class="record">
+        <span class="record-dot" style="background:var(--sage);"></span>
+        <div>
+          <div class="record-title">{{ g.height_cm or '—' }} cm · {{ g.weight_kg or '—' }} kg</div>
+          <div class="record-meta">measured {{ g.measured_at }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 20V8m5 12V4m5 16v-7"/></svg></div>
+        <p>No growth readings yet.</p>
+      </div>
+      {% endfor %}
+    </div>
+    <form class="panel-form" method="post" action="/admin/care/growth">
       <input type="hidden" name="person_id" value="{{ active_person.id }}">
       <div class="form-grid">
-        <input type="date" name="measured_at" required>
-        <input name="height_cm" placeholder="Height cm">
-        <input name="weight_kg" placeholder="Weight kg">
+        <div class="field"><label>Measured on</label><input type="date" name="measured_at" required></div>
+        <div class="field"><label>Height (cm)</label><input name="height_cm" inputmode="decimal"></div>
+        <div class="field"><label>Weight (kg)</label><input name="weight_kg" inputmode="decimal"></div>
       </div>
       <button class="btn" type="submit">Add reading</button>
     </form>
   </div>
-  <div class="surface">
-    <div class="section-head"><h2>Hospital UHID</h2></div>
-    {% for u in uhids %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ u.hospital_name }} · {{ u.uhid }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-    <form method="post" action="/admin/care/uhid" style="margin-top:12px;">
+
+  <div class="panel">
+    <div class="panel-head">
+      <div class="panel-icon" style="background:var(--accent-soft); color:var(--navy);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h6M7 12h10M7 16h4"/></svg>
+      </div>
+      <h2>Hospital UHID</h2>
+      <span class="count">{{ uhids|length }}</span>
+    </div>
+    <div class="panel-body">
+      {% for u in uhids %}
+      <div class="record">
+        <span class="record-dot"></span>
+        <div>
+          <div class="record-title">{{ u.hospital_name }}</div>
+          <div class="record-meta mono">{{ u.uhid }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/></svg></div>
+        <p>No hospital UHIDs saved.</p>
+      </div>
+      {% endfor %}
+    </div>
+    <form class="panel-form" method="post" action="/admin/care/uhid">
       <input type="hidden" name="person_id" value="{{ active_person.id }}">
       <div class="form-grid">
-        <input name="hospital_name" placeholder="Hospital*" required>
-        <input name="uhid" placeholder="UHID*" required>
+        <div class="field"><label>Hospital</label><input name="hospital_name" required></div>
+        <div class="field"><label>UHID</label><input name="uhid" required class="mono"></div>
       </div>
       <button class="btn" type="submit">Add UHID</button>
     </form>
   </div>
 </div>
 
-<div class="surface">
-  <div class="section-head"><h2>Doctors</h2></div>
-  {% for d in doctors %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ d.name }} · {{ d.specialty or '' }} · {{ d.phone or '' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
-  <form method="post" action="/admin/care/doctor" style="margin-top:12px;">
+<div class="panel">
+  <div class="panel-head">
+    <div class="panel-icon" style="background:var(--stamp-bg); color:var(--stamp);">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 20v-6a4 4 0 0 1 8 0v6"/><circle cx="12" cy="7" r="3"/><path d="M4 20h16"/></svg>
+    </div>
+    <h2>Doctors</h2>
+    <span class="count">{{ doctors|length }}</span>
+  </div>
+  <div class="panel-body">
+    {% for d in doctors %}
+    <div class="record">
+      <span class="record-dot" style="background:var(--stamp);"></span>
+      <div>
+        <div class="record-title">{{ d.name }}</div>
+        <div class="record-meta">{{ d.specialty or 'Specialty not set' }}{% if d.hospital_name %} · {{ d.hospital_name }}{% endif %}</div>
+      </div>
+      <div class="record-side">{% if d.phone %}<a href="tel:{{ d.phone }}">{{ d.phone }}</a>{% else %}—{% endif %}</div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M4 20h16"/></svg></div>
+      <p>No doctors on this profile.</p>
+    </div>
+    {% endfor %}
+  </div>
+  <form class="panel-form" method="post" action="/admin/care/doctor">
     <input type="hidden" name="person" value="{{ active_person.id }}">
     <div class="form-grid">
-      <input name="name" placeholder="Name*" required>
-      <input name="specialty" placeholder="Specialty">
-      <input name="hospital_name" placeholder="Hospital">
-      <input name="phone" placeholder="Phone">
+      <div class="field"><label>Name</label><input name="name" required></div>
+      <div class="field"><label>Specialty</label><input name="specialty"></div>
+      <div class="field"><label>Hospital</label><input name="hospital_name"></div>
+      <div class="field"><label>Phone</label><input type="tel" name="phone"></div>
     </div>
     <button class="btn" type="submit">Add doctor</button>
   </form>
+</div>
+
+{% else %}
+<div class="empty-state surface">
+  <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 19c.6-3 2.8-5 6-5s5.4 2 6 5"/></svg></div>
+  <p>Add a family member to start a care profile.</p>
+  <div style="margin-top:14px;"><a class="btn" href="/admin/family">Go to Family</a></div>
 </div>
 {% endif %}
 {% endblock %}
