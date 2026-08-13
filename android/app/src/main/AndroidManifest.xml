@@ -40,6 +40,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".util.EmiReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".util.BootReceiver"
             android:exported="true">
             <intent-filter>

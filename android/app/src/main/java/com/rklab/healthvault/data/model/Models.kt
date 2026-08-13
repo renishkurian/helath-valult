@@ -361,6 +361,30 @@ data class UhidOut(val id: String, val person_id: String, val hospital_name: Str
 
 data class TimelineItem(val kind: String, val at: String, val title: String, val detail: String?, val ref_id: String?)
 data class StorageStats(val bytes_used: Long, val file_count: Int, val backup_dir: String?)
+data class GoogleDriveStatus(
+    val connected: Boolean = false,
+    val email: String? = null,
+    val enabled: Boolean = false,
+    val hour: Int = 3,
+    val keep_days: Int = 14,
+    val has_password: Boolean = false,
+    val has_client: Boolean = false,
+    val last_run_at: String? = null,
+    val last_ok: Boolean? = null,
+    val last_error: String? = null,
+    val last_file_name: String? = null
+)
+data class GoogleDriveSettingsIn(
+    val enabled: Boolean? = null,
+    val hour: Int? = null,
+    val keep_days: Int? = null,
+    val password: String? = null
+)
+data class GoogleDriveRunOut(
+    val ok: Boolean = false,
+    val file: String? = null,
+    val bytes: Long? = null
+)
 data class SpendOut(val year: Int, val bills: Double, val claims: Double, val total: Double)
 // ---------- Password Vault ----------
 data class VaultFolderIn(val name: String)
@@ -552,12 +576,15 @@ data class FinanceCategoryOut(
     val is_system: Boolean = false,
     val account_id: String? = null,
     val account_name: String? = null,
+    val parent_id: String? = null,
+    val parent_name: String? = null,
     val scope: String = "general"
 )
 data class FinanceCategoryIn(
     val name: String,
     val kind: String = "expense",
-    val account_id: String? = null
+    val account_id: String? = null,
+    val parent_id: String? = null
 )
 data class FinanceTxnOut(
     val id: String,
@@ -618,6 +645,43 @@ data class FinanceReportOut(
     val kind: String,
     val total: Double = 0.0,
     val rows: List<FinanceReportRow> = emptyList()
+)
+data class FinanceEmiIn(
+    val name: String,
+    val kind: String = "emi",
+    val account_id: String,
+    val category_id: String? = null,
+    val amount: Double,
+    val start_date: String,
+    val end_date: String,
+    val day_of_month: Int? = null,
+    val auto_post: Boolean = true,
+    val notify_days: Int = 2,
+    val notes: String? = null
+)
+data class FinanceEmiOut(
+    val id: String,
+    val name: String,
+    val kind: String = "emi",
+    val kind_label: String = "EMI",
+    val account_id: String,
+    val account_name: String = "",
+    val category_id: String? = null,
+    val category_name: String? = null,
+    val amount: Double,
+    val start_date: String,
+    val end_date: String,
+    val day_of_month: Int = 1,
+    val next_due: String? = null,
+    val auto_post: Boolean = true,
+    val notify_days: Int = 2,
+    val notes: String? = null,
+    val active: Boolean = true,
+    val status: String = "pending",
+    val total_installments: Int = 0,
+    val paid_count: Int = 0,
+    val remaining: Int = 0,
+    val created_at: String = ""
 )
 data class FinanceAiKeyIn(
     val name: String,

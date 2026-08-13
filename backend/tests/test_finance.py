@@ -166,6 +166,103 @@ def test_account_scoped_categories():
     assert shared.status_code == 200, shared.text
 
 
+def test_category_subcategory():
+    r = client.post("/auth/register", json={
+        "email": "subcat@example.com", "password": "password123", "full_name": "Sub User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    cats = client.get("/finance/categories", headers=headers).json()
+    health = next(c for c in cats if c["name"] == "Health")
+    assert health["parent_id"] is None
+    medicine = client.post("/finance/categories", headers=headers, json={
+        "name": "Medicine", "parent_id": health["id"],
+    })
+    assert medicine.status_code == 200, medicine.text
+    body = medicine.json()
+    assert body["parent_id"] == health["id"]
+    assert body["parent_name"] == "Health"
+    assert body["kind"] == "expense"
+    listed = client.get("/finance/categories", headers=headers).json()
+    med = next(c for c in listed if c["name"] == "Medicine")
+    assert med["parent_name"] == "Health"
+    nested = client.post("/finance/categories", headers=headers, json={
+        "name": "Too deep", "parent_id": body["id"],
+    })
+    assert nested.status_code == 400
+
+
+def test_emi_setup_auto_post_and_complete():
+    from app.emi import installment_dates
+    dates = installment_dates("2026-01-05", "2026-04-05", 5)
+    assert [d.isoformat() for d in dates] == [
+        "2026-01-05", "2026-02-05", "2026-03-05", "2026-04-05",
+    ]
+    r = client.post("/auth/register", json={
+        "email": "emi@example.com", "password": "password123", "full_name": "Emi User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    bank = next(a for a in accounts if a["account_type"] == "bank")
+    created = client.post("/finance/emis", headers=headers, json={
+        "name": "Bike EMI",
+        "kind": "emi",
+        "account_id": bank["id"],
+        "amount": 4500,
+        "start_date": "2026-08-13",
+        "end_date": "2026-10-13",
+        "day_of_month": 13,
+        "notify_days": 2,
+        "auto_post": True,
+    })
+    assert created.status_code == 200, created.text
+    emi = created.json()
+    assert emi["kind"] == "emi"
+    assert emi["kind_label"] == "EMI"
+    assert emi["total_installments"] == 3
+    assert emi["paid_count"] == 0
+    assert emi["status"] == "pending"
+    assert emi["next_due"] == "2026-08-13"
+    posted = client.post(f"/finance/emis/{emi['id']}/post", headers=headers)
+    assert posted.status_code == 200, posted.text
+    body = posted.json()
+    assert body["paid_count"] == 1
+    assert body["remaining"] == 2
+    assert body["next_due"] == "2026-09-13"
+    txns = client.get("/finance/transactions", headers=headers, params={"year_month": "2026-08"}).json()
+    assert any(t["payee"] == "Bike EMI" and t["source"] == "emi" for t in txns)
+    pending = client.get("/finance/emis", headers=headers, params={"status": "pending"}).json()
+    assert any(e["id"] == emi["id"] for e in pending)
+    chitty = client.post("/finance/emis", headers=headers, json={
+        "name": "Office chitty",
+        "kind": "chitty",
+        "account_id": bank["id"],
+        "amount": 2000,
+        "start_date": "2026-09-01",
+        "end_date": "2027-08-01",
+        "day_of_month": 1,
+    })
+    assert chitty.status_code == 200, chitty.text
+    assert chitty.json()["kind"] == "chitty"
+    assert chitty.json()["kind_label"] == "Chitty"
+    tagged = client.get("/finance/emis", headers=headers, params={"kind": "chitty"}).json()
+    assert any(e["name"] == "Office chitty" for e in tagged)
+    one = client.post("/finance/emis", headers=headers, json={
+        "name": "Short EMI",
+        "kind": "loan",
+        "account_id": bank["id"],
+        "amount": 100,
+        "start_date": "2026-08-13",
+        "end_date": "2026-08-13",
+        "day_of_month": 13,
+    }).json()
+    assert one["kind"] == "loan"
+    client.post(f"/finance/emis/{one['id']}/post", headers=headers)
+    done = client.get("/finance/emis", headers=headers, params={"status": "completed"}).json()
+    assert any(e["id"] == one["id"] for e in done)
+
+
 def test_admin_finance_monthly_view():
     client.post("/auth/register", json={
         "email": "monthly@example.com", "password": "password123", "full_name": "Monthly User",

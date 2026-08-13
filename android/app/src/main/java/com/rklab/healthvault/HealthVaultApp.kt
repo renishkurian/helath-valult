@@ -43,9 +43,11 @@ class HealthVaultApp : Application() {
         if (tokenManager.getAccessToken() != null) {
             SyncWorker.enqueue(this)
             com.rklab.healthvault.util.ReminderScheduler.rescheduleAll(this)
+            com.rklab.healthvault.util.EmiScheduler.rescheduleAll(this)
         }
 
         createReminderNotificationChannel()
+        createEmiNotificationChannel()
         com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.ensureChannel(this)
         if (tokenManager.getAccessToken() != null) {
             com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.scanInbox(this)
@@ -66,7 +68,22 @@ class HealthVaultApp : Application() {
         }
     }
 
+    private fun createEmiNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                EMI_CHANNEL_ID,
+                "Recurring payments",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Alerts when an EMI, chitty, loan, or other recurring payment is due"
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
     companion object {
         const val REMINDER_CHANNEL_ID = "reminders"
+        const val EMI_CHANNEL_ID = "emi"
     }
 }

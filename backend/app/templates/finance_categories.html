@@ -24,6 +24,15 @@
         {% endfor %}
       </select>
     </div>
+    <div class="field">
+      <label>Parent category</label>
+      <select name="parent_id">
+        <option value="">None — top-level</option>
+        {% for c in categories if not c.parent_id %}
+        <option value="{{ c.id }}">{{ c.name }} ({{ c.kind }})</option>
+        {% endfor %}
+      </select>
+    </div>
     <button class="btn" type="submit">Save category</button>
   </form>
 </div>
@@ -34,8 +43,8 @@
   <div class="record">
     <span class="record-dot" style="background:{{ c.color or 'var(--mm-expense)' }};"></span>
     <div>
-      <div class="record-title">{{ c.name }}</div>
-      <div class="record-meta">{{ c.kind }} · all accounts</div>
+      <div class="record-title">{{ c.name }}{% if c.parent_name %} <span class="mm-muted">· {{ c.parent_name }}</span>{% endif %}</div>
+      <div class="record-meta">{{ c.kind }}{% if c.parent_name %} · subcategory{% endif %} · all accounts</div>
     </div>
     {% if not c.is_system %}
     <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>

@@ -51,6 +51,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "finance_categories": [
         ("account_id", "VARCHAR(32)"),
+        ("parent_id", "VARCHAR(32)"),
     ],
     "finance_transactions": [
         ("txn_time", "VARCHAR(8)"),
@@ -58,9 +59,13 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("payment_method", "VARCHAR(30)"),
         ("image_path", "VARCHAR(500)"),
         ("image_mime", "VARCHAR(80)"),
+        ("emi_id", "VARCHAR(32)"),
     ],
     "finance_messages": [
         ("payment_method", "VARCHAR(30)"),
+    ],
+    "finance_emis": [
+        ("kind", "VARCHAR(30) NOT NULL DEFAULT 'emi'"),
     ],
 }
 

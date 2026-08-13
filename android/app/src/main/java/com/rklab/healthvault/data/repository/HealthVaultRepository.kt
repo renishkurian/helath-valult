@@ -127,6 +127,9 @@ class HealthVaultRepository(
     suspend fun addUhid(body: UhidIn) = api.addUhid(body)
     suspend fun timeline(personId: String) = api.timeline(personId)
     suspend fun storageStats() = api.storageStats()
+    suspend fun googleDriveStatus() = api.googleDriveStatus()
+    suspend fun googleDriveSettings(body: GoogleDriveSettingsIn) = api.googleDriveSettings(body)
+    suspend fun googleDriveRun() = api.googleDriveRun()
 
     // ---------- Password Vault ----------
     suspend fun listVaultFolders() = api.listVaultFolders()
@@ -175,8 +178,11 @@ class HealthVaultRepository(
     suspend fun createFinanceAccount(body: FinanceAccountIn) = api.createFinanceAccount(body)
     suspend fun listFinanceCategories(accountId: String? = null) = api.listFinanceCategories(accountId)
     suspend fun createFinanceCategory(body: FinanceCategoryIn) = api.createFinanceCategory(body)
-    suspend fun listFinanceTransactions(yearMonth: String? = null, q: String? = null) =
-        api.listFinanceTransactions(yearMonth, q = q)
+    suspend fun listFinanceTransactions(
+        yearMonth: String? = null,
+        q: String? = null,
+        accountId: String? = null
+    ) = api.listFinanceTransactions(yearMonth, accountId = accountId, q = q)
     suspend fun createFinanceTransaction(body: FinanceTxnIn) = api.createFinanceTransaction(body)
     suspend fun uploadFinanceImage(id: String, file: File, mime: String = "image/jpeg"): FinanceTxnOut {
         val part = MultipartBody.Part.createFormData(
@@ -194,6 +200,11 @@ class HealthVaultRepository(
         return destination
     }
     suspend fun deleteFinanceTransaction(id: String) = api.deleteFinanceTransaction(id)
+    suspend fun listFinanceEmis(status: String? = null) = api.listFinanceEmis(status)
+    suspend fun createFinanceEmi(body: FinanceEmiIn) = api.createFinanceEmi(body)
+    suspend fun postFinanceEmi(id: String) = api.postFinanceEmi(id)
+    suspend fun pauseFinanceEmi(id: String) = api.pauseFinanceEmi(id)
+    suspend fun deleteFinanceEmi(id: String) = api.deleteFinanceEmi(id)
     suspend fun financeReports(yearMonth: String? = null, kind: String = "expense") =
         api.financeReports(yearMonth, kind)
     suspend fun listFinanceAiKeys() = api.listFinanceAiKeys()

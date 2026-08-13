@@ -282,6 +282,15 @@ interface ApiService {
     @GET("storage/stats")
     suspend fun storageStats(): StorageStats
 
+    @GET("backup/google")
+    suspend fun googleDriveStatus(): GoogleDriveStatus
+
+    @POST("backup/google/settings")
+    suspend fun googleDriveSettings(@Body body: GoogleDriveSettingsIn): GoogleDriveStatus
+
+    @POST("backup/google/run")
+    suspend fun googleDriveRun(): GoogleDriveRunOut
+
     // ---------- Password Vault ----------
     @GET("vault/folders")
     suspend fun listVaultFolders(): List<VaultFolderOut>
@@ -374,6 +383,7 @@ interface ApiService {
     suspend fun listFinanceTransactions(
         @Query("year_month") yearMonth: String? = null,
         @Query("txn_type") txnType: String? = null,
+        @Query("account_id") accountId: String? = null,
         @Query("q") q: String? = null
     ): List<FinanceTxnOut>
 
@@ -393,6 +403,21 @@ interface ApiService {
 
     @DELETE("finance/transactions/{id}")
     suspend fun deleteFinanceTransaction(@Path("id") id: String): Response<Unit>
+
+    @GET("finance/emis")
+    suspend fun listFinanceEmis(@Query("status") status: String? = null): List<FinanceEmiOut>
+
+    @POST("finance/emis")
+    suspend fun createFinanceEmi(@Body body: FinanceEmiIn): FinanceEmiOut
+
+    @POST("finance/emis/{id}/post")
+    suspend fun postFinanceEmi(@Path("id") id: String): FinanceEmiOut
+
+    @POST("finance/emis/{id}/pause")
+    suspend fun pauseFinanceEmi(@Path("id") id: String): FinanceEmiOut
+
+    @DELETE("finance/emis/{id}")
+    suspend fun deleteFinanceEmi(@Path("id") id: String): Response<Unit>
 
     @GET("finance/reports")
     suspend fun financeReports(

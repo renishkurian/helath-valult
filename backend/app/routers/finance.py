@@ -329,11 +329,17 @@ def _post_message_txn(
     return txn
 
 
-def _category_out(c: models.FinanceCategory, accounts: dict | None = None) -> schemas.FinanceCategoryOut:
+def _category_out(
+    c: models.FinanceCategory,
+    accounts: dict | None = None,
+    categories: dict | None = None,
+) -> schemas.FinanceCategoryOut:
     acc = accounts.get(c.account_id) if accounts and c.account_id else None
+    parent = categories.get(c.parent_id) if categories and c.parent_id else None
     return schemas.FinanceCategoryOut(
         id=c.id, name=c.name, kind=c.kind, color=c.color, is_system=bool(c.is_system),
         account_id=c.account_id, account_name=acc.name if acc else None,
+        parent_id=c.parent_id, parent_name=parent.name if parent else None,
         scope="account" if c.account_id else "general",
     )
 
@@ -588,7 +594,8 @@ def list_categories(
         )
     rows = query.order_by(models.FinanceCategory.kind, models.FinanceCategory.name).all()
     accounts = _acct_map(db, uid)
-    return [_category_out(c, accounts) for c in rows]
+    cats = {c.id: c for c in rows}
+    return [_category_out(c, accounts, cats) for c in rows]
 
 
 @router.post("/categories", response_model=schemas.FinanceCategoryOut)
@@ -603,16 +610,26 @@ def create_category(
     acc_id = None
     if body.account_id:
         acc_id = _get_account(db, current_user, body.account_id).id
+    parent = None
+    kind = "income" if body.kind == "income" else "expense"
+    if body.parent_id:
+        parent = _get_category(db, current_user, body.parent_id)
+        if parent.parent_id:
+            raise HTTPException(400, "Only one subcategory level is allowed")
+        kind = parent.kind
+        if not acc_id:
+            acc_id = parent.account_id
     row = models.FinanceCategory(
         user_id=uid, name=body.name.strip(),
-        kind="income" if body.kind == "income" else "expense",
+        kind=kind,
         color=body.color or CAT_COLORS[0],
         account_id=acc_id,
+        parent_id=parent.id if parent else None,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _category_out(row, _acct_map(db, uid))
+    return _category_out(row, _acct_map(db, uid), _cat_map(db, uid))
 
 
 @router.delete("/categories/{category_id}")
@@ -625,6 +642,12 @@ def delete_category(
     row = _get_category(db, current_user, category_id)
     if row.is_system:
         raise HTTPException(400, "System categories stay; rename instead")
+    kids = db.query(models.FinanceCategory).filter(
+        models.FinanceCategory.user_id == row.user_id,
+        models.FinanceCategory.parent_id == row.id,
+    ).all()
+    for kid in kids:
+        kid.parent_id = None
     db.delete(row)
     db.commit()
     return {"ok": True}
@@ -903,6 +926,141 @@ def pay_recurring(rid: str, db: Session = Depends(get_db), current_user: models.
     row.next_due = due.strftime("%Y-%m-%d")
     db.commit()
     return {"ok": True, "next_due": row.next_due}
+
+
+# ---------- EMIs ----------
+def _get_emi(db: Session, user: models.User, emi_id: str) -> models.FinanceEmi:
+    row = db.query(models.FinanceEmi).filter(
+        models.FinanceEmi.id == emi_id,
+        models.FinanceEmi.user_id == _owned(db, user),
+    ).first()
+    if not row:
+        raise HTTPException(404, "Recurring payment not found")
+    return row
+
+
+@router.get("/emis", response_model=list[schemas.FinanceEmiOut])
+def list_emis(
+    status: Optional[str] = None,
+    kind: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.emi import emi_out
+    ensure_defaults(db, current_user)
+    uid = _owned(db, current_user)
+    rows = (
+        db.query(models.FinanceEmi)
+        .filter(models.FinanceEmi.user_id == uid)
+        .order_by(models.FinanceEmi.next_due)
+        .all()
+    )
+    accounts, cats = _acct_map(db, uid), _cat_map(db, uid)
+    out = [schemas.FinanceEmiOut(**emi_out(db, r, accounts, cats)) for r in rows]
+    if kind:
+        from app.emi import normalize_kind
+        want = normalize_kind(kind)
+        out = [e for e in out if e.kind == want]
+    if status in {"pending", "completed", "overdue"}:
+        if status == "pending":
+            out = [e for e in out if e.status in ("pending", "overdue")]
+        else:
+            out = [e for e in out if e.status == status]
+    return out
+
+
+@router.post("/emis", response_model=schemas.FinanceEmiOut)
+def create_emi(
+    body: schemas.FinanceEmiIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.emi import emi_out, installment_dates, normalize_kind, sync_next_due
+    require_owner(current_user)
+    ensure_defaults(db, current_user)
+    if body.amount <= 0:
+        raise HTTPException(400, "Amount must be greater than 0")
+    try:
+        start = datetime.strptime(body.start_date[:10], "%Y-%m-%d").date()
+        end = datetime.strptime(body.end_date[:10], "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(400, "Use YYYY-MM-DD for start and end dates")
+    if end < start:
+        raise HTTPException(400, "End date must be on or after start date")
+    acc = _get_account(db, current_user, body.account_id)
+    cat_id = None
+    if body.category_id:
+        cat_id = _get_category(db, current_user, body.category_id).id
+    day = int(body.day_of_month or start.day)
+    day = max(1, min(31, day))
+    if not installment_dates(body.start_date[:10], body.end_date[:10], day):
+        raise HTTPException(400, "No payment dates fall between start and end")
+    uid = _owned(db, current_user)
+    row = models.FinanceEmi(
+        user_id=uid, name=body.name.strip(), kind=normalize_kind(body.kind),
+        account_id=acc.id, category_id=cat_id,
+        amount=_dec(body.amount), start_date=start.isoformat(), end_date=end.isoformat(),
+        day_of_month=day, auto_post=bool(body.auto_post),
+        notify_days=max(0, min(14, int(body.notify_days))),
+        notes=(body.notes or "").strip() or None, active=True,
+    )
+    db.add(row)
+    db.flush()
+    sync_next_due(db, row)
+    db.commit()
+    db.refresh(row)
+    return schemas.FinanceEmiOut(**emi_out(db, row, _acct_map(db, uid), _cat_map(db, uid)))
+
+
+@router.post("/emis/{emi_id}/post", response_model=schemas.FinanceEmiOut)
+def post_emi_now(
+    emi_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.emi import emi_out, post_installment
+    require_owner(current_user)
+    row = _get_emi(db, current_user, emi_id)
+    txn = post_installment(db, row)
+    if not txn and row.active and row.next_due and row.next_due > datetime.utcnow().strftime("%Y-%m-%d"):
+        raise HTTPException(400, f"Next payment is on {row.next_due}")
+    db.commit()
+    uid = _owned(db, current_user)
+    return schemas.FinanceEmiOut(**emi_out(db, row, _acct_map(db, uid), _cat_map(db, uid)))
+
+
+@router.post("/emis/{emi_id}/pause", response_model=schemas.FinanceEmiOut)
+def pause_emi(
+    emi_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.emi import emi_out
+    require_owner(current_user)
+    row = _get_emi(db, current_user, emi_id)
+    row.active = not row.active
+    if row.active:
+        from app.emi import sync_next_due
+        sync_next_due(db, row)
+    db.commit()
+    uid = _owned(db, current_user)
+    return schemas.FinanceEmiOut(**emi_out(db, row, _acct_map(db, uid), _cat_map(db, uid)))
+
+
+@router.delete("/emis/{emi_id}")
+def delete_emi(
+    emi_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _get_emi(db, current_user, emi_id)
+    db.query(models.FinanceTransaction).filter(models.FinanceTransaction.emi_id == row.id).update(
+        {models.FinanceTransaction.emi_id: None}
+    )
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
 
 
 # ---------- reports ----------

@@ -8,12 +8,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import com.rklab.healthvault.data.model.GoogleDriveSettingsIn
+import com.rklab.healthvault.data.model.GoogleDriveStatus
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.screens.server.ServerSetupState
 import com.rklab.healthvault.ui.screens.server.ServerSetupViewModel
@@ -276,6 +279,60 @@ fun SettingsScreen(
                 enabled = !restoring && !repository.isViewer,
                 modifier = Modifier.fillMaxWidth()
             ) { Text(if (restoring) "Restoring…" else "Restore from backup", color = Navy) }
+            Spacer(Modifier.height(16.dp))
+            Text("GOOGLE DRIVE", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            var drive by remember { mutableStateOf<GoogleDriveStatus?>(null) }
+            var driveBusy by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                drive = runCatching { repository.googleDriveStatus() }.getOrNull()
+            }
+            Text(
+                when {
+                    drive == null -> "Connect Drive in the web app: Storage → Google Drive."
+                    drive?.connected == true && drive?.enabled == true ->
+                        "Daily backup on${drive?.email?.let { " · $it" } ?: ""}${drive?.last_file_name?.let { " · last $it" } ?: ""}"
+                    drive?.connected == true ->
+                        "Connected${drive?.email?.let { " as $it" } ?: ""}. Daily upload is off."
+                    else -> "Not connected. Open Storage in the web app on the Pi, add your Google client, then Connect."
+                },
+                color = InkSoft,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            if (drive?.connected == true && !repository.isViewer) {
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Daily", color = Ink)
+                    Switch(
+                        checked = drive?.enabled == true,
+                        onCheckedChange = { on ->
+                            scope.launch {
+                                runCatching {
+                                    drive = repository.googleDriveSettings(GoogleDriveSettingsIn(enabled = on))
+                                }.onFailure { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+                            }
+                        }
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        driveBusy = true
+                        scope.launch {
+                            runCatching { repository.googleDriveRun() }
+                                .onSuccess {
+                                    Toast.makeText(context, "Uploaded ${it.file}", Toast.LENGTH_SHORT).show()
+                                    drive = repository.googleDriveStatus()
+                                }
+                                .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+                            driveBusy = false
+                        }
+                    },
+                    enabled = !driveBusy,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Navy)
+                ) { Text(if (driveBusy) "Uploading…" else "Backup to Drive now", color = White) }
+            }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onOpenShareHistory,

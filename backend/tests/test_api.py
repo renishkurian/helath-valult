@@ -294,6 +294,34 @@ def test_encrypted_backup_roundtrip():
     assert r.json()["ok"] is True
 
 
+def test_google_drive_status_disconnected():
+    data = _register("gdrive@example.com", "password123", "Drive User")
+    headers = _auth_headers(data["access_token"])
+    r = client.get("/backup/google", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["connected"] is False
+    assert body["enabled"] is False
+    r = client.post("/backup/google/settings", headers=headers, json={"enabled": True})
+    assert r.status_code == 400
+
+
+def test_google_drive_should_run_now():
+    from datetime import datetime
+    from app.drive_backup import should_run_now
+    from app.models import GoogleDriveBackup
+    row = GoogleDriveBackup(
+        user_id="x", enabled=True, hour=3, refresh_token_enc="enc", password_enc="enc",
+        last_run_at=None, last_ok=None,
+    )
+    assert should_run_now(row, datetime(2026, 8, 13, 2, 0)) is False
+    assert should_run_now(row, datetime(2026, 8, 13, 3, 5)) is True
+    row.last_run_at = datetime(2026, 8, 13, 3, 10)
+    row.last_ok = True
+    assert should_run_now(row, datetime(2026, 8, 13, 15, 0)) is False
+    assert should_run_now(row, datetime(2026, 8, 14, 3, 1)) is True
+
+
 def test_medicines_vaccines_visits_and_ice():
     data = _register("care@example.com", "password123", "Care User")
     headers = _auth_headers(data["access_token"])

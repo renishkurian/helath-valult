@@ -39,3 +39,17 @@ val CatVaccination = Sage
 val CatBill = StampRed
 val CatMedicine = Mustard
 val CatOther = TextGray
+
+/** Hub / module-picker tokens — match vault_redesign_v2.html */
+val HubBg = Color(0xFF060714)
+val HubGlass = Color(0x0BFFFFFF)
+val HubGlassHi = Color(0x14FFFFFF)
+val HubStroke = Color(0x17FFFFFF)
+val HubText = Color(0xFFF4F5FB)
+val HubTextDim = Color(0xFF9AA1B8)
+val HubTextFaint = Color(0xFF5C6379)
+val HubViolet = Color(0xFF8B7CF7)
+val HubTeal = Color(0xFF2DD9B8)
+val HubRose = Color(0xFFF2618A)
+val HubAmber = Color(0xFFF5B862)
+val HubDock = Color(0xB3141620)

@@ -631,12 +631,17 @@ def storage_page(request: Request, db: Session = Depends(get_db)):
             if p.is_file():
                 total += p.stat().st_size
                 count += 1
+    from app.drive_backup import get_or_create, status_dict
+    drive = status_dict(get_or_create(db, user))
+    redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
     return templates.TemplateResponse("storage.html", {
         "request": request, "session_user": user, "active_nav": "storage",
         "people": people, "active_person": people[0] if people else None,
         "active_person_id": people[0].id if people else None,
         "bytes_used": total, "file_count": count,
         "backup_dir": str(settings.BACKUP_DIR) if settings.BACKUP_DIR else None,
+        "drive": drive, "redirect_uri": redirect_uri,
+        "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
     })
 
 
@@ -648,6 +653,122 @@ def storage_snapshot(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/admin/login", status_code=302)
     if settings.BACKUP_DIR:
         snapshot_to_disk(None, db, user)
+    return RedirectResponse("/admin/storage", status_code=302)
+
+
+def _drive_redirect_uri(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
+
+
+@router.post("/storage/google")
+def storage_google_save(
+    request: Request,
+    client_id: str = Form(""),
+    client_secret: str = Form(""),
+    password: str = Form(""),
+    hour: str = Form("3"),
+    keep_days: str = Form("14"),
+    enabled: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.drive_backup import get_or_create
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = get_or_create(db, user)
+    if client_id.strip():
+        row.client_id = client_id.strip()
+    if client_secret.strip():
+        row.client_secret_enc = crypto.encrypt_text(client_secret.strip())
+    if password.strip():
+        row.password_enc = crypto.encrypt_text(password.strip())
+    row.hour = max(0, min(23, int(hour or 3)))
+    row.keep_days = max(3, min(90, int(keep_days or 14)))
+    row.enabled = bool(enabled) and bool(row.refresh_token_enc) and bool(row.password_enc)
+    db.commit()
+    return RedirectResponse("/admin/storage", status_code=302)
+
+
+@router.get("/storage/google/connect")
+def storage_google_connect(request: Request, db: Session = Depends(get_db)):
+    import secrets
+    from app.drive_backup import get_or_create
+    from app import gdrive
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = get_or_create(db, user)
+    if not row.client_id or not row.client_secret_enc:
+        return RedirectResponse("/admin/storage?err=client", status_code=302)
+    state = secrets.token_urlsafe(16)
+    request.session["gdrive_oauth_state"] = state
+    secret = crypto.decrypt_text(row.client_secret_enc) or ""
+    url = gdrive.auth_url(row.client_id, _drive_redirect_uri(request), state)
+    _ = secret
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/storage/google/callback")
+def storage_google_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.drive_backup import get_or_create
+    from app import gdrive
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if error:
+        return RedirectResponse("/admin/storage?err=denied", status_code=302)
+    if not code or state != request.session.get("gdrive_oauth_state"):
+        return RedirectResponse("/admin/storage?err=state", status_code=302)
+    row = get_or_create(db, user)
+    secret = crypto.decrypt_text(row.client_secret_enc) or ""
+    try:
+        tokens = gdrive.exchange_code(row.client_id or "", secret, code, _drive_redirect_uri(request))
+        refresh = tokens.get("refresh_token")
+        access = tokens.get("access_token")
+        if not refresh:
+            return RedirectResponse("/admin/storage?err=token", status_code=302)
+        row.refresh_token_enc = crypto.encrypt_text(refresh)
+        if access:
+            row.connected_email = gdrive.user_email(access)
+            row.folder_id = gdrive.ensure_folder(access, row.folder_id)
+        db.commit()
+    except Exception:
+        return RedirectResponse("/admin/storage?err=token", status_code=302)
+    request.session.pop("gdrive_oauth_state", None)
+    return RedirectResponse("/admin/storage?ok=connected", status_code=302)
+
+
+@router.post("/storage/google/run")
+def storage_google_run(request: Request, db: Session = Depends(get_db)):
+    from app.drive_backup import run_backup
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        run_backup(db, user)
+        return RedirectResponse("/admin/storage?ok=backedup", status_code=302)
+    except Exception:
+        return RedirectResponse("/admin/storage?err=run", status_code=302)
+
+
+@router.post("/storage/google/disconnect")
+def storage_google_disconnect(request: Request, db: Session = Depends(get_db)):
+    from app.drive_backup import get_or_create
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = get_or_create(db, user)
+    row.refresh_token_enc = None
+    row.folder_id = None
+    row.connected_email = None
+    row.enabled = False
+    db.commit()
     return RedirectResponse("/admin/storage", status_code=302)
 
 
@@ -1277,6 +1398,7 @@ def finance_category_add(
     name: str = Form(...),
     kind: str = Form("expense"),
     account_id: str = Form(""),
+    parent_id: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers.finance import create_category
@@ -1285,7 +1407,9 @@ def finance_category_add(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     create_category(
-        sc.FinanceCategoryIn(name=name, kind=kind, account_id=account_id or None),
+        sc.FinanceCategoryIn(
+            name=name, kind=kind, account_id=account_id or None, parent_id=parent_id or None,
+        ),
         db=db, current_user=user,
     )
     return RedirectResponse("/admin/finance/categories", status_code=302)

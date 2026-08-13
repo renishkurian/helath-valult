@@ -549,6 +549,7 @@ class FinanceCategory(Base):
     color = Column(String(16), nullable=True)
     is_system = Column(Boolean, default=False, nullable=False)
     account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=True, index=True)  # null = general / all accounts
+    parent_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True, index=True)  # null = top-level category
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -569,8 +570,9 @@ class FinanceTransaction(Base):
     description = Column(Text, nullable=True)
     payment_method = Column(String(30), nullable=True)  # upi | credit_card | debit_card | atm | netbanking | cash | other
     tags = Column(String(500), nullable=True)
-    source = Column(String(20), default="manual", nullable=False)  # manual | message | recurring
+    source = Column(String(20), default="manual", nullable=False)  # manual | message | recurring | emi
     message_id = Column(String(32), nullable=True, index=True)
+    emi_id = Column(String(32), ForeignKey("finance_emis.id"), nullable=True, index=True)
     image_path = Column(String(500), nullable=True)
     image_mime = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -583,6 +585,26 @@ class FinanceBudget(Base):
     category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=False, index=True)
     year_month = Column(String(7), nullable=False, index=True)  # 2026-08
     amount = Column(Numeric(14, 2), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceEmi(Base):
+    __tablename__ = "finance_emis"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    kind = Column(String(30), default="emi", nullable=False, index=True)  # emi | chitty | loan | insurance | rent | subscription | other
+    account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=False, index=True)
+    category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True)
+    amount = Column(Numeric(14, 2), nullable=False)
+    start_date = Column(String(20), nullable=False)
+    end_date = Column(String(20), nullable=False)
+    day_of_month = Column(Integer, default=1, nullable=False)
+    next_due = Column(String(20), nullable=True)
+    auto_post = Column(Boolean, default=True, nullable=False)
+    notify_days = Column(Integer, default=2, nullable=False)
+    notes = Column(Text, nullable=True)
+    active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -644,3 +666,24 @@ class FinanceMessage(Base):
     status = Column(String(20), default="pending", nullable=False, index=True)  # pending | accepted | ignored
     transaction_id = Column(String(32), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class GoogleDriveBackup(Base):
+    """One Google Drive target per vault. Refresh token is encrypted at rest."""
+    __tablename__ = "google_drive_backup"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    client_id = Column(String(255), nullable=True)
+    client_secret_enc = Column(Text, nullable=True)
+    refresh_token_enc = Column(Text, nullable=True)
+    folder_id = Column(String(128), nullable=True)
+    connected_email = Column(String(255), nullable=True)
+    enabled = Column(Boolean, default=False, nullable=False)
+    hour = Column(Integer, default=3, nullable=False)  # local hour 0-23
+    keep_days = Column(Integer, default=14, nullable=False)
+    password_enc = Column(Text, nullable=True)
+    last_run_at = Column(DateTime, nullable=True)
+    last_ok = Column(Boolean, nullable=True)
+    last_error = Column(Text, nullable=True)
+    last_file_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

@@ -524,6 +524,29 @@ class StorageStats(BaseModel):
     backup_dir: Optional[str] = None
 
 
+class GoogleDriveStatus(BaseModel):
+    connected: bool = False
+    email: Optional[str] = None
+    enabled: bool = False
+    hour: int = 3
+    keep_days: int = 14
+    has_password: bool = False
+    has_client: bool = False
+    last_run_at: Optional[str] = None
+    last_ok: Optional[bool] = None
+    last_error: Optional[str] = None
+    last_file_name: Optional[str] = None
+
+
+class GoogleDriveSettingsIn(BaseModel):
+    enabled: Optional[bool] = None
+    hour: Optional[int] = None
+    keep_days: Optional[int] = None
+    password: Optional[str] = None
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+
+
 class DuplicateGroup(BaseModel):
     content_hash: str
     document_ids: List[str]
@@ -780,6 +803,7 @@ class FinanceCategoryIn(BaseModel):
     kind: str = "expense"
     color: Optional[str] = None
     account_id: Optional[str] = None  # null = general / all accounts
+    parent_id: Optional[str] = None  # null = top-level; set to add a subcategory
 
 
 class FinanceCategoryOut(BaseModel):
@@ -790,6 +814,8 @@ class FinanceCategoryOut(BaseModel):
     is_system: bool = False
     account_id: Optional[str] = None
     account_name: Optional[str] = None
+    parent_id: Optional[str] = None
+    parent_name: Optional[str] = None
     scope: str = "general"  # general | account
 
 
@@ -846,6 +872,45 @@ class FinanceBudgetOut(BaseModel):
     year_month: str
     amount: float
     spent: float = 0
+
+
+class FinanceEmiIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    kind: str = "emi"  # emi | chitty | loan | insurance | rent | subscription | other
+    account_id: str
+    category_id: Optional[str] = None
+    amount: float
+    start_date: str
+    end_date: str
+    day_of_month: Optional[int] = None
+    auto_post: bool = True
+    notify_days: int = 2
+    notes: Optional[str] = None
+
+
+class FinanceEmiOut(BaseModel):
+    id: str
+    name: str
+    kind: str = "emi"
+    kind_label: str = "EMI"
+    account_id: str
+    account_name: str = ""
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    amount: float
+    start_date: str
+    end_date: str
+    day_of_month: int
+    next_due: Optional[str] = None
+    auto_post: bool = True
+    notify_days: int = 2
+    notes: Optional[str] = None
+    active: bool = True
+    status: str = "pending"  # pending | overdue | completed
+    total_installments: int = 0
+    paid_count: int = 0
+    remaining: int = 0
+    created_at: datetime
 
 
 class FinanceRecurringIn(BaseModel):

@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, crypto
+from app import models, crypto, schemas
 from app.config import settings
 from app.deps import get_current_user, require_owner, vault_id
 from app.extract import extract_text, parse_lab_readings
@@ -273,3 +273,70 @@ async def restore_backup(
 
     db.commit()
     return {"ok": True, **restored}
+
+
+@router.get("/google", response_model=schemas.GoogleDriveStatus)
+def google_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.drive_backup import get_or_create, status_dict
+    require_owner(current_user)
+    return status_dict(get_or_create(db, current_user))
+
+
+@router.post("/google/settings", response_model=schemas.GoogleDriveStatus)
+def google_settings(
+    body: schemas.GoogleDriveSettingsIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.drive_backup import get_or_create, status_dict
+    require_owner(current_user)
+    row = get_or_create(db, current_user)
+    if body.client_id:
+        row.client_id = body.client_id.strip()
+    if body.client_secret:
+        row.client_secret_enc = crypto.encrypt_text(body.client_secret.strip())
+    if body.password:
+        row.password_enc = crypto.encrypt_text(body.password)
+    if body.enabled is not None:
+        if body.enabled and (not row.refresh_token_enc or not (row.password_enc or body.password)):
+            raise HTTPException(400, "Connect Google Drive and set a backup password first")
+        row.enabled = body.enabled
+    if body.hour is not None:
+        row.hour = max(0, min(23, int(body.hour)))
+    if body.keep_days is not None:
+        row.keep_days = max(3, min(90, int(body.keep_days)))
+    db.commit()
+    db.refresh(row)
+    return status_dict(row)
+
+
+@router.post("/google/run")
+def google_run_now(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.drive_backup import run_backup
+    require_owner(current_user)
+    try:
+        return run_backup(db, current_user)
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/google/disconnect")
+def google_disconnect(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.drive_backup import get_or_create, status_dict
+    require_owner(current_user)
+    row = get_or_create(db, current_user)
+    row.refresh_token_enc = None
+    row.folder_id = None
+    row.connected_email = None
+    row.enabled = False
+    db.commit()
+    return status_dict(row)
