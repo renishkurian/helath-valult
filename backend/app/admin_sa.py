@@ -262,3 +262,35 @@ async def sa_signup_submit(request: Request, db: Session = Depends(get_db)):
             request, user, "sa_signup", error=str(exc), created="",
         ), status_code=400)
     return RedirectResponse(f"/admin/sa/signup?created={quote(created.email)}", status_code=302)
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""):
+    from app.drive_backup import oauth_ready
+    from app.server_settings import GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY, get_plain, get_secret
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
+    return templates.TemplateResponse("sa_settings.html", _sa_ctx(
+        request, user, "sa_settings",
+        google_client_id=get_plain(db, GOOGLE_CLIENT_ID_KEY),
+        google_has_secret=bool(get_secret(db, GOOGLE_CLIENT_SECRET_KEY) or (settings.GOOGLE_CLIENT_SECRET or "").strip()),
+        google_ready=oauth_ready(db),
+        redirect_uri=redirect_uri,
+        saved=saved or None,
+        env_fallback=bool((settings.GOOGLE_CLIENT_ID or "").strip() and (settings.GOOGLE_CLIENT_SECRET or "").strip()),
+    ))
+
+
+@router.post("/settings/google")
+async def sa_settings_google(request: Request, db: Session = Depends(get_db)):
+    from app.server_settings import GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY, put_plain, put_secret
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    form = await request.form()
+    put_plain(db, GOOGLE_CLIENT_ID_KEY, str(form.get("client_id") or ""))
+    put_secret(db, GOOGLE_CLIENT_SECRET_KEY, str(form.get("client_secret") or ""))
+    db.commit()
+    return RedirectResponse("/admin/sa/settings?saved=google", status_code=302)

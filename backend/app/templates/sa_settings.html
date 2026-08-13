@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Server settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Super Admin</div>
+    <h1 class="page-title">Server settings</h1>
+    <p class="page-lead">One Google app for this Pi. Vault owners only click Connect on Storage.</p>
+  </div>
+</div>
+
+{% if saved == 'google' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Google Drive app saved. Users can connect from Storage.</span>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico {% if google_ready %}good{% else %}gold{% endif %}"><i class="bi bi-google"></i></span>
+        <div>
+          <h2>Google Drive app</h2>
+          <div class="card-sub">OAuth Web client — encrypted on this server</div>
+        </div>
+        <span class="badge {% if google_ready %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if google_ready %}Ready{% else %}Not set{% endif %}</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">Create one Web client in Google Cloud, enable Drive API, then paste it here. Do not ask family members to do this.</p>
+        <div class="mb-3">
+          <label class="form-label" for="drive-redirect">Authorized redirect URI</label>
+          <input class="form-control js-copyable" id="drive-redirect" type="text" readonly value="{{ redirect_uri }}">
+          <div class="form-text">Add this exact URI (and any other hostname you use) on the Google client.</div>
+        </div>
+        <form method="post" action="/admin/sa/settings/google" class="stack">
+          <div>
+            <label class="form-label" for="client_id">Client ID</label>
+            <input class="form-control" id="client_id" type="text" name="client_id"
+                   value="{{ google_client_id }}" autocomplete="off"
+                   placeholder="xxxx.apps.googleusercontent.com">
+          </div>
+          <div>
+            <label class="form-label" for="client_secret">Client secret</label>
+            <input class="form-control" id="client_secret" type="password" name="client_secret"
+                   autocomplete="new-password"
+                   placeholder="{{ 'unchanged' if google_has_secret else 'paste the secret' }}">
+            <div class="form-text">Stored encrypted with MASTER_KEY. Leave blank to keep the current secret.</div>
+          </div>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save Google app</button>
+        </form>
+        {% if env_fallback and not google_client_id %}
+        <p class="text-faint small mt-3 mb-0">A client is also set in the Pi <code>.env</code>. Saving here takes priority.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-info-circle"></i></span>
+        <div><h2>What users do</h2></div>
+      </div>
+      <div class="card-body text-muted" style="font-size:.875rem;">
+        <p>After you save, each vault owner opens <strong>Storage</strong> and taps <strong>Connect Google Drive</strong>. Backups land in their own Drive, encrypted with their backup password.</p>
+        <p class="mb-0">While the Google app is in Testing, add each family Gmail as a test user or Google will block them.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

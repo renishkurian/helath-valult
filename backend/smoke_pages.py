@@ -127,7 +127,7 @@ PAGES = [
     "/admin/locker", "/admin/locker?expiring=1", "/admin/locker/add",
     "/admin/urls", "/admin/urls?favorite=1", "/admin/urls/add", "/admin/urls/manage",
     "/admin/sa", "/admin/sa/users", "/admin/sa/online", "/admin/sa/logins",
-    "/admin/sa/signup", "/admin/sa/users?q=smoke", "/admin/sa/logins?outcome=all",
+    "/admin/sa/signup", "/admin/sa/settings", "/admin/sa/users?q=smoke", "/admin/sa/logins?outcome=all",
     "/admin/login/qr",
 ]
 if pw_id:

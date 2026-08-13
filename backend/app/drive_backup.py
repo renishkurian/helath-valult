@@ -32,8 +32,16 @@ def get_or_create(db: Session, user: models.User) -> models.GoogleDriveBackup:
     return row
 
 
-def oauth_creds(row: models.GoogleDriveBackup | None = None) -> tuple[str, str]:
-    """Server .env first so every vault user shares one Google app."""
+def oauth_creds(
+    db: Session | None = None,
+    row: models.GoogleDriveBackup | None = None,
+) -> tuple[str, str]:
+    """Super Admin DB first, then .env, then a legacy per-vault client."""
+    if db is not None:
+        from app.server_settings import google_app
+        cid, secret = google_app(db)
+        if cid and secret:
+            return cid, secret
     cid = (settings.GOOGLE_CLIENT_ID or "").strip()
     secret = (settings.GOOGLE_CLIENT_SECRET or "").strip()
     if cid and secret:
@@ -43,19 +51,22 @@ def oauth_creds(row: models.GoogleDriveBackup | None = None) -> tuple[str, str]:
     return "", ""
 
 
-def oauth_ready(row: models.GoogleDriveBackup | None = None) -> bool:
-    cid, secret = oauth_creds(row)
+def oauth_ready(
+    db: Session | None = None,
+    row: models.GoogleDriveBackup | None = None,
+) -> bool:
+    cid, secret = oauth_creds(db, row)
     return bool(cid and secret)
 
 
-def status_dict(row: models.GoogleDriveBackup | None) -> dict:
+def status_dict(row: models.GoogleDriveBackup | None, db: Session | None = None) -> dict:
+    server = oauth_ready(db)
     if not row:
         return {
             "connected": False, "email": None, "enabled": False, "hour": 3, "keep_days": 14,
-            "has_password": False, "has_client": False, "server_oauth": False,
+            "has_password": False, "has_client": False, "server_oauth": server,
             "last_run_at": None, "last_ok": None, "last_error": None, "last_file_name": None,
         }
-    server = bool((settings.GOOGLE_CLIENT_ID or "").strip() and (settings.GOOGLE_CLIENT_SECRET or "").strip())
     return {
         "connected": bool(row.refresh_token_enc),
         "email": row.connected_email,
@@ -63,7 +74,7 @@ def status_dict(row: models.GoogleDriveBackup | None) -> dict:
         "hour": int(row.hour or 3),
         "keep_days": int(row.keep_days or 14),
         "has_password": bool(row.password_enc),
-        "has_client": oauth_ready(row),
+        "has_client": oauth_ready(db, row),
         "server_oauth": server,
         "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
         "last_ok": row.last_ok,
@@ -90,7 +101,7 @@ def run_backup(db: Session, user: models.User) -> dict:
     password = crypto.decrypt_text(row.password_enc)
     if not password:
         raise RuntimeError("Set a backup password before uploading to Drive")
-    client_id, client_secret = oauth_creds(row)
+    client_id, client_secret = oauth_creds(db, row)
     if not client_id or not client_secret:
         raise RuntimeError("Google Drive is not configured on this server")
     refresh = crypto.decrypt_text(row.refresh_token_enc) or ""

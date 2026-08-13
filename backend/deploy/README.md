@@ -69,8 +69,9 @@ the tunnel straight at `8076` unless you skip nginx.
 ## 5. App + Drive
 
 - Android server URL: `https://vault.rklab.online`
-- Put **one** OAuth Web client in the Pi `.env` (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`).
-  End users then only click **Connect Google Drive**.
+- Put **one** OAuth Web client in Super Admin → Server settings
+  (`GOOGLE_CLIENT_ID` / secret). Encrypted in the DB. End users only click
+  **Connect Google Drive**. `.env` is an optional fallback.
 - Authorized redirect URIs (add every hostname you use):
 
   `https://vault.rklab.online/admin/storage/google/callback`  

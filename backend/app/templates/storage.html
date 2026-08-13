@@ -86,7 +86,7 @@
       <div class="card-body">
         {% if ok=='connected' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Google Drive connected.</span></div>{% endif %}
         {% if ok=='backedup' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Backup uploaded to Drive.</span></div>{% endif %}
-        {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google Drive is not set up on this server yet. Ask the admin to add the Google app to the Pi <code>.env</code>.</span></div>{% endif %}
+        {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google Drive is not set up yet. Ask a super admin to save the Google app under Server settings.</span></div>{% endif %}
         {% if err=='denied' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google access was denied.</span></div>{% endif %}
         {% if err=='state' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Login expired — try Connect again.</span></div>{% endif %}
         {% if err=='token' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Could not get a Drive token. Check the redirect URI and that Drive API is enabled.</span></div>{% endif %}
@@ -136,7 +136,7 @@
         {% else %}
           <div class="alert alert-info" role="alert">
             <i class="bi bi-info-circle"></i>
-            <span>Ask the person who runs this server to add <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> to the Pi <code>.env</code>. After that, you only click Connect.</span>
+            <span>Ask a super admin to save the Google Drive app under Super Admin → Server settings. After that, you only click Connect.</span>
           </div>
         {% endif %}
 
@@ -144,7 +144,7 @@
           <div class="row g-3">
             {% if not drive.server_oauth and session_user.role == 'superadmin' %}
             <div class="col-12">
-              <p class="text-faint small mb-0">Server owner only — end users never see this once the Pi <code>.env</code> has the Google app.</p>
+              <p class="text-faint small mb-0">Fallback only. Prefer <a href="/admin/sa/settings">Server settings</a>.</p>
             </div>
             <div class="col-md-6">
               <label class="form-label" for="d-client-id">OAuth client ID</label>

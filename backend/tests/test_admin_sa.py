@@ -80,6 +80,9 @@ def test_superadmin_pages_render():
     form = sa.get("/admin/sa/signup")
     assert form.status_code == 200
     assert "Create user" in form.text
+    settings_page = sa.get("/admin/sa/settings")
+    assert settings_page.status_code == 200
+    assert "Google Drive app" in settings_page.text
     modules = sa.get("/admin/modules")
     assert "Super Admin" in modules.text
 
@@ -511,3 +514,39 @@ def test_qr_login_blocked_account_is_dummy_wait():
     assert wait.status_code == 200
     assert "Scan to sign in" in wait.text
     assert _pending_qr_id(email) is None
+
+
+def test_superadmin_saves_google_app():
+    from app.drive_backup import oauth_creds, oauth_ready
+
+    sa = _sa_client()
+    saved = sa.post(
+        "/admin/sa/settings/google",
+        data={"client_id": "sa-id.apps.googleusercontent.com", "client_secret": "sa-secret-value"},
+        follow_redirects=False,
+    )
+    assert saved.status_code in (302, 303)
+    db = SessionLocal()
+    try:
+        assert oauth_ready(db) is True
+        assert oauth_creds(db) == ("sa-id.apps.googleusercontent.com", "sa-secret-value")
+    finally:
+        db.close()
+    page = sa.get("/admin/sa/settings")
+    assert page.status_code == 200
+    assert "sa-id.apps.googleusercontent.com" in page.text
+    assert "sa-secret-value" not in page.text
+    assert "Ready" in page.text
+
+
+def test_owner_cannot_open_server_settings():
+    owner = TestClient(app)
+    r = owner.post(
+        "/auth/register",
+        json={"email": "nosettings@example.com", "password": "password123", "full_name": "No Settings"},
+    )
+    assert r.status_code == 201
+    owner.post("/admin/login", data={"email": "nosettings@example.com", "password": "password123"}, follow_redirects=False)
+    denied = owner.get("/admin/sa/settings", follow_redirects=False)
+    assert denied.status_code in (302, 303)
+    assert "/admin/sa/settings" not in (denied.headers.get("location") or "")

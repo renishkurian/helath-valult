@@ -1031,7 +1031,7 @@ def storage_page(request: Request, db: Session = Depends(get_db)):
                 total += p.stat().st_size
                 count += 1
     from app.drive_backup import get_or_create, status_dict
-    drive = status_dict(get_or_create(db, user))
+    drive = status_dict(get_or_create(db, user), db)
     redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
     return templates.TemplateResponse("storage.html", {
         "request": request, "session_user": user, "active_nav": "storage",
@@ -1097,9 +1097,9 @@ def storage_google_connect(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     row = get_or_create(db, user)
-    if not oauth_ready(row):
+    if not oauth_ready(db, row):
         return RedirectResponse("/admin/storage?err=client", status_code=302)
-    client_id, _secret = oauth_creds(row)
+    client_id, _secret = oauth_creds(db, row)
     state = secrets.token_urlsafe(16)
     request.session["gdrive_oauth_state"] = state
     url = gdrive.auth_url(client_id, _drive_redirect_uri(request), state)
@@ -1124,9 +1124,9 @@ def storage_google_callback(
     if not code or state != request.session.get("gdrive_oauth_state"):
         return RedirectResponse("/admin/storage?err=state", status_code=302)
     row = get_or_create(db, user)
-    if not oauth_ready(row):
+    if not oauth_ready(db, row):
         return RedirectResponse("/admin/storage?err=client", status_code=302)
-    client_id, secret = oauth_creds(row)
+    client_id, secret = oauth_creds(db, row)
     try:
         tokens = gdrive.exchange_code(client_id, secret, code, _drive_redirect_uri(request))
         refresh = tokens.get("refresh_token")

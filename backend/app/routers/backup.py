@@ -312,7 +312,7 @@ def google_status(
 ):
     from app.drive_backup import get_or_create, status_dict
     require_owner(current_user)
-    return status_dict(get_or_create(db, current_user))
+    return status_dict(get_or_create(db, current_user), db)
 
 
 @router.post("/google/settings", response_model=schemas.GoogleDriveStatus)
@@ -340,7 +340,7 @@ def google_settings(
         row.keep_days = max(3, min(90, int(body.keep_days)))
     db.commit()
     db.refresh(row)
-    return status_dict(row)
+    return status_dict(row, db)
 
 
 @router.post("/google/run")
@@ -369,4 +369,4 @@ def google_disconnect(
     row.connected_email = None
     row.enabled = False
     db.commit()
-    return status_dict(row)
+    return status_dict(row, db)

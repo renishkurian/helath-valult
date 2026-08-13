@@ -84,6 +84,15 @@ class LoginAttempt(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class ServerSetting(Base):
+    """Server-wide keys managed in Super Admin (Google app, later flags)."""
+    __tablename__ = "server_settings"
+    key = Column(String(64), primary_key=True)
+    value = Column(Text, nullable=True)
+    value_enc = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 class LoginChallenge(Base):
     """Pending web login that the already-signed-in Android app can allow or deny."""
     __tablename__ = "login_challenges"
