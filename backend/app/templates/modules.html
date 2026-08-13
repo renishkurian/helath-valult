@@ -64,5 +64,18 @@
     </div>
     <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
+
+  {% if session_user.role == 'superadmin' %}
+  <a class="module-card" href="/admin/sa" style="--mod-accent:#D9B978;">
+    <span class="mod-num">06</span>
+    <span class="mod-ico"><i class="bi bi-shield-check"></i></span>
+    <div>
+      <div class="eyebrow mb-1">Control plane</div>
+      <h2>Super Admin</h2>
+      <p class="mt-1">Users, online presence, failed logins, and new account signup.</p>
+    </div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
+  </a>
+  {% endif %}
 </div>
 {% endblock %}

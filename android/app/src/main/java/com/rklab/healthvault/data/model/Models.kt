@@ -31,6 +31,14 @@ data class InviteViewerRequest(
 data class TotpSetupOut(val secret: String, val otpauth_url: String)
 data class TotpVerifyIn(val totp_token: String? = null, val code: String)
 data class DeviceTokenIn(val token: String, val platform: String = "android")
+data class LoginChallengeOut(
+    val id: String,
+    val ip: String? = null,
+    val user_agent: String? = null,
+    val status: String = "pending",
+    val created_at: String? = null,
+    val expires_at: String? = null
+)
 
 // ---------- People ----------
 enum class Relation {

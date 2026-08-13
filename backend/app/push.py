@@ -11,15 +11,18 @@ import urllib.request
 from app.config import settings
 
 
-def send_fcm(token: str, title: str, body: str) -> bool:
+def send_fcm(token: str, title: str, body: str, data: dict | None = None) -> bool:
     key = getattr(settings, "FCM_SERVER_KEY", "") or ""
     if not key:
         return False
-    payload = json.dumps({
+    message = {
         "to": token,
         "notification": {"title": title, "body": body or "", "sound": "default"},
         "priority": "high",
-    }).encode("utf-8")
+    }
+    if data:
+        message["data"] = {str(k): str(v) for k, v in data.items()}
+    payload = json.dumps(message).encode("utf-8")
     req = urllib.request.Request(
         "https://fcm.googleapis.com/fcm/send",
         data=payload,

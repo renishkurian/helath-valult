@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Create user{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Super Admin</div>
+    <h1 class="page-title">Create user</h1>
+    <p class="page-lead">Opens a new isolated vault for this person. They sign in with the email and password you set.</p>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-person-plus"></i></span>
+        <div>
+          <h2>New account</h2>
+          <div class="card-sub">Minimum 8-character password</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if created %}
+        <div class="alert alert-success" role="alert">
+          <i class="bi bi-check2-circle"></i>
+          <span>Created <strong>{{ created }}</strong>. They can sign in at the login page now.</span>
+        </div>
+        {% endif %}
+        {% if error %}
+        <div class="alert alert-danger" role="alert">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span>{{ error }}</span>
+        </div>
+        {% endif %}
+        <form method="post" action="/admin/sa/signup">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="full_name">Full name <span class="req">*</span></label>
+              <input class="form-control" id="full_name" type="text" name="full_name" required autocomplete="name">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="email">Email <span class="req">*</span></label>
+              <input class="form-control" id="email" type="email" name="email" required autocomplete="off">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="password">Password <span class="req">*</span></label>
+              <input class="form-control" id="password" type="password" name="password" required minlength="8" autocomplete="new-password">
+              <div class="form-text">At least 8 characters. Share it out of band.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="role">Role</label>
+              <select class="form-select" id="role" name="role">
+                <option value="owner" selected>Vault owner — own Health / Password / Money vaults</option>
+                <option value="superadmin">Super admin — plus this control plane</option>
+              </select>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Create account</button>
+            <a class="btn btn-ghost" href="/admin/sa/users">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-info-circle"></i></span>
+        <div><h2>What this does</h2></div>
+      </div>
+      <div class="card-body">
+        <div class="stack-sm text-muted" style="font-size:.875rem;">
+          <p class="mb-0">A vault owner gets their own encrypted house: family, passwords, money, locker, and links. They cannot see other owners.</p>
+          <p class="mb-0">A super admin can also open this control plane — users, online list, and the failed-login log.</p>
+          <p class="mb-0">Viewers are still invited from inside a vault, not from here.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

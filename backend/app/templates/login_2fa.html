@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vault — Two-factor</title>
+<meta name="theme-color" content="#0A0C11">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css?v=8">
+</head>
+<body>
+<div class="auth-wrap">
+  <section class="auth-hero">
+    <a class="brand" href="/admin">
+      <span class="brand-mark">V</span>
+      <span>
+        <span class="brand-name d-block">Vault</span>
+        <span class="brand-sub">Private archive</span>
+      </span>
+    </a>
+    <div class="auth-hero-body">
+      <div class="eyebrow">Second factor</div>
+      <h1>Approve this sign-in<br>from your phone.</h1>
+      <p>Open the Vault app while you are already signed in. Tap Allow, or type an authenticator code here.</p>
+    </div>
+  </section>
+
+  <section class="auth-form">
+    <div class="auth-box">
+      <div class="eyebrow">Two-factor</div>
+      <h2>Waiting on your phone</h2>
+      <p class="text-muted mb-3">Signed in as <strong>{{ email }}</strong>.</p>
+
+      {% if error %}
+      <div class="alert alert-danger" role="alert">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>{{ error }}</span>
+      </div>
+      {% endif %}
+
+      <div class="card mb-4">
+        <div class="card-body d-flex align-items-start gap-3">
+          <span class="pulse-dot mt-1" aria-hidden="true"></span>
+          <div class="flex-grow-1">
+            <div class="fw-semibold">Check the Vault app</div>
+            <p class="text-muted mb-2" style="font-size:.875rem;">
+              A login request is waiting there. Keep the app open, then tap Allow.
+              {% if pushed %}A notification was also sent.{% endif %}
+            </p>
+            <form method="post" action="/admin/login/2fa/resend">
+              <button class="btn btn-ghost btn-sm" type="submit">Ping the phone again</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <form method="post" action="/admin/login/2fa" class="stack">
+        <div>
+          <label class="form-label" for="code">Or enter a 6-digit code</label>
+          <input class="form-control otp-input" id="code" type="text" name="code" required
+                 inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6"
+                 autocomplete="one-time-code" placeholder="000000">
+        </div>
+        <button class="btn btn-primary btn-lg btn-block" type="submit">
+          <i class="bi bi-shield-check"></i>
+          Verify code
+        </button>
+      </form>
+
+      <p class="text-faint mt-4 mb-0" style="font-size:.75rem;">
+        Lost the app? Ask a super admin to turn 2FA off for this account.
+        <a class="link-quiet" href="/admin/logout">Use a different account</a>
+      </p>
+    </div>
+  </section>
+</div>
+<script>
+(function () {
+  async function tick() {
+    try {
+      const r = await fetch("/admin/login/2fa/status", { credentials: "same-origin" });
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.redirect && data.status !== "pending") {
+        window.location.href = data.redirect;
+      }
+    } catch (e) {}
+  }
+  setInterval(tick, 2000);
+  tick();
+})();
+</script>
+</body>
+</html>

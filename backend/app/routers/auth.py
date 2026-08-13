@@ -1,42 +1,28 @@
-import secrets
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, security, crypto
+from app import models, schemas, security
+from app.accounts import AccountExists, create_vault_user
 from app.deps import get_current_user, require_owner, vault_id
+from app.login_guard import authenticate, client_ip, client_ua, log_attempt, rate_limited, touch_last_seen
+from app import totp as totp_util
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=schemas.LoginResponse, status_code=201)
 def register(body: schemas.RegisterRequest, db: Session = Depends(get_db)):
-    existing = db.query(models.User).filter(models.User.email == body.email).first()
-    if existing:
+    try:
+        user = create_vault_user(
+            db, email=body.email, password=body.password,
+            full_name=body.full_name, role=models.UserRole.owner.value,
+        )
+    except AccountExists:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
-
-    user = models.User(
-        email=body.email,
-        hashed_password=security.hash_password(body.password),
-        full_name=body.full_name,
-        role=models.UserRole.owner.value,
-    )
-    db.add(user)
-    db.flush()  # get user.id before creating the dependent 'self' person
-    user.vault_owner_id = user.id
-
-    initials = "".join([p[0].upper() for p in body.full_name.split()[:2]]) or "ME"
-    self_person = models.Person(
-        user_id=user.id,
-        name=body.full_name,
-        relation=models.Relation.self_,
-        avatar_initials=initials,
-        ice_token=secrets.token_urlsafe(18),
-    )
-    db.add(self_person)
-    db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     return schemas.LoginResponse(
         access_token=security.create_access_token(user.id),
@@ -45,14 +31,16 @@ def register(body: schemas.RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=schemas.LoginResponse)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == form.username).first()
-    if not user or not security.verify_password(form.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-        )
-    if user.totp_enabled and user.totp_secret_enc:
+def login(
+    request: Request,
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+):
+    user, err = authenticate(db, request, email=form.username, password=form.password)
+    if err or not user:
+        code = status.HTTP_429_TOO_MANY_REQUESTS if err and err.startswith("Too many") else status.HTTP_401_UNAUTHORIZED
+        raise HTTPException(status_code=code, detail=err or "Incorrect email or password")
+    if totp_util.is_enabled(user):
         return schemas.LoginResponse(
             totp_required=True,
             totp_token=security.create_totp_pending_token(user.id),
@@ -174,53 +162,94 @@ def register_device(
 @router.post("/totp/setup", response_model=schemas.TotpSetupOut)
 def totp_setup(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    secret = security.new_totp_secret()
-    current_user.totp_secret_enc = crypto.encrypt_text(secret)
-    current_user.totp_enabled = False
+    secret = totp_util.begin_setup(current_user)
     db.commit()
-    email = current_user.email
-    url = f"otpauth://totp/HealthVault:{email}?secret={secret}&issuer=HealthVault"
-    return schemas.TotpSetupOut(secret=secret, otpauth_url=url)
+    return schemas.TotpSetupOut(secret=secret, otpauth_url=totp_util.otpauth_url(current_user.email, secret))
 
 
 @router.post("/totp/enable", status_code=204)
 def totp_enable(body: schemas.TotpVerifyIn, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    secret = crypto.decrypt_text(current_user.totp_secret_enc)
-    if not secret or not security.verify_totp(secret, body.code):
+    if not totp_util.verify_code(current_user, body.code):
         raise HTTPException(status_code=400, detail="Invalid authenticator code")
-    current_user.totp_enabled = True
+    totp_util.enable(current_user)
     db.commit()
 
 
 @router.post("/totp/disable", status_code=204)
 def totp_disable(body: schemas.TotpVerifyIn, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    secret = crypto.decrypt_text(current_user.totp_secret_enc)
-    if current_user.totp_enabled and (not secret or not security.verify_totp(secret, body.code)):
+    if current_user.totp_enabled and not totp_util.verify_code(current_user, body.code):
         raise HTTPException(status_code=400, detail="Invalid authenticator code")
-    current_user.totp_enabled = False
-    current_user.totp_secret_enc = None
+    totp_util.disable(current_user)
     db.commit()
 
 
 @router.post("/totp/verify", response_model=schemas.LoginResponse)
-def totp_verify(body: schemas.TotpVerifyIn, db: Session = Depends(get_db)):
+def totp_verify(body: schemas.TotpVerifyIn, request: Request, db: Session = Depends(get_db)):
     if not body.totp_token:
         raise HTTPException(status_code=400, detail="Missing totp token")
-    try:
-        payload = security.decode_token(body.totp_token)
-        if payload.get("type") != "totp":
-            raise ValueError("wrong type")
-    except ValueError:
+    user = totp_util.pending_user(db, body.totp_token)
+    if not user or not totp_util.is_enabled(user):
         raise HTTPException(status_code=401, detail="Invalid or expired totp token")
-    user = db.query(models.User).filter(models.User.id == payload["sub"]).first()
-    if not user or not user.totp_enabled:
-        raise HTTPException(status_code=401, detail="Invalid totp token")
-    secret = crypto.decrypt_text(user.totp_secret_enc)
-    if not secret or not security.verify_totp(secret, body.code):
+    ip, ua = client_ip(request), client_ua(request)
+    blocked, retry = rate_limited(db, user.email, ip)
+    if blocked:
+        log_attempt(db, email=user.email, ip=ip, user_agent=ua, success=False, reason="rate_limited")
+        raise HTTPException(status_code=429, detail=f"Too many failed attempts. Try again in {retry} minute(s).")
+    if not totp_util.verify_code(user, body.code):
+        log_attempt(db, email=user.email, ip=ip, user_agent=ua, success=False, reason="totp_bad")
         raise HTTPException(status_code=401, detail="Invalid authenticator code")
+    log_attempt(db, email=user.email, ip=ip, user_agent=ua, success=True, reason="ok")
+    touch_last_seen(user)
     return schemas.LoginResponse(
         access_token=security.create_access_token(user.id),
         refresh_token=security.create_refresh_token(user.id),
+    )
+
+
+@router.get("/login-challenges", response_model=list[schemas.LoginChallengeOut])
+def list_login_challenges(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.login_challenge import pending_for_user
+    return pending_for_user(db, current_user.id)
+
+
+@router.post("/login-challenges/{challenge_id}/approve", status_code=204)
+def approve_login_challenge(
+    challenge_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.login_challenge import decide, get_challenge
+    row = get_challenge(db, challenge_id)
+    if not row or row.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Login request not found")
+    if not decide(db, row, "approved"):
+        raise HTTPException(status_code=409, detail="This login request is no longer pending")
+    log_attempt(
+        db, email=current_user.email, ip=client_ip(request),
+        user_agent=client_ua(request), success=True, reason="app_ok",
+    )
+
+
+@router.post("/login-challenges/{challenge_id}/deny", status_code=204)
+def deny_login_challenge(
+    challenge_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.login_challenge import decide, get_challenge
+    row = get_challenge(db, challenge_id)
+    if not row or row.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Login request not found")
+    if not decide(db, row, "denied"):
+        raise HTTPException(status_code=409, detail="This login request is no longer pending")
+    log_attempt(
+        db, email=current_user.email, ip=client_ip(request),
+        user_agent=client_ua(request), success=False, reason="app_denied",
     )

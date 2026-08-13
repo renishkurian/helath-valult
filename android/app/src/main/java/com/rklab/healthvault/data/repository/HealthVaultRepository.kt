@@ -103,6 +103,9 @@ class HealthVaultRepository(
 
     suspend fun totpSetup() = api.totpSetup()
     suspend fun totpEnable(code: String) = api.totpEnable(TotpVerifyIn(code = code))
+    suspend fun pendingLoginChallenges() = api.listLoginChallenges()
+    suspend fun approveLoginChallenge(id: String) = api.approveLoginChallenge(id)
+    suspend fun denyLoginChallenge(id: String) = api.denyLoginChallenge(id)
     suspend fun updatePerson(id: String, update: PersonUpdate) = api.updatePerson(id, update)
     suspend fun enableIce(personId: String) = api.enableIce(personId)
     suspend fun createSharePack(title: String, documentIds: List<String>, pin: String? = null, hours: Int = 48) =
@@ -627,6 +630,12 @@ class HealthVaultRepository(
         // 3. Refresh reminders
         val reminders = api.listReminders()
         db.reminderDao().upsertAll(reminders.map { it.toEntity() })
+
+        runCatching {
+            api.listLoginChallenges().firstOrNull()?.let {
+                com.rklab.healthvault.util.LoginChallengeNotifier.show(appContext, it)
+            }
+        }
 
         // 4. Drain pending uploads
         val pending = db.pendingUploadDao().getAll()

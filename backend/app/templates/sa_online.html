@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Online users{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Super Admin</div>
+    <h1 class="page-title">Online now</h1>
+    <p class="page-lead">Accounts that hit a page in the last {{ online_window }} minutes. Cookie sessions only show up after the next request.</p>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-broadcast"></i> Online</div>
+      <div class="val">{{ users | length }}</div>
+      <div class="sub">of {{ stats.total }} accounts</div>
+    </div>
+  </div>
+</div>
+
+{% if users %}
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr><th>Person</th><th>Role</th><th>Last seen</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <span class="avatar avatar-good">{{ (u.full_name | nice)[:1] }}</span>
+              <div>
+                <div class="fw-semibold">{{ u.full_name | nice }}</div>
+                <div class="text-faint" style="font-size:.75rem;">{{ u.email }}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span></td>
+          <td class="mono text-muted">{{ u.last_seen_at.strftime('%Y-%m-%d %H:%M:%S') if u.last_seen_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-broadcast"></i></div>
+    <div class="empty-title">Nobody else is here</div>
+    <p>You will appear after this page loads. Others show up when they open the app.</p>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

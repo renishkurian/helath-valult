@@ -48,6 +48,7 @@ class HealthVaultApp : Application() {
 
         createReminderNotificationChannel()
         createEmiNotificationChannel()
+        createLoginNotificationChannel()
         com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.ensureChannel(this)
         if (tokenManager.getAccessToken() != null) {
             com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.scanInbox(this)
@@ -82,8 +83,23 @@ class HealthVaultApp : Application() {
         }
     }
 
+    private fun createLoginNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                LOGIN_CHANNEL_ID,
+                "Web login requests",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Approve or deny a sign-in to the Vault website"
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
     companion object {
         const val REMINDER_CHANNEL_ID = "reminders"
         const val EMI_CHANNEL_ID = "emi"
+        const val LOGIN_CHANNEL_ID = "login_challenge"
     }
 }

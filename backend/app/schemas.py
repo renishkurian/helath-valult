@@ -53,6 +53,18 @@ class DeviceTokenIn(BaseModel):
     platform: str = "android"
 
 
+class LoginChallengeOut(BaseModel):
+    id: str
+    ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    status: str
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
 # ---------- People (self / family members) ----------
 class PersonCreate(BaseModel):
     name: str

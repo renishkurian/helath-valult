@@ -49,6 +49,7 @@ class AuditAction(str, enum.Enum):
 class UserRole(str, enum.Enum):
     owner = "owner"
     viewer = "viewer"
+    superadmin = "superadmin"
 
 
 class User(Base):
@@ -63,9 +64,35 @@ class User(Base):
     vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     totp_secret_enc = Column(Text, nullable=True)
     totp_enabled = Column(Boolean, default=False, nullable=False)
+    last_seen_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")
+
+
+class LoginAttempt(Base):
+    """Every HTML and API sign-in try — success or failure — for the superadmin log."""
+    __tablename__ = "login_attempts"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    email = Column(String(255), index=True, nullable=False, default="")
+    ip = Column(String(64), index=True, nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    success = Column(Boolean, default=False, nullable=False, index=True)
+    reason = Column(String(40), nullable=False, default="bad_credentials")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class LoginChallenge(Base):
+    """Pending web login that the already-signed-in Android app can allow or deny."""
+    __tablename__ = "login_challenges"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    status = Column(String(20), default="pending", nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    decided_at = Column(DateTime, nullable=True)
 
 
 class Person(Base):

@@ -20,6 +20,16 @@ class Settings:
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+    LOGIN_MAX_ATTEMPTS: int = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
+    LOGIN_LOCKOUT_MINUTES: int = int(os.getenv("LOGIN_LOCKOUT_MINUTES", "15"))
+    ONLINE_WINDOW_MINUTES: int = int(os.getenv("ONLINE_WINDOW_MINUTES", "5"))
+    # Empty keys disable the widget and the server check (tests, local Pi).
+    RECAPTCHA_SITE_KEY: str = os.getenv("RECAPTCHA_SITE_KEY", "").strip()
+    RECAPTCHA_SECRET: str = os.getenv("RECAPTCHA_SECRET", "").strip()
+    # Optional bootstrap: create or promote this account to superadmin on startup.
+    SUPERADMIN_EMAIL: str = os.getenv("SUPERADMIN_EMAIL", "").strip().lower()
+    SUPERADMIN_PASSWORD: str = os.getenv("SUPERADMIN_PASSWORD", "")
+    SUPERADMIN_NAME: str = os.getenv("SUPERADMIN_NAME", "Super Admin").strip() or "Super Admin"
 
     # --- Encryption ---
     # Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

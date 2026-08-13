@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Super Admin{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Super Admin
+    </div>
+    <h1 class="page-title">Control plane</h1>
+    <p class="page-lead">Every vault owner on this server, who is online, and every failed sign-in.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="/admin/sa/signup"><i class="bi bi-person-plus"></i> Create user</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <a class="stat card-link text-decoration-none" href="/admin/sa/users">
+      <div class="lbl"><i class="bi bi-people"></i> Users</div>
+      <div class="val">{{ stats.total }}</div>
+      <div class="sub">{{ stats.owners }} vault owners</div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a class="stat card-link text-decoration-none accent" href="/admin/sa/online">
+      <div class="lbl"><i class="bi bi-broadcast"></i> Online now</div>
+      <div class="val">{{ stats.online }}</div>
+      <div class="sub">seen in the last {{ online_window }} min</div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a class="stat card-link text-decoration-none" href="/admin/sa/logins">
+      <div class="lbl"><i class="bi bi-shield-exclamation"></i> Failed (24h)</div>
+      <div class="val">{{ stats.failed_24h }}</div>
+      <div class="sub">lockout after {{ max_attempts }} tries</div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-robot"></i> reCAPTCHA</div>
+      <div class="val" style="font-size:1.15rem;">{{ 'On' if recaptcha_on else 'Off' }}</div>
+      <div class="sub">{{ 'Google widget on the login form' if recaptcha_on else 'Set RECAPTCHA_SITE_KEY to enable' }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico bad"><i class="bi bi-shield-exclamation"></i></span>
+        <div>
+          <h2>Recent failed logins</h2>
+          <div class="card-sub">Last 8 attempts that did not get in</div>
+        </div>
+        <a class="btn btn-ghost btn-sm ms-auto" href="/admin/sa/logins">View all</a>
+      </div>
+      {% if recent_fails %}
+      <div class="list-rows">
+        {% for a in recent_fails %}
+        <div class="list-row">
+          <span class="avatar avatar-bad"><i class="bi bi-x-lg"></i></span>
+          <div class="row-body">
+            <div class="row-title">{{ a.email or 'unknown' }}</div>
+            <div class="row-meta">{{ a.ip or '—' }} · {{ a.reason.replace('_', ' ') }}</div>
+          </div>
+          <div class="row-side text-faint mono">{{ a.created_at.strftime('%b %d %H:%M') if a.created_at else '' }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-check2"></i></div>
+        <div class="empty-title">No failed attempts yet</div>
+        <p>Bad passwords, lockouts, and recaptcha failures will land here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-person-plus"></i></span>
+        <div>
+          <h2>Newest accounts</h2>
+          <div class="card-sub">Latest vaults on this server</div>
+        </div>
+        <a class="btn btn-ghost btn-sm ms-auto" href="/admin/sa/users">All users</a>
+      </div>
+      {% if recent_users %}
+      <div class="list-rows">
+        {% for u in recent_users %}
+        <div class="list-row">
+          <span class="avatar {% if is_online(u) %}avatar-good{% else %}avatar-gold{% endif %}">{{ (u.full_name | nice)[:1] }}</span>
+          <div class="row-body">
+            <div class="row-title">{{ u.full_name | nice }}</div>
+            <div class="row-meta">{{ u.email }}</div>
+          </div>
+          <span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-people"></i></div>
+        <div class="empty-title">No users</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

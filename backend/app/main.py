@@ -11,11 +11,13 @@ from app.config import settings
 from app.schema import ensure_schema
 from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls
 from app.scheduler import lifespan
-from app import admin, models
+from app import admin, admin_sa, models
 from app.templating import setup_templates
 
 # First run: create every table. Existing Pi DB: add any columns the old file is missing.
 ensure_schema(engine)
+from app.accounts import ensure_superadmin
+ensure_superadmin()
 
 app = FastAPI(
     title="Vault API",
@@ -54,6 +56,7 @@ app.include_router(finance.router)
 app.include_router(locker.router)
 app.include_router(urls.router)
 app.include_router(admin.router)
+app.include_router(admin_sa.router)
 
 _static = Path(__file__).resolve().parent / "static"
 _static.mkdir(exist_ok=True)

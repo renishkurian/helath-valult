@@ -22,7 +22,11 @@ def get_session_user(request: Request, db: Session = Depends(get_db)) -> Optiona
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    return db.query(models.User).filter(models.User.id == user_id).first()
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user:
+        from app.login_guard import touch_last_seen
+        touch_last_seen(user)
+    return user
 
 
 def require_login(request: Request, db: Session) -> Optional[models.User]:
@@ -49,20 +53,259 @@ def doc_out(doc: models.Document) -> dict:
 
 
 # ---------- Login / logout ----------
+def _login_ctx(request: Request, error=None):
+    from app.login_guard import recaptcha_enabled
+    return {
+        "request": request,
+        "error": error,
+        "recaptcha_site_key": settings.RECAPTCHA_SITE_KEY if recaptcha_enabled() else "",
+    }
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     if request.session.get("user_id"):
         return RedirectResponse("/admin/modules", status_code=302)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    if request.session.get("totp_pending"):
+        return RedirectResponse("/admin/login/2fa", status_code=302)
+    return templates.TemplateResponse("login.html", _login_ctx(request))
 
 
 @router.post("/login", response_class=HTMLResponse)
-def login_submit(request: Request, email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if not user or not security.verify_password(password, user.hashed_password):
-        return templates.TemplateResponse("login.html", {"request": request, "error": "Incorrect email or password"})
+async def login_submit(request: Request, db: Session = Depends(get_db)):
+    from app.login_guard import authenticate
+    from app import totp as totp_util
+    form = await request.form()
+    email = str(form.get("email") or "")
+    password = str(form.get("password") or "")
+    token = str(form.get("g-recaptcha-response") or "")
+    user, err = authenticate(
+        db, request, email=email, password=password,
+        recaptcha_token=token, check_recaptcha=True,
+    )
+    if err or not user:
+        return templates.TemplateResponse("login.html", _login_ctx(request, err or "Incorrect email or password"), status_code=401)
+    request.session.pop("totp_pending", None)
+    request.session.pop("login_challenge_id", None)
+    if totp_util.is_enabled(user):
+        from app.login_challenge import create_challenge, notify_devices
+        from app.login_guard import client_ip, client_ua
+        request.session.pop("user_id", None)
+        request.session["totp_pending"] = security.create_totp_pending_token(user.id)
+        challenge = create_challenge(db, user, client_ip(request), client_ua(request))
+        request.session["login_challenge_id"] = challenge.id
+        notify_devices(db, user, challenge)
+        return RedirectResponse("/admin/login/2fa", status_code=302)
     request.session["user_id"] = user.id
     return RedirectResponse("/admin/modules", status_code=302)
+
+
+def _two_factor_ctx(request: Request, user: models.User, error=None, **extra):
+    ctx = {
+        "request": request,
+        "error": error,
+        "email": user.email,
+        "has_totp": True,
+        "pushed": extra.pop("pushed", 0),
+        "challenge": extra.pop("challenge", None),
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _finish_web_login(request: Request, db: Session, user: models.User, reason: str = "ok"):
+    from app.login_challenge import consume
+    from app.login_guard import client_ip, client_ua, log_attempt, touch_last_seen
+    consume(db, request.session.get("login_challenge_id"))
+    if reason != "app_ok":
+        log_attempt(
+            db, email=user.email, ip=client_ip(request),
+            user_agent=client_ua(request), success=True, reason=reason,
+        )
+    touch_last_seen(user)
+    request.session.pop("totp_pending", None)
+    request.session.pop("login_challenge_id", None)
+    request.session["user_id"] = user.id
+
+
+def _pending_2fa_user(request: Request, db: Session):
+    from app import totp as totp_util
+    from app.login_challenge import get_challenge
+    if request.session.get("user_id"):
+        return None, None, RedirectResponse("/admin/modules", status_code=302)
+    user = totp_util.pending_user(db, request.session.get("totp_pending"))
+    if not user or not totp_util.is_enabled(user):
+        request.session.pop("totp_pending", None)
+        request.session.pop("login_challenge_id", None)
+        return None, None, RedirectResponse("/admin/login", status_code=302)
+    challenge = get_challenge(db, request.session.get("login_challenge_id"))
+    if challenge and challenge.user_id != user.id:
+        challenge = None
+    if challenge and challenge.status == "approved":
+        _finish_web_login(request, db, user, reason="app_ok")
+        return None, None, RedirectResponse("/admin/modules", status_code=302)
+    if challenge and challenge.status == "denied":
+        request.session.pop("totp_pending", None)
+        request.session.pop("login_challenge_id", None)
+        return None, None, templates.TemplateResponse(
+            "login.html", _login_ctx(request, "That sign-in was denied on your phone."), status_code=401,
+        )
+    if challenge and challenge.status == "expired":
+        request.session.pop("totp_pending", None)
+        request.session.pop("login_challenge_id", None)
+        return None, None, templates.TemplateResponse(
+            "login.html", _login_ctx(request, "The phone approval timed out. Sign in again."), status_code=401,
+        )
+    return user, challenge, None
+
+
+@router.get("/login/2fa", response_class=HTMLResponse)
+def login_2fa_form(request: Request, db: Session = Depends(get_db)):
+    user, challenge, early = _pending_2fa_user(request, db)
+    if early:
+        return early
+    return templates.TemplateResponse("login_2fa.html", _two_factor_ctx(request, user, challenge=challenge))
+
+
+@router.get("/login/2fa/status")
+def login_2fa_status(request: Request, db: Session = Depends(get_db)):
+    user, challenge, early = _pending_2fa_user(request, db)
+    if early:
+        if isinstance(early, RedirectResponse) and early.headers.get("location", "").endswith("/admin/modules"):
+            return {"status": "approved", "redirect": "/admin/modules"}
+        if isinstance(early, RedirectResponse):
+            return {"status": "expired", "redirect": "/admin/login"}
+        return {"status": "denied", "redirect": "/admin/login"}
+    return {"status": "pending", "has_totp": True}
+
+
+@router.post("/login/2fa/resend")
+def login_2fa_resend(request: Request, db: Session = Depends(get_db)):
+    from app.login_challenge import notify_devices
+    user, challenge, early = _pending_2fa_user(request, db)
+    if early:
+        return early
+    pushed = notify_devices(db, user, challenge) if challenge else 0
+    return templates.TemplateResponse(
+        "login_2fa.html",
+        _two_factor_ctx(request, user, challenge=challenge, pushed=pushed),
+    )
+
+
+@router.post("/login/2fa", response_class=HTMLResponse)
+async def login_2fa_submit(request: Request, db: Session = Depends(get_db)):
+    from app import totp as totp_util
+    from app.login_guard import client_ip, client_ua, log_attempt, rate_limited
+    user, challenge, early = _pending_2fa_user(request, db)
+    if early:
+        return early
+    form = await request.form()
+    code = str(form.get("code") or "")
+    ip, ua = client_ip(request), client_ua(request)
+    blocked, retry = rate_limited(db, user.email, ip)
+    if blocked:
+        log_attempt(db, email=user.email, ip=ip, user_agent=ua, success=False, reason="rate_limited")
+        return templates.TemplateResponse(
+            "login_2fa.html",
+            _two_factor_ctx(request, user, f"Too many failed attempts. Try again in {retry} minute(s).", challenge=challenge),
+            status_code=401,
+        )
+    if not totp_util.verify_code(user, code):
+        log_attempt(db, email=user.email, ip=ip, user_agent=ua, success=False, reason="totp_bad")
+        return templates.TemplateResponse(
+            "login_2fa.html",
+            _two_factor_ctx(request, user, "That code is not valid. Try the next one from your app.", challenge=challenge),
+            status_code=401,
+        )
+    _finish_web_login(request, db, user, reason="ok")
+    return RedirectResponse("/admin/modules", status_code=302)
+
+
+def _security_ctx(request: Request, user: models.User, **extra):
+    from app import totp as totp_util
+    from app import crypto
+    ctx = {
+        "request": request, "session_user": user,
+        "active_nav": "security", "active_module": "picker",
+        "people": [], "active_person_id": None,
+        "totp_on": totp_util.is_enabled(user),
+        "setup_secret": None, "setup_url": None, "setup_qr": None,
+    }
+    if (not ctx["totp_on"]) and user.totp_secret_enc:
+        secret = crypto.decrypt_text(user.totp_secret_enc)
+        if secret:
+            ctx["setup_secret"] = secret
+            ctx["setup_url"] = totp_util.otpauth_url(user.email, secret)
+            ctx["setup_qr"] = totp_util.qr_data_uri(ctx["setup_url"])
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/security", response_class=HTMLResponse)
+def security_page(request: Request, db: Session = Depends(get_db), saved: str = "", error: str = ""):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return templates.TemplateResponse("security.html", _security_ctx(
+        request, user, saved=saved or None, error=error or None,
+    ))
+
+
+@router.post("/security/setup", response_class=HTMLResponse)
+def security_setup(request: Request, db: Session = Depends(get_db)):
+    from app import totp as totp_util
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if totp_util.is_enabled(user):
+        return RedirectResponse("/admin/security", status_code=302)
+    totp_util.begin_setup(user)
+    db.commit()
+    return RedirectResponse("/admin/security", status_code=302)
+
+
+@router.post("/security/enable", response_class=HTMLResponse)
+async def security_enable(request: Request, db: Session = Depends(get_db)):
+    from app import totp as totp_util
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    if not totp_util.verify_code(user, str(form.get("code") or "")):
+        return templates.TemplateResponse("security.html", _security_ctx(
+            request, user, error="That authenticator code is not valid. Wait for a new one and try again.",
+        ), status_code=400)
+    totp_util.enable(user)
+    db.commit()
+    return RedirectResponse("/admin/security?saved=on", status_code=302)
+
+
+@router.post("/security/disable", response_class=HTMLResponse)
+async def security_disable(request: Request, db: Session = Depends(get_db)):
+    from app import totp as totp_util
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    if totp_util.is_enabled(user) and not totp_util.verify_code(user, str(form.get("code") or "")):
+        return templates.TemplateResponse("security.html", _security_ctx(
+            request, user, error="Enter a current authenticator code to turn 2FA off.",
+        ), status_code=400)
+    totp_util.disable(user)
+    db.commit()
+    return RedirectResponse("/admin/security?saved=off", status_code=302)
+
+
+@router.post("/security/cancel", response_class=HTMLResponse)
+def security_cancel(request: Request, db: Session = Depends(get_db)):
+    from app import totp as totp_util
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if not totp_util.is_enabled(user):
+        totp_util.disable(user)
+        db.commit()
+    return RedirectResponse("/admin/security", status_code=302)
 
 
 @router.get("/logout")

@@ -35,6 +35,15 @@ interface ApiService {
     @POST("auth/devices")
     suspend fun registerDevice(@Body body: DeviceTokenIn): Response<Unit>
 
+    @GET("auth/login-challenges")
+    suspend fun listLoginChallenges(): List<LoginChallengeOut>
+
+    @POST("auth/login-challenges/{id}/approve")
+    suspend fun approveLoginChallenge(@Path("id") id: String): Response<Unit>
+
+    @POST("auth/login-challenges/{id}/deny")
+    suspend fun denyLoginChallenge(@Path("id") id: String): Response<Unit>
+
     @POST("auth/totp/setup")
     suspend fun totpSetup(): TotpSetupOut
 

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Security{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Account
+    </div>
+    <h1 class="page-title">Security &amp; 2FA</h1>
+    <p class="page-lead">Protect this login with an authenticator app. Super Admin can turn it off if the device is lost.</p>
+  </div>
+</div>
+
+{% if saved == 'on' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Two-factor is on. The next sign-in will ask for a code.</span>
+</div>
+{% elif saved == 'off' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Two-factor is off. This account signs in with password only.</span>
+</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger" role="alert">
+  <i class="bi bi-exclamation-triangle"></i>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico {% if totp_on %}good{% else %}gold{% endif %}"><i class="bi bi-shield-lock"></i></span>
+        <div>
+          <h2>Authenticator</h2>
+          <div class="card-sub">{% if totp_on %}Required on web and API login{% else %}Optional extra lock on this account{% endif %}</div>
+        </div>
+        <span class="badge {% if totp_on %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if totp_on %}On{% else %}Off{% endif %}</span>
+      </div>
+      <div class="card-body">
+        {% if totp_on %}
+        <p class="text-muted mb-3">Any sign-in now needs the current 6-digit code from your app. Keep the app; there are no backup codes.</p>
+        <form method="post" action="/admin/security/disable" class="stack">
+          <div>
+            <label class="form-label" for="off-code">Current code to turn off</label>
+            <input class="form-control otp-input" id="off-code" type="text" name="code" required
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+          </div>
+          <button class="btn btn-outline-light w-fit" type="submit">Turn off 2FA</button>
+        </form>
+        {% elif setup_secret %}
+        <p class="text-muted">Scan this with Google Authenticator, Authy, or Aegis, then enter the code it shows.</p>
+        {% if setup_qr %}
+        <div class="qr-frame my-3">
+          <img src="{{ setup_qr }}" alt="QR code for authenticator setup" width="168" height="168">
+        </div>
+        {% endif %}
+        <div class="mb-3">
+          <div class="form-label">Secret key</div>
+          <div class="mono">{{ setup_secret }}</div>
+          <div class="form-text">Type this in if you cannot scan the QR.</div>
+        </div>
+        <form method="post" action="/admin/security/enable" class="stack">
+          <div>
+            <label class="form-label" for="on-code">Confirm with a code <span class="req">*</span></label>
+            <input class="form-control otp-input" id="on-code" type="text" name="code" required
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus placeholder="000000">
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Turn on 2FA</button>
+            <button class="btn btn-ghost" type="submit" form="cancel-2fa">Cancel setup</button>
+          </div>
+        </form>
+        <form id="cancel-2fa" method="post" action="/admin/security/cancel"></form>
+        {% else %}
+        <p class="text-muted mb-3">Works with any TOTP app. After you turn it on, password alone is not enough.</p>
+        <form method="post" action="/admin/security/setup">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-shield-lock"></i> Set up authenticator</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-info-circle"></i></span>
+        <div><h2>If you lose the app</h2></div>
+      </div>
+      <div class="card-body">
+        <div class="stack-sm text-muted" style="font-size:.875rem;">
+          <p class="mb-0">There is no email reset. A super admin can turn 2FA off for your account from All users, then you sign in with password and set it up again.</p>
+          <p class="mb-0">Android uses the same authenticator. A web sign-in also sends an Allow / Deny request to the Vault app if you are already signed in there.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

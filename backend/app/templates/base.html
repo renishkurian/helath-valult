@@ -10,6 +10,9 @@
   {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0C36A'},
   {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'}
 ] %}
+{% if session_user is defined and session_user and session_user.role == 'superadmin' %}
+  {% set modules = modules + [{'key':'superadmin','name':'Super Admin','kicker':'Control plane','href':'/admin/sa','icon':'bi-shield-check','accent':'#D9B978'}] %}
+{% endif %}
 {% set person_q = ('?person=' ~ active_person_id) if active_person_id else '' %}
 
 {% if active_module == 'passwords' %}
@@ -43,6 +46,15 @@
     {'key':'url_add','label':'Add link','href':'/admin/urls/add','icon':'bi-plus-lg'},
     {'key':'url_fav','label':'Favorites','href':'/admin/urls?favorite=1','icon':'bi-star'},
     {'key':'url_manage','label':'Categories & tags','href':'/admin/urls/manage','icon':'bi-sliders'}
+  ] %}
+{% elif active_module == 'superadmin' %}
+  {% set mod_key = 'superadmin' %}
+  {% set nav_items = [
+    {'key':'sa_home','label':'Overview','href':'/admin/sa','icon':'bi-speedometer2'},
+    {'key':'sa_users','label':'All users','href':'/admin/sa/users','icon':'bi-people'},
+    {'key':'sa_online','label':'Online now','href':'/admin/sa/online','icon':'bi-broadcast'},
+    {'key':'sa_logins','label':'Failed logins','href':'/admin/sa/logins','icon':'bi-shield-exclamation'},
+    {'key':'sa_signup','label':'Create user','href':'/admin/sa/signup','icon':'bi-person-plus'}
   ] %}
 {% elif active_module == 'picker' %}
   {% set mod_key = 'picker' %}
@@ -127,6 +139,10 @@
         <i class="bi bi-three-dots text-faint"></i>
       </button>
       <ul class="dropdown-menu w-100" aria-labelledby="{{ id_prefix }}-user">
+        {% if session_user.role == 'superadmin' %}
+        <li><a class="dropdown-item" href="/admin/sa"><i class="bi bi-shield-check"></i><span>Super Admin</span></a></li>
+        {% endif %}
+        <li><a class="dropdown-item" href="/admin/security"><i class="bi bi-shield-lock"></i><span>Security &amp; 2FA</span></a></li>
         <li><a class="dropdown-item" href="/admin/storage"><i class="bi bi-hdd-stack"></i><span>Storage &amp; backup</span></a></li>
         <li><a class="dropdown-item" href="/admin/activity"><i class="bi bi-activity"></i><span>Activity log</span></a></li>
         <li><hr class="dropdown-divider"></li>
@@ -151,7 +167,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=5">
+<link rel="stylesheet" href="/static/vault.css?v=8">
 {% block head %}{% endblock %}
 </head>
 <body>

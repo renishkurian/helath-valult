@@ -37,6 +37,10 @@ import com.rklab.healthvault.ui.screens.reminders.RemindersScreen
 import com.rklab.healthvault.ui.screens.search.SearchScreen
 import com.rklab.healthvault.ui.screens.server.ServerSetupScreen
 import com.rklab.healthvault.ui.screens.settings.SettingsScreen
+import com.rklab.healthvault.ui.screens.login.LoginChallengeDialog
+import com.rklab.healthvault.data.model.LoginChallengeOut
+import com.rklab.healthvault.util.LoginChallengeNotifier
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
 private object Routes {
@@ -123,6 +127,22 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     }
 
     val start = startDestination ?: return
+
+    var pendingWebLogin by remember { mutableStateOf<LoginChallengeOut?>(null) }
+    LaunchedEffect(repository.isLoggedIn, start) {
+        if (!repository.isLoggedIn || start == Routes.LOGIN || start == Routes.SERVER_SETUP) {
+            pendingWebLogin = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            runCatching {
+                val next = repository.pendingLoginChallenges().firstOrNull()
+                pendingWebLogin = next
+                if (next != null) LoginChallengeNotifier.show(context, next)
+            }
+            delay(3_000)
+        }
+    }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
@@ -699,5 +719,13 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 )
             }
         }
+    }
+
+    pendingWebLogin?.let { challenge ->
+        LoginChallengeDialog(
+            repository = repository,
+            challenge = challenge,
+            onDone = { pendingWebLogin = null }
+        )
     }
 }

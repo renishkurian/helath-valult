@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, security
+from app.login_guard import touch_last_seen
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -15,6 +16,10 @@ def vault_id(user: models.User) -> str:
 
 def is_viewer(user: models.User) -> bool:
     return (user.role or models.UserRole.owner.value) == models.UserRole.viewer.value
+
+
+def is_superadmin(user: models.User) -> bool:
+    return (user.role or "") == models.UserRole.superadmin.value
 
 
 def require_owner(user: models.User) -> models.User:
@@ -45,6 +50,7 @@ def get_current_user(
     user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None:
         raise credentials_error
+    touch_last_seen(user)
     return user
 
 

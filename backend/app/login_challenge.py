@@ -1,0 +1,104 @@
+"""Web login challenges that the already-signed-in Android app can allow or deny."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+
+from sqlalchemy.orm import Session
+
+from app import models
+from app.config import settings
+from app.push import send_fcm
+
+
+CHALLENGE_MINUTES = 5
+
+
+def create_challenge(db: Session, user: models.User, ip: str | None, user_agent: str) -> models.LoginChallenge:
+    now = datetime.utcnow()
+    db.query(models.LoginChallenge).filter(
+        models.LoginChallenge.user_id == user.id,
+        models.LoginChallenge.status == "pending",
+    ).update({"status": "expired", "decided_at": now}, synchronize_session=False)
+    row = models.LoginChallenge(
+        user_id=user.id,
+        ip=ip,
+        user_agent=(user_agent or "")[:400],
+        status="pending",
+        expires_at=now + timedelta(minutes=CHALLENGE_MINUTES),
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def get_challenge(db: Session, challenge_id: str | None) -> models.LoginChallenge | None:
+    if not challenge_id:
+        return None
+    row = db.query(models.LoginChallenge).filter(models.LoginChallenge.id == challenge_id).first()
+    if not row:
+        return None
+    if row.status == "pending" and row.expires_at and row.expires_at < datetime.utcnow():
+        row.status = "expired"
+        row.decided_at = datetime.utcnow()
+        db.commit()
+    return row
+
+
+def pending_for_user(db: Session, user_id: str) -> list[models.LoginChallenge]:
+    now = datetime.utcnow()
+    rows = (
+        db.query(models.LoginChallenge)
+        .filter(
+            models.LoginChallenge.user_id == user_id,
+            models.LoginChallenge.status == "pending",
+        )
+        .order_by(models.LoginChallenge.created_at.desc())
+        .all()
+    )
+    live = []
+    for row in rows:
+        if row.expires_at and row.expires_at < now:
+            row.status = "expired"
+            row.decided_at = now
+        else:
+            live.append(row)
+    if len(live) != len(rows):
+        db.commit()
+    return live
+
+
+def decide(db: Session, row: models.LoginChallenge, status: str) -> bool:
+    row = get_challenge(db, row.id) or row
+    if row.status != "pending":
+        return False
+    row.status = status
+    row.decided_at = datetime.utcnow()
+    db.commit()
+    return True
+
+
+def consume(db: Session, challenge_id: str | None) -> None:
+    row = get_challenge(db, challenge_id)
+    if not row or row.status != "pending":
+        return
+    row.status = "approved"
+    row.decided_at = datetime.utcnow()
+    db.commit()
+
+
+def notify_devices(db: Session, user: models.User, challenge: models.LoginChallenge) -> int:
+    tokens = db.query(models.DeviceToken).filter(models.DeviceToken.user_id == user.id).all()
+    if not tokens or not (getattr(settings, "FCM_SERVER_KEY", "") or ""):
+        return 0
+    title = "Approve web login"
+    where = challenge.ip or "a browser"
+    body = f"Vault sign-in from {where}. Open the app to allow or deny."
+    sent = 0
+    for tok in tokens:
+        if send_fcm(
+            tok.token, title, body,
+            data={"type": "login_challenge", "id": challenge.id},
+        ):
+            sent += 1
+    return sent

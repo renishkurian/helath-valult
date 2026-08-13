@@ -9,7 +9,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=5">
+<link rel="stylesheet" href="/static/vault.css?v=8">
 </head>
 <body>
 <div class="auth-wrap">
@@ -59,6 +59,12 @@
           <input class="form-control" id="password" type="password" name="password" required
                  autocomplete="current-password" placeholder="••••••••">
         </div>
+        {% if recaptcha_site_key %}
+        <div>
+          <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+          <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}" data-theme="dark"></div>
+        </div>
+        {% endif %}
         <button class="btn btn-primary btn-lg btn-block" type="submit">
           <i class="bi bi-box-arrow-in-right"></i>
           Enter vault

@@ -103,6 +103,8 @@ post("/admin/urls/add", data={"url": "https://example.com/reading", "title": "re
 
 db.close()
 db = sqlite3.connect(DB_PATH)
+db.execute("UPDATE users SET role = 'superadmin' WHERE email = ?", (EMAIL.lower(),))
+db.commit()
 pw_id = one("select id from vault_items limit 1")
 lk_id = one("select id from locker_documents limit 1") or one("select id from locker_items limit 1")
 url_id = one("select id from url_items limit 1") or one("select id from saved_urls limit 1")
@@ -114,7 +116,7 @@ PAGES = [
     "/admin/modules", "/admin", f"/admin?person={person_id}",
     "/admin/family", f"/admin/documents?person={person_id}&category=lab_report",
     f"/admin/care?person={person_id}", f"/admin/reminders?person={person_id}",
-    "/admin/shares", "/admin/activity", "/admin/storage",
+    "/admin/shares", "/admin/activity", "/admin/storage", "/admin/security",
     "/admin/passwords", "/admin/passwords?q=net", "/admin/passwords?item_type=note",
     "/admin/passwords/generator", "/admin/passwords/health",
     "/admin/passwords/sends", "/admin/passwords/trash",
@@ -124,6 +126,8 @@ PAGES = [
     "/admin/finance/categories", "/admin/finance/plan", "/admin/finance/recurring", "/admin/finance/ai",
     "/admin/locker", "/admin/locker?expiring=1", "/admin/locker/add",
     "/admin/urls", "/admin/urls?favorite=1", "/admin/urls/add", "/admin/urls/manage",
+    "/admin/sa", "/admin/sa/users", "/admin/sa/online", "/admin/sa/logins",
+    "/admin/sa/signup", "/admin/sa/users?q=smoke", "/admin/sa/logins?outcome=all",
 ]
 if pw_id:
     PAGES.append(f"/admin/passwords/{pw_id}")

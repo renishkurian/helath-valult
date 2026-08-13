@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}All users{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Super Admin</div>
+    <h1 class="page-title">All users</h1>
+    <p class="page-lead">Every account on this server, across every vault.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="/admin/sa/signup"><i class="bi bi-person-plus"></i> Create user</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">Total</div><div class="val">{{ stats.total }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat accent"><div class="lbl">Online</div><div class="val">{{ stats.online }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">Owners</div><div class="val">{{ stats.owners }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat"><div class="lbl">2FA on</div><div class="val">{{ stats.totp_on }}</div></div></div>
+</div>
+
+{% if cleared %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Two-factor turned off for <strong>{{ cleared }}</strong>. They can sign in with password only.</span>
+</div>
+{% endif %}
+
+<form class="filter-bar" method="get" action="/admin/sa/users">
+  <div class="search-field">
+    <i class="bi bi-search"></i>
+    <input class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Search name or email">
+  </div>
+  <select class="form-select" name="role" style="flex:0 1 180px;">
+    <option value="">All roles</option>
+    <option value="owner" {% if role=='owner' %}selected{% endif %}>Owner</option>
+    <option value="viewer" {% if role=='viewer' %}selected{% endif %}>Viewer</option>
+    <option value="superadmin" {% if role=='superadmin' %}selected{% endif %}>Superadmin</option>
+  </select>
+  <button class="btn btn-outline-light" type="submit">Filter</button>
+</form>
+
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Person</th>
+          <th>Role</th>
+          <th>2FA</th>
+          <th>Last seen</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <span class="avatar {% if is_online(u) %}avatar-good{% else %}avatar-gold{% endif %}">{{ (u.full_name | nice)[:1] }}</span>
+              <div>
+                <div class="fw-semibold">{{ u.full_name | nice }}</div>
+                <div class="text-faint" style="font-size:.75rem;">{{ u.email }}</div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span>
+            {% if is_online(u) %}<span class="badge badge-good ms-1">online</span>{% endif %}
+          </td>
+          <td>
+            {% if u.totp_enabled %}
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="badge badge-good">on</span>
+              <form method="post" action="/admin/sa/users/{{ u.id }}/disable-2fa" class="d-inline"
+                    onsubmit="return confirm('Turn off 2FA for this account? They can sign in with password only until they set it up again.');">
+                <button class="btn btn-ghost btn-sm" type="submit">Turn off</button>
+              </form>
+            </div>
+            {% else %}
+            <span class="text-faint">off</span>
+            {% endif %}
+          </td>
+          <td class="mono text-muted">{{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') if u.last_seen_at else '—' }}</td>
+          <td class="mono text-muted">{{ u.created_at.strftime('%Y-%m-%d') if u.created_at else '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">
+            <div class="empty-state">
+              <div class="empty-ico"><i class="bi bi-people"></i></div>
+              <div class="empty-title">No matching users</div>
+              <p>Try a different search, or create the first account.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
