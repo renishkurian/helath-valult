@@ -1111,16 +1111,20 @@ def finance_add_page(
         txn_type = "expense"
     cats_json = json.dumps([
         {
-            "id": c.id, "name": c.name, "kind": c.kind,
-            "parent_id": c.parent_id, "account_id": c.account_id,
+            "id": str(c.id), "name": c.name, "kind": c.kind,
+            "parent_id": str(c.parent_id) if c.parent_id else None,
+            "account_id": str(c.account_id) if c.account_id else None,
         }
         for c in categories
+    ])
+    accts_json = json.dumps([
+        {"id": str(a.id), "name": a.name, "account_type": a.account_type} for a in accounts
     ])
     return templates.TemplateResponse("finance_add.html", _fn_ctx(
         request, user, "fn_trans", accounts=accounts, categories=categories,
         txn_type=txn_type, today=datetime.utcnow().strftime("%Y-%m-%d"),
         now=datetime.utcnow().strftime("%H:%M"), inr=inr,
-        prefill_account_id=account_id or None, cats_json=cats_json,
+        prefill_account_id=account_id or None, cats_json=cats_json, accts_json=accts_json,
     ))
 
 
