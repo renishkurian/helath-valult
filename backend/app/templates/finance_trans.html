@@ -72,7 +72,7 @@
       <span>{{ day.label }}</span>
       <span><span class="mm-income">{{ inr(day.income) }}</span> &nbsp; <span class="mm-expense">{{ inr(day.expense) }}</span></span>
     </div>
-    {% for item in day.items %}
+    {% for item in day.txns %}
     <div class="mm-row">
       <div class="cat">{{ item.category_name or item.txn_type }}</div>
       <div>

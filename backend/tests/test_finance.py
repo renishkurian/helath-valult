@@ -263,9 +263,17 @@ def test_emi_setup_auto_post_and_complete():
     assert any(e["id"] == one["id"] for e in done)
 
 
-def test_admin_finance_monthly_view():
-    client.post("/auth/register", json={
+def test_admin_finance_daily_and_monthly_view():
+    r = client.post("/auth/register", json={
         "email": "monthly@example.com", "password": "password123", "full_name": "Monthly User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    bank = next(a for a in accounts if a["account_type"] == "bank")
+    client.post("/finance/transactions", headers=headers, json={
+        "account_id": bank["id"], "txn_type": "expense",
+        "amount": 75, "txn_date": "2026-08-13", "payee": "Tea stall",
     })
     r = client.post(
         "/admin/login",
@@ -273,10 +281,15 @@ def test_admin_finance_monthly_view():
         follow_redirects=False,
     )
     assert r.status_code in (200, 302), r.text
+    r = client.get("/admin/finance")
+    assert r.status_code == 200, r.text
+    assert "Internal Server Error" not in r.text
+    assert "Tea stall" in r.text
     r = client.get("/admin/finance?month=2026-08&view=monthly")
     assert r.status_code == 200, r.text
     assert "Internal Server Error" not in r.text
     assert "Monthly" in r.text
+    assert "Tea stall" in r.text
 
 
 def test_transaction_optional_image():

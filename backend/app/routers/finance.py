@@ -1374,12 +1374,12 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
     month_total = income - expense
     days: dict[str, dict] = {}
     for item in items:
-        bucket = days.setdefault(item.txn_date, {"date": item.txn_date, "income": 0.0, "expense": 0.0, "items": []})
+        bucket = days.setdefault(item.txn_date, {"date": item.txn_date, "income": 0.0, "expense": 0.0, "txns": []})
         if item.txn_type == "income":
             bucket["income"] += item.amount
         elif item.txn_type == "expense":
             bucket["expense"] += item.amount
-        bucket["items"].append(item)
+        bucket["txns"].append(item)
     day_list = []
     for date, bucket in days.items():
         try:
@@ -1399,7 +1399,7 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
     by_date = {d["date"]: d for d in day_list}
     for day in range(1, last + 1):
         key = f"{y:04d}-{m:02d}-{day:02d}"
-        info = by_date.get(key, {"date": key, "income": 0, "expense": 0, "items": []})
+        info = by_date.get(key, {"date": key, "income": 0, "expense": 0, "txns": []})
         cells.append(info)
     while len(cells) % 7:
         cells.append(None)
