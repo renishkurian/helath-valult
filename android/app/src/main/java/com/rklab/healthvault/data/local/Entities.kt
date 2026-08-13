@@ -72,6 +72,8 @@ data class PendingUploadEntity(
     val title: String,
     val hospital_name: String?,
     val doc_date: String?,
+    val expiry_date: String?,
+    val tags: String?,
     val notes: String?,
     val file_path: String,  // absolute path to the local file copy
     val mime_type: String,

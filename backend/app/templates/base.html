@@ -127,6 +127,7 @@
     <a class="nav-item {% if active_nav=='dashboard' %}active{% endif %}" href="/admin{% if active_person_id %}?person={{ active_person_id }}{% endif %}">Dashboard</a>
     <a class="nav-item {% if active_nav=='family' %}active{% endif %}" href="/admin/family">Family</a>
     <a class="nav-item {% if active_nav=='reminders' %}active{% endif %}" href="/admin/reminders{% if active_person_id %}?person={{ active_person_id }}{% endif %}">Reminders</a>
+    <a class="nav-item {% if active_nav=='activity' %}active{% endif %}" href="/admin/activity">Activity</a>
     <div class="sidebar-footer">
       <div style="font-size:12.5px; color:#C7D2D9; margin-bottom:8px;">{{ session_user.full_name }}</div>
       <a href="/admin/logout">Log out →</a>

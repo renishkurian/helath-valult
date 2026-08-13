@@ -40,6 +40,7 @@ def doc_out(doc: models.Document) -> dict:
     return {
         "id": doc.id, "category": doc.category.value, "title": doc.title,
         "hospital_name": doc.hospital_name, "doc_date": doc.doc_date,
+        "expiry_date": doc.expiry_date, "tags": doc.tags,
         "file_size": doc.file_size or 0, "created_at": doc.created_at,
         "notes": crypto.decrypt_text(doc.notes_enc),
     }
@@ -225,6 +226,7 @@ async def documents_add(
     request: Request,
     person_id: str = Form(...), category: str = Form(...), title: str = Form(...),
     hospital_name: str = Form(""), doc_date: str = Form(""), notes: str = Form(""),
+    expiry_date: str = Form(""), tags: str = Form(""),
     redirect_to: str = Form("dashboard"), redirect_category: str = Form(""),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -239,6 +241,7 @@ async def documents_add(
         doc = models.Document(
             person_id=person.id, category=models.DocCategory(category), title=title,
             hospital_name=hospital_name or None, doc_date=doc_date or None,
+            expiry_date=expiry_date or None, tags=tags or None,
             file_type=file.content_type, file_size=len(raw),
             notes_enc=crypto.encrypt_text(notes or None), file_path="",
         )
@@ -250,6 +253,22 @@ async def documents_add(
         enc_path = person_dir / f"{doc.id}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
         doc.file_path = str(enc_path.relative_to(settings.STORAGE_DIR))
+
+        if expiry_date:
+            from datetime import datetime, timedelta
+            try:
+                remind_at = datetime.strptime(expiry_date, "%Y-%m-%d") - timedelta(days=7)
+                remind_at = remind_at.replace(hour=9, minute=0, second=0, microsecond=0)
+                if remind_at < datetime.utcnow():
+                    remind_at = datetime.utcnow() + timedelta(minutes=5)
+            except ValueError:
+                remind_at = datetime.utcnow() + timedelta(days=1)
+            db.add(models.Reminder(
+                person_id=person.id, document_id=doc.id, title=f"{title} expires",
+                description=f"Renew/replace before {expiry_date}", remind_at=remind_at,
+                repeat_rule=models.RepeatRule.none,
+            ))
+
         db.commit()
 
     if redirect_to == "folder":
@@ -301,6 +320,55 @@ def documents_delete(
 
 
 # ---------- Reminders ----------
+@router.get("/activity", response_class=HTMLResponse)
+def activity_page(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    people = db.query(models.Person).filter(models.Person.user_id == user.id).all()
+    active_person = people[0] if people else None
+
+    entries = (
+        db.query(models.AuditLog)
+        .join(models.Document, models.AuditLog.document_id == models.Document.id, isouter=True)
+        .join(models.Person, models.Document.person_id == models.Person.id, isouter=True)
+        .filter((models.Person.user_id == user.id) | (models.AuditLog.document_id.is_(None)))
+        .order_by(models.AuditLog.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    doc_titles = {d.id: d.title for d in db.query(models.Document).join(models.Person).filter(models.Person.user_id == user.id).all()}
+
+    share_links = (
+        db.query(models.ShareLink)
+        .filter(models.ShareLink.created_by == user.id)
+        .order_by(models.ShareLink.created_at.desc())
+        .all()
+    )
+
+    return templates.TemplateResponse("activity.html", {
+        "request": request, "session_user": user, "active_nav": "activity",
+        "people": people, "active_person": active_person,
+        "active_person_id": active_person.id if active_person else None,
+        "entries": entries, "doc_titles": doc_titles, "share_links": share_links,
+    })
+
+
+@router.post("/activity/share/{link_id}/revoke")
+def revoke_share_link_admin(request: Request, link_id: str, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    link = db.query(models.ShareLink).filter(
+        models.ShareLink.id == link_id, models.ShareLink.created_by == user.id
+    ).first()
+    if link:
+        link.revoked = True
+        db.commit()
+    return RedirectResponse("/admin/activity", status_code=302)
+
+
 @router.get("/reminders", response_class=HTMLResponse)
 def reminders_page(request: Request, person: Optional[str] = None, db: Session = Depends(get_db)):
     user = require_login(request, db)

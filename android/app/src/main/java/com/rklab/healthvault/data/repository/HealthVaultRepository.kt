@@ -222,6 +222,8 @@ class HealthVaultRepository(
                     title = title,
                     hospital_name = hospitalName,
                     doc_date = docDate,
+                    expiry_date = expiryDate,
+                    tags = tags,
                     notes = notes,
                     file_path = firstFile.absolutePath,
                     mime_type = mimeTypes.firstOrNull() ?: "application/octet-stream"
@@ -399,6 +401,8 @@ class HealthVaultRepository(
                     hospitalName = upload.hospital_name?.let { text(it) },
                     docDate = upload.doc_date?.let { text(it) },
                     notes = upload.notes?.let { text(it) },
+                    expiryDate = upload.expiry_date?.let { text(it) },
+                    tags = upload.tags?.let { text(it) },
                     files = listOf(filePart)
                 )
                 db.documentDao().upsertAll(listOf(doc.toEntity()))
