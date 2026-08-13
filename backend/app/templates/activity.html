@@ -1,49 +1,146 @@
 {% extends "base.html" %}
 {% block title %}Activity{% endblock %}
 {% block content %}
-<div class="page-title">Activity</div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Activity</h1>
+    <p class="page-lead">Everything that happened in this vault — uploads, downloads, and shared-link traffic.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/shares"><i class="bi bi-share"></i> Shared links</a>
+  </div>
+</div>
 
-<h3 style="font-size:14px; color:var(--ink-soft); margin:18px 0 8px;">Share links</h3>
-<p style="color:var(--ink-soft); font-size:13px; margin:0 0 10px;">
-  Full IP / browser / download history is on <a href="/admin/shares">Shared links</a>.
-</p>
-<table class="ledger surface">
-  <thead><tr><th>Document</th><th>Expires</th><th>Views</th><th>Status</th><th></th></tr></thead>
-  <tbody>
-    {% for link in share_links %}
-    <tr>
-      <td>{{ doc_titles.get(link.document_id, '—') }}</td>
-      <td class="mono">{{ link.expires_at.strftime('%Y-%m-%d %H:%M') }}</td>
-      <td class="mono">{{ link.view_count }}{% if link.max_views %} / {{ link.max_views }}{% endif %}</td>
-      <td>{% if link.revoked %}<span class="tag" style="background:#F1DEDA; color:#B23B36;">Revoked</span>{% else %}<span class="tag tag-sage">Active</span>{% endif %}</td>
-      <td>
-        {% if not link.revoked %}
-        <form method="post" action="/admin/activity/share/{{ link.id }}/revoke" onsubmit="return confirm('Revoke this link?');">
-          <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Revoke</button>
-        </form>
-        {% endif %}
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="5" class="empty">No share links yet.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-activity"></i> Events</div>
+      <div class="val">{{ entries | length }}</div>
+      <div class="sub">most recent first</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-share"></i> Share links</div>
+      <div class="val">{{ share_links | length }}</div>
+      <div class="sub">created from this account</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-check2-circle"></i> Active links</div>
+      <div class="val">{{ share_links | rejectattr('revoked') | list | length }}</div>
+      <div class="sub">still reachable</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-folder2"></i> Documents</div>
+      <div class="val">{{ doc_titles | length }}</div>
+      <div class="sub">on file</div>
+    </div>
+  </div>
+</div>
 
-<h3 style="font-size:14px; color:var(--ink-soft); margin:24px 0 8px;">Recent activity</h3>
-<table class="ledger surface">
-  <thead><tr><th>When</th><th>Action</th><th>Document</th><th>Detail</th></tr></thead>
-  <tbody>
-    {% for entry in entries %}
-    <tr>
-      <td class="mono">{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-      <td>{{ entry.action.value.replace('_', ' ') | title }}</td>
-      <td>{{ doc_titles.get(entry.document_id, '—') }}</td>
-      <td style="color:var(--ink-soft); font-size:12.5px;">{{ entry.detail or '—' }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="4" class="empty">No activity yet.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-activity"></i></span>
+        <div>
+          <h2>Recent activity</h2>
+          <div class="card-sub">Last 200 events</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for entry in entries %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title">{{ entry.action.value.replace('_', ' ') | title }}</div>
+            <div class="record-meta">
+              <i class="bi bi-file-earmark-text"></i> {{ doc_titles.get(entry.document_id, '—') }}
+              · {{ entry.detail or '—' }}
+            </div>
+          </div>
+          <div class="record-side mono">{{ entry.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-activity"></i></div>
+          <div class="empty-title">No activity yet</div>
+          <p>Uploads, downloads, and share events will be logged here as they happen.</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-share"></i></span>
+        <div>
+          <h2>Share links</h2>
+          <div class="card-sub">Full IP and browser history on <a class="link-quiet" href="/admin/shares">Shared links</a></div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="table-card">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle">
+              <thead>
+                <tr>
+                  <th>Document</th>
+                  <th>Expires</th>
+                  <th>Views</th>
+                  <th>Status</th>
+                  <th class="table-actions">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for link in share_links %}
+                <tr>
+                  <td class="fw-semibold">{{ doc_titles.get(link.document_id, '—') }}</td>
+                  <td class="mono text-muted">{{ link.expires_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                  <td class="num text-muted">{{ link.view_count }}{% if link.max_views %} / {{ link.max_views }}{% endif %}</td>
+                  <td>
+                    {% if link.revoked %}
+                      <span class="badge badge-bad"><i class="bi bi-slash-circle"></i> Revoked</span>
+                    {% else %}
+                      <span class="badge badge-good"><i class="bi bi-check2-circle"></i> Active</span>
+                    {% endif %}
+                  </td>
+                  <td class="table-actions">
+                    {% if not link.revoked %}
+                    <form method="post" action="/admin/activity/share/{{ link.id }}/revoke" onsubmit="return confirm('Revoke this link?');">
+                      <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-octagon"></i> Revoke</button>
+                    </form>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="5">
+                    <div class="empty-state">
+                      <div class="empty-ico"><i class="bi bi-share"></i></div>
+                      <div class="empty-title">No share links yet</div>
+                      <p>Share a document to hand out a time-limited link.</p>
+                    </div>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

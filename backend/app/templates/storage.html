@@ -1,71 +1,202 @@
 {% extends "base.html" %}
 {% block title %}Storage{% endblock %}
 {% block content %}
-<div class="eyebrow">Health Vault</div>
-<div class="page-title">Storage & backup</div>
-<div class="surface" style="max-width:640px;">
-  <p><strong>{{ file_count }}</strong> files · <strong>{{ '%.1f'|format(bytes_used / 1048576) if bytes_used else '0' }}</strong> MB used</p>
-  <p style="color:var(--ink-soft); font-size:13px; margin:12px 0;">
-    Point Syncthing or a USB disk at <code class="mono">BACKUP_DIR</code> on the Pi, then snapshot here.
-  </p>
-  {% if backup_dir %}
-    <p class="mono" style="font-size:12px;">{{ backup_dir }}</p>
-    <form method="post" action="/admin/storage/snapshot"><button class="btn" type="submit">Write backup snapshot</button></form>
-  {% else %}
-    <p>Set <code>BACKUP_DIR</code> in the server <code>.env</code> to enable on-disk snapshots.</p>
-  {% endif %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Storage &amp; backup</h1>
+    <p class="page-lead">What this server is holding, and where a second copy of it goes.</p>
+  </div>
 </div>
 
-<div class="surface" style="max-width:640px; margin-top:18px;">
-  <div class="group-label">Google Drive — daily backup</div>
-  {% if ok=='connected' %}<p class="mm-income">Google Drive connected.</p>{% endif %}
-  {% if ok=='backedup' %}<p class="mm-income">Backup uploaded to Drive.</p>{% endif %}
-  {% if err=='client' %}<p class="mm-expense">Save Client ID and secret first.</p>{% endif %}
-  {% if err=='denied' %}<p class="mm-expense">Google access was denied.</p>{% endif %}
-  {% if err=='state' %}<p class="mm-expense">Login expired — try Connect again.</p>{% endif %}
-  {% if err=='token' %}<p class="mm-expense">Could not get a Drive token. Check the redirect URI and that Drive API is enabled.</p>{% endif %}
-  {% if err=='run' %}<p class="mm-expense">Backup failed. {{ drive.last_error or 'Check the password and Drive connection.' }}</p>{% endif %}
-
-  {% if drive.connected %}
-    <p>Connected as <strong>{{ drive.email or 'Google account' }}</strong></p>
-    {% if drive.last_run_at %}
-      <p class="mm-muted" style="font-size:13px;">Last: {{ drive.last_file_name or '—' }} · {{ drive.last_run_at }} {% if drive.last_ok %}ok{% else %}failed{% endif %}</p>
-    {% endif %}
-    {% if drive.last_error and not drive.last_ok %}<p class="mm-expense" style="font-size:13px;">{{ drive.last_error }}</p>{% endif %}
-  {% else %}
-    <p class="mm-muted" style="font-size:13px; margin-bottom:12px;">
-      In Google Cloud Console: enable <strong>Google Drive API</strong>, create an OAuth <strong>Web</strong> client,
-      and add this exact redirect URI:
-    </p>
-    <p class="mono" style="font-size:12px; word-break:break-all;">{{ redirect_uri }}</p>
-  {% endif %}
-
-  <form method="post" action="/admin/storage/google" style="margin-top:14px;">
-    <div class="field"><label>OAuth client ID</label><input name="client_id" value="" placeholder="{{ 'saved' if drive.has_client else 'xxxx.apps.googleusercontent.com' }}"></div>
-    <div class="field"><label>OAuth client secret</label><input name="client_secret" type="password" placeholder="{{ 'unchanged' if drive.has_client else 'secret' }}"></div>
-    <div class="field"><label>Backup password</label><input name="password" type="password" placeholder="{{ 'unchanged' if drive.has_password else 'required — encrypts the Drive file' }}"></div>
-    <div class="form-grid">
-      <div class="field"><label>Daily hour (local)</label><input name="hour" type="number" min="0" max="23" value="{{ drive.hour }}"></div>
-      <div class="field"><label>Keep days</label><input name="keep_days" type="number" min="3" max="90" value="{{ drive.keep_days }}"></div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-files"></i> Files</div>
+      <div class="val">{{ file_count }}</div>
+      <div class="sub">encrypted on this server</div>
     </div>
-    <label style="display:flex; gap:8px; align-items:center; margin:10px 0;">
-      <input type="checkbox" name="enabled" value="1" {% if drive.enabled %}checked{% endif %} {% if not drive.connected %}disabled{% endif %}>
-      Upload every day
-    </label>
-    <button class="btn" type="submit">Save Drive settings</button>
-  </form>
-
-  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
-    {% if not drive.connected %}
-    <form method="get" action="/admin/storage/google/connect"><button class="btn" type="submit">Connect Google Drive</button></form>
-    {% else %}
-    <form method="post" action="/admin/storage/google/run"><button class="btn" type="submit">Backup now</button></form>
-    <form method="post" action="/admin/storage/google/disconnect"><button class="btn-outline" type="submit">Disconnect</button></form>
-    {% endif %}
   </div>
-  <p class="mm-muted" style="font-size:12px; margin-top:12px;">
-    Files land in a Drive folder named <strong>Health Vault Backups</strong>, encrypted with your backup password.
-    The Pi uploads them even if the phone is off.
-  </p>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-hdd"></i> Space used</div>
+      <div class="val">{{ '%.1f'|format(bytes_used / 1048576) if bytes_used else '0' }} MB</div>
+      <div class="sub">{{ bytes_used }} bytes</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat {% if drive.connected %}accent{% endif %}">
+      <div class="lbl"><i class="bi bi-google"></i> Google Drive</div>
+      <div class="val">{% if drive.connected %}Connected{% else %}Not linked{% endif %}</div>
+      <div class="sub">{% if drive.connected %}{{ drive.email or 'Google account' }}{% else %}no account yet{% endif %}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-clock-history"></i> Daily upload</div>
+      <div class="val">{% if drive.enabled %}On{% else %}Off{% endif %}</div>
+      <div class="sub">{{ drive.hour }}:00 · keeps {{ drive.keep_days }} days</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-hdd-stack"></i></span>
+        <div>
+          <h2>Local snapshot</h2>
+          <div class="card-sub">A copy you can carry off the Pi</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-muted">
+          Point Syncthing or a USB disk at <code>BACKUP_DIR</code> on the Pi, then snapshot here.
+        </p>
+        {% if backup_dir %}
+          <div class="group-label">Backup directory</div>
+          <p class="mono text-muted">{{ backup_dir }}</p>
+          <form method="post" action="/admin/storage/snapshot">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-box-arrow-down"></i> Write backup snapshot</button>
+          </form>
+        {% else %}
+          <div class="alert alert-info" role="alert">
+            <i class="bi bi-info-circle"></i>
+            <span>Set <code>BACKUP_DIR</code> in the server <code>.env</code> to enable on-disk snapshots.</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-google"></i></span>
+        <div>
+          <h2>Google Drive — daily backup</h2>
+          <div class="card-sub">Encrypted archive uploaded on a schedule</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if ok=='connected' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Google Drive connected.</span></div>{% endif %}
+        {% if ok=='backedup' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Backup uploaded to Drive.</span></div>{% endif %}
+        {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Save Client ID and secret first.</span></div>{% endif %}
+        {% if err=='denied' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google access was denied.</span></div>{% endif %}
+        {% if err=='state' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Login expired — try Connect again.</span></div>{% endif %}
+        {% if err=='token' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Could not get a Drive token. Check the redirect URI and that Drive API is enabled.</span></div>{% endif %}
+        {% if err=='run' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Backup failed. {{ drive.last_error or 'Check the password and Drive connection.' }}</span></div>{% endif %}
+
+        {% if drive.connected %}
+          <div class="surface surface-2 mb-4">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+              <span class="avatar avatar-lg avatar-good"><i class="bi bi-google"></i></span>
+              <div>
+                <div class="fw-semibold">{{ drive.email or 'Google account' }}</div>
+                <div class="text-faint small">Connected</div>
+              </div>
+              <span class="badge badge-good ms-auto"><i class="bi bi-check2-circle"></i> Linked</span>
+            </div>
+            {% if drive.last_run_at %}
+            <div class="divider"></div>
+            <div class="facts">
+              <div class="fact">
+                <div class="lbl">Last file</div>
+                <div class="val truncate">{{ drive.last_file_name or '—' }}</div>
+              </div>
+              <div class="fact">
+                <div class="lbl">Last run</div>
+                <div class="val mono">{{ drive.last_run_at }}</div>
+              </div>
+              <div class="fact">
+                <div class="lbl">Result</div>
+                <div class="val">
+                  {% if drive.last_ok %}<span class="badge badge-good"><i class="bi bi-check2"></i> ok</span>
+                  {% else %}<span class="badge badge-bad"><i class="bi bi-x-lg"></i> failed</span>{% endif %}
+                </div>
+              </div>
+            </div>
+            {% endif %}
+            {% if drive.last_error and not drive.last_ok %}
+            <div class="alert alert-danger mt-3" role="alert">
+              <i class="bi bi-exclamation-triangle"></i><span>{{ drive.last_error }}</span>
+            </div>
+            {% endif %}
+          </div>
+        {% else %}
+          <p class="text-muted">
+            In Google Cloud Console: enable <strong>Google Drive API</strong>, create an OAuth <strong>Web</strong> client,
+            and add this exact redirect URI:
+          </p>
+          <div class="mb-4">
+            <label class="form-label" for="drive-redirect">Redirect URI</label>
+            <input class="form-control js-copyable" id="drive-redirect" type="text" readonly value="{{ redirect_uri }}">
+          </div>
+        {% endif %}
+
+        <form method="post" action="/admin/storage/google">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="d-client-id">OAuth client ID</label>
+              <input class="form-control" id="d-client-id" type="text" name="client_id" value="" placeholder="{{ 'saved' if drive.has_client else 'xxxx.apps.googleusercontent.com' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="d-client-secret">OAuth client secret</label>
+              <input class="form-control" id="d-client-secret" name="client_secret" type="password" placeholder="{{ 'unchanged' if drive.has_client else 'secret' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="d-password">Backup password</label>
+              <input class="form-control" id="d-password" name="password" type="password" placeholder="{{ 'unchanged' if drive.has_password else 'required — encrypts the Drive file' }}">
+              <div class="form-text">Encrypts the archive before it leaves the Pi.</div>
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label" for="d-hour">Daily hour (local)</label>
+              <input class="form-control" id="d-hour" name="hour" type="number" min="0" max="23" value="{{ drive.hour }}">
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label" for="d-keep">Keep days</label>
+              <input class="form-control" id="d-keep" name="keep_days" type="number" min="3" max="90" value="{{ drive.keep_days }}">
+            </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="d-enabled" name="enabled" value="1" {% if drive.enabled %}checked{% endif %} {% if not drive.connected %}disabled{% endif %}>
+                <label class="form-check-label" for="d-enabled">Upload every day</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save Drive settings</button>
+          </div>
+        </form>
+
+        <div class="divider"></div>
+
+        <div class="row-gap">
+          {% if not drive.connected %}
+          <form method="get" action="/admin/storage/google/connect">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-google"></i> Connect Google Drive</button>
+          </form>
+          {% else %}
+          <form method="post" action="/admin/storage/google/run">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-cloud-arrow-up"></i> Backup now</button>
+          </form>
+          <form method="post" action="/admin/storage/google/disconnect">
+            <button class="btn btn-outline-danger" type="submit"><i class="bi bi-plug"></i> Disconnect</button>
+          </form>
+          {% endif %}
+        </div>
+
+        <p class="text-faint small mt-3 mb-0">
+          Files land in a Drive folder named <strong>Health Vault Backups</strong>, encrypted with your backup password.
+          The Pi uploads them even if the phone is off.
+        </p>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

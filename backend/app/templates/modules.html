@@ -1,54 +1,68 @@
 {% extends "base.html" %}
 {% block title %}Modules{% endblock %}
 {% block content %}
-<div class="eyebrow">Workspace</div>
-<div class="page-title">The collection</div>
-<p class="page-lead">Five rooms. One key. Open only what you need.</p>
-<div class="index-list">
-  <a class="index-row" href="/admin">
-    <div class="index-num">01</div>
-    <div class="index-copy">
-      <div class="eyebrow">Medical records</div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Workspace</div>
+    <h1 class="page-title">Your five vaults</h1>
+    <p class="page-lead">One key opens the house. Open only the room you need.</p>
+  </div>
+</div>
+
+<div class="module-grid">
+  <a class="module-card" href="/admin" style="--mod-accent:#FF8095;">
+    <span class="mod-num">01</span>
+    <span class="mod-ico"><i class="bi bi-heart-pulse"></i></span>
+    <div>
+      <div class="eyebrow mb-1">Medical records</div>
       <h2>Health Vault</h2>
-      <p>Cards, documents, care, reminders, and family profiles.</p>
+      <p class="mt-1">Hospital cards, documents, care notes, reminders, and family profiles.</p>
     </div>
-    <div class="index-go" aria-hidden="true">→</div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
-  <a class="index-row" href="/admin/passwords">
-    <div class="index-num">02</div>
-    <div class="index-copy">
-      <div class="eyebrow">Secrets</div>
+
+  <a class="module-card" href="/admin/passwords" style="--mod-accent:#7FA6FF;">
+    <span class="mod-num">02</span>
+    <span class="mod-ico"><i class="bi bi-shield-lock"></i></span>
+    <div>
+      <div class="eyebrow mb-1">Secrets</div>
       <h2>Password Vault</h2>
-      <p>Logins, notes, cards, identities, generator, authenticator, and Send.</p>
+      <p class="mt-1">Logins, notes, cards, identities, generator, authenticator, and Send.</p>
     </div>
-    <div class="index-go" aria-hidden="true">→</div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
-  <a class="index-row" href="/admin/finance">
-    <div class="index-num">03</div>
-    <div class="index-copy">
-      <div class="eyebrow">Money</div>
+
+  <a class="module-card" href="/admin/finance" style="--mod-accent:#4ADE9B;">
+    <span class="mod-num">03</span>
+    <span class="mod-ico"><i class="bi bi-wallet2"></i></span>
+    <div>
+      <div class="eyebrow mb-1">Money</div>
       <h2>Money Manager</h2>
-      <p>Accounts, daily ledger, stats, budgets, and SMS auto-tag.</p>
+      <p class="mt-1">Accounts, daily ledger, stats, budgets, and SMS auto-tagging.</p>
     </div>
-    <div class="index-go" aria-hidden="true">→</div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
-  <a class="index-row" href="/admin/locker">
-    <div class="index-num">04</div>
-    <div class="index-copy">
-      <div class="eyebrow">IDs &amp; papers</div>
+
+  <a class="module-card" href="/admin/locker" style="--mod-accent:#F0C36A;">
+    <span class="mod-num">04</span>
+    <span class="mod-ico"><i class="bi bi-safe2"></i></span>
+    <div>
+      <div class="eyebrow mb-1">IDs &amp; papers</div>
       <h2>Document Vault</h2>
-      <p>Aadhaar, PAN, passport, RC, insurance, warranties — encrypted on the Pi.</p>
+      <p class="mt-1">Aadhaar, PAN, passport, RC, insurance, and warranties — encrypted on the Pi.</p>
     </div>
-    <div class="index-go" aria-hidden="true">→</div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
-  <a class="index-row" href="/admin/urls">
-    <div class="index-num">05</div>
-    <div class="index-copy">
-      <div class="eyebrow">Bookmarks</div>
+
+  <a class="module-card" href="/admin/urls" style="--mod-accent:#C0A8FF;">
+    <span class="mod-num">05</span>
+    <span class="mod-ico"><i class="bi bi-link-45deg"></i></span>
+    <div>
+      <div class="eyebrow mb-1">Bookmarks</div>
       <h2>URL Vault</h2>
-      <p>Save links with previews, categories, tags, search, and shareable pages.</p>
+      <p class="mt-1">Save links with previews, categories, tags, search, and shareable pages.</p>
     </div>
-    <div class="index-go" aria-hidden="true">→</div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
 </div>
 {% endblock %}

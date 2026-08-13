@@ -4,91 +4,101 @@
 <div class="page-head">
   <div>
     <div class="eyebrow">URL Vault</div>
-    <div class="page-title">Categories & tags</div>
+    <h1 class="page-title">Categories &amp; tags</h1>
+    <p class="page-lead">Rename, recode, or add your own — Adult, Instagram, News, Songs are just a starting set.</p>
   </div>
-  <a class="btn-outline" href="/admin/urls">← Links</a>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/urls"><i class="bi bi-arrow-left"></i> Links</a>
+  </div>
 </div>
-<p class="uv-manage-lead">Rename, recode, or add your own — Adult, Instagram, News, Songs are just a starting set.</p>
 
-<div class="grid grid-2 uv-manage-grid">
-  <section class="surface">
-    <div class="group-label">Categories</div>
-    {% for c in categories %}
-    <form method="post" action="/admin/urls/categories/{{ c.id }}" class="uv-manage-row">
-      <input type="color" name="color" value="{{ c.color or '#8B95A8' }}" aria-label="Color for {{ c.name }}">
-      <input name="name" value="{{ c.name }}" required aria-label="Category name">
-      <span class="fcount">{{ c.count }}</span>
-      <div class="uv-manage-actions">
-        <button class="btn-compact save" type="submit">Save</button>
-        <button class="btn-compact danger" form="del-cat-{{ c.id }}" type="submit" onclick="return confirm('Delete category {{ c.name }}? Links stay, uncategorized.');">Delete</button>
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-folder2"></i></span>
+        <div><h2>Categories</h2><div class="card-sub">One folder per link</div></div>
       </div>
-    </form>
-    <form id="del-cat-{{ c.id }}" method="post" action="/admin/urls/categories/{{ c.id }}/delete"></form>
-    {% endfor %}
-    <form method="post" action="/admin/urls/categories" class="uv-manage-row uv-manage-add">
-      <input type="color" name="color" value="#34D399" aria-label="New category color">
-      <input name="name" placeholder="New category" required>
-      <button class="btn" type="submit">Add</button>
-    </form>
-  </section>
+      {% if categories %}
+      <div class="list-rows">
+        {% for c in categories %}
+        <form class="list-row flex-wrap" method="post" action="/admin/urls/categories/{{ c.id }}">
+          <label class="visually-hidden" for="cat-color-{{ c.id }}">Color for {{ c.name }}</label>
+          <input class="form-control form-control-color flex-shrink-0" id="cat-color-{{ c.id }}" type="color" name="color" value="{{ c.color or '#8B95A8' }}" aria-label="Color for {{ c.name }}">
+          <div class="row-body">
+            <label class="visually-hidden" for="cat-name-{{ c.id }}">Category name</label>
+            <input class="form-control" id="cat-name-{{ c.id }}" name="name" value="{{ c.name }}" required aria-label="Category name">
+          </div>
+          <span class="badge badge-soft">{{ c.count }}</span>
+          <div class="row-actions">
+            <button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2"></i> Save</button>
+            <button class="btn btn-sm btn-outline-danger" form="del-cat-{{ c.id }}" type="submit" onclick="return confirm('Delete category {{ c.name }}? Links stay, uncategorized.');"><i class="bi bi-trash3"></i> Delete</button>
+          </div>
+        </form>
+        <form id="del-cat-{{ c.id }}" method="post" action="/admin/urls/categories/{{ c.id }}/delete"></form>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-folder2"></i></div>
+        <div class="empty-title">No categories yet</div>
+        <p>Add one below to start filing links into folders.</p>
+      </div>
+      {% endif %}
+      <div class="card-footer">
+        <form class="d-flex flex-wrap gap-2" method="post" action="/admin/urls/categories">
+          <label class="visually-hidden" for="cat-new-color">New category color</label>
+          <input class="form-control form-control-color flex-shrink-0" id="cat-new-color" type="color" name="color" value="#34D399" aria-label="New category color">
+          <label class="visually-hidden" for="cat-new-name">New category name</label>
+          <input class="form-control flex-grow-1" id="cat-new-name" name="name" placeholder="New category" required>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg"></i> Add</button>
+        </form>
+      </div>
+    </div>
+  </div>
 
-  <section class="surface">
-    <div class="group-label">Tags</div>
-    {% for t in tags %}
-    <form method="post" action="/admin/urls/tags/{{ t.id }}" class="uv-manage-row">
-      <input type="color" name="color" value="{{ t.color or '#8B95A8' }}" aria-label="Color for {{ t.name }}">
-      <input name="name" value="{{ t.name }}" required aria-label="Tag name">
-      <span class="fcount">{{ t.count }}</span>
-      <div class="uv-manage-actions">
-        <button class="btn-compact save" type="submit">Save</button>
-        <button class="btn-compact danger" form="del-tag-{{ t.id }}" type="submit" onclick="return confirm('Delete tag {{ t.name }}?');">Delete</button>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico plum"><i class="bi bi-tags"></i></span>
+        <div><h2>Tags</h2><div class="card-sub">Many per link</div></div>
       </div>
-    </form>
-    <form id="del-tag-{{ t.id }}" method="post" action="/admin/urls/tags/{{ t.id }}/delete"></form>
-    {% endfor %}
-    <form method="post" action="/admin/urls/tags" class="uv-manage-row uv-manage-add">
-      <input type="color" name="color" value="#A89BFF" aria-label="New tag color">
-      <input name="name" placeholder="New tag" required>
-      <button class="btn" type="submit">Add</button>
-    </form>
-  </section>
+      {% if tags %}
+      <div class="list-rows">
+        {% for t in tags %}
+        <form class="list-row flex-wrap" method="post" action="/admin/urls/tags/{{ t.id }}">
+          <label class="visually-hidden" for="tag-color-{{ t.id }}">Color for {{ t.name }}</label>
+          <input class="form-control form-control-color flex-shrink-0" id="tag-color-{{ t.id }}" type="color" name="color" value="{{ t.color or '#8B95A8' }}" aria-label="Color for {{ t.name }}">
+          <div class="row-body">
+            <label class="visually-hidden" for="tag-name-{{ t.id }}">Tag name</label>
+            <input class="form-control" id="tag-name-{{ t.id }}" name="name" value="{{ t.name }}" required aria-label="Tag name">
+          </div>
+          <span class="badge badge-soft">{{ t.count }}</span>
+          <div class="row-actions">
+            <button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2"></i> Save</button>
+            <button class="btn btn-sm btn-outline-danger" form="del-tag-{{ t.id }}" type="submit" onclick="return confirm('Delete tag {{ t.name }}?');"><i class="bi bi-trash3"></i> Delete</button>
+          </div>
+        </form>
+        <form id="del-tag-{{ t.id }}" method="post" action="/admin/urls/tags/{{ t.id }}/delete"></form>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-tags"></i></div>
+        <div class="empty-title">No tags yet</div>
+        <p>Tags let one link show up under several labels.</p>
+      </div>
+      {% endif %}
+      <div class="card-footer">
+        <form class="d-flex flex-wrap gap-2" method="post" action="/admin/urls/tags">
+          <label class="visually-hidden" for="tag-new-color">New tag color</label>
+          <input class="form-control form-control-color flex-shrink-0" id="tag-new-color" type="color" name="color" value="#A89BFF" aria-label="New tag color">
+          <label class="visually-hidden" for="tag-new-name">New tag name</label>
+          <input class="form-control flex-grow-1" id="tag-new-name" name="name" placeholder="New tag" required>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg"></i> Add</button>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
-<style>
-  .uv-manage-lead{ color:var(--ink-soft); margin-bottom:22px; max-width:560px; }
-  .uv-manage-grid{ align-items:start; gap:22px; }
-  .uv-manage-row{
-    display:grid; grid-template-columns:40px minmax(0,1fr) auto auto;
-    gap:10px; align-items:center; margin:0; padding:10px 0;
-    border-bottom:1px solid var(--line);
-  }
-  .uv-manage-row input{ min-width:0; }
-  .uv-manage-row input[type=color]{
-    width:40px; height:40px; padding:2px; border:1px solid var(--line);
-    border-radius:10px; background:#0C0C10; cursor:pointer;
-  }
-  .uv-manage-row .fcount{ font-size:12px; color:var(--ink-soft); min-width:1.6em; text-align:right; }
-  .uv-manage-actions{ display:flex; gap:8px; justify-content:flex-end; }
-  .uv-manage-add{
-    grid-template-columns:40px minmax(0,1fr) auto;
-    border-bottom:none; margin-top:4px; padding-top:14px;
-  }
-  .btn-compact{
-    appearance:none; -webkit-appearance:none;
-    display:inline-flex; align-items:center; justify-content:center;
-    min-height:40px; padding:8px 14px; border-radius:10px;
-    font:inherit; font-size:13px; font-weight:600; cursor:pointer;
-    border:1px solid var(--line); background:transparent; color:var(--ink);
-  }
-  .btn-compact.save{ color:var(--sage); border-color:rgba(61,220,151,0.35); background:var(--sage-bg); }
-  .btn-compact.danger{ color:#F8E3A8; border-color:rgba(245,185,66,0.35); background:var(--mustard-bg); }
-  @media (max-width:720px){
-    .uv-manage-grid{ grid-template-columns:1fr; gap:16px; }
-    .uv-manage-row{ grid-template-columns:40px minmax(0,1fr); }
-    .uv-manage-row .fcount{ display:none; }
-    .uv-manage-actions{ grid-column:1 / -1; }
-    .uv-manage-actions .btn-compact{ flex:1; }
-    .uv-manage-add{ grid-template-columns:40px minmax(0,1fr); }
-    .uv-manage-add .btn{ grid-column:1 / -1; width:100%; }
-  }
-</style>
 {% endblock %}

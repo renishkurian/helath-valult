@@ -1,56 +1,118 @@
 {% extends "base.html" %}
 {% block title %}Shared links{% endblock %}
 {% block content %}
-<div class="eyebrow">Health Vault</div>
-<div class="page-title">Shared links</div>
-<p style="color:var(--ink-soft); margin-bottom:20px; max-width:640px;">
-  Every time someone opens or downloads a link, the time, IP address, and browser are recorded here. Revoke a link to cut off access immediately.
-</p>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Shared links</h1>
+    <p class="page-lead">
+      Every time someone opens or downloads a link, the time, IP address, and browser are recorded here.
+      Revoke a link to cut off access immediately.
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/activity"><i class="bi bi-activity"></i> Activity log</a>
+  </div>
+</div>
 
 {% for item in items %}
-<div class="surface" style="margin-bottom:16px;">
-  <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+<div class="card mb-3">
+  <div class="card-header">
+    <span class="card-ico {% if item.link.revoked %}bad{% else %}info{% endif %}"><i class="bi bi-share"></i></span>
     <div>
-      <div style="font-weight:600;">{{ item.title }}</div>
-      <div class="mono" style="font-size:11.5px; color:var(--ink-soft); margin-top:4px;">
+      <h2>{{ item.title }}</h2>
+      <div class="card-sub">
         Created {{ item.link.created_at.strftime('%Y-%m-%d %H:%M') }}
         · expires {{ item.link.expires_at.strftime('%Y-%m-%d %H:%M') }}
-        · {{ item.link.view_count }} opens
-        · {{ item.downloads }} downloads
-      </div>
-      <div class="mono" style="font-size:11px; margin-top:6px; word-break:break-all;">
-        {{ request.base_url }}share/public/{{ item.link.token }}/page
       </div>
     </div>
-    <div style="display:flex; gap:8px; align-items:center;">
+    <div class="d-flex align-items-center gap-2 ms-auto">
       {% if item.link.revoked %}
-        <span class="tag" style="background:#F1DEDA; color:#B23B36;">Revoked</span>
+        <span class="badge badge-bad"><i class="bi bi-slash-circle"></i> Revoked</span>
       {% else %}
-        <span class="tag tag-sage">Active</span>
+        <span class="badge badge-good"><i class="bi bi-check2-circle"></i> Active</span>
         <form method="post" action="/admin/shares/{{ item.link.id }}/revoke" onsubmit="return confirm('Revoke this link? It will stop working immediately.');">
-          <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Revoke</button>
+          <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-octagon"></i> Revoke</button>
         </form>
       {% endif %}
     </div>
   </div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end mb-4">
+      <div class="col-lg-8">
+        <label class="form-label" for="share-url-{{ item.link.id }}">Public link</label>
+        <input class="form-control js-copyable" id="share-url-{{ item.link.id }}" type="text" readonly
+               value="{{ request.base_url }}share/public/{{ item.link.token }}/page">
+      </div>
+      <div class="col-lg-4">
+        <div class="facts">
+          <div class="fact">
+            <div class="lbl">Opens</div>
+            <div class="val num">{{ item.link.view_count }}</div>
+          </div>
+          <div class="fact">
+            <div class="lbl">Downloads</div>
+            <div class="val num">{{ item.downloads }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-  <table class="ledger" style="margin-top:14px;">
-    <thead><tr><th>When</th><th>Action</th><th>IP</th><th>Browser / device</th></tr></thead>
-    <tbody>
-      {% for a in item.accesses %}
-      <tr>
-        <td class="mono">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-        <td>{% if a.action == 'download' %}<span class="tag tag-mustard">Download</span>{% else %}<span class="tag tag-sage">View</span>{% endif %}</td>
-        <td class="mono">{{ a.ip or '—' }}</td>
-        <td style="font-size:12px; color:var(--ink-soft); max-width:360px;">{{ a.user_agent or '—' }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="4" class="empty">Not opened yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <div class="section-head"><h3>Access history</h3></div>
+    <div class="table-card">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Action</th>
+              <th>IP</th>
+              <th>Browser / device</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in item.accesses %}
+            <tr>
+              <td class="mono text-muted">{{ a.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+              <td>
+                {% if a.action == 'download' %}
+                  <span class="badge badge-warn"><i class="bi bi-download"></i> Download</span>
+                {% else %}
+                  <span class="badge badge-good"><i class="bi bi-eye"></i> View</span>
+                {% endif %}
+              </td>
+              <td class="mono text-muted">{{ a.ip or '—' }}</td>
+              <td class="text-muted small">{{ a.user_agent or '—' }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4">
+                <div class="empty-state">
+                  <div class="empty-ico"><i class="bi bi-eye-slash"></i></div>
+                  <div class="empty-title">Not opened yet</div>
+                  <p>Views and downloads of this link will be listed here with time, IP, and browser.</p>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
 {% else %}
-<div class="surface empty">No share links yet. Create one from a document in the app (Share).</div>
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-share"></i></div>
+    <div class="empty-title">No share links yet</div>
+    <p>Create one from a document in the app (Share) and its full audit trail will appear here.</p>
+    <a class="btn btn-primary" href="/admin"><i class="bi bi-folder2-open"></i> Go to documents</a>
+  </div>
+</div>
 {% endfor %}
 {% endblock %}

@@ -1,74 +1,247 @@
 {% extends "base.html" %}
 {% block title %}Budgets{% endblock %}
 {% block content %}
-<div class="eyebrow"><a href="/admin/finance/more" style="color:var(--ink-soft);">← More</a></div>
-<div class="page-title">Budgets</div>
-<p class="mm-muted">For EMI, chitty, loan, and rent use <a href="/admin/finance/recurring" style="color:var(--navy);">Recurring payments</a>. Repeats below are simple weekly/monthly reminders.</p>
+{% set month_names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+{% set ym_parts = (year_month | string).split('-') %}
+{% set ym_year = ym_parts[0] | int %}
+{% set ym_month = (ym_parts[1] | int) if (ym_parts | length) > 1 else 0 %}
+{% set valid_month = ym_month > 0 and ym_month < 13 %}
+{% set prev_href = ('/admin/finance/plan?month=' ~ ('%04d-%02d' | format(ym_year - 1 if ym_month == 1 else ym_year, 12 if ym_month == 1 else ym_month - 1))) if valid_month else '/admin/finance/plan' %}
+{% set next_href = ('/admin/finance/plan?month=' ~ ('%04d-%02d' | format(ym_year + 1 if ym_month == 12 else ym_year, 1 if ym_month == 12 else ym_month + 1))) if valid_month else '/admin/finance/plan' %}
+{% set month_label = (month_names[ym_month - 1] ~ ' ' ~ ym_year) if valid_month else year_month %}
+{% set total_budget = budgets | sum(attribute='amount') %}
+{% set total_spent = budgets | sum(attribute='spent') %}
 
-<div class="grid grid-split">
-  <div class="panel">
-    <div class="panel-head"><h2>Monthly budgets · {{ year_month }}</h2></div>
-    {% for b in budgets %}
-    <div class="record">
-      <span class="record-dot"></span>
-      <div>
-        <div class="record-title">{{ b.category_name }}</div>
-        <div class="record-meta">spent {{ inr(b.spent) }} of {{ inr(b.amount) }}</div>
-      </div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/finance/more">More</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Money Manager
     </div>
-    {% else %}
-    <div class="empty-state"><p>No budgets this month.</p></div>
-    {% endfor %}
-    <form class="panel-form" method="post" action="/admin/finance/plan/budget">
-      <input type="hidden" name="year_month" value="{{ year_month }}">
-      <div class="form-grid">
-        <div class="field">
-          <label>Category</label>
-          <select name="category_id">{% for c in categories if c.kind=='expense' %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
-        </div>
-        <div class="field"><label>Limit</label><input name="amount" required inputmode="decimal"></div>
-      </div>
-      <button class="btn" type="submit">Add budget</button>
-    </form>
+    <h1 class="page-title">Budgets</h1>
+    <p class="page-lead">
+      Monthly limits per category. For EMI, chitty, loan, and rent use
+      <a href="/admin/finance/recurring">Recurring payments</a> — repeats below are simple weekly/monthly reminders.
+    </p>
   </div>
-  <div class="panel">
-    <div class="panel-head"><h2>Repeat / installment</h2></div>
-    {% for r in recurring %}
-    <div class="record">
-      <span class="record-dot" style="background:var(--mm-transfer);"></span>
-      <div>
-        <div class="record-title">{{ r.payee or r.category_name or r.frequency }} · {{ inr(r.amount) }}</div>
-        <div class="record-meta">{{ r.frequency }} · next {{ r.next_due }} · {{ r.account_name }}</div>
-      </div>
-      <form method="post" action="/admin/finance/plan/recurring/{{ r.id }}/pay"><button class="btn-outline" type="submit">Post due</button></form>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/finance/recurring"><i class="bi bi-arrow-repeat"></i> Recurring payments</a>
+  </div>
+</div>
+
+<div class="toolbar">
+  <a class="btn btn-outline-light btn-icon" href="{{ prev_href }}" aria-label="Previous month">
+    <i class="bi bi-chevron-left"></i>
+  </a>
+  <span class="fw-semibold">{{ month_label }}</span>
+  <a class="btn btn-outline-light btn-icon" href="{{ next_href }}" aria-label="Next month">
+    <i class="bi bi-chevron-right"></i>
+  </a>
+  <a class="btn btn-ghost btn-sm ms-auto" href="/admin/finance/plan"><i class="bi bi-calendar-event"></i> This month</a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-clipboard-check"></i> Budgeted</div>
+      <div class="val">{{ inr(total_budget) }}</div>
+      <div class="sub">{{ budgets | length }} categories</div>
     </div>
-    {% else %}
-    <div class="empty-state"><p>No repeating items. Set Repeat on a new expense to create one.</p></div>
-    {% endfor %}
-    <form class="panel-form" method="post" action="/admin/finance/plan/recurring">
-      <div class="form-grid">
-        <div class="field"><label>Payee</label><input name="payee" placeholder="Rent, EMI…"></div>
-        <div class="field"><label>Amount</label><input name="amount" required inputmode="decimal"></div>
-        <div class="field">
-          <label>Account</label>
-          <select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+  </div>
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-cash-stack"></i> Spent</div>
+      <div class="val">{{ inr(total_spent) }}</div>
+      <div class="sub">this month</div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="stat {% if total_spent > total_budget %}accent{% endif %}">
+      <div class="lbl"><i class="bi bi-piggy-bank"></i> Left</div>
+      <div class="val">{{ inr(total_budget - total_spent) }}</div>
+      <div class="sub">{% if total_spent > total_budget %}over the plan{% else %}still available{% endif %}</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-bar-chart-steps"></i></span>
+        <div>
+          <h2>Monthly budgets</h2>
+          <div class="card-sub">{{ year_month }}</div>
         </div>
-        <div class="field">
-          <label>Category</label>
-          <select name="category_id"><option value="">—</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
-        </div>
-        <div class="field">
-          <label>Type</label>
-          <select name="txn_type"><option value="expense">Expense</option><option value="income">Income</option></select>
-        </div>
-        <div class="field">
-          <label>Frequency</label>
-          <select name="frequency"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select>
-        </div>
-        <div class="field"><label>Next due</label><input type="date" name="next_due" required></div>
       </div>
-      <button class="btn" type="submit">Add repeat</button>
-    </form>
+      {% if budgets %}
+      <div class="card-body">
+        {% for b in budgets %}
+        {% set over = b.spent > b.amount %}
+        {% set pct = [((b.spent / b.amount) * 100) | round(0, 'floor') | int, 100] | min if b.amount else 0 %}
+        <div class="bar-row">
+          <div class="bar-head">
+            <span class="b-name">{{ b.category_name }}</span>
+            <span class="b-val amount {% if over %}mm-expense{% endif %}">{{ inr(b.spent) }} / {{ inr(b.amount) }}</span>
+          </div>
+          <div class="bar">
+            <span style="width:{{ pct }}%; background:{% if over %}var(--v-bad){% else %}var(--v-good){% endif %};"></span>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            {% if over %}
+            <span class="badge badge-bad"><i class="bi bi-exclamation-triangle"></i> Over by {{ inr(b.spent - b.amount) }}</span>
+            {% else %}
+            <span class="badge badge-good"><i class="bi bi-check2"></i> {{ inr(b.amount - b.spent) }} left</span>
+            {% endif %}
+            <span class="text-faint">{{ pct }}% used</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-clipboard"></i></div>
+        <div class="empty-title">No budgets this month</div>
+        <p>Set a limit for a category and spending will be tracked against it here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico good"><i class="bi bi-plus-lg"></i></span>
+        <div>
+          <h2>Set a budget</h2>
+          <div class="card-sub">Applies to {{ month_label }}</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/finance/plan/budget">
+          <input type="hidden" name="year_month" value="{{ year_month }}">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="b-cat">Category</label>
+              <select class="form-select" id="b-cat" name="category_id">
+                {% for c in categories if c.kind=='expense' %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="b-amount">Limit <span class="req">*</span></label>
+              <input class="form-control" id="b-amount" name="amount" required inputmode="decimal">
+              <div class="form-text">Monthly cap for this category.</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add budget</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section-head mt-4"><h2>Repeat / installment</h2></div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico plum"><i class="bi bi-arrow-repeat"></i></span>
+        <div>
+          <h2>Scheduled repeats</h2>
+          <div class="card-sub">Simple weekly, monthly, or yearly entries</div>
+        </div>
+      </div>
+      {% if recurring %}
+      <div class="list-rows">
+        {% for r in recurring %}
+        <div class="list-row flex-wrap">
+          <span class="card-ico plum"><i class="bi bi-arrow-repeat"></i></span>
+          <div class="row-body">
+            <div class="row-title">{{ r.payee or r.category_name or r.frequency }}</div>
+            <div class="row-meta">{{ r.frequency }} &middot; next {{ r.next_due }} &middot; {{ r.account_name }}</div>
+          </div>
+          <div class="row-side">
+            <span class="amount {% if r.txn_type == 'income' %}mm-income{% else %}mm-expense{% endif %}">{{ inr(r.amount) }}</span>
+          </div>
+          <form class="row-actions" method="post" action="/admin/finance/plan/recurring/{{ r.id }}/pay">
+            <button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2"></i> Post due</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-arrow-repeat"></i></div>
+        <div class="empty-title">No repeating items</div>
+        <p>Set Repeat on a new expense, or add one with the form beside this list.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-calendar-plus"></i></span>
+        <div>
+          <h2>Add repeat</h2>
+          <div class="card-sub">Posted when you press Post due</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/finance/plan/recurring">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="r-payee">Payee</label>
+              <input class="form-control" id="r-payee" name="payee" placeholder="Rent, EMI…">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="r-amount">Amount <span class="req">*</span></label>
+              <input class="form-control" id="r-amount" name="amount" required inputmode="decimal">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="r-account">Account</label>
+              <select class="form-select" id="r-account" name="account_id">
+                {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="r-category">Category</label>
+              <select class="form-select" id="r-category" name="category_id">
+                <option value="">—</option>
+                {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="r-type">Type</label>
+              <select class="form-select" id="r-type" name="txn_type">
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="r-freq">Frequency</label>
+              <select class="form-select" id="r-freq" name="frequency">
+                <option value="monthly">Monthly</option>
+                <option value="weekly">Weekly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="r-due">Next due <span class="req">*</span></label>
+              <input class="form-control" id="r-due" type="date" name="next_due" required>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-check2"></i> Add repeat</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

@@ -1,12 +1,34 @@
 {% extends "base.html" %}
-{% block title %}Care{% endblock %}
+{% block title %}Care &amp; emergency{% endblock %}
 {% block content %}
 {% set allergy_items = (active_person.allergies.split(',') if active_person and active_person.allergies else []) %}
 {% set condition_items = (active_person.conditions.split(',') if active_person and active_person.conditions else []) %}
 
-<div class="eyebrow">Health Vault</div>
-<div class="page-title">Care{% if active_person %} — {{ active_person.name | nice }}{% endif %}</div>
-<div class="family-row">
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Care{% if active_person %} — {{ active_person.name | nice }}{% endif %}</h1>
+    <p class="page-lead">Everything a paramedic or a hospital front desk asks for: blood group, contacts, medicines, and history.</p>
+  </div>
+  {% if active_person %}
+  <div class="page-actions">
+    {% if ice_url %}
+    <a class="btn btn-outline-light" href="{{ ice_url }}" target="_blank" rel="noopener">
+      <i class="bi bi-box-arrow-up-right"></i> Public ICE card
+    </a>
+    {% endif %}
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#edit-ice">
+      <i class="bi bi-pencil"></i> Edit ICE &amp; IDs
+    </button>
+  </div>
+  {% endif %}
+</div>
+
+<div class="chip-scroll">
   {% for p in people %}
   <a class="chip {% if active_person and p.id==active_person.id %}active{% endif %}" href="/admin/care?person={{ p.id }}">
     <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name | nice }}
@@ -15,379 +37,621 @@
 </div>
 
 {% if active_person %}
-<div class="ice-wrap">
-  <div class="ice-card">
-    <div class="ice-kicker">In case of emergency</div>
-    <div class="ice-name">{{ active_person.name | nice }}</div>
-    <div class="ice-layout">
-      <div class="blood-badge {% if not active_person.blood_group %}missing{% endif %}">
-        <div class="bg">{{ active_person.blood_group or '—' }}</div>
-        <div class="bl">Blood group</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-xl-8">
+    <div class="ice-card h-100">
+      <div class="ice-kicker"><i class="bi bi-exclamation-octagon"></i> In case of emergency</div>
+      <div class="ice-name">{{ active_person.name | nice }}</div>
+      <div class="ice-layout">
+        <div class="blood-badge {% if not active_person.blood_group %}missing{% endif %}">
+          <div class="bg">{{ active_person.blood_group or '—' }}</div>
+          <div class="bl">Blood group</div>
+        </div>
+        <div class="ice-meta">
+          <div class="ice-row">
+            <div class="lbl">Emergency contact</div>
+            <div class="val">
+              {{ (active_person.emergency_name | nice) if active_person.emergency_name else 'Not set' }}
+              {% if active_person.emergency_phone %}
+                · <a href="tel:{{ active_person.emergency_phone }}">{{ active_person.emergency_phone }}</a>
+              {% endif %}
+            </div>
+          </div>
+          <div class="ice-row">
+            <div class="lbl">Allergies</div>
+            <div class="val row-gap">
+              {% for a in allergy_items if a.strip() %}
+                <span class="badge badge-bad"><i class="bi bi-exclamation-triangle"></i> {{ a.strip() }}</span>
+              {% else %}
+                <span class="text-faint fw-normal">None listed</span>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="ice-row">
+            <div class="lbl">Conditions</div>
+            <div class="val row-gap">
+              {% for c in condition_items if c.strip() %}
+                <span class="badge badge-warn">{{ c.strip() }}</span>
+              {% else %}
+                <span class="text-faint fw-normal">None listed</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="ice-meta">
-        <div class="ice-row">
-          <div class="lbl">Emergency contact</div>
-          <div class="val">
-            {{ (active_person.emergency_name | nice) if active_person.emergency_name else 'Not set' }}
-            {% if active_person.emergency_phone %}
-              · <a href="tel:{{ active_person.emergency_phone }}">{{ active_person.emergency_phone }}</a>
+      <div class="ice-ids">
+        {% if active_person.abha_id %}<span class="ice-id">ABHA {{ active_person.abha_id }}</span>{% endif %}
+        {% if active_person.ayushman_id %}<span class="ice-id">Ayushman {{ active_person.ayushman_id }}</span>{% endif %}
+        {% if not active_person.abha_id and not active_person.ayushman_id %}<span class="ice-id">No national IDs yet</span>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="row g-3">
+      <div class="col-sm-4 col-xl-12">
+        <div class="stat">
+          <div class="lbl"><i class="bi bi-capsule-pill"></i> Medicines</div>
+          <div class="val">{{ meds|length }}</div>
+          <div class="sub">{% if meds %}Active on this profile{% else %}Nothing tracked yet{% endif %}</div>
+        </div>
+      </div>
+      <div class="col-sm-4 col-xl-12">
+        <div class="stat">
+          <div class="lbl"><i class="bi bi-shield-plus"></i> Vaccinations</div>
+          <div class="val">{{ vax|length }}</div>
+          <div class="sub">{% if vax %}Doses on record{% else %}No doses recorded{% endif %}</div>
+        </div>
+      </div>
+      <div class="col-sm-4 col-xl-12">
+        <div class="stat {% if not (active_person.blood_group and active_person.emergency_phone) %}accent{% endif %}">
+          <div class="lbl"><i class="bi bi-shield-check"></i> ICE status</div>
+          <div class="val">{% if active_person.blood_group and active_person.emergency_phone %}Ready{% else %}Incomplete{% endif %}</div>
+          <div class="sub">{% if active_person.blood_group and active_person.emergency_phone %}Blood group and phone saved{% else %}Add blood group and emergency phone{% endif %}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="collapse mb-4" id="edit-ice">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-ico bad"><i class="bi bi-shield-exclamation"></i></span>
+      <div>
+        <h2>Emergency details &amp; national IDs</h2>
+        <div class="card-sub">Shown on the ICE card and on the public link</div>
+      </div>
+      <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#edit-ice" aria-label="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/care/person">
+        <input type="hidden" name="person_id" value="{{ active_person.id }}">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label" for="blood_group">Blood group</label>
+            <input class="form-control" id="blood_group" name="blood_group" value="{{ active_person.blood_group or '' }}" placeholder="e.g. O+" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="emergency_name">Emergency name</label>
+            <input class="form-control" id="emergency_name" name="emergency_name" value="{{ active_person.emergency_name or '' }}" autocomplete="name">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="emergency_phone">Emergency phone</label>
+            <input class="form-control" id="emergency_phone" type="tel" name="emergency_phone" value="{{ active_person.emergency_phone or '' }}" autocomplete="tel">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="abha_id">ABHA ID</label>
+            <input class="form-control mono" id="abha_id" name="abha_id" value="{{ active_person.abha_id or '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="ayushman_id">Ayushman ID</label>
+            <input class="form-control mono" id="ayushman_id" name="ayushman_id" value="{{ active_person.ayushman_id or '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="allergies">Allergies</label>
+            <input class="form-control" id="allergies" name="allergies" value="{{ active_person.allergies or '' }}" placeholder="Comma-separated">
+            <div class="form-text">Shown as warning chips on the ICE card</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="conditions">Conditions</label>
+            <input class="form-control" id="conditions" name="conditions" value="{{ active_person.conditions or '' }}" placeholder="Comma-separated">
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save ICE card</button>
+          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#edit-ice">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="section-head"><h2>Care record</h2></div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-capsule-pill"></i></span>
+        <div>
+          <h2>Medicines</h2>
+          <div class="card-sub">Doses, timing, and refills</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ meds|length }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-medicine" aria-label="Add medicine">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+      <div class="collapse" id="add-medicine">
+        <div class="card-body border-bottom">
+          <form method="post" action="/admin/care/medicine">
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label" for="med-name">Name <span class="req">*</span></label>
+                <input class="form-control" id="med-name" name="name" required>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="med-dose">Dose</label>
+                <input class="form-control" id="med-dose" name="dose" placeholder="500 mg">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="med-timing">Timing</label>
+                <input class="form-control" id="med-timing" name="timing" placeholder="After meals">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="med-remaining">Remaining</label>
+                <input class="form-control" id="med-remaining" name="remaining" inputmode="numeric">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="med-refill">Refill date</label>
+                <input class="form-control" id="med-refill" type="date" name="refill_at">
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add medicine</button>
+              <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-medicine">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for m in meds %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title">{{ m.name }}</div>
+            <div class="record-meta">{{ m.dose or 'Dose not set' }}{% if m.timing %} · {{ m.timing }}{% endif %}</div>
+          </div>
+          <div class="record-side">
+            {% if m.remaining is not none and m.remaining|int < 5 %}
+              <span class="badge badge-warn">{{ m.remaining }} left</span>
+            {% else %}
+              left {{ m.remaining if m.remaining is not none else '—' }}
+            {% endif %}
+            {% if m.refill_at %}<div class="record-meta">refill {{ m.refill_at }}</div>{% endif %}
+          </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-capsule"></i></div>
+          <div class="empty-title">No medicines yet</div>
+          <p>Add a medicine to keep doses and refill dates in one place.</p>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-medicine">
+            <i class="bi bi-plus-lg"></i> Add medicine
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico good"><i class="bi bi-shield-plus"></i></span>
+        <div>
+          <h2>Vaccinations</h2>
+          <div class="card-sub">Doses given and next due</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ vax|length }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-vaccine" aria-label="Add vaccination">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+      <div class="collapse" id="add-vaccine">
+        <div class="card-body border-bottom">
+          <form method="post" action="/admin/care/vaccine">
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label" for="vax-name">Vaccine <span class="req">*</span></label>
+                <input class="form-control" id="vax-name" name="vaccine_name" required>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="vax-given">Given on</label>
+                <input class="form-control" id="vax-given" type="date" name="given_on">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="vax-next">Next due</label>
+                <input class="form-control" id="vax-next" type="date" name="next_due">
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add vaccination</button>
+              <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-vaccine">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for v in vax %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title">{{ v.vaccine_name }}</div>
+            <div class="record-meta">given {{ v.given_on or '—' }}</div>
+          </div>
+          <div class="record-side">next {{ v.next_due or '—' }}</div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-shield-plus"></i></div>
+          <div class="empty-title">No vaccinations recorded</div>
+          <p>Log a dose and the next due date so boosters are never missed.</p>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-vaccine">
+            <i class="bi bi-plus-lg"></i> Add vaccination
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-hospital"></i></span>
+        <div>
+          <h2>Visits</h2>
+          <div class="card-sub">Hospital and clinic history</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ visits|length }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-visit" aria-label="Add visit">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+      <div class="collapse" id="add-visit">
+        <div class="card-body border-bottom">
+          <form method="post" action="/admin/care/visit">
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-sm-6">
+                <label class="form-label" for="visit-hosp">Hospital</label>
+                <input class="form-control" id="visit-hosp" name="hospital_name">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="visit-doctor">Doctor</label>
+                <input class="form-control" id="visit-doctor" name="doctor_name">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="visit-date">Date</label>
+                <input class="form-control" id="visit-date" type="date" name="visit_date">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="visit-reason">Reason</label>
+                <input class="form-control" id="visit-reason" name="reason">
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add visit</button>
+              <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-visit">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for v in visits %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title">{{ v.hospital_name or 'Visit' }}</div>
+            <div class="record-meta">{{ v.reason or 'No reason noted' }}{% if v.doctor_name %} · {{ v.doctor_name }}{% endif %}</div>
+          </div>
+          <div class="record-side">{{ v.visit_date or '—' }}</div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-hospital"></i></div>
+          <div class="empty-title">No hospital visits yet</div>
+          <p>Note a visit so the reason and the doctor are easy to recall later.</p>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-visit">
+            <i class="bi bi-plus-lg"></i> Add visit
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico warn"><i class="bi bi-file-earmark-medical"></i></span>
+        <div>
+          <h2>Insurance claims</h2>
+          <div class="card-sub">Status of every filing</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ claims|length }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-claim" aria-label="Add claim">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+      <div class="collapse" id="add-claim">
+        <div class="card-body border-bottom">
+          <form method="post" action="/admin/care/claim">
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-sm-6">
+                <label class="form-label" for="claim-insurer">Insurer</label>
+                <input class="form-control" id="claim-insurer" name="insurer">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="claim-amount">Amount</label>
+                <input class="form-control" id="claim-amount" name="amount">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="claim-number">Claim no.</label>
+                <input class="form-control mono" id="claim-number" name="claim_number">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="claim-status">Status</label>
+                <select class="form-select" id="claim-status" name="status">
+                  <option>draft</option><option>submitted</option><option>approved</option><option>rejected</option><option>paid</option>
+                </select>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add claim</button>
+              <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-claim">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for c in claims %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title">{{ c.insurer or 'Claim' }}</div>
+            <div class="record-meta">{{ c.claim_number or 'No claim no.' }}{% if c.amount %} · {{ c.amount }}{% endif %}</div>
+          </div>
+          <div class="record-side">
+            {% if c.status == 'approved' or c.status == 'paid' %}
+              <span class="badge badge-good">{{ c.status }}</span>
+            {% elif c.status == 'rejected' %}
+              <span class="badge badge-bad">{{ c.status }}</span>
+            {% elif c.status == 'submitted' %}
+              <span class="badge badge-info">{{ c.status }}</span>
+            {% else %}
+              <span class="badge badge-soft">{{ c.status }}</span>
             {% endif %}
           </div>
         </div>
-        <div class="ice-row">
-          <div class="lbl">Allergies</div>
-          <div class="val" style="display:flex; flex-wrap:wrap; gap:6px;">
-            {% for a in allergy_items if a.strip() %}
-              <span class="pill pill-danger">{{ a.strip() }}</span>
-            {% else %}
-              <span style="color:var(--ink-soft); font-weight:500;">None listed</span>
-            {% endfor %}
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-file-earmark-medical"></i></div>
+          <div class="empty-title">No claims filed</div>
+          <p>Track an insurance claim from draft through to paid.</p>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-claim">
+            <i class="bi bi-plus-lg"></i> Add claim
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico good"><i class="bi bi-graph-up-arrow"></i></span>
+        <div>
+          <h2>Growth &amp; vitals</h2>
+          <div class="card-sub">Height and weight readings</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ growth|length }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-growth" aria-label="Add reading">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+      <div class="collapse" id="add-growth">
+        <div class="card-body border-bottom">
+          <form method="post" action="/admin/care/growth">
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label" for="growth-date">Measured on <span class="req">*</span></label>
+                <input class="form-control" id="growth-date" type="date" name="measured_at" required>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="growth-height">Height (cm)</label>
+                <input class="form-control" id="growth-height" name="height_cm" inputmode="decimal">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="growth-weight">Weight (kg)</label>
+                <input class="form-control" id="growth-weight" name="weight_kg" inputmode="decimal">
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add reading</button>
+              <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-growth">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for g in growth %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title num">{{ g.height_cm or '—' }} cm · {{ g.weight_kg or '—' }} kg</div>
+            <div class="record-meta">measured {{ g.measured_at }}</div>
           </div>
         </div>
-        <div class="ice-row">
-          <div class="lbl">Conditions</div>
-          <div class="val" style="display:flex; flex-wrap:wrap; gap:6px;">
-            {% for c in condition_items if c.strip() %}
-              <span class="pill pill-navy">{{ c.strip() }}</span>
-            {% else %}
-              <span style="color:var(--ink-soft); font-weight:500;">None listed</span>
-            {% endfor %}
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-graph-up-arrow"></i></div>
+          <div class="empty-title">No growth readings yet</div>
+          <p>Record height and weight to build a simple growth history.</p>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-growth">
+            <i class="bi bi-plus-lg"></i> Add reading
+          </button>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-person-vcard"></i></span>
+        <div>
+          <h2>Hospital UHID</h2>
+          <div class="card-sub">Registration numbers per hospital</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ uhids|length }}</span>
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-uhid" aria-label="Add UHID">
+          <i class="bi bi-plus-lg"></i>
+        </button>
+      </div>
+      <div class="collapse" id="add-uhid">
+        <div class="card-body border-bottom">
+          <form method="post" action="/admin/care/uhid">
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-sm-6">
+                <label class="form-label" for="uhid-hosp">Hospital <span class="req">*</span></label>
+                <input class="form-control" id="uhid-hosp" name="hospital_name" required>
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="uhid-value">UHID <span class="req">*</span></label>
+                <input class="form-control mono" id="uhid-value" name="uhid" required>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add UHID</button>
+              <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-uhid">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for u in uhids %}
+        <div class="record">
+          <span class="record-dot"></span>
+          <div>
+            <div class="record-title">{{ u.hospital_name }}</div>
+            <div class="record-meta mono">{{ u.uhid }}</div>
           </div>
         </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-person-vcard"></i></div>
+          <div class="empty-title">No hospital UHIDs saved</div>
+          <p>Save the registration number each hospital asks for at the counter.</p>
+          <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-uhid">
+            <i class="bi bi-plus-lg"></i> Add UHID
+          </button>
+        </div>
+        {% endfor %}
       </div>
-    </div>
-    <div class="ice-ids">
-      {% if active_person.abha_id %}<span class="ice-id">ABHA {{ active_person.abha_id }}</span>{% endif %}
-      {% if active_person.ayushman_id %}<span class="ice-id">Ayushman {{ active_person.ayushman_id }}</span>{% endif %}
-      {% if not active_person.abha_id and not active_person.ayushman_id %}<span class="ice-id">No national IDs yet</span>{% endif %}
-      {% if ice_url %}<a class="ice-link" href="{{ ice_url }}" target="_blank" rel="noopener">Open public ICE card</a>{% endif %}
-    </div>
-  </div>
-  <div class="fact-col">
-    <div class="fact">
-      <div class="lbl">Medicines</div>
-      <div class="val">{{ meds|length }}</div>
-      <div class="sub">{% if meds %}Active on this profile{% else %}Nothing tracked yet{% endif %}</div>
-    </div>
-    <div class="fact">
-      <div class="lbl">Vaccinations</div>
-      <div class="val">{{ vax|length }}</div>
-      <div class="sub">{% if vax %}Doses on record{% else %}No doses recorded{% endif %}</div>
-    </div>
-    <div class="fact">
-      <div class="lbl">ICE status</div>
-      <div class="val">{% if active_person.blood_group and active_person.emergency_phone %}Ready{% else %}Incomplete{% endif %}</div>
-      <div class="sub">{% if active_person.blood_group and active_person.emergency_phone %}Blood group and phone saved{% else %}Add blood group and emergency phone{% endif %}</div>
     </div>
   </div>
 </div>
 
-<div class="surface" style="margin-bottom:22px;">
-  <div class="group-label">Update ICE / IDs</div>
-  <form method="post" action="/admin/care/person">
-    <input type="hidden" name="person_id" value="{{ active_person.id }}">
-    <div class="form-grid-3">
-      <div class="field"><label for="blood_group">Blood group</label><input id="blood_group" name="blood_group" value="{{ active_person.blood_group or '' }}" placeholder="e.g. O+" autocomplete="off"></div>
-      <div class="field"><label for="emergency_name">Emergency name</label><input id="emergency_name" name="emergency_name" value="{{ active_person.emergency_name or '' }}" autocomplete="name"></div>
-      <div class="field"><label for="emergency_phone">Emergency phone</label><input id="emergency_phone" type="tel" name="emergency_phone" value="{{ active_person.emergency_phone or '' }}" autocomplete="tel"></div>
-      <div class="field"><label for="abha_id">ABHA ID</label><input id="abha_id" name="abha_id" value="{{ active_person.abha_id or '' }}" class="mono"></div>
-      <div class="field"><label for="ayushman_id">Ayushman ID</label><input id="ayushman_id" name="ayushman_id" value="{{ active_person.ayushman_id or '' }}" class="mono"></div>
+<div class="card">
+  <div class="card-header">
+    <span class="card-ico plum"><i class="bi bi-person-badge"></i></span>
+    <div>
+      <h2>Doctors</h2>
+      <div class="card-sub">Shared across the whole household</div>
     </div>
-    <div class="form-grid">
-      <div class="field"><label for="allergies">Allergies</label><input id="allergies" name="allergies" value="{{ active_person.allergies or '' }}" placeholder="Comma-separated"><div class="field-hint">Shown as warning chips on the ICE card</div></div>
-      <div class="field"><label for="conditions">Conditions</label><input id="conditions" name="conditions" value="{{ active_person.conditions or '' }}" placeholder="Comma-separated"></div>
-    </div>
-    <button class="btn" type="submit">Save ICE card</button>
-  </form>
-</div>
-
-<div class="grid grid-2" style="margin-bottom:18px;">
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-icon" style="background:rgba(245,185,66,0.14); color:var(--mustard);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3" width="8" height="18" rx="3"/><path d="M8 8h8M8 16h8"/></svg>
-      </div>
-      <h2>Medicines</h2>
-      <span class="count">{{ meds|length }}</span>
-    </div>
-    <div class="panel-body">
-      {% for m in meds %}
-      <div class="record">
-        <span class="record-dot" style="background:var(--mustard);"></span>
-        <div>
-          <div class="record-title">{{ m.name }}</div>
-          <div class="record-meta">{{ m.dose or 'Dose not set' }}{% if m.timing %} · {{ m.timing }}{% endif %}</div>
-        </div>
-        <div class="record-side">
-          {% if m.remaining is not none and m.remaining|int < 5 %}
-            <span class="pill pill-warn">{{ m.remaining }} left</span>
-          {% else %}
-            left {{ m.remaining if m.remaining is not none else '—' }}
-          {% endif %}
-          {% if m.refill_at %}<div class="record-meta">refill {{ m.refill_at }}</div>{% endif %}
-        </div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="18" rx="3"/></svg></div>
-        <p>No medicines yet. Add the first one below.</p>
-      </div>
-      {% endfor %}
-    </div>
-    <form class="panel-form" method="post" action="/admin/care/medicine">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="field"><label>Name</label><input name="name" required></div>
-      <div class="form-grid">
-        <div class="field"><label>Dose</label><input name="dose" placeholder="500 mg"></div>
-        <div class="field"><label>Timing</label><input name="timing" placeholder="After meals"></div>
-        <div class="field"><label>Remaining</label><input name="remaining" inputmode="numeric"></div>
-        <div class="field"><label>Refill date</label><input type="date" name="refill_at"></div>
-      </div>
-      <button class="btn" type="submit">Add medicine</button>
-    </form>
+    <span class="badge badge-soft ms-auto">{{ doctors|length }}</span>
+    <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">
+      <i class="bi bi-plus-lg"></i> Add doctor
+    </button>
   </div>
-
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-icon" style="background:var(--sage-bg); color:var(--sage);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V6l-8-3-8 3v6c0 6 8 10 8 10z"/></svg>
-      </div>
-      <h2>Vaccinations</h2>
-      <span class="count">{{ vax|length }}</span>
-    </div>
-    <div class="panel-body">
-      {% for v in vax %}
-      <div class="record">
-        <span class="record-dot" style="background:var(--sage);"></span>
-        <div>
-          <div class="record-title">{{ v.vaccine_name }}</div>
-          <div class="record-meta">given {{ v.given_on or '—' }}</div>
+  <div class="collapse" id="add-doctor">
+    <div class="card-body border-bottom">
+      <form method="post" action="/admin/care/doctor">
+        <input type="hidden" name="person" value="{{ active_person.id }}">
+        <div class="row g-3">
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="doc-name">Name <span class="req">*</span></label>
+            <input class="form-control" id="doc-name" name="name" required>
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="doc-specialty">Specialty</label>
+            <input class="form-control" id="doc-specialty" name="specialty">
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="doc-hospital">Hospital</label>
+            <input class="form-control" id="doc-hospital" name="hospital_name">
+          </div>
+          <div class="col-md-6 col-xl-3">
+            <label class="form-label" for="doc-phone">Phone</label>
+            <input class="form-control" id="doc-phone" type="tel" name="phone">
+          </div>
         </div>
-        <div class="record-side">next {{ v.next_due or '—' }}</div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V6l-8-3-8 3v6c0 6 8 10 8 10z"/></svg></div>
-        <p>No vaccinations recorded.</p>
-      </div>
-      {% endfor %}
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add doctor</button>
+          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">Cancel</button>
+        </div>
+      </form>
     </div>
-    <form class="panel-form" method="post" action="/admin/care/vaccine">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="field"><label>Vaccine</label><input name="vaccine_name" required></div>
-      <div class="form-grid">
-        <div class="field"><label>Given on</label><input type="date" name="given_on"></div>
-        <div class="field"><label>Next due</label><input type="date" name="next_due"></div>
-      </div>
-      <button class="btn" type="submit">Add vaccination</button>
-    </form>
   </div>
-</div>
-
-<div class="grid grid-2" style="margin-bottom:18px;">
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-icon" style="background:var(--accent-soft); color:var(--navy);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V8l8-4 8 4v13"/><path d="M9 21v-7h6v7"/></svg>
-      </div>
-      <h2>Visits</h2>
-      <span class="count">{{ visits|length }}</span>
-    </div>
-    <div class="panel-body">
-      {% for v in visits %}
-      <div class="record">
-        <span class="record-dot"></span>
-        <div>
-          <div class="record-title">{{ v.hospital_name or 'Visit' }}</div>
-          <div class="record-meta">{{ v.reason or 'No reason noted' }}{% if v.doctor_name %} · {{ v.doctor_name }}{% endif %}</div>
-        </div>
-        <div class="record-side">{{ v.visit_date or '—' }}</div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V8l8-4 8 4v13"/></svg></div>
-        <p>No hospital visits yet.</p>
-      </div>
-      {% endfor %}
-    </div>
-    <form class="panel-form" method="post" action="/admin/care/visit">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="form-grid">
-        <div class="field"><label>Hospital</label><input name="hospital_name"></div>
-        <div class="field"><label>Doctor</label><input name="doctor_name"></div>
-        <div class="field"><label>Date</label><input type="date" name="visit_date"></div>
-        <div class="field"><label>Reason</label><input name="reason"></div>
-      </div>
-      <button class="btn" type="submit">Add visit</button>
-    </form>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-icon" style="background:rgba(122,108,255,0.16); color:#A89BFF;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18"/></svg>
-      </div>
-      <h2>Insurance claims</h2>
-      <span class="count">{{ claims|length }}</span>
-    </div>
-    <div class="panel-body">
-      {% for c in claims %}
-      <div class="record">
-        <span class="record-dot" style="background:#A89BFF;"></span>
-        <div>
-          <div class="record-title">{{ c.insurer or 'Claim' }}</div>
-          <div class="record-meta">{{ c.claim_number or 'No claim no.' }}{% if c.amount %} · {{ c.amount }}{% endif %}</div>
-        </div>
-        <div class="record-side">
-          {% if c.status == 'approved' or c.status == 'paid' %}
-            <span class="pill pill-sage">{{ c.status }}</span>
-          {% elif c.status == 'rejected' %}
-            <span class="pill pill-danger">{{ c.status }}</span>
-          {% elif c.status == 'submitted' %}
-            <span class="pill pill-navy">{{ c.status }}</span>
-          {% else %}
-            <span class="pill">{{ c.status }}</span>
-          {% endif %}
-        </div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/></svg></div>
-        <p>No claims filed.</p>
-      </div>
-      {% endfor %}
-    </div>
-    <form class="panel-form" method="post" action="/admin/care/claim">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="form-grid">
-        <div class="field"><label>Insurer</label><input name="insurer"></div>
-        <div class="field"><label>Amount</label><input name="amount"></div>
-        <div class="field"><label>Claim no.</label><input name="claim_number"></div>
-        <div class="field">
-          <label>Status</label>
-          <select name="status">
-            <option>draft</option><option>submitted</option><option>approved</option><option>rejected</option><option>paid</option>
-          </select>
-        </div>
-      </div>
-      <button class="btn" type="submit">Add claim</button>
-    </form>
-  </div>
-</div>
-
-<div class="grid grid-2" style="margin-bottom:18px;">
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-icon" style="background:var(--sage-bg); color:var(--sage);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16M7 20V8m5 12V4m5 16v-7"/></svg>
-      </div>
-      <h2>Growth</h2>
-      <span class="count">{{ growth|length }}</span>
-    </div>
-    <div class="panel-body">
-      {% for g in growth %}
-      <div class="record">
-        <span class="record-dot" style="background:var(--sage);"></span>
-        <div>
-          <div class="record-title">{{ g.height_cm or '—' }} cm · {{ g.weight_kg or '—' }} kg</div>
-          <div class="record-meta">measured {{ g.measured_at }}</div>
-        </div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M7 20V8m5 12V4m5 16v-7"/></svg></div>
-        <p>No growth readings yet.</p>
-      </div>
-      {% endfor %}
-    </div>
-    <form class="panel-form" method="post" action="/admin/care/growth">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="form-grid">
-        <div class="field"><label>Measured on</label><input type="date" name="measured_at" required></div>
-        <div class="field"><label>Height (cm)</label><input name="height_cm" inputmode="decimal"></div>
-        <div class="field"><label>Weight (kg)</label><input name="weight_kg" inputmode="decimal"></div>
-      </div>
-      <button class="btn" type="submit">Add reading</button>
-    </form>
-  </div>
-
-  <div class="panel">
-    <div class="panel-head">
-      <div class="panel-icon" style="background:var(--accent-soft); color:var(--navy);">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h6M7 12h10M7 16h4"/></svg>
-      </div>
-      <h2>Hospital UHID</h2>
-      <span class="count">{{ uhids|length }}</span>
-    </div>
-    <div class="panel-body">
-      {% for u in uhids %}
-      <div class="record">
-        <span class="record-dot"></span>
-        <div>
-          <div class="record-title">{{ u.hospital_name }}</div>
-          <div class="record-meta mono">{{ u.uhid }}</div>
-        </div>
-      </div>
-      {% else %}
-      <div class="empty-state">
-        <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/></svg></div>
-        <p>No hospital UHIDs saved.</p>
-      </div>
-      {% endfor %}
-    </div>
-    <form class="panel-form" method="post" action="/admin/care/uhid">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <div class="form-grid">
-        <div class="field"><label>Hospital</label><input name="hospital_name" required></div>
-        <div class="field"><label>UHID</label><input name="uhid" required class="mono"></div>
-      </div>
-      <button class="btn" type="submit">Add UHID</button>
-    </form>
-  </div>
-</div>
-
-<div class="panel">
-  <div class="panel-head">
-    <div class="panel-icon" style="background:var(--stamp-bg); color:var(--stamp);">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 20v-6a4 4 0 0 1 8 0v6"/><circle cx="12" cy="7" r="3"/><path d="M4 20h16"/></svg>
-    </div>
-    <h2>Doctors</h2>
-    <span class="count">{{ doctors|length }}</span>
-  </div>
-  <div class="panel-body">
+  <div class="list-rows">
     {% for d in doctors %}
-    <div class="record">
-      <span class="record-dot" style="background:var(--stamp);"></span>
-      <div>
-        <div class="record-title">{{ d.name }}</div>
-        <div class="record-meta">{{ d.specialty or 'Specialty not set' }}{% if d.hospital_name %} · {{ d.hospital_name }}{% endif %}</div>
+    <div class="list-row">
+      <span class="avatar avatar-plum"><i class="bi bi-person"></i></span>
+      <div class="row-body">
+        <div class="row-title">{{ d.name }}</div>
+        <div class="row-meta">{{ d.specialty or 'Specialty not set' }}{% if d.hospital_name %} · {{ d.hospital_name }}{% endif %}</div>
       </div>
-      <div class="record-side">{% if d.phone %}<a href="tel:{{ d.phone }}">{{ d.phone }}</a>{% else %}—{% endif %}</div>
+      <div class="row-side">
+        {% if d.phone %}
+          <a class="link-quiet mono" href="tel:{{ d.phone }}"><i class="bi bi-telephone"></i> {{ d.phone }}</a>
+        {% else %}
+          <span class="text-faint">—</span>
+        {% endif %}
+      </div>
     </div>
     {% else %}
     <div class="empty-state">
-      <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><path d="M4 20h16"/></svg></div>
-      <p>No doctors on this profile.</p>
+      <div class="empty-ico"><i class="bi bi-person-badge"></i></div>
+      <div class="empty-title">No doctors on file</div>
+      <p>Keep the numbers you actually call — GP, paediatrician, specialist.</p>
+      <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">
+        <i class="bi bi-plus-lg"></i> Add doctor
+      </button>
     </div>
     {% endfor %}
   </div>
-  <form class="panel-form" method="post" action="/admin/care/doctor">
-    <input type="hidden" name="person" value="{{ active_person.id }}">
-    <div class="form-grid">
-      <div class="field"><label>Name</label><input name="name" required></div>
-      <div class="field"><label>Specialty</label><input name="specialty"></div>
-      <div class="field"><label>Hospital</label><input name="hospital_name"></div>
-      <div class="field"><label>Phone</label><input type="tel" name="phone"></div>
-    </div>
-    <button class="btn" type="submit">Add doctor</button>
-  </form>
 </div>
 
 {% else %}
-<div class="empty-state surface">
-  <div class="empty-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 19c.6-3 2.8-5 6-5s5.4 2 6 5"/></svg></div>
-  <p>Add a family member to start a care profile.</p>
-  <div style="margin-top:14px;"><a class="btn" href="/admin/family">Go to Family</a></div>
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-people"></i></div>
+    <div class="empty-title">No family profiles yet</div>
+    <p>Add a family member to start a care profile with an emergency card.</p>
+    <a class="btn btn-primary" href="/admin/family"><i class="bi bi-person-plus"></i> Go to Family</a>
+  </div>
 </div>
 {% endif %}
 {% endblock %}

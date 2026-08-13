@@ -1,23 +1,44 @@
 {% extends "base.html" %}
 {% block title %}Transactions{% endblock %}
 {% block content %}
+{% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
+{% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
+
 <div class="page-head">
   <div>
-    <div class="eyebrow">Money Manager</div>
-    <div class="page-title">
-      <a href="/admin/finance?month={{ ledger.prev }}&view={{ view }}" style="color:var(--ink-soft);">‹</a>
-      {{ ledger.label }}
-      <a href="/admin/finance?month={{ ledger.next }}&view={{ view }}" style="color:var(--ink-soft);">›</a>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Money Manager
     </div>
+    <h1 class="page-title">{{ ledger.label }}</h1>
+    <p class="page-lead">
+      Last month carried {{ inr(ledger.prev_income) }} in · {{ inr(ledger.prev_expense) }} out.
+      This month {{ inr(ledger.total) }} plus opening becomes total.
+    </p>
   </div>
-  <form method="get" action="/admin/finance" class="toolbar" style="margin:0;">
-    <input type="hidden" name="month" value="{{ ledger.year_month }}">
-    <input type="hidden" name="view" value="{{ view }}">
-    <input type="search" name="q" value="{{ q }}" placeholder="Search payee or note">
-  </form>
+  <div class="page-actions">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ ledger.prev }}&view={{ view }}" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ ledger.next }}&view={{ view }}" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
 </div>
 
-<div class="mm-tabs">
+<form class="filter-bar" method="get" action="/admin/finance">
+  <input type="hidden" name="month" value="{{ ledger.year_month }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <div class="search-field">
+    <i class="bi bi-search"></i>
+    <label class="form-label visually-hidden" for="fn-q">Search transactions</label>
+    <input class="form-control" id="fn-q" type="search" name="q" value="{{ q }}" placeholder="Search payee or note">
+  </div>
+  <button class="btn btn-outline-light" type="submit">Search</button>
+</form>
+
+<div class="seg mb-3">
   <a class="{% if view=='daily' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=daily">Daily</a>
   <a class="{% if view=='calendar' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=calendar">Calendar</a>
   <a class="{% if view=='monthly' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=monthly">Monthly</a>
@@ -25,75 +46,145 @@
   <a class="{% if view=='note' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=note">Note</a>
 </div>
 
-<div class="mm-summary">
-  <div class="cell"><div class="lbl">Opening</div><div class="val">{{ inr(ledger.opening) }}</div></div>
-  <div class="cell"><div class="lbl">Income</div><div class="val mm-income">{{ inr(ledger.income) }}</div></div>
-  <div class="cell"><div class="lbl">Expenses</div><div class="val mm-expense">{{ inr(ledger.expense) }}</div></div>
-  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(ledger.closing) }}</div></div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-hourglass-split"></i> Opening</div>
+      <div class="val">{{ inr(ledger.opening) }}</div>
+      <div class="sub">carried into {{ ledger.label }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Income</div>
+      <div class="val mm-income">{{ inr(ledger.income) }}</div>
+      <div class="sub">money in this month</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Expenses</div>
+      <div class="val mm-expense">{{ inr(ledger.expense) }}</div>
+      <div class="sub">money out this month</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-wallet2"></i> Total</div>
+      <div class="val">{{ inr(ledger.closing) }}</div>
+      <div class="sub">opening plus {{ inr(ledger.total) }}</div>
+    </div>
+  </div>
 </div>
-<p class="mm-muted" style="margin:8px 0 16px;">Last month carried {{ inr(ledger.prev_income) }} in · {{ inr(ledger.prev_expense) }} out. This month {{ inr(ledger.total) }} plus opening becomes total.</p>
 
 {% if view == 'calendar' %}
-<div class="mm-cal" style="margin-bottom:24px;">
-  {% for d in ['S','M','T','W','T','F','S'] %}<div class="hd">{{ d }}</div>{% endfor %}
-  {% for week in ledger.weeks %}
-    {% for cell in week %}
-      {% if cell %}
-      <div class="cell">
-        <div class="d">{{ cell.date[-2:] }}</div>
-        {% if cell.income %}<div class="mm-income">{{ inr(cell.income) }}</div>{% endif %}
-        {% if cell.expense %}<div class="mm-expense">{{ inr(cell.expense) }}</div>{% endif %}
-      </div>
-      {% else %}
-      <div class="cell" style="opacity:0.3;"></div>
-      {% endif %}
-    {% endfor %}
-  {% endfor %}
-</div>
-{% elif view == 'monthly' or view == 'total' %}
-<div class="surface">
-  {% for item in ledger.txns %}
-  <div class="mm-row">
-    <div class="cat">{{ item.category_name or item.txn_type }}</div>
-    <div>
-        <div class="payee">{{ item.payee or item.description or '—' }}{% if item.has_image %} · <a class="js-photo" href="/admin/finance/transactions/{{ item.id }}/image">photo</a>{% endif %}</div>
-        <div class="acct">{{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %} · {{ item.txn_date }}</div>
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="mm-cal">
+      {% for d in ['S','M','T','W','T','F','S'] %}<div class="hd">{{ d }}</div>{% endfor %}
+      {% for week in ledger.weeks %}
+        {% for cell in week %}
+          {% if cell %}
+          <div class="cell">
+            <div class="d">{{ cell.date[-2:] }}</div>
+            {% if cell.income %}<div class="mm-income truncate">{{ inr(cell.income) }}</div>{% endif %}
+            {% if cell.expense %}<div class="mm-expense truncate">{{ inr(cell.expense) }}</div>{% endif %}
+          </div>
+          {% else %}
+          <div class="cell empty-cell"></div>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
     </div>
-    <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">{{ inr(item.amount) }}</div>
   </div>
-  {% else %}
-  <div class="empty-state"><p>No transactions this month.</p></div>
-  {% endfor %}
 </div>
+
+{% elif view == 'monthly' or view == 'total' %}
+<div class="card mb-4">
+  <div class="card-body">
+    {% for item in ledger.txns %}
+    <div class="mm-row">
+      <span class="cat-ico">
+        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
+      </span>
+      <div class="mm-body">
+        <div class="payee truncate">{{ item.payee or item.description or '—' }}</div>
+        <div class="cat">{{ item.category_name or item.txn_type }}</div>
+        <div class="acct truncate">
+          {{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %} · {{ item.txn_date }}
+        </div>
+      </div>
+      <div class="amt {{ type_cls.get(item.txn_type, '') }}">{{ inr(item.amount) }}</div>
+      {% if item.has_image %}
+      <div class="d-flex gap-1 flex-shrink-0">
+        <a class="btn btn-ghost btn-icon btn-sm js-photo" href="/admin/finance/transactions/{{ item.id }}/image" aria-label="Receipt photo">
+          <i class="bi bi-image"></i>
+        </a>
+      </div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-receipt"></i></div>
+      <div class="empty-title">No transactions this month</div>
+      <p>Pick another month, or add an entry to start the {{ ledger.label }} ledger.</p>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
 {% else %}
   {% for day in ledger.days %}
   <div class="mm-day">
     <div class="mm-day-head">
-      <span>{{ day.label }}</span>
-      <span><span class="mm-income">{{ inr(day.income) }}</span> &nbsp; <span class="mm-expense">{{ inr(day.expense) }}</span></span>
+      <span class="date">
+        <span class="dnum">{{ day.date[-2:] }}</span>
+        <span>{{ day.label }}</span>
+      </span>
+      <span class="row-gap">
+        <span class="mm-income">{{ inr(day.income) }}</span>
+        <span class="mm-expense">{{ inr(day.expense) }}</span>
+      </span>
     </div>
     {% for item in day.txns %}
     <div class="mm-row">
-      <div class="cat">{{ item.category_name or item.txn_type }}</div>
-      <div>
-        <div class="payee">{{ item.payee or item.description or '—' }}{% if item.has_image %} · <a class="js-photo" href="/admin/finance/transactions/{{ item.id }}/image">photo</a>{% endif %}</div>
-        <div class="acct">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
+      <span class="cat-ico">
+        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
+      </span>
+      <div class="mm-body">
+        <div class="payee truncate">{{ item.payee or item.description or '—' }}</div>
+        <div class="cat">{{ item.category_name or item.txn_type }}</div>
+        <div class="acct truncate">
+          {{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %}
+        </div>
       </div>
-      <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">
-        {{ inr(item.amount) }}
-        <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete" onsubmit="return confirm('Delete this entry?');" style="margin-top:4px;">
-          <button class="btn-outline" type="submit" style="padding:4px 8px; font-size:11px;">Delete</button>
+      <div class="amt {{ type_cls.get(item.txn_type, '') }}">{{ inr(item.amount) }}</div>
+      <div class="d-flex gap-1 flex-shrink-0">
+        {% if item.has_image %}
+        <a class="btn btn-ghost btn-icon btn-sm js-photo" href="/admin/finance/transactions/{{ item.id }}/image" aria-label="Receipt photo">
+          <i class="bi bi-image"></i>
+        </a>
+        {% endif %}
+        <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete" onsubmit="return confirm('Delete this entry?');">
+          <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Delete entry">
+            <i class="bi bi-trash3"></i>
+          </button>
         </form>
       </div>
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <div class="empty-state surface">
-    <p>No transactions yet. Tap + to add income, expense, or a transfer.</p>
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-receipt"></i></div>
+      <div class="empty-title">No transactions yet</div>
+      <p>Log income, an expense, or a transfer and it will appear here grouped by day.</p>
+      <a class="btn btn-primary" href="/admin/finance/add"><i class="bi bi-plus-lg"></i> Add the first entry</a>
+    </div>
   </div>
   {% endfor %}
 {% endif %}
 
-<a class="mm-fab" href="/admin/finance/add" aria-label="Add transaction">+</a>
+<a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
 {% endblock %}

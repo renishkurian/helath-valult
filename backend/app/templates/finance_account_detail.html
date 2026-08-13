@@ -3,47 +3,109 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow"><a href="/admin/finance/accounts" style="color:var(--ink-soft);">← Accounts</a></div>
-    <div class="page-title">{{ account.name }}</div>
+    <div class="eyebrow"><a href="/admin/finance/accounts"><i class="bi bi-chevron-left"></i> Accounts</a></div>
+    <h1 class="page-title">{{ account.name }}</h1>
+    <p class="page-lead">
+      <span class="amount {% if account.is_liability or account.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(account.balance) }}</span>
+      · Statement {{ range_start }} ~ {{ range_end }} · {{ account.account_type.replace('_',' ') }}
+    </p>
   </div>
-  <div class="toolbar" style="margin:0; gap:8px; align-items:center;">
-    <a href="/admin/finance/accounts/{{ account.id }}?month={{ prev_year }}" class="btn-outline" style="padding:6px 10px;">‹‹</a>
-    <a href="/admin/finance/accounts/{{ account.id }}?month={{ prev }}" class="btn-outline" style="padding:6px 10px;">‹</a>
-    <strong>{{ label }}</strong>
-    <a href="/admin/finance/accounts/{{ account.id }}?month={{ next }}" class="btn-outline" style="padding:6px 10px;">›</a>
-    <a href="/admin/finance/accounts/{{ account.id }}?month={{ next_year }}" class="btn-outline" style="padding:6px 10px;">››</a>
+  <div class="page-actions">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/accounts/{{ account.id }}?month={{ prev_year }}" aria-label="Previous year">
+      <i class="bi bi-chevron-double-left"></i>
+    </a>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/accounts/{{ account.id }}?month={{ prev }}" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <span class="num fw-semibold align-self-center px-1">{{ label }}</span>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/accounts/{{ account.id }}?month={{ next }}" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/accounts/{{ account.id }}?month={{ next_year }}" aria-label="Next year">
+      <i class="bi bi-chevron-double-right"></i>
+    </a>
   </div>
 </div>
 
-<div class="mm-muted" style="margin-bottom:12px;">Statement · {{ range_start }} ~ {{ range_end }} · {{ account.account_type.replace('_',' ') }}</div>
-
-<div class="mm-summary">
-  <div class="cell"><div class="lbl">Deposit</div><div class="val mm-income">{{ inr(deposit) }}</div></div>
-  <div class="cell"><div class="lbl">Withdrawal</div><div class="val mm-expense">{{ inr(withdrawal) }}</div></div>
-  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(total) }}</div></div>
-  <div class="cell"><div class="lbl">Balance</div><div class="val {% if account.is_liability or account.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(account.balance) }}</div></div>
-</div>
-
-{% for day in days %}
-<div class="mm-day">
-  <div class="mm-day-head">
-    <span><strong>{{ day.daynum }}</strong> <span class="mm-expense" style="padding:2px 6px; border-radius:4px; background:rgba(255,107,122,0.15);">{{ day.weekday }}</span> {{ day.month }}</span>
-    <span><span class="mm-income">{{ inr(day.income) }}</span> &nbsp; <span class="mm-expense">{{ inr(day.expense) }}</span></span>
-  </div>
-  {% for item in day.txns %}
-  <div class="mm-row">
-    <div class="cat">{{ item.txn.category_name or item.txn.txn_type }}</div>
-    <div>
-      <div class="payee">{{ item.txn.payee or item.txn.description or '—' }}{% if item.txn.has_image %} · <a class="js-photo" href="/admin/finance/transactions/{{ item.txn.id }}/image">photo</a>{% endif %}</div>
-      <div class="acct">{% if item.txn.description and item.txn.payee %}{{ item.txn.description }}{% endif %}</div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Deposit</div>
+      <div class="val mm-income">{{ inr(deposit) }}</div>
+      <div class="sub">into this account</div>
     </div>
-    <div class="amt {% if item.incoming %}mm-income{% else %}mm-expense{% endif %}">{{ inr(item.txn.amount) }}</div>
   </div>
-  {% endfor %}
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Withdrawal</div>
+      <div class="val mm-expense">{{ inr(withdrawal) }}</div>
+      <div class="sub">out of this account</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-calculator"></i> Total</div>
+      <div class="val">{{ inr(total) }}</div>
+      <div class="sub">{{ label }} movement</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-wallet2"></i> Balance</div>
+      <div class="val {% if account.is_liability or account.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(account.balance) }}</div>
+      <div class="sub">as of today</div>
+    </div>
+  </div>
+</div>
+
+{% if days %}
+<div class="card">
+  <div class="card-body">
+    {% for day in days %}
+    <div class="mm-day">
+      <div class="mm-day-head">
+        <span class="date">
+          <span class="dnum">{{ day.daynum }}</span>
+          <span>{{ day.weekday }} · {{ day.month }}</span>
+        </span>
+        <span>
+          <span class="mm-income">{{ inr(day.income) }}</span>
+          <span class="mm-expense ms-2">{{ inr(day.expense) }}</span>
+        </span>
+      </div>
+      {% for item in day.txns %}
+      <div class="mm-row">
+        <span class="cat-ico">
+          <i class="bi {% if item.incoming %}bi-arrow-down-left{% else %}bi-arrow-up-right{% endif %}"></i>
+        </span>
+        <div class="mm-body">
+          <div class="payee">
+            {{ item.txn.payee or item.txn.description or '—' }}
+            {% if item.txn.has_image %}
+            <a class="js-photo link-quiet" href="/admin/finance/transactions/{{ item.txn.id }}/image" aria-label="Receipt photo"><i class="bi bi-image"></i></a>
+            {% endif %}
+          </div>
+          <div class="cat">
+            {{ item.txn.category_name or item.txn.txn_type }}{% if item.txn.description and item.txn.payee %} · {{ item.txn.description }}{% endif %}
+          </div>
+        </div>
+        <div class="amt {% if item.incoming %}mm-income{% else %}mm-expense{% endif %}">{{ inr(item.txn.amount) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
 </div>
 {% else %}
-<div class="empty-state surface"><p>No entries this month.</p></div>
-{% endfor %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-receipt"></i></div>
+    <div class="empty-title">No entries this month</div>
+    <p>Nothing was deposited or withdrawn from {{ account.name }} in {{ label }}.</p>
+    <a class="btn btn-primary" href="/admin/finance/add?account_id={{ account.id }}"><i class="bi bi-plus-lg"></i> Add an entry</a>
+  </div>
+</div>
+{% endif %}
 
-<a class="mm-fab" href="/admin/finance/add?account_id={{ account.id }}" aria-label="Add">+</a>
+<a class="fab" href="/admin/finance/add?account_id={{ account.id }}" aria-label="Add"><i class="bi bi-plus-lg"></i></a>
 {% endblock %}

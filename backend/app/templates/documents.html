@@ -1,68 +1,176 @@
 {% extends "base.html" %}
 {% block title %}Documents{% endblock %}
 {% block content %}
-{% set cat_colors = {'hospital_card':'#5B8CFF','prescription':'#3DDC97','lab_report':'#7A6CFF','insurance':'#F5B942','vaccination':'#3DDC97','bill':'#FF6B7A','medicine':'#F5B942','other':'#8B95A8'} %}
+{% set cat_colors = {'hospital_card':'#7FA6FF','prescription':'#4ADE9B','lab_report':'#C0A8FF','insurance':'#F0C36A','vaccination':'#4ADE9B','bill':'#FF8095','medicine':'#F0C36A','other':'#8B95A8'} %}
 {% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
 {% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
 
-<div class="eyebrow"><a href="/admin?person={{ active_person.id }}">← {{ active_person.name | nice }}</a></div>
-<div class="page-title">{{ folder_label.get(category, 'All documents') if category else 'All documents' }}</div>
-
-<details style="margin-bottom:24px;">
-  <summary>+ Add document</summary>
-  <div class="surface">
-    <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
-      <input type="hidden" name="person_id" value="{{ active_person.id }}">
-      <input type="hidden" name="redirect_to" value="folder">
-      <input type="hidden" name="redirect_category" value="{{ category or '' }}">
-      <div class="form-grid">
-        <div class="field"><label>Title*</label><input type="text" name="title" required></div>
-        <div class="field">
-          <label>Category*</label>
-          <select name="category" required>
-            {% for cat, label in folder_label.items() %}
-              <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="field"><label>Hospital / clinic</label><input type="text" name="hospital_name"></div>
-        <div class="field"><label>Date</label><input type="date" name="doc_date"></div>
-        <div class="field"><label>Expiry date</label><input type="date" name="expiry_date"></div>
-        <div class="field"><label>Tags (comma-separated)</label><input type="text" name="tags"></div>
-      </div>
-      <div class="field"><label>Notes (encrypted)</label><textarea name="notes" rows="2"></textarea></div>
-      <div class="field"><label>File*</label><input type="file" name="file" required></div>
-      <button class="btn" type="submit">Upload document</button>
-    </form>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
+      <i class="bi bi-chevron-right"></i>
+      Documents
+    </div>
+    <h1 class="page-title">{{ folder_label.get(category, 'All documents') if category else 'All documents' }}</h1>
+    <p class="page-lead">Files kept for {{ active_person.name | nice }}, encrypted on this server.</p>
   </div>
-</details>
+  <div class="page-actions">
+    <a class="btn btn-ghost btn-icon" href="/admin?person={{ active_person.id }}" aria-label="Back to {{ active_person.name | nice }}">
+      <i class="bi bi-arrow-left"></i>
+    </a>
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">
+      <i class="bi bi-cloud-arrow-up"></i> Add document
+    </button>
+  </div>
+</div>
 
-<div class="table-wrap">
-<table class="ledger">
-  <thead><tr><th>Document</th><th>Date</th><th>Expiry</th><th>Tags</th><th>Hospital</th><th>Notes</th><th>Size</th><th></th><th></th></tr></thead>
-  <tbody>
-    {% for doc in documents %}
-    <tr>
-      <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title | nice }}</td>
-      <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
-      <td class="mono">{{ doc.expiry_date or '—' }}</td>
-      <td style="color:var(--ink-soft); font-size:12.5px;">{{ doc.tags or '—' }}</td>
-      <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
-      <td style="max-width:180px; color:var(--ink-soft); font-size:12.5px;">{{ doc.notes or '—' }}</td>
-      <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
-      <td><a href="/admin/documents/{{ doc.id }}/download" class="btn-compact save">Download</a></td>
-      <td>
-        <form method="post" action="/admin/documents/{{ doc.id }}/delete" onsubmit="return confirm('Delete this document?');">
-          <input type="hidden" name="person_id" value="{{ active_person.id }}">
-          <input type="hidden" name="category" value="{{ category or '' }}">
-          <button class="btn-compact danger" type="submit">Delete</button>
-        </form>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="9" class="empty">Nothing here yet.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="filter-bar">
+  <a class="chip plain {% if not category %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}">
+    <i class="bi bi-collection"></i> All
+  </a>
+  {% for cat, label in folder_label.items() %}
+  <a class="chip plain {% if cat == category %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}">
+    <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span> {{ label }}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="collapse mb-4" id="add-doc">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-ico gold"><i class="bi bi-cloud-arrow-up"></i></span>
+      <div>
+        <h2>Add a document</h2>
+        <div class="card-sub">Stored encrypted for {{ active_person.name | nice }}</div>
+      </div>
+      <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc" aria-label="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
+        <input type="hidden" name="person_id" value="{{ active_person.id }}">
+        <input type="hidden" name="redirect_to" value="folder">
+        <input type="hidden" name="redirect_category" value="{{ category or '' }}">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="d-title">Title <span class="req">*</span></label>
+            <input class="form-control" id="d-title" type="text" name="title" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="d-category">Category <span class="req">*</span></label>
+            <select class="form-select" id="d-category" name="category" required>
+              {% for cat, label in folder_label.items() %}
+                <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="d-hospital">Hospital / clinic</label>
+            <input class="form-control" id="d-hospital" type="text" name="hospital_name">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="d-date">Date</label>
+            <input class="form-control" id="d-date" type="date" name="doc_date">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="d-expiry">Expiry date</label>
+            <input class="form-control" id="d-expiry" type="date" name="expiry_date">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="d-tags">Tags</label>
+            <input class="form-control" id="d-tags" type="text" name="tags">
+            <div class="form-text">Comma-separated</div>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="d-notes">Notes (encrypted)</label>
+            <textarea class="form-control" id="d-notes" name="notes" rows="2"></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="d-file">File <span class="req">*</span></label>
+            <input class="form-control" id="d-file" type="file" name="file" required>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Upload document</button>
+          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Document</th>
+          <th>Date</th>
+          <th>Expiry</th>
+          <th>Tags</th>
+          <th>Hospital</th>
+          <th>Size</th>
+          <th class="table-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for doc in documents %}
+        <tr>
+          <td>
+            <div class="d-flex align-items-center gap-2">
+              <span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span>
+              <div>
+                <div class="fw-semibold">{{ doc.title | nice }}</div>
+                {% if doc.notes %}<div class="text-faint truncate">{{ doc.notes }}</div>{% endif %}
+              </div>
+            </div>
+          </td>
+          <td class="mono text-muted">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
+          <td class="mono text-muted">{{ doc.expiry_date or '—' }}</td>
+          <td>
+            {% if doc.tags %}
+              <span class="row-gap">
+                {% for t in doc.tags.split(',') if t.strip() %}<span class="badge badge-soft">{{ t.strip() }}</span>{% endfor %}
+              </span>
+            {% else %}
+              <span class="text-faint">—</span>
+            {% endif %}
+          </td>
+          <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
+          <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
+          <td class="table-actions">
+            <div class="d-flex gap-2 justify-content-end">
+              <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
+                <i class="bi bi-download"></i> Download
+              </a>
+              <form method="post" action="/admin/documents/{{ doc.id }}/delete" onsubmit="return confirm('Delete this document?');">
+                <input type="hidden" name="person_id" value="{{ active_person.id }}">
+                <input type="hidden" name="category" value="{{ category or '' }}">
+                <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Delete {{ doc.title | nice }}">
+                  <i class="bi bi-trash3"></i> Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7">
+            <div class="empty-state">
+              <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
+              <div class="empty-title">Nothing here yet</div>
+              <p>Upload a prescription, lab report, or bill and it will show up in this folder.</p>
+              <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">
+                <i class="bi bi-cloud-arrow-up"></i> Add document
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

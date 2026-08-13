@@ -1,125 +1,252 @@
 {% extends "base.html" %}
-{% block title %}AI & SMS{% endblock %}
+{% block title %}AI &amp; SMS{% endblock %}
 {% block content %}
-<div class="eyebrow"><a href="/admin/finance/more" style="color:var(--ink-soft);">← More</a></div>
-<div class="page-title">AI & SMS inbox</div>
-<p style="color:var(--ink-soft); max-width:640px; margin-bottom:22px;">
-  Paste bank / UPI / wallet messages. The vault detects debit vs credit, picks a category, then you accept into the ledger.
-  Add ChatGPT, Claude, OpenRouter, Kimi, Groq, or a custom OpenAI-compatible key for better tagging.
-</p>
-
-<div class="grid grid-split" style="margin-bottom:22px;">
-  <div class="panel">
-    <div class="panel-head"><h2>Paste messages</h2></div>
-    <form method="post" action="/admin/finance/ai/ingest">
-      <div class="field"><label>Messages</label><textarea name="text" rows="7" required placeholder="Dear Customer, Rs.450.00 has been debited via UPI to SWIGGY…"></textarea></div>
-      <div class="field">
-        <label>Post into account</label>
-        <select name="account_id">
-          {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
-        </select>
-      </div>
-      <label class="check" style="margin-bottom:14px;"><input type="checkbox" name="auto_accept" value="1"> Auto-save when confidence is high</label>
-      <button class="btn" type="submit">Read & tag</button>
-    </form>
-  </div>
-  <div class="panel">
-    <div class="panel-head"><h2>Pending</h2><span class="count">{{ messages|length }}</span></div>
-    {% for m in messages %}
-    <div class="record">
-      <span class="record-dot" style="background:{% if m.direction=='credit' %}var(--mm-income){% else %}var(--mm-expense){% endif %};"></span>
-      <div style="flex:1;">
-        <div class="record-title">{{ m.payee or m.suggested_category or m.direction }} · {% if m.amount %}{{ inr(m.amount) }}{% else %}no amount{% endif %}</div>
-        <div class="record-meta">{{ m.direction }} · {{ m.payment_method or '—' }} · {{ m.suggested_category or '—' }} · {{ m.provider_used }} · {{ '%.0f'|format((m.confidence or 0)*100) }}%</div>
-        <div class="record-meta" style="margin-top:4px;">{{ m.raw_text[:160] }}</div>
-        <div style="display:flex; gap:8px; margin-top:10px;">
-          <form method="post" action="/admin/finance/ai/messages/{{ m.id }}/accept">
-            <button class="btn" type="submit" style="padding:8px 12px;">Accept</button>
-          </form>
-          <form method="post" action="/admin/finance/ai/messages/{{ m.id }}/ignore">
-            <button class="btn-outline" type="submit">Ignore</button>
-          </form>
-        </div>
-      </div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/finance/more">More</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Money Manager
     </div>
-    {% else %}
-    <div class="empty-state"><p>Inbox is clear.</p></div>
-    {% endfor %}
+    <h1 class="page-title">AI &amp; SMS inbox</h1>
+    <p class="page-lead">
+      Paste bank, UPI, or wallet messages. The vault detects debit vs credit, picks a category, then you accept into the ledger.
+      Add ChatGPT, Claude, OpenRouter, Kimi, Groq, or a custom OpenAI-compatible key for better tagging.
+    </p>
   </div>
 </div>
 
-<div class="grid grid-split">
-  <div class="panel">
-    <div class="panel-head"><h2>API keys</h2></div>
-    {% for k in keys %}
-    <div class="record">
-      <span class="record-dot"></span>
-      <div>
-        <div class="record-title">{{ k.name }}{% if k.is_default %} · default{% endif %}</div>
-        <div class="record-meta">{{ k.kind }} · {{ k.model or 'default model' }}{% if k.has_key %} · key saved{% endif %}</div>
-      </div>
-      <form method="post" action="/admin/finance/ai/keys/{{ k.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
-    </div>
-    {% else %}
-    <p class="record-meta">No keys yet — heuristic tagging still works for Indian bank SMS.</p>
-    {% endfor %}
-    <form class="panel-form" method="post" action="/admin/finance/ai/keys">
-      <div class="form-grid">
-        <div class="field"><label>Label</label><input name="name" required placeholder="Home OpenRouter"></div>
-        <div class="field">
-          <label>Provider</label>
-          <select name="kind">
-            <option value="openai">ChatGPT / OpenAI</option>
-            <option value="anthropic">Claude / Anthropic</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="kimi">Kimi / Moonshot</option>
-            <option value="groq">Groq</option>
-            <option value="ollama">Ollama (local)</option>
-            <option value="custom">Custom OpenAI-compatible</option>
-          </select>
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="stack">
+      <div class="card">
+        <div class="card-header">
+          <span class="card-ico gold"><i class="bi bi-chat-left-text"></i></span>
+          <div>
+            <h2>Paste messages</h2>
+            <div class="card-sub">One or many at a time</div>
+          </div>
         </div>
-        <div class="field"><label>API key</label><input name="api_key" autocomplete="off"></div>
-        <div class="field"><label>Model</label><input name="model" placeholder="gpt-4o-mini"></div>
-        <div class="field" style="grid-column:1 / -1;"><label>Base URL (custom / Ollama)</label><input name="base_url" placeholder="https://openrouter.ai/api/v1"></div>
+        <div class="card-body">
+          <form method="post" action="/admin/finance/ai/ingest">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label" for="ai-text">Messages <span class="req">*</span></label>
+                <textarea class="form-control" id="ai-text" name="text" rows="7" required placeholder="Dear Customer, Rs.450.00 has been debited via UPI to SWIGGY…"></textarea>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="ai-account">Post into account</label>
+                <select class="form-select" id="ai-account" name="account_id">
+                  {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <div class="form-check">
+                  <input class="form-check-input" id="ai-auto" type="checkbox" name="auto_accept" value="1">
+                  <label class="form-check-label" for="ai-auto">Auto-save when confidence is high</label>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit"><i class="bi bi-magic"></i> Read &amp; tag</button>
+            </div>
+          </form>
+        </div>
       </div>
-      <label class="check" style="margin-bottom:14px;"><input type="checkbox" name="is_default" value="1" checked> Use as default</label>
-      <button class="btn" type="submit">Save key</button>
-    </form>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-ico info"><i class="bi bi-key"></i></span>
+          <div>
+            <h2>API keys</h2>
+            <div class="card-sub">Optional — heuristics work without one</div>
+          </div>
+          <span class="badge badge-soft ms-auto">{{ keys | length }}</span>
+        </div>
+        {% if keys %}
+        <div class="list-rows">
+          {% for k in keys %}
+          <div class="list-row flex-wrap">
+            <div class="row-body">
+              <div class="row-title">
+                {{ k.name }}
+                {% if k.is_default %}<span class="badge badge-gold"><i class="bi bi-star"></i> Default</span>{% endif %}
+              </div>
+              <div class="row-meta">{{ k.kind }} &middot; {{ k.model or 'default model' }}</div>
+            </div>
+            <div class="row-side">
+              {% if k.has_key %}
+              <span class="badge badge-good"><i class="bi bi-shield-lock"></i> Key saved</span>
+              {% else %}
+              <span class="badge badge-soft"><i class="bi bi-slash-circle"></i> No key</span>
+              {% endif %}
+            </div>
+            <form class="row-actions" method="post" action="/admin/finance/ai/keys/{{ k.id }}/delete">
+              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="card-body">
+          {% if not keys %}
+          <p class="text-muted">No keys yet — heuristic tagging still works for Indian bank SMS.</p>
+          {% endif %}
+          <form method="post" action="/admin/finance/ai/keys">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="k-name">Label <span class="req">*</span></label>
+                <input class="form-control" id="k-name" name="name" required placeholder="Home OpenRouter">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="k-kind">Provider</label>
+                <select class="form-select" id="k-kind" name="kind">
+                  <option value="openai">ChatGPT / OpenAI</option>
+                  <option value="anthropic">Claude / Anthropic</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="kimi">Kimi / Moonshot</option>
+                  <option value="groq">Groq</option>
+                  <option value="ollama">Ollama (local)</option>
+                  <option value="custom">Custom OpenAI-compatible</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="k-key">API key</label>
+                <input class="form-control js-secret" id="k-key" type="password" name="api_key" autocomplete="off">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="k-model">Model</label>
+                <input class="form-control" id="k-model" name="model" placeholder="gpt-4o-mini">
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="k-base">Base URL (custom / Ollama)</label>
+                <input class="form-control" id="k-base" name="base_url" placeholder="https://openrouter.ai/api/v1">
+              </div>
+              <div class="col-12">
+                <div class="form-check">
+                  <input class="form-check-input" id="k-default" type="checkbox" name="is_default" value="1" checked>
+                  <label class="form-check-label" for="k-default">Use as default</label>
+                </div>
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-outline-light" type="submit"><i class="bi bi-check2"></i> Save key</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-ico warn"><i class="bi bi-funnel"></i></span>
+          <div>
+            <h2>Auto-tag rules</h2>
+            <div class="card-sub">Applied before the AI answer is used</div>
+          </div>
+          <span class="badge badge-soft ms-auto">{{ rules | length }}</span>
+        </div>
+        {% if rules %}
+        <div class="list-rows">
+          {% for r in rules %}
+          <div class="list-row flex-wrap">
+            <div class="row-body">
+              <div class="row-title">contains “{{ r.match_text }}”</div>
+              <div class="row-meta">{{ r.txn_type or 'any' }} &middot; {{ r.category_name or 'keep AI category' }}{% if r.payee %} &middot; payee {{ r.payee }}{% endif %}</div>
+            </div>
+            <form class="row-actions ms-auto" method="post" action="/admin/finance/ai/rules/{{ r.id }}/delete">
+              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <div class="card-body">
+          <form method="post" action="/admin/finance/ai/rules">
+            <div class="row g-3">
+              <div class="col-12">
+                <label class="form-label" for="rl-match">If message contains <span class="req">*</span></label>
+                <input class="form-control" id="rl-match" name="match_text" required placeholder="SWIGGY">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="rl-type">Treat as</label>
+                <select class="form-select" id="rl-type" name="txn_type">
+                  <option value="">Keep detected</option>
+                  <option value="expense">Expense / debit</option>
+                  <option value="income">Income / credit</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="rl-cat">Category</label>
+                <select class="form-select" id="rl-cat" name="category_id">
+                  <option value="">Keep detected</option>
+                  {% for c in categories %}<option value="{{ c.id }}">{{ c.kind }} · {{ c.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="rl-payee">Force payee (optional)</label>
+                <input class="form-control" id="rl-payee" name="payee">
+              </div>
+            </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-outline-light" type="submit"><i class="bi bi-plus-lg"></i> Add rule</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="panel">
-    <div class="panel-head"><h2>Auto-tag rules</h2></div>
-    {% for r in rules %}
-    <div class="record">
-      <span class="record-dot" style="background:var(--mustard);"></span>
-      <div>
-        <div class="record-title">contains “{{ r.match_text }}”</div>
-        <div class="record-meta">{{ r.txn_type or 'any' }} · {{ r.category_name or 'keep AI category' }}{% if r.payee %} · payee {{ r.payee }}{% endif %}</div>
+
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico plum"><i class="bi bi-inbox"></i></span>
+        <div>
+          <h2>Parsed inbox</h2>
+          <div class="card-sub">Accept to post into the ledger</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ messages|length }} pending</span>
       </div>
-      <form method="post" action="/admin/finance/ai/rules/{{ r.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
+      {% if messages %}
+      <div class="list-rows">
+        {% for m in messages %}
+        <div class="list-row flex-wrap align-items-start">
+          <span class="card-ico {% if m.direction=='credit' %}good{% else %}bad{% endif %}">
+            <i class="bi {% if m.direction=='credit' %}bi-arrow-down-left{% else %}bi-arrow-up-right{% endif %}"></i>
+          </span>
+          <div class="row-body">
+            <div class="row-title">{{ m.payee or m.suggested_category or m.direction }}</div>
+            <div class="row-meta">{{ m.payment_method or '—' }} &middot; {{ m.suggested_category or '—' }} &middot; {{ m.provider_used }}</div>
+            <div class="row-gap mt-2">
+              <span class="badge {% if m.direction=='credit' %}badge-good{% else %}badge-bad{% endif %}">{{ m.direction }}</span>
+              <span class="badge badge-soft">{{ m.status }}</span>
+              <span class="badge badge-soft"><i class="bi bi-graph-up"></i> {{ '%.0f'|format((m.confidence or 0)*100) }}%</span>
+            </div>
+            <p class="row-meta truncate mt-2 mb-0">{{ m.raw_text[:160] }}</p>
+          </div>
+          <div class="row-side">
+            <span class="amount {% if m.direction=='credit' %}mm-income{% else %}mm-expense{% endif %}">
+              {% if m.amount %}{{ inr(m.amount) }}{% else %}no amount{% endif %}
+            </span>
+          </div>
+          <div class="row-actions flex-wrap">
+            <form method="post" action="/admin/finance/ai/messages/{{ m.id }}/accept">
+              <button class="btn btn-sm btn-outline-success" type="submit"><i class="bi bi-check2"></i> Accept</button>
+            </form>
+            <form method="post" action="/admin/finance/ai/messages/{{ m.id }}/ignore">
+              <button class="btn btn-sm btn-ghost" type="submit"><i class="bi bi-x-lg"></i> Ignore</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-inbox"></i></div>
+        <div class="empty-title">Inbox is clear</div>
+        <p>Paste a bank or UPI message on the left and parsed entries will wait here for review.</p>
+      </div>
+      {% endif %}
     </div>
-    {% endfor %}
-    <form class="panel-form" method="post" action="/admin/finance/ai/rules">
-      <div class="field"><label>If message contains</label><input name="match_text" required placeholder="SWIGGY"></div>
-      <div class="form-grid">
-        <div class="field">
-          <label>Treat as</label>
-          <select name="txn_type">
-            <option value="">Keep detected</option>
-            <option value="expense">Expense / debit</option>
-            <option value="income">Income / credit</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Category</label>
-          <select name="category_id">
-            <option value="">Keep detected</option>
-            {% for c in categories %}<option value="{{ c.id }}">{{ c.kind }} · {{ c.name }}</option>{% endfor %}
-          </select>
-        </div>
-      </div>
-      <div class="field"><label>Force payee (optional)</label><input name="payee"></div>
-      <button class="btn" type="submit">Add rule</button>
-    </form>
   </div>
 </div>
 {% endblock %}

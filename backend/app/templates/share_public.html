@@ -1,31 +1,63 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ doc.title }} — Vault</title>
-<meta name="theme-color" content="#0B1018">
+<meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
-<link rel="stylesheet" href="/static/vault.css?v=4">
-<style>
-  body{ min-height:100vh; display:flex; align-items:center; padding:32px 20px; }
-  .card{ max-width:520px; margin:0 auto; width:100%; border:1px solid var(--line); border-radius:var(--radius); padding:40px 36px; }
-  h1{ font-family:var(--display); font-size:36px; font-weight:400; font-style:italic; margin:10px 0 14px; letter-spacing:-0.03em; line-height:1.1; }
-  .meta{ color:var(--ink-soft); font-size:14px; margin-bottom:28px; line-height:1.55; }
-  .note{ margin-top:22px; font-size:12px; color:var(--ink-soft); line-height:1.5; }
-</style>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css?v=5">
 </head>
 <body>
-  <div class="card">
-    <div class="eyebrow">Shared medical document</div>
-    <h1>{{ doc.title }}</h1>
-    <div class="meta">
-      {% if doc.hospital_name %}{{ doc.hospital_name }} · {% endif %}
-      {% if doc.doc_date %}{{ doc.doc_date }}{% endif %}<br>
-      Link expires {{ expires_at.strftime('%d %b %Y, %H:%M') }} UTC
+<div class="public-wrap">
+  <div class="public-card">
+    <div class="public-brand">
+      <span class="brand-mark">V</span>
+      <span class="brand-name">Vault</span>
     </div>
-    <a class="btn" href="/share/public/{{ token }}/download">Download file</a>
-    <p class="note">This is a read-only link. Opening or downloading is logged for the owner.</p>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-file-earmark-medical"></i></span>
+        <div>
+          <h2>Shared medical document</h2>
+          <div class="card-sub">Read-only link</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <h1 class="page-title">{{ doc.title }}</h1>
+
+        {% if doc.hospital_name or doc.doc_date %}
+        <div class="facts mt-4">
+          {% if doc.hospital_name %}
+          <div class="fact">
+            <div class="lbl">Hospital</div>
+            <div class="val">{{ doc.hospital_name }}</div>
+          </div>
+          {% endif %}
+          {% if doc.doc_date %}
+          <div class="fact">
+            <div class="lbl">Document date</div>
+            <div class="val">{{ doc.doc_date }}</div>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <a class="btn btn-primary btn-lg btn-block mt-4" href="/share/public/{{ token }}/download">
+          <i class="bi bi-download"></i> Download file
+        </a>
+      </div>
+    </div>
+
+    <div class="public-foot">
+      <i class="bi bi-clock-history"></i>
+      Link expires {{ expires_at.strftime('%d %b %Y, %H:%M') }} UTC · opening or downloading is logged for the owner.
+    </div>
   </div>
+</div>
 </body>
 </html>

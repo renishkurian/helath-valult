@@ -1,70 +1,85 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>ICE — {{ person.name | nice }}</title>
-<meta name="theme-color" content="#0B1018">
+<meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
-<link rel="stylesheet" href="/static/vault.css?v=4">
-<style>
-  body{ min-height:100vh; padding:32px 20px; }
-  .card{
-    position:relative; overflow:hidden; max-width:440px; margin:0 auto;
-    border:1px solid rgba(251,113,133,0.28); border-radius:var(--radius); padding:36px;
-    background:var(--paper-deep);
-  }
-  .card::before{
-    content:""; position:absolute; right:-10px; top:-16px; width:140px; height:140px;
-    background:
-      linear-gradient(#FB7185,#FB7185) center / 28px 8px no-repeat,
-      linear-gradient(#FB7185,#FB7185) center / 8px 28px no-repeat;
-    opacity:0.18; transform:rotate(12deg);
-  }
-  .kicker{ font-size:11px; letter-spacing:0.2em; text-transform:uppercase; color:#FB7185; font-weight:600; }
-  h1{ font-family:var(--display); margin:12px 0 24px; font-size:40px; font-weight:400; font-style:italic; letter-spacing:-0.03em; line-height:1.05; }
-  .layout{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; }
-  .blood{
-    width:96px; height:96px; border-radius:var(--radius);
-    background:rgba(251,113,133,0.1); border:1px solid rgba(251,113,133,0.35);
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-  }
-  .blood .bg{ font-family:var(--display); font-size:28px; font-weight:500; color:#FFD0D5; line-height:1; }
-  .blood .bl{ font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#FB7185; margin-top:8px; font-weight:700; }
-  .lbl{ font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; margin-top:18px; }
-  .val{ font-size:16px; font-weight:600; margin:4px 0 0; }
-  .pill{ margin:6px 6px 0 0; background:rgba(251,113,133,0.14); color:#FB7185; }
-  .id{ font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--ink); }
-  a{ color:var(--ink); text-decoration:underline; text-underline-offset:3px; }
-  @media (max-width: 420px){ .layout{ grid-template-columns:1fr; } }
-</style>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css?v=5">
 </head>
 <body>
-  <div class="card">
-    <div class="kicker">In case of emergency</div>
-    <h1>{{ person.name | nice }}</h1>
-    <div class="layout">
-      <div class="blood">
-        <div class="bg">{{ person.blood_group or '—' }}</div>
-        <div class="bl">Blood group</div>
+<div class="public-wrap">
+  <div class="public-card">
+    <div class="ice-card">
+      <div class="ice-kicker"><i class="bi bi-exclamation-octagon-fill"></i> In case of emergency</div>
+      <h1 class="ice-name">{{ person.name | nice }}</h1>
+
+      <div class="ice-layout">
+        <div class="blood-badge{% if not person.blood_group %} missing{% endif %}">
+          <div class="bg">{{ person.blood_group or '—' }}</div>
+          <div class="bl">Blood group</div>
+        </div>
+        <div class="ice-meta">
+          <div class="ice-row">
+            <div class="lbl">Emergency contact</div>
+            <div class="val">{{ (person.emergency_name | nice) if person.emergency_name else '—' }}</div>
+          </div>
+          {% if person.emergency_phone %}
+          <a class="btn btn-primary btn-lg btn-block" href="tel:{{ person.emergency_phone }}">
+            <i class="bi bi-telephone-fill"></i> Call {{ person.emergency_phone }}
+          </a>
+          {% endif %}
+        </div>
       </div>
-      <div>
-        <div class="lbl" style="margin-top:0;">Emergency contact</div>
-        <div class="val">{{ (person.emergency_name | nice) if person.emergency_name else '—' }}</div>
-        {% if person.emergency_phone %}<div class="val"><a href="tel:{{ person.emergency_phone }}">{{ person.emergency_phone }}</a></div>{% endif %}
+
+      <div class="divider"></div>
+
+      <div class="stack">
+        <div class="ice-row">
+          <div class="lbl">Allergies</div>
+          {% if person.allergies %}
+          <div class="row-gap mt-1">
+            {% for a in person.allergies.split(',') if a.strip() %}
+            <span class="badge badge-bad"><i class="bi bi-exclamation-triangle-fill"></i> {{ a.strip() }}</span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="val">None listed</div>
+          {% endif %}
+        </div>
+
+        <div class="ice-row">
+          <div class="lbl">Conditions</div>
+          {% if person.conditions %}
+          <div class="row-gap mt-1">
+            {% for c in person.conditions.split(',') if c.strip() %}
+            <span class="badge badge-warn"><i class="bi bi-heart-pulse-fill"></i> {{ c.strip() }}</span>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="val">—</div>
+          {% endif %}
+        </div>
       </div>
+
+      {% if person.abha_id or person.dob %}
+      <div class="ice-ids">
+        {% if person.abha_id %}<span class="ice-id"><i class="bi bi-person-vcard"></i> ABHA {{ person.abha_id }}</span>{% endif %}
+        {% if person.dob %}<span class="ice-id"><i class="bi bi-calendar3"></i> DOB {{ person.dob }}</span>{% endif %}
+      </div>
+      {% endif %}
     </div>
-    <div class="lbl">Allergies</div>
-    <div class="val">
-      {% if person.allergies %}
-        {% for a in person.allergies.split(',') if a.strip() %}<span class="pill">{{ a.strip() }}</span>{% endfor %}
-      {% else %}None listed{% endif %}
+
+    <div class="public-foot">
+      <i class="bi bi-shield-lock"></i>
+      Emergency card shared from a private vault. Show this screen to medical staff.
     </div>
-    <div class="lbl">Conditions</div>
-    <div class="val">{{ person.conditions or '—' }}</div>
-    {% if person.abha_id %}<div class="lbl">ABHA</div><div class="val id">{{ person.abha_id }}</div>{% endif %}
-    {% if person.dob %}<div class="lbl">Date of birth</div><div class="val">{{ person.dob }}</div>{% endif %}
   </div>
+</div>
 </body>
 </html>

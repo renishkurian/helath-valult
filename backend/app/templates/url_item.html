@@ -1,109 +1,195 @@
 {% extends "base.html" %}
 {% block title %}{{ item.title }}{% endblock %}
 {% block content %}
-<div class="eyebrow"><a href="/admin/urls" style="color:var(--ink-soft);">← URL Vault</a>{% if item.category_name %} · {{ item.category_name }}{% endif %}</div>
 <div class="page-head">
-  <div class="page-title">{{ item.title }}</div>
-  <a class="btn" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Open</a>
-</div>
-
-{% if item.og_image or item.og_description %}
-<div class="uv-preview surface" style="max-width:640px; margin-bottom:16px; padding:0; overflow:hidden;">
-  {% if item.og_image %}
-  <div class="uv-thumb" style="height:180px; background-image:url('{{ item.og_image }}'); background-size:cover; background-position:center;"></div>
-  {% endif %}
-  <div style="padding:16px 18px;">
-    <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:600;">{{ item.og_site_name or '' }}</div>
-    {% if item.og_title and item.og_title != item.title %}<div style="font-weight:700; margin-top:4px;">{{ item.og_title }}</div>{% endif %}
-    {% if item.og_description %}<p style="color:var(--ink-soft); font-size:14px; margin-top:6px; line-height:1.5;">{{ item.og_description }}</p>{% endif %}
-    <div style="font-size:12px; color:var(--ink-soft); margin-top:8px;">Added {{ item.created_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
+  <div class="d-flex align-items-center gap-3">
+    <a class="btn btn-ghost btn-icon" href="/admin/urls" aria-label="Back to URL Vault"><i class="bi bi-arrow-left"></i></a>
+    <div>
+      <div class="eyebrow">URL Vault{% if item.category_name %} <i class="bi bi-chevron-right"></i> {{ item.category_name }}{% endif %}</div>
+      <h1 class="page-title">{{ item.title }}</h1>
+    </div>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">
+      <i class="bi bi-box-arrow-up-right"></i> Open
+    </a>
   </div>
 </div>
-{% endif %}
 
-<div class="surface" style="max-width:640px; margin-bottom:16px;">
-  <form method="post" action="/admin/urls/{{ item.id }}">
-    <div class="form-grid">
-      <div class="field" style="grid-column:1/-1;"><label>URL</label><input name="url" value="{{ item.url }}" required></div>
-      <div class="field"><label>Title</label><input name="title" value="{{ item.title }}" required></div>
-      <div class="field">
-        <label>Category</label>
-        <select name="category_id">
-          <option value="">None</option>
-          {% for c in categories %}
-          <option value="{{ c.id }}" {% if item.category_id==c.id %}selected{% endif %}>{{ c.name }}</option>
-          {% endfor %}
-        </select>
+<div class="row g-3">
+  <div class="col-lg-7">
+    {% if item.og_image or item.og_description %}
+    <div class="card mb-3">
+      {% if item.og_image %}
+      <div class="link-thumb"><img src="{{ item.og_image }}" alt="" loading="lazy"></div>
+      {% endif %}
+      <div class="card-body">
+        {% if item.og_site_name %}<div class="eyebrow">{{ item.og_site_name }}</div>{% endif %}
+        {% if item.og_title and item.og_title != item.title %}
+        <div class="fw-semibold">{{ item.og_title }}</div>
+        {% endif %}
+        {% if item.og_description %}
+        <p class="text-muted mb-0 mt-2">{{ item.og_description }}</p>
+        {% endif %}
       </div>
     </div>
-    {% if tags %}
-    <div class="field" style="margin-top:12px;">
-      <label>Tags</label>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-        {% for t in tags %}
-        <label class="chip {% if t.id in selected_tag_ids %}active{% endif %}" style="cursor:pointer;">
-          <input type="checkbox" name="tag_ids" value="{{ t.id }}" {% if t.id in selected_tag_ids %}checked{% endif %} style="accent-color:var(--navy);">
-          {{ t.name }}
-        </label>
+    {% endif %}
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-pencil"></i></span>
+        <div><h2>Edit link</h2><div class="card-sub">Notes are stored on this server only</div></div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/urls/{{ item.id }}">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="i-url">URL <span class="req">*</span></label>
+              <input class="form-control" id="i-url" name="url" value="{{ item.url }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="i-title">Title <span class="req">*</span></label>
+              <input class="form-control" id="i-title" name="title" value="{{ item.title }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="i-category">Category</label>
+              <select class="form-select" id="i-category" name="category_id">
+                <option value="">None</option>
+                {% for c in categories %}
+                <option value="{{ c.id }}" {% if item.category_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% if tags %}
+            <div class="col-12">
+              <div class="form-label">Tags</div>
+              <div class="d-flex flex-wrap gap-3">
+                {% for t in tags %}
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="i-tag-{{ t.id }}" name="tag_ids" value="{{ t.id }}" {% if t.id in selected_tag_ids %}checked{% endif %}>
+                  <label class="form-check-label" for="i-tag-{{ t.id }}">{{ t.name }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            <div class="col-12">
+              <label class="form-label" for="i-notes">Notes</label>
+              <textarea class="form-control" id="i-notes" name="notes" rows="3">{{ item.notes or '' }}</textarea>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="i-favorite" name="favorite" value="1" {% if item.favorite %}checked{% endif %}>
+                <label class="form-check-label" for="i-favorite">Favorite</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="i-fetch" name="fetch_preview" value="1">
+                <label class="form-check-label" for="i-fetch">Refresh preview on save</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-info-circle"></i></span>
+        <div><h2>Details</h2></div>
+      </div>
+      <div class="card-body">
+        <div class="facts">
+          <div class="fact">
+            <div class="lbl">Added</div>
+            <div class="val">{{ item.created_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
+          </div>
+          <div class="fact">
+            <div class="lbl">Site</div>
+            <div class="val">{{ item.og_site_name or item.url.split('/')[2] }}</div>
+          </div>
+          <div class="fact">
+            <div class="lbl">Favorite</div>
+            <div class="val">{% if item.favorite %}<i class="bi bi-star-fill gold"></i> Yes{% else %}No{% endif %}</div>
+          </div>
+        </div>
+        {% if item.category_name or item.tags %}
+        <div class="row-gap mt-3">
+          {% if item.category_name %}
+          <span class="badge badge-soft" style="color:{{ item.category_color or '#8B95A8' }}; border-color:{{ item.category_color or '#8B95A8' }}55;">
+            <span class="dot"></span>{{ item.category_name }}
+          </span>
+          {% endif %}
+          {% for t in item.tags %}
+          <span class="badge badge-soft" style="color:{{ t.color or '#8B95A8' }}; border-color:{{ t.color or '#8B95A8' }}44;">{{ t.name }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header">
+        <span class="card-ico plum"><i class="bi bi-share"></i></span>
+        <div><h2>Share</h2><div class="card-sub">Copy the original URL, or create an expiring public preview page</div></div>
+      </div>
+      <div class="card-body">
+        <label class="form-label" for="i-copy">Original URL</label>
+        <input class="form-control js-copyable" id="i-copy" type="text" value="{{ item.url }}" readonly>
+        <form class="d-flex flex-wrap gap-2 mt-3" method="post" action="/admin/urls/{{ item.id }}/share">
+          <label class="visually-hidden" for="i-expires">Link expires in</label>
+          <select class="form-select" id="i-expires" name="expires_in_hours" style="flex:0 1 160px;">
+            <option value="24">1 day</option>
+            <option value="168" selected>1 week</option>
+            <option value="720">30 days</option>
+          </select>
+          <button class="btn btn-outline-light" type="submit"><i class="bi bi-plus-lg"></i> Create share link</button>
+        </form>
+      </div>
+      {% if shares %}
+      <div class="list-rows">
+        {% for s in shares %}
+        <div class="list-row">
+          <div class="row-body">
+            <div class="row-title mono">/u/{{ s.token }}</div>
+            <div class="row-meta">
+              {% if s.revoked %}Revoked{% else %}Expires {{ s.expires_at.strftime('%d %b %Y') }} · {{ s.view_count }} view{{ 's' if s.view_count != 1 else '' }}{% endif %}
+            </div>
+          </div>
+          {% if not s.revoked %}
+          <div class="row-actions">
+            <form method="post" action="/admin/urls/shares/{{ s.id }}/revoke">
+              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-slash-circle"></i> Revoke</button>
+            </form>
+          </div>
+          {% endif %}
+        </div>
         {% endfor %}
       </div>
+      {% endif %}
     </div>
-    {% endif %}
-    <div class="field" style="margin-top:12px;"><label>Notes</label><textarea name="notes" rows="3">{{ item.notes or '' }}</textarea></div>
-    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:14px;">
-      <label class="chip"><input type="checkbox" name="favorite" value="1" {% if item.favorite %}checked{% endif %}> Favorite</label>
-      <label class="chip"><input type="checkbox" name="fetch_preview" value="1"> Refresh preview on save</label>
-    </div>
-    <button class="btn" type="submit" style="margin-top:16px;">Save changes</button>
-  </form>
-</div>
 
-<div class="surface" style="max-width:640px; margin-bottom:16px;">
-  <div class="group-label">Share</div>
-  <p style="color:var(--ink-soft); font-size:13px; margin-bottom:12px;">Copy the original URL, or create an expiring public preview page.</p>
-  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
-    <button type="button" class="btn-outline uv-copy" data-url="{{ item.url }}">Copy URL</button>
-    <form method="post" action="/admin/urls/{{ item.id }}/share" style="display:flex; gap:8px; align-items:center;">
-      <select name="expires_in_hours">
-        <option value="24">1 day</option>
-        <option value="168" selected>1 week</option>
-        <option value="720">30 days</option>
-      </select>
-      <button class="btn" type="submit">Create share link</button>
-    </form>
-  </div>
-  {% for s in shares %}
-  <div class="mm-row" style="grid-template-columns:1fr auto;">
-    <div>
-      <div class="payee mono" style="font-size:13px; word-break:break-all;">/u/{{ s.token }}</div>
-      <div class="acct">
-        {% if s.revoked %}Revoked{% else %}Expires {{ s.expires_at.strftime('%d %b %Y') }} · {{ s.view_count }} view{{ 's' if s.view_count != 1 else '' }}{% endif %}
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico bad"><i class="bi bi-tools"></i></span>
+        <div><h2>Maintenance</h2></div>
+      </div>
+      <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+          <form method="post" action="/admin/urls/{{ item.id }}/preview">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-clockwise"></i> Refresh preview</button>
+          </form>
+        </div>
+        <div class="divider"></div>
+        <form method="post" action="/admin/urls/{{ item.id }}/delete" onsubmit="return confirm('Delete this link?');">
+          <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete link</button>
+        </form>
       </div>
     </div>
-    {% if not s.revoked %}
-    <form method="post" action="/admin/urls/shares/{{ s.id }}/revoke">
-      <button class="tag tag-mustard" type="submit">Revoke</button>
-    </form>
-    {% endif %}
   </div>
-  {% endfor %}
 </div>
-
-<div style="display:flex; gap:10px; flex-wrap:wrap; max-width:640px;">
-  <form method="post" action="/admin/urls/{{ item.id }}/preview">
-    <button class="btn-outline" type="submit">Refresh preview</button>
-  </form>
-  <form method="post" action="/admin/urls/{{ item.id }}/delete" onsubmit="return confirm('Delete this link?');">
-    <button class="btn-outline" type="submit" style="color:var(--stamp); border-color:rgba(255,107,122,0.35);">Delete link</button>
-  </form>
-</div>
-<script>
-document.querySelectorAll(".uv-copy").forEach((btn) => {
-  btn.addEventListener("click", async () => {
-    const url = btn.getAttribute("data-url");
-    try { await navigator.clipboard.writeText(url); btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy URL", 1400); }
-    catch { prompt("Copy URL", url); }
-  });
-});
-</script>
 {% endblock %}

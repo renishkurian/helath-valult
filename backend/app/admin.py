@@ -1325,11 +1325,14 @@ def finance_account_detail(
 @router.get("/finance/more", response_class=HTMLResponse)
 def finance_more(request: Request, db: Session = Depends(get_db)):
     from app.routers import finance as fn
+    from app.routers.finance import inr
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     summary = fn.summary(db=db, current_user=user)
-    return templates.TemplateResponse("finance_more.html", _fn_ctx(request, user, "fn_more", summary=summary))
+    return templates.TemplateResponse("finance_more.html", _fn_ctx(
+        request, user, "fn_more", summary=summary, inr=inr,
+    ))
 
 
 @router.get("/finance/ai", response_class=HTMLResponse)

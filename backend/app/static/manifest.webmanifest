@@ -1,11 +1,20 @@
 {
-  "name": "Vault",
+  "name": "Vault — private household archive",
   "short_name": "Vault",
+  "description": "Self-hosted health records, passwords, money, documents, and links.",
   "start_url": "/admin/modules",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0B1018",
-  "theme_color": "#0B1018",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0C11",
+  "theme_color": "#0A0C11",
   "icons": [
-    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Add expense", "url": "/admin/finance/add" },
+    { "name": "Passwords", "url": "/admin/passwords" },
+    { "name": "Emergency card", "url": "/admin/care" }
   ]
 }

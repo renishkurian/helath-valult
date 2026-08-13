@@ -3,50 +3,91 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Health Vault</div>
-    <div class="page-title">Household</div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Household</h1>
+    <p class="page-lead">Everyone you keep records for. Open a person to see their cards, files, and care.</p>
   </div>
-  <div class="count-mark" aria-label="{{ people|length }} people">{{ '%02d'|format(people|length) }}</div>
+  <div class="page-actions">
+    <span class="badge badge-soft" aria-label="{{ people|length }} people">
+      <i class="bi bi-people"></i> {{ '%02d'|format(people|length) }}
+    </span>
+    <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#add-person">
+      <i class="bi bi-person-plus"></i> Add someone
+    </button>
+  </div>
 </div>
-<p class="page-lead">Everyone you keep records for. Open a person to see their cards, files, and care.</p>
 
 <div class="album">
   {% for p in people %}
   <article class="portrait">
-    <a class="portrait-link" href="/admin?person={{ p.id }}">
-      <div class="mono-ring" aria-hidden="true">{{ p.avatar_initials or '?' }}</div>
-      <h2>{{ p.name | nice }}</h2>
-      <p>{{ p.relation | relabel }}{% if p.blood_group %} · {{ p.blood_group }}{% endif %}</p>
-      <span class="portrait-go">Open file</span>
-    </a>
-    {% if p.relation | enum_value != 'self' %}
-    <form class="portrait-remove" method="post" action="/admin/people/{{ p.id }}/delete" onsubmit="return confirm('Remove {{ p.name | nice }}?');">
-      <button type="submit">Remove</button>
-    </form>
+    <span class="avatar avatar-xl avatar-gold">{{ p.avatar_initials or '?' }}</span>
+    <h2>
+      <a class="stretched-link text-body text-decoration-none" href="/admin?person={{ p.id }}">{{ p.name | nice }}</a>
+    </h2>
+    <p>{{ p.relation | relabel }}</p>
+    {% if p.blood_group %}
+    <div class="mt-2"><span class="badge badge-bad"><i class="bi bi-droplet"></i> {{ p.blood_group }}</span></div>
     {% endif %}
+    <div class="portrait-go d-flex align-items-center gap-2 w-100">
+      <span><i class="bi bi-folder2-open"></i> Open file</span>
+      {% if p.relation | enum_value != 'self' %}
+      <form class="ms-auto position-relative z-2" method="post" action="/admin/people/{{ p.id }}/delete" onsubmit="return confirm('Remove {{ p.name | nice }}?');">
+        <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Remove {{ p.name | nice }}" title="Remove {{ p.name | nice }}">
+          <i class="bi bi-trash3"></i>
+        </button>
+      </form>
+      {% endif %}
+    </div>
   </article>
   {% endfor %}
 
-  <details class="portrait portrait-add">
-    <summary>
-      <div class="mono-ring mono-plus" aria-hidden="true">+</div>
-      <h2>Add someone</h2>
-      <p>Spouse, child, parent, or other</p>
-    </summary>
-    <form method="post" action="/admin/family/add" class="add-inline">
-      <div class="field"><label for="fam-name">Name</label><input id="fam-name" type="text" name="name" required placeholder="Full name"></div>
-      <div class="field">
-        <label for="fam-relation">Relation</label>
-        <select id="fam-relation" name="relation">
-          <option value="spouse">Spouse</option>
-          <option value="child">Child</option>
-          <option value="parent">Parent</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
-      <div class="field"><label for="fam-blood">Blood group</label><input id="fam-blood" type="text" name="blood_group" placeholder="Optional"></div>
-      <button class="btn" type="submit">Save person</button>
-    </form>
-  </details>
+  <button class="portrait portrait-add" type="button" data-bs-toggle="modal" data-bs-target="#add-person">
+    <span class="plus"><i class="bi bi-plus-lg"></i></span>
+    <span>Add someone</span>
+    <span class="text-faint">Spouse, child, parent, or other</span>
+  </button>
+</div>
+
+<div class="modal fade" id="add-person" tabindex="-1" aria-labelledby="add-person-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="/admin/family/add">
+        <div class="modal-header">
+          <span class="card-ico gold"><i class="bi bi-person-plus"></i></span>
+          <h2 class="modal-title" id="add-person-title">Add someone</h2>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="fam-name">Name <span class="req">*</span></label>
+              <input class="form-control" id="fam-name" type="text" name="name" required placeholder="Full name">
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label" for="fam-relation">Relation</label>
+              <select class="form-select" id="fam-relation" name="relation">
+                <option value="spouse">Spouse</option>
+                <option value="child">Child</option>
+                <option value="parent">Parent</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="col-sm-5">
+              <label class="form-label" for="fam-blood">Blood group</label>
+              <input class="form-control" id="fam-blood" type="text" name="blood_group" placeholder="Optional">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save person</button>
+        </div>
+      </form>
+    </div>
+  </div>
 </div>
 {% endblock %}

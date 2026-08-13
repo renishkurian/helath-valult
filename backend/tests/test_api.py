@@ -162,7 +162,7 @@ def test_admin_ui_login_and_dashboard():
         follow_redirects=True,
     )
     assert r.status_code == 200
-    assert "Choose a module" in r.text
+    assert "Your five vaults" in r.text
     assert "Password Vault" in r.text
 
     r = client.get("/admin", follow_redirects=False)

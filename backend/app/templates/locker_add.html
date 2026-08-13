@@ -1,43 +1,99 @@
 {% extends "base.html" %}
 {% block title %}Add document{% endblock %}
 {% block content %}
-<div class="entry-page" style="max-width:560px;">
-  <a class="entry-back" href="/admin/locker" style="display:inline-flex; align-items:center; gap:4px; color:var(--ink-soft); font-size:13px; font-weight:600; margin-bottom:10px;">← Locker</a>
-  <h1 style="font-size:34px; letter-spacing:-0.05em; font-weight:800; margin-bottom:18px;">Add document</h1>
-
-  <form method="post" action="/admin/locker/add" enctype="multipart/form-data" class="surface" style="border-radius:22px; padding:22px;">
-    <div class="field" style="margin-bottom:14px;">
-      <label>Type</label>
-      <select name="doc_type" id="doc_type">
-        {% for id, label in types %}
-        <option value="{{ id }}" {% if prefill_type==id %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
+<div class="page-head">
+  <div class="d-flex align-items-start gap-3">
+    <a class="btn btn-ghost btn-icon" href="/admin/locker" aria-label="Back to locker"><i class="bi bi-arrow-left"></i></a>
+    <div>
+      <div class="eyebrow">
+        <a href="/admin/locker">Locker</a>
+        <i class="bi bi-chevron-right"></i>
+        New entry
+      </div>
+      <h1 class="page-title">Add document</h1>
+      <p class="page-lead">ID numbers and notes are encrypted before they touch the disk.</p>
     </div>
-    <div class="field" id="custom-wrap" style="margin-bottom:14px; {% if prefill_type!='other' %}display:none;{% endif %}">
-      <label>Custom type</label>
-      <input name="custom_type" placeholder="School ID, gas book…">
-    </div>
-    <div class="form-grid">
-      <div class="field"><label>Title*</label><input name="title" required placeholder="Aadhaar — Renish"></div>
-      <div class="field"><label>Holder</label><input name="holder_name" placeholder="Whose document"></div>
-      <div class="field"><label>Issuer</label><input name="issuer" placeholder="UIDAI, RTO, insurer…"></div>
-      <div class="field"><label>ID / number</label><input name="id_number" placeholder="Encrypted at rest" autocomplete="off"></div>
-      <div class="field"><label>Issued on</label><input type="date" name="issued_on"></div>
-      <div class="field"><label>Expiry</label><input type="date" name="expiry_date"></div>
-      <div class="field"><label>Tags</label><input name="tags" placeholder="home, car, 2024"></div>
-    </div>
-    <div class="field" style="margin-top:12px;"><label>Notes</label><textarea name="notes" rows="2" placeholder="Optional details"></textarea></div>
-    <div class="field" style="margin-top:12px;">
-      <label>Files*</label>
-      <input type="file" name="files" accept="image/*,.pdf" multiple required>
-    </div>
-    <button class="btn" type="submit" style="width:100%; margin-top:18px;">Save to locker</button>
-  </form>
+  </div>
 </div>
+
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-safe2"></i></span>
+        <div>
+          <h2>Document details</h2>
+          <div class="card-sub">Attach one or more scans or PDFs</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/locker/add" enctype="multipart/form-data">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="doc_type">Type</label>
+              <select class="form-select" name="doc_type" id="doc_type">
+                {% for id, label in types %}
+                <option value="{{ id }}" {% if prefill_type==id %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 {% if prefill_type!='other' %}d-none{% endif %}" id="custom-wrap">
+              <label class="form-label" for="lk-custom">Custom type</label>
+              <input class="form-control" id="lk-custom" name="custom_type" placeholder="School ID, gas book…">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-title">Title <span class="req">*</span></label>
+              <input class="form-control" id="lk-title" name="title" required placeholder="Aadhaar — Renish">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-holder">Holder</label>
+              <input class="form-control" id="lk-holder" name="holder_name" placeholder="Whose document">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-issuer">Issuer</label>
+              <input class="form-control" id="lk-issuer" name="issuer" placeholder="UIDAI, RTO, insurer…">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-number">ID / number</label>
+              <input class="form-control" id="lk-number" name="id_number" placeholder="Encrypted at rest" autocomplete="off">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-issued">Issued on</label>
+              <input class="form-control" id="lk-issued" type="date" name="issued_on">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-expiry">Expiry</label>
+              <input class="form-control" id="lk-expiry" type="date" name="expiry_date">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="lk-tags">Tags</label>
+              <input class="form-control" id="lk-tags" name="tags" placeholder="home, car, 2024">
+              <div class="form-text">Comma separated — used by search.</div>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="lk-notes">Notes</label>
+              <textarea class="form-control" id="lk-notes" name="notes" rows="2" placeholder="Optional details"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="lk-files">Files <span class="req">*</span></label>
+              <input class="form-control" id="lk-files" type="file" name="files" accept="image/*,.pdf" multiple required>
+              <div class="form-text">Images and PDFs. Pick several at once to keep pages together.</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save to locker</button>
+            <a class="btn btn-ghost" href="/admin/locker">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
 document.getElementById("doc_type").addEventListener("change", (e) => {
-  document.getElementById("custom-wrap").style.display = e.target.value === "other" ? "" : "none";
+  document.getElementById("custom-wrap").classList.toggle("d-none", e.target.value !== "other");
 });
 </script>
 {% endblock %}

@@ -1,126 +1,302 @@
 {% extends "base.html" %}
-{% block title %}Dashboard{% endblock %}
+{% block title %}Health Vault{% endblock %}
 {% block content %}
-{% set cat_colors = {'hospital_card':'#5B8CFF','prescription':'#3DDC97','lab_report':'#7A6CFF','insurance':'#F5B942','vaccination':'#3DDC97','bill':'#FF6B7A','medicine':'#F5B942','other':'#8B95A8'} %}
+{% set cat_colors = {'hospital_card':'#7FA6FF','prescription':'#4ADE9B','lab_report':'#C0A8FF','insurance':'#F0C36A','vaccination':'#4ADE9B','bill':'#FF8095','medicine':'#F0C36A','other':'#8B95A8'} %}
 {% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
 {% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+{% set folder_icon = {'hospital_card':'bi-person-vcard','prescription':'bi-capsule','lab_report':'bi-clipboard2-pulse','insurance':'bi-shield-check','vaccination':'bi-shield-plus','bill':'bi-receipt','medicine':'bi-capsule-pill','other':'bi-folder2'} %}
 
-<div class="eyebrow"><a href="/admin/modules" style="color:var(--ink-soft);">All modules</a> · Health Vault</div>
-<div class="page-title">Hi, {{ session_user.full_name.split(' ')[0] | nice }}</div>
-<p class="page-lead">The household file. Cards, papers, and care — private on this server.</p>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Hi, {{ session_user.full_name.split(' ')[0] | nice }}</h1>
+    <p class="page-lead">The household file — cards, papers, and care, private to this server.</p>
+  </div>
+  {% if active_person %}
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/care?person={{ active_person.id }}">
+      <i class="bi bi-heart-pulse"></i> Care &amp; emergency
+    </a>
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">
+      <i class="bi bi-cloud-arrow-up"></i> Upload document
+    </button>
+  </div>
+  {% endif %}
+</div>
 
-<div class="family-row">
+<div class="chip-scroll">
   {% for p in people %}
-    <a class="chip {% if p.id == active_person.id %}active{% endif %}" href="/admin?person={{ p.id }}">
+    <a class="chip {% if active_person and p.id == active_person.id %}active{% endif %}" href="/admin?person={{ p.id }}">
       <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name | nice }}
     </a>
   {% endfor %}
-  <a class="chip" href="/admin/family">+ Add family member</a>
+  <a class="chip plain" href="/admin/family"><i class="bi bi-plus-lg"></i> Add member</a>
 </div>
 
 {% if not active_person %}
-  <div class="empty surface">No profile yet — add a family member to get started.</div>
+  <div class="card">
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-people"></i></div>
+      <div class="empty-title">No family profiles yet</div>
+      <p>Add the first person to start filing cards, documents, and care notes.</p>
+      <a class="btn btn-primary" href="/admin/family"><i class="bi bi-person-plus"></i> Add a family member</a>
+    </div>
+  </div>
 {% else %}
 
   {% for c in expiring_cards %}
-    <div class="alert"><span class="dot"></span> {{ c.hospital_name | nice }} card expires {{ c.valid_till }}</div>
+  <div class="alert alert-warning" role="alert">
+    <i class="bi bi-exclamation-triangle"></i>
+    <span><strong>{{ c.hospital_name | nice }}</strong> card expires {{ c.valid_till }}.</span>
+  </div>
   {% endfor %}
 
-  <div class="section-head"><h2>Hospital cards — {{ active_person.name | nice }}</h2></div>
-  <div class="grid grid-cards" style="margin-bottom:28px;">
-    {% for card in cards %}
-      <div class="id-card">
-        <div class="stamp">Verified<br>copy</div>
-        <div class="hosp">{{ card.hospital_name | nice }}</div>
-        <div class="label">Patient health ID</div>
-        <div class="name">{{ active_person.name | nice }}</div>
-        <div class="pid">ID {{ card.patient_id or '—' }}</div>
-        <div class="meta-row">
-          <div><div class="meta-label">Blood group</div><div class="meta-value">{{ card.blood_group or '—' }}</div></div>
-          <div><div class="meta-label">Valid till</div><div class="meta-value">{{ card.valid_till or '—' }}</div></div>
-          <div><div class="meta-label">Ward</div><div class="meta-value">{{ card.ward or '—' }}</div></div>
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+      <div class="stat">
+        <div class="lbl"><i class="bi bi-folder2"></i> Documents</div>
+        <div class="val">{{ folder_counts.values() | sum }}</div>
+        <div class="sub">across {{ folder_counts | length }} folders</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat">
+        <div class="lbl"><i class="bi bi-person-vcard"></i> Hospital cards</div>
+        <div class="val">{{ cards | length }}</div>
+        <div class="sub">{{ active_person.name | nice }}</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat">
+        <div class="lbl"><i class="bi bi-people"></i> Family</div>
+        <div class="val">{{ people | length }}</div>
+        <div class="sub">profiles on file</div>
+      </div>
+    </div>
+    <div class="col-6 col-lg-3">
+      <div class="stat {% if expiring_cards %}accent{% endif %}">
+        <div class="lbl"><i class="bi bi-clock-history"></i> Expiring</div>
+        <div class="val">{{ expiring_cards | length }}</div>
+        <div class="sub">cards need renewal</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="collapse mb-4" id="add-doc">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-cloud-arrow-up"></i></span>
+        <div>
+          <h2>Upload a document</h2>
+          <div class="card-sub">Stored encrypted for {{ active_person.name | nice }}</div>
         </div>
-        <form method="post" action="/admin/cards/{{ card.id }}/delete" onsubmit="return confirm('Delete this card?');">
+        <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc" aria-label="Close">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
           <input type="hidden" name="person_id" value="{{ active_person.id }}">
-          <button class="btn-del" type="submit">Delete card</button>
+          <input type="hidden" name="redirect_to" value="dashboard">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="doc-title">Title <span class="req">*</span></label>
+              <input class="form-control" id="doc-title" type="text" name="title" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="doc-cat">Category <span class="req">*</span></label>
+              <select class="form-select" id="doc-cat" name="category" required>
+                {% for cat, label in folder_label.items() %}<option value="{{ cat }}">{{ label }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="doc-hosp">Hospital / clinic</label>
+              <input class="form-control" id="doc-hosp" type="text" name="hospital_name">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="doc-date">Date</label>
+              <input class="form-control" id="doc-date" type="date" name="doc_date">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="doc-notes">Notes (encrypted)</label>
+              <textarea class="form-control" id="doc-notes" name="notes" rows="2"></textarea>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="doc-file">File <span class="req">*</span></label>
+              <input class="form-control" id="doc-file" type="file" name="file" required>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Upload document</button>
+            <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">Cancel</button>
+          </div>
         </form>
       </div>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <h2>Hospital cards — {{ active_person.name | nice }}</h2>
+    <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-card">
+      <i class="bi bi-plus-lg"></i> Add card
+    </button>
+  </div>
+
+  <div class="row g-3 mb-3">
+    {% for card in cards %}
+    <div class="col-md-6 col-xl-4">
+      <div class="id-card h-100">
+        <div class="stamp">Verified copy</div>
+        <div class="hosp">{{ card.hospital_name | nice }}</div>
+        <div class="name">{{ active_person.name | nice }}</div>
+        <div class="label">Patient health ID</div>
+        <div class="pid">ID {{ card.patient_id or '—' }}</div>
+        <div class="meta-row">
+          <div>
+            <div class="meta-label">Blood group</div>
+            <div class="meta-value">{{ card.blood_group or '—' }}</div>
+          </div>
+          <div>
+            <div class="meta-label">Valid till</div>
+            <div class="meta-value">{{ card.valid_till or '—' }}</div>
+          </div>
+          <div>
+            <div class="meta-label">Ward</div>
+            <div class="meta-value">{{ card.ward or '—' }}</div>
+          </div>
+        </div>
+        <form class="mt-3" method="post" action="/admin/cards/{{ card.id }}/delete" onsubmit="return confirm('Delete this card?');">
+          <input type="hidden" name="person_id" value="{{ active_person.id }}">
+          <button class="btn btn-ghost btn-sm text-danger" type="submit"><i class="bi bi-trash3"></i> Delete card</button>
+        </form>
+      </div>
+    </div>
     {% else %}
-      <div class="empty surface">No hospital cards yet for {{ active_person.name | nice }}.</div>
+    <div class="col-12">
+      <div class="card">
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-person-vcard"></i></div>
+          <div class="empty-title">No hospital cards yet</div>
+          <p>Add {{ active_person.name | nice }}'s card so front-desk details are always at hand.</p>
+          <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-card">
+            <i class="bi bi-plus-lg"></i> Add hospital card
+          </button>
+        </div>
+      </div>
+    </div>
     {% endfor %}
   </div>
 
-  <details style="margin-bottom:28px;">
-    <summary>+ Add hospital card</summary>
-    <div class="surface">
-      <form method="post" action="/admin/cards/add">
-        <input type="hidden" name="person_id" value="{{ active_person.id }}">
-        <div class="form-grid">
-          <div class="field"><label>Hospital name*</label><input type="text" name="hospital_name" required></div>
-          <div class="field"><label>Ward</label><input type="text" name="ward"></div>
-          <div class="field"><label>Blood group</label><input type="text" name="blood_group"></div>
-          <div class="field"><label>Patient ID (encrypted)</label><input type="text" name="patient_id"></div>
-          <div class="field"><label>Valid from</label><input type="date" name="valid_from"></div>
-          <div class="field"><label>Valid till</label><input type="date" name="valid_till"></div>
-        </div>
-        <div class="field"><label>Notes (encrypted)</label><textarea name="notes" rows="2"></textarea></div>
-        <button class="btn" type="submit">Save card</button>
-      </form>
+  <div class="collapse mb-4" id="add-card">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-person-vcard"></i></span>
+        <div><h2>Add hospital card</h2><div class="card-sub">IDs and notes are encrypted at rest</div></div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/cards/add">
+          <input type="hidden" name="person_id" value="{{ active_person.id }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="c-hosp">Hospital name <span class="req">*</span></label>
+              <input class="form-control" id="c-hosp" type="text" name="hospital_name" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="c-ward">Ward</label>
+              <input class="form-control" id="c-ward" type="text" name="ward">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="c-blood">Blood group</label>
+              <input class="form-control" id="c-blood" type="text" name="blood_group" placeholder="O+">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="c-pid">Patient ID (encrypted)</label>
+              <input class="form-control" id="c-pid" type="text" name="patient_id">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="c-from">Valid from</label>
+              <input class="form-control" id="c-from" type="date" name="valid_from">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="c-till">Valid till</label>
+              <input class="form-control" id="c-till" type="date" name="valid_till">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="c-notes">Notes (encrypted)</label>
+              <textarea class="form-control" id="c-notes" name="notes" rows="2"></textarea>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save card</button>
+            <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-card">Cancel</button>
+          </div>
+        </form>
+      </div>
     </div>
-  </details>
+  </div>
 
   <div class="section-head"><h2>Folders</h2></div>
-  <div class="folders">
+  <div class="folder-grid mb-4">
     {% for cat, count in folder_counts.items() %}
       <a class="folder" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}">
-        <span class="folder-name"><span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span>{{ folder_label[cat] }}</span>
+        <span class="folder-name">
+          <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span>
+          {{ folder_label[cat] }}
+        </span>
         <span class="fcount">{{ count }}</span>
       </a>
     {% endfor %}
   </div>
 
-  <details style="margin-bottom:28px;">
-    <summary>+ Add document</summary>
-    <div class="surface">
-      <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
-        <input type="hidden" name="person_id" value="{{ active_person.id }}">
-        <input type="hidden" name="redirect_to" value="dashboard">
-        <div class="form-grid">
-          <div class="field"><label>Title*</label><input type="text" name="title" required></div>
-          <div class="field">
-            <label>Category*</label>
-            <select name="category" required>
-              {% for cat, label in folder_label.items() %}<option value="{{ cat }}">{{ label }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="field"><label>Hospital / clinic</label><input type="text" name="hospital_name"></div>
-          <div class="field"><label>Date</label><input type="date" name="doc_date"></div>
-        </div>
-        <div class="field"><label>Notes (encrypted)</label><textarea name="notes" rows="2"></textarea></div>
-        <div class="field"><label>File*</label><input type="file" name="file" required></div>
-        <button class="btn" type="submit">Upload document</button>
-      </form>
-    </div>
-  </details>
-
   <div class="section-head"><h2>Recently added</h2></div>
-  <div class="table-wrap">
-    <table class="ledger">
-      <thead><tr><th>Document</th><th>Date</th><th>Hospital</th><th>Size</th><th></th></tr></thead>
-      <tbody>
-        {% for doc in recent_documents %}
-        <tr>
-          <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title | nice }}</td>
-          <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
-          <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
-          <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
-          <td><a href="/admin/documents/{{ doc.id }}/download" class="btn-compact save">Download</a></td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="empty">No documents yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="table-card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Document</th>
+            <th>Date</th>
+            <th>Hospital</th>
+            <th>Size</th>
+            <th class="table-actions">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for doc in recent_documents %}
+          <tr>
+            <td>
+              <div class="d-flex align-items-center gap-2">
+                <span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span>
+                <span class="fw-semibold">{{ doc.title | nice }}</span>
+              </div>
+            </td>
+            <td class="mono text-muted">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
+            <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
+            <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
+            <td class="table-actions">
+              <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
+                <i class="bi bi-download"></i> Download
+              </a>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5">
+              <div class="empty-state">
+                <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
+                <div class="empty-title">No documents yet</div>
+                <p>Upload a prescription, lab report, or bill to see it here.</p>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 {% endif %}
 {% endblock %}

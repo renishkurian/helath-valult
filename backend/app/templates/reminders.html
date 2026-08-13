@@ -1,51 +1,132 @@
 {% extends "base.html" %}
 {% block title %}Reminders{% endblock %}
 {% block content %}
-<div class="eyebrow">Health Vault</div>
-<div class="page-title">Reminders</div>
-
-<details style="margin-bottom:24px;">
-  <summary>+ Add reminder</summary>
-  <div class="surface" style="max-width:520px;">
-    <form method="post" action="/admin/reminders/add">
-      <input type="hidden" name="person_id" value="{{ active_person.id if active_person else '' }}">
-      <div class="field"><label>Title*</label><input type="text" name="title" required placeholder="e.g. Take BP medicine"></div>
-      <div class="field"><label>When*</label><input type="datetime-local" name="remind_at" required></div>
-      <div class="field">
-        <label>Repeat</label>
-        <select name="repeat_rule">
-          <option value="none">None</option>
-          <option value="daily">Daily</option>
-          <option value="weekly">Weekly</option>
-          <option value="monthly">Monthly</option>
-        </select>
-      </div>
-      <div class="field"><label>Notes</label><textarea name="description" rows="2"></textarea></div>
-      <button class="btn" type="submit">Save reminder</button>
-    </form>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Reminders</h1>
+    <p class="page-lead">Appointments, refills, and follow-ups for everyone in the household.</p>
   </div>
-</details>
+  <div class="page-actions">
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder" aria-controls="add-reminder">
+      <i class="bi bi-plus-lg"></i> Add reminder
+    </button>
+  </div>
+</div>
 
-<div class="table-wrap">
-<table class="ledger">
-  <thead><tr><th>Title</th><th>Person</th><th>When</th><th>Repeat</th><th></th></tr></thead>
-  <tbody>
-    {% for r in reminders %}
-    <tr>
-      <td>{{ r.title }}{% if r.description %}<div style="font-size:12px; color:var(--ink-soft);">{{ r.description }}</div>{% endif %}</td>
-      <td>{{ person_names.get(r.person_id, '—') | nice }}</td>
-      <td class="mono">{{ r.remind_at.strftime('%d %b, %I:%M %p') }}</td>
-      <td>{{ r.repeat_rule | nice }}</td>
-      <td>
-        <form method="post" action="/admin/reminders/{{ r.id }}/delete">
-          <button class="btn-compact danger" type="submit">Delete</button>
-        </form>
-      </td>
-    </tr>
-    {% else %}
-    <tr><td colspan="5" class="empty">No reminders yet.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
+<div class="chip-scroll">
+  {% for p in people %}
+    <a class="chip {% if active_person and p.id == active_person.id %}active{% endif %}" href="/admin/reminders?person={{ p.id }}">
+      <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name | nice }}
+    </a>
+  {% endfor %}
+  <a class="chip plain" href="/admin/family"><i class="bi bi-plus-lg"></i> Add member</a>
+</div>
+
+<div class="collapse mb-4" id="add-reminder">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-ico gold"><i class="bi bi-bell"></i></span>
+      <div>
+        <h2>Add reminder</h2>
+        <div class="card-sub">Filed under {{ (active_person.name | nice) if active_person else 'the selected person' }}</div>
+      </div>
+      <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder" aria-label="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/reminders/add">
+        <input type="hidden" name="person_id" value="{{ active_person.id if active_person else '' }}">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="r-title">Title <span class="req">*</span></label>
+            <input class="form-control" id="r-title" type="text" name="title" required placeholder="e.g. Take BP medicine">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="r-when">When <span class="req">*</span></label>
+            <input class="form-control" id="r-when" type="datetime-local" name="remind_at" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="r-repeat">Repeat</label>
+            <select class="form-select" id="r-repeat" name="repeat_rule">
+              <option value="none">None</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="r-notes">Notes</label>
+            <textarea class="form-control" id="r-notes" name="description" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save reminder</button>
+          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="section-head"><h2>Scheduled</h2></div>
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Reminder</th>
+          <th>Person</th>
+          <th>When</th>
+          <th>Repeat</th>
+          <th class="table-actions">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in reminders %}
+        <tr>
+          <td>
+            <div class="fw-semibold">{{ r.title }}</div>
+            {% if r.description %}<div class="text-faint small">{{ r.description }}</div>{% endif %}
+          </td>
+          <td>
+            <span class="badge badge-soft"><i class="bi bi-person"></i> {{ person_names.get(r.person_id, '—') | nice }}</span>
+          </td>
+          <td class="mono text-muted">{{ r.remind_at.strftime('%d %b, %I:%M %p') }}</td>
+          <td>
+            {% if r.repeat_rule and r.repeat_rule != 'none' %}
+              <span class="badge badge-info"><i class="bi bi-arrow-repeat"></i> {{ r.repeat_rule | nice }}</span>
+            {% else %}
+              <span class="text-faint">{{ r.repeat_rule | nice }}</span>
+            {% endif %}
+          </td>
+          <td class="table-actions">
+            <form method="post" action="/admin/reminders/{{ r.id }}/delete" onsubmit="return confirm('Delete this reminder?');">
+              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">
+            <div class="empty-state">
+              <div class="empty-ico"><i class="bi bi-bell-slash"></i></div>
+              <div class="empty-title">No reminders yet</div>
+              <p>Add a refill, appointment, or follow-up and it will show up here in date order.</p>
+              <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder">
+                <i class="bi bi-plus-lg"></i> Add the first reminder
+              </button>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
 {% endblock %}

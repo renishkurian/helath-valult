@@ -1,53 +1,198 @@
 {% extends "base.html" %}
 {% block title %}{{ item.title }}{% endblock %}
 {% block content %}
-<div class="eyebrow"><a href="/admin/locker" style="color:var(--ink-soft);">← Locker</a> · {{ item.type_label }}</div>
+{% set type_colors = {
+  'aadhaar':'#7FA6FF','pan':'#F0C36A','passport':'#C0A8FF','driving_license':'#4ADE9B',
+  'voter_id':'#22D3EE','certificate':'#FF8095','rc':'#F5A65B','insurance':'#F0C36A',
+  'warranty':'#84CC16','property':'#38BDF8','other':'#8B95A8'
+} %}
 <div class="page-head">
-  <div class="page-title">{{ item.title }}</div>
-  <a class="btn" href="/admin/locker/{{ item.id }}/download">Download</a>
-</div>
-
-<div class="surface" style="max-width:640px; margin-bottom:16px;">
-  <form method="post" action="/admin/locker/{{ item.id }}">
-    <div class="form-grid">
-      <div class="field">
-        <label>Type</label>
-        <select name="doc_type">
-          {% for id, label in types %}
-          <option value="{{ id }}" {% if item.doc_type==id %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="field"><label>Custom type</label><input name="custom_type" value="{{ item.custom_type or '' }}"></div>
-      <div class="field"><label>Title</label><input name="title" value="{{ item.title }}" required></div>
-      <div class="field"><label>Holder</label><input name="holder_name" value="{{ item.holder_name or '' }}"></div>
-      <div class="field"><label>Issuer</label><input name="issuer" value="{{ item.issuer or '' }}"></div>
-      <div class="field"><label>ID / number</label><input name="id_number" value="{{ item.id_number or '' }}" autocomplete="off"></div>
-      <div class="field"><label>Issued on</label><input type="date" name="issued_on" value="{{ item.issued_on or '' }}"></div>
-      <div class="field"><label>Expiry</label><input type="date" name="expiry_date" value="{{ item.expiry_date or '' }}"></div>
-      <div class="field"><label>Tags</label><input name="tags" value="{{ item.tags or '' }}"></div>
-    </div>
-    <div class="field" style="margin-top:12px;"><label>Notes</label><textarea name="notes" rows="3">{{ item.notes or '' }}</textarea></div>
-    <button class="btn" type="submit" style="margin-top:16px;">Save changes</button>
-  </form>
-</div>
-
-<div class="surface" style="max-width:640px; margin-bottom:16px;">
-  <div class="group-label">Files</div>
-  {% for f in files %}
-  <div class="mm-row" style="grid-template-columns:1fr auto;">
+  <div class="d-flex align-items-start gap-3">
+    <a class="btn btn-ghost btn-icon" href="/admin/locker" aria-label="Back to locker"><i class="bi bi-arrow-left"></i></a>
     <div>
-      <div class="payee">{{ f.original_filename }}</div>
-      <div class="acct">{{ f.file_type or 'file' }}{% if f.file_size %} · {{ (f.file_size / 1024)|round(0)|int }} KB{% endif %}</div>
+      <div class="eyebrow">
+        <a href="/admin/locker">Locker</a>
+        <i class="bi bi-chevron-right"></i>
+        {{ item.type_label }}
+      </div>
+      <h1 class="page-title">{{ item.title }}</h1>
     </div>
-    <a class="tag tag-sage" href="/admin/locker/{{ item.id }}/files/{{ f.id }}/download">Download</a>
   </div>
-  {% else %}
-  <p class="empty">No files.</p>
-  {% endfor %}
+  <div class="page-actions">
+    <a class="btn btn-primary" href="/admin/locker/{{ item.id }}/download">
+      <i class="bi bi-download"></i> Download
+    </a>
+  </div>
 </div>
 
-<form method="post" action="/admin/locker/{{ item.id }}/delete" onsubmit="return confirm('Delete this document and its files?');">
-  <button class="btn-outline" type="submit" style="color:var(--stamp); border-color:rgba(255,107,122,0.35);">Delete document</button>
-</form>
+<div class="card mb-3">
+  <div class="card-header">
+    <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
+    <div>
+      <h2>{{ item.type_label }}</h2>
+      <div class="card-sub">ID numbers and notes are stored encrypted</div>
+    </div>
+    {% if item.pinned %}<span class="badge badge-gold ms-auto"><i class="bi bi-pin-angle"></i> Pinned</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <div class="facts">
+      <div class="fact">
+        <div class="lbl">Holder</div>
+        <div class="val">{{ item.holder_name or '—' }}</div>
+      </div>
+      <div class="fact">
+        <div class="lbl">Issuer</div>
+        <div class="val">{{ item.issuer or '—' }}</div>
+      </div>
+      <div class="fact">
+        <div class="lbl">ID / number</div>
+        <div class="val">
+          {% if item.id_number %}
+          <span class="secret-cell"><span class="js-secret-text" data-secret="{{ item.id_number }}"></span></span>
+          {% else %}
+          <span class="text-faint">—</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="fact">
+        <div class="lbl">Issued on</div>
+        <div class="val mono">{{ item.issued_on or '—' }}</div>
+      </div>
+      <div class="fact">
+        <div class="lbl">Expiry</div>
+        <div class="val mono">{{ item.expiry_date or '—' }}</div>
+      </div>
+      <div class="fact">
+        <div class="lbl">Files</div>
+        <div class="val num">{{ files | length }}</div>
+      </div>
+      <div class="fact">
+        <div class="lbl">Added</div>
+        <div class="val mono">{{ item.created_at.strftime('%d %b %Y') }}</div>
+      </div>
+    </div>
+    {% if item.tags %}
+    <div class="row-gap mt-4">
+      {% for tag in item.tags.split(',') if tag.strip() %}
+      <span class="badge badge-soft"><i class="bi bi-tag"></i> {{ tag.strip() }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-pencil"></i></span>
+        <div>
+          <h2>Edit details</h2>
+          <div class="card-sub">Changes apply immediately</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/locker/{{ item.id }}">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="lk-type">Type</label>
+              <select class="form-select" id="lk-type" name="doc_type">
+                {% for id, label in types %}
+                <option value="{{ id }}" {% if item.doc_type==id %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-custom">Custom type</label>
+              <input class="form-control" id="lk-custom" name="custom_type" value="{{ item.custom_type or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-title">Title <span class="req">*</span></label>
+              <input class="form-control" id="lk-title" name="title" value="{{ item.title }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-holder">Holder</label>
+              <input class="form-control" id="lk-holder" name="holder_name" value="{{ item.holder_name or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-issuer">Issuer</label>
+              <input class="form-control" id="lk-issuer" name="issuer" value="{{ item.issuer or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-number">ID / number</label>
+              <input class="form-control js-copyable" id="lk-number" name="id_number" value="{{ item.id_number or '' }}" autocomplete="off">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-issued">Issued on</label>
+              <input class="form-control" id="lk-issued" type="date" name="issued_on" value="{{ item.issued_on or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-expiry">Expiry</label>
+              <input class="form-control" id="lk-expiry" type="date" name="expiry_date" value="{{ item.expiry_date or '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="lk-tags">Tags</label>
+              <input class="form-control" id="lk-tags" name="tags" value="{{ item.tags or '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="lk-notes">Notes</label>
+              <textarea class="form-control" id="lk-notes" name="notes" rows="3">{{ item.notes or '' }}</textarea>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-paperclip"></i></span>
+        <div>
+          <h2>Files</h2>
+          <div class="card-sub">Decrypted only when you download</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ files | length }}</span>
+      </div>
+      {% if files %}
+      <div class="list-rows">
+        {% for f in files %}
+        <div class="list-row">
+          <div class="row-body">
+            <div class="row-title truncate">{{ f.original_filename }}</div>
+            <div class="row-meta">{{ f.file_type or 'file' }}{% if f.file_size %} · {{ (f.file_size / 1024)|round(0)|int }} KB{% endif %}</div>
+          </div>
+          <div class="row-actions">
+            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}/files/{{ f.id }}/download">
+              <i class="bi bi-download"></i> Download
+            </a>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-paperclip"></i></div>
+        <div class="empty-title">No files attached</div>
+        <p>This entry has no scans on disk — only the details above.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-body d-flex flex-wrap align-items-center gap-3">
+    <div>
+      <div class="fw-semibold">Delete this document</div>
+      <div class="small text-faint">Removes the entry and every attached file from disk. This cannot be undone.</div>
+    </div>
+    <form class="ms-auto" method="post" action="/admin/locker/{{ item.id }}/delete" onsubmit="return confirm('Delete this document and its files?');">
+      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete document</button>
+    </form>
+  </div>
+</div>
 {% endblock %}

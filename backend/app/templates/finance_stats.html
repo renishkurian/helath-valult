@@ -4,47 +4,80 @@
 <div class="page-head">
   <div>
     <div class="eyebrow">Money Manager</div>
-    <div class="page-title">
-      <a href="/admin/finance/stats?month={{ prev }}&kind={{ kind }}" style="color:var(--ink-soft);">‹</a>
-      {{ label }}
-      <a href="/admin/finance/stats?month={{ next }}&kind={{ kind }}" style="color:var(--ink-soft);">›</a>
+    <h1 class="page-title">{{ label }}</h1>
+    <p class="page-lead">Monthly {{ kind }} split by category.</p>
+  </div>
+  <div class="page-actions">
+    <span class="badge badge-soft"><i class="bi bi-calendar-check"></i> Monthly</span>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/stats?month={{ prev }}&kind={{ kind }}" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/stats?month={{ next }}&kind={{ kind }}" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+</div>
+
+<div class="seg mb-4">
+  <a class="on-income {% if kind=='income' %}active{% endif %}" href="/admin/finance/stats?month={{ year_month }}&kind=income">
+    <i class="bi bi-arrow-down-left"></i> Income
+  </a>
+  <a class="on-expense {% if kind=='expense' %}active{% endif %}" href="/admin/finance/stats?month={{ year_month }}&kind=expense">
+    <i class="bi bi-arrow-up-right"></i> Expenses
+  </a>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="stat accent">
+      <div class="lbl">
+        <i class="bi {% if kind=='income' %}bi-arrow-down-left{% else %}bi-arrow-up-right{% endif %}"></i> {{ kind|capitalize }}
+      </div>
+      <div class="val {% if kind=='income' %}mm-income{% else %}mm-expense{% endif %}">{{ inr(report.total) }}</div>
+      <div class="sub">{{ label }}</div>
     </div>
   </div>
-  <span class="pill">Monthly</span>
-</div>
-
-<div class="mm-tabs">
-  <a class="{% if kind=='income' %}active{% endif %}" href="/admin/finance/stats?month={{ year_month }}&kind=income">Income</a>
-  <a class="{% if kind=='expense' %}active{% endif %}" href="/admin/finance/stats?month={{ year_month }}&kind=expense">Expenses</a>
-</div>
-
-<div class="mm-summary" style="grid-template-columns:1fr; max-width:320px;">
-  <div class="cell">
-    <div class="lbl">{{ kind|capitalize }}</div>
-    <div class="val {% if kind=='income' %}mm-income{% else %}mm-expense{% endif %}">{{ inr(report.total) }}</div>
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-tags"></i> Categories</div>
+      <div class="val">{{ slices | length }}</div>
+      <div class="sub">with activity this month</div>
+    </div>
   </div>
+  {% if slices %}
+  <div class="col-12 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-trophy"></i> Largest</div>
+      <div class="val truncate">{{ slices[0].name }}</div>
+      <div class="sub">{{ inr(slices[0].amount) }} · {{ '%d'|format(slices[0].pct|round(0)) }}% of total</div>
+    </div>
+  </div>
+  {% endif %}
 </div>
 
-<div class="grid grid-split">
-  <div class="panel" style="align-items:center;">
-    {% if slices %}
-    <svg viewBox="0 0 120 120" width="240" height="240" aria-label="Category split">
-      <circle r="40" cx="60" cy="60" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="20"></circle>
-      {% for s in slices %}
-      <circle r="40" cx="60" cy="60" fill="none" stroke="{{ s.color }}" stroke-width="20"
-        stroke-dasharray="{{ s.dash }}" stroke-dashoffset="{{ s.offset }}" transform="rotate(-90 60 60)"></circle>
-      {% endfor %}
-    </svg>
+<div class="card">
+  <div class="card-header">
+    <span class="card-ico {% if kind=='income' %}good{% else %}bad{% endif %}"><i class="bi bi-bar-chart"></i></span>
+    <div>
+      <h2>By category</h2>
+      <div class="card-sub">Share of {{ kind }} for {{ label }}</div>
+    </div>
+  </div>
+  <div class="card-body">
+    {% for s in slices %}
+    <div class="bar-row">
+      <div class="bar-head">
+        <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+        <span class="b-val">{{ inr(s.amount) }} · {{ '%d'|format(s.pct|round(0)) }}%</span>
+      </div>
+      <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+    </div>
     {% else %}
-    <div class="empty-state"><p>No {{ kind }} this month.</p></div>
-    {% endif %}
-  </div>
-  <div class="panel">
-    {% for row in report.rows %}
-    <div class="mm-row" style="grid-template-columns:48px 1fr auto;">
-      <div class="pill" style="background:{{ row.color }}22; color:{{ row.color }};">{{ '%d'|format(row.pct|round(0)) }}%</div>
-      <div class="payee">{{ row.name }}</div>
-      <div class="amt">{{ inr(row.amount) }}</div>
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-pie-chart"></i></div>
+      <div class="empty-title">No {{ kind }} this month</div>
+      <p>Add an entry or pick another month to see the category split.</p>
+      <a class="btn btn-primary" href="/admin/finance/add"><i class="bi bi-plus-lg"></i> Add entry</a>
     </div>
     {% endfor %}
   </div>

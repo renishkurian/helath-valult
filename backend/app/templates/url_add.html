@@ -1,50 +1,77 @@
 {% extends "base.html" %}
 {% block title %}Add link{% endblock %}
 {% block content %}
-<div class="entry-page" style="max-width:560px;">
-  <a class="entry-back" href="/admin/urls" style="display:inline-flex; align-items:center; gap:4px; color:var(--ink-soft); font-size:13px; font-weight:600; margin-bottom:10px;">← URL Vault</a>
-  <h1 style="font-size:34px; letter-spacing:-0.05em; font-weight:800; margin-bottom:18px;">Add link</h1>
+<div class="page-head">
+  <div class="d-flex align-items-center gap-3">
+    <a class="btn btn-ghost btn-icon" href="/admin/urls" aria-label="Back to URL Vault"><i class="bi bi-arrow-left"></i></a>
+    <div>
+      <div class="eyebrow">URL Vault</div>
+      <h1 class="page-title">Add link</h1>
+    </div>
+  </div>
+</div>
 
-  <form method="post" action="/admin/urls/add" class="surface" style="border-radius:22px; padding:22px;">
-    <div class="field" style="margin-bottom:14px;">
-      <label for="url">URL*</label>
-      <input id="url" name="url" type="text" required placeholder="https://…" inputmode="url" autocomplete="url">
-    </div>
-    <div class="field" style="margin-bottom:14px;">
-      <label for="title">Title</label>
-      <input id="title" name="title" placeholder="Leave blank to use the page title">
-    </div>
-    <div class="field" style="margin-bottom:14px;">
-      <label for="category_id">Category</label>
-      <select id="category_id" name="category_id">
-        <option value="">None</option>
-        {% for c in categories %}
-        <option value="{{ c.id }}" {% if prefill_category==c.id %}selected{% endif %}>{{ c.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% if tags %}
-    <div class="field" style="margin-bottom:14px;">
-      <label>Tags</label>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-        {% for t in tags %}
-        <label class="chip" style="cursor:pointer;">
-          <input type="checkbox" name="tag_ids" value="{{ t.id }}" style="accent-color:var(--navy);">
-          {{ t.name }}
-        </label>
-        {% endfor %}
+<div class="row g-3">
+  <div class="col-lg-8 col-xl-7">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-link-45deg"></i></span>
+        <div>
+          <h2>New bookmark</h2>
+          <div class="card-sub">We'll try to pull a preview image and description from the page</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/urls/add">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="url">URL <span class="req">*</span></label>
+              <input class="form-control" id="url" name="url" type="text" required placeholder="https://…" inputmode="url" autocomplete="url">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="title">Title</label>
+              <input class="form-control" id="title" name="title" placeholder="Leave blank to use the page title">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="category_id">Category</label>
+              <select class="form-select" id="category_id" name="category_id">
+                <option value="">None</option>
+                {% for c in categories %}
+                <option value="{{ c.id }}" {% if prefill_category==c.id %}selected{% endif %}>{{ c.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% if tags %}
+            <div class="col-12">
+              <div class="form-label">Tags</div>
+              <div class="d-flex flex-wrap gap-3">
+                {% for t in tags %}
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="tag-{{ t.id }}" name="tag_ids" value="{{ t.id }}">
+                  <label class="form-check-label" for="tag-{{ t.id }}">{{ t.name }}</label>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            <div class="col-12">
+              <label class="form-label" for="notes">Notes</label>
+              <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Optional"></textarea>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="favorite" name="favorite" value="1">
+                <label class="form-check-label" for="favorite">Mark as favorite</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save link</button>
+            <a class="btn btn-ghost" href="/admin/urls">Cancel</a>
+          </div>
+        </form>
       </div>
     </div>
-    {% endif %}
-    <div class="field" style="margin-bottom:14px;">
-      <label for="notes">Notes</label>
-      <textarea id="notes" name="notes" rows="2" placeholder="Optional"></textarea>
-    </div>
-    <label class="chip" style="margin-bottom:16px; width:fit-content;">
-      <input type="checkbox" name="favorite" value="1"> Favorite
-    </label>
-    <button class="btn" type="submit" style="width:100%; margin-top:8px;">Save link</button>
-    <p style="font-size:12px; color:var(--ink-soft); margin-top:12px;">We’ll try to pull a preview image and description from the page.</p>
-  </form>
+  </div>
 </div>
 {% endblock %}

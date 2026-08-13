@@ -1,61 +1,140 @@
 {% extends "base.html" %}
 {% block title %}Accounts{% endblock %}
 {% block content %}
+{% set type_icon = {
+  'cash':'bi-cash-stack','bank':'bi-bank','credit_card':'bi-credit-card-2-front',
+  'loan':'bi-file-earmark-text','wallet':'bi-wallet2','investment':'bi-graph-up-arrow','other':'bi-safe2'
+} %}
+
 <div class="page-head">
   <div>
     <div class="eyebrow">Money Manager</div>
-    <div class="page-title">Accounts</div>
+    <h1 class="page-title">Accounts</h1>
+    <p class="page-lead">Cash, banks, cards, and investments — with what each one holds right now.</p>
   </div>
-  <a class="btn" href="#new-account">+ Account</a>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="#new-account"><i class="bi bi-plus-lg"></i> Account</a>
+  </div>
 </div>
 
-<div class="mm-summary">
-  <div class="cell"><div class="lbl">Assets</div><div class="val mm-income">{{ inr(summary.assets) }}</div></div>
-  <div class="cell"><div class="lbl">Liabilities</div><div class="val mm-expense">{{ inr(summary.liabilities) }}</div></div>
-  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(summary.net) }}</div></div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-graph-up"></i> Assets</div>
+      <div class="val mm-income">{{ inr(summary.assets) }}</div>
+      <div class="sub">what you hold</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-credit-card-2-front"></i> Liabilities</div>
+      <div class="val mm-expense">{{ inr(summary.liabilities) }}</div>
+      <div class="sub">cards and loans</div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-currency-rupee"></i> Total</div>
+      <div class="val">{{ inr(summary.net) }}</div>
+      <div class="sub">net worth across {{ accounts | length }} accounts</div>
+    </div>
+  </div>
 </div>
 
 {% for kind, rows in groups.items() %}
-<div class="panel" style="margin-bottom:16px;">
-  <div class="group-label">{{ labels.get(kind, kind) }}</div>
-  {% for a in rows %}
-  <div class="mm-row" style="grid-template-columns:1fr auto auto;">
-    <a href="/admin/finance/accounts/{{ a.id }}" style="color:inherit; text-decoration:none;">
-      <div class="payee">{{ a.name }}</div>
-      <div class="acct">{{ a.account_type.replace('_',' ') }}{% if a.institution %} · {{ a.institution }}{% endif %} · tap for statement</div>
-      {% if a.account_type=='credit_card' %}
-      <div class="acct">Outst. balance {{ inr(a.balance) }}{% if a.credit_limit %} · limit {{ inr(a.credit_limit) }}{% endif %}</div>
-      {% endif %}
-    </a>
-    <a href="/admin/finance/accounts/{{ a.id }}" class="amt {% if a.is_liability or a.balance < 0 %}mm-expense{% else %}mm-income{% endif %}" style="text-decoration:none;">{{ inr(a.balance) }}</a>
-    <form method="post" action="/admin/finance/accounts/{{ a.id }}/delete" onsubmit="return confirm('Archive {{ a.name }}?');">
-      <button class="btn-outline" type="submit" style="padding:6px 10px; font-size:12px;">Remove</button>
-    </form>
+<div class="card mb-3">
+  <div class="card-header">
+    <span class="card-ico"><i class="bi {{ type_icon.get(kind, 'bi-safe2') }}"></i></span>
+    <div>
+      <h2>{{ labels.get(kind, kind) }}</h2>
+      <div class="card-sub">{{ rows | length }} account{% if rows | length != 1 %}s{% endif %}</div>
+    </div>
   </div>
-  {% endfor %}
+  <div class="list-rows">
+    {% for a in rows %}
+    <div class="list-row">
+      <span class="avatar"><i class="bi {{ type_icon.get(a.account_type, 'bi-safe2') }}"></i></span>
+      <div class="row-body">
+        <div class="row-title">
+          <a class="link-quiet" href="/admin/finance/accounts/{{ a.id }}">{{ a.name }}</a>
+        </div>
+        <div class="row-meta">
+          {{ a.account_type.replace('_',' ') }}{% if a.institution %} · {{ a.institution }}{% endif %}
+        </div>
+        {% if a.account_type=='credit_card' %}
+        <div class="row-meta">
+          Outst. balance {{ inr(a.balance) }}{% if a.credit_limit %} · limit {{ inr(a.credit_limit) }}{% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="row-side">
+        <div class="amount {% if a.is_liability or a.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(a.balance) }}</div>
+      </div>
+      <div class="row-actions">
+        <a class="btn btn-sm btn-outline-light" href="/admin/finance/accounts/{{ a.id }}">
+          <i class="bi bi-receipt"></i> <span class="d-none d-md-inline">Statement</span>
+        </a>
+        <form method="post" action="/admin/finance/accounts/{{ a.id }}/delete" onsubmit="return confirm('Archive {{ a.name }}?');">
+          <button class="btn btn-sm btn-outline-danger btn-icon" type="submit" aria-label="Remove {{ a.name }}">
+            <i class="bi bi-archive"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="card mb-3">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-wallet2"></i></div>
+    <div class="empty-title">No accounts yet</div>
+    <p>Add the first account so entries have somewhere to land.</p>
+    <a class="btn btn-primary" href="#new-account"><i class="bi bi-plus-lg"></i> Add an account</a>
+  </div>
 </div>
 {% endfor %}
 
-<div class="surface" id="new-account" style="max-width:520px;">
-  <div class="group-label">New account</div>
-  <form method="post" action="/admin/finance/accounts/add">
-    <div class="form-grid">
-      <div class="field"><label>Name</label><input name="name" required placeholder="Home, Card, Salary…"></div>
-      <div class="field">
-        <label>Type</label>
-        <select name="account_type">
-          <option value="cash">Cash</option>
-          <option value="bank">Accounts / bank</option>
-          <option value="credit_card">Card</option>
-          <option value="loan">Loan</option>
-          <option value="wallet">Wallet</option>
-          <option value="investment">Investment</option>
-        </select>
-      </div>
-      <div class="field"><label>Opening balance</label><input name="opening_balance" value="0" inputmode="decimal"></div>
-      <div class="field"><label>Credit limit (cards)</label><input name="credit_limit" placeholder="optional"></div>
+<div class="card" id="new-account">
+  <div class="card-header">
+    <span class="card-ico gold"><i class="bi bi-plus-lg"></i></span>
+    <div>
+      <h2>New account</h2>
+      <div class="card-sub">Balances update as soon as entries are added</div>
     </div>
-    <button class="btn" type="submit">Save account</button>
-  </form>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/admin/finance/accounts/add">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="acc-name">Name <span class="req">*</span></label>
+          <input class="form-control" id="acc-name" type="text" name="name" required placeholder="Home, Card, Salary…">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="acc-type">Type</label>
+          <select class="form-select" id="acc-type" name="account_type">
+            <option value="cash">Cash</option>
+            <option value="bank">Accounts / bank</option>
+            <option value="credit_card">Card</option>
+            <option value="loan">Loan</option>
+            <option value="wallet">Wallet</option>
+            <option value="investment">Investment</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="acc-open">Opening balance</label>
+          <input class="form-control" id="acc-open" name="opening_balance" value="0" inputmode="decimal">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="acc-limit">Credit limit (cards)</label>
+          <input class="form-control" id="acc-limit" name="credit_limit" placeholder="optional">
+          <div class="form-text">Only used for card accounts.</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mt-4">
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save account</button>
+      </div>
+    </form>
+  </div>
 </div>
 {% endblock %}

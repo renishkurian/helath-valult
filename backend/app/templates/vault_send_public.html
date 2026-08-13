@@ -1,94 +1,136 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ send.name }} — Send</title>
-<meta name="theme-color" content="#0B1018">
+<meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
-<link rel="stylesheet" href="/static/vault.css?v=4">
-<style>
-  body{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px 20px; }
-  .card{ width:min(480px, 100%); border:1px solid var(--line); border-radius:var(--radius); padding:40px 36px; }
-  h1{ font-family:var(--display); font-size:36px; font-weight:400; font-style:italic; letter-spacing:-0.03em; margin:10px 0 20px; line-height:1.1; }
-  .row{ margin:14px 0; }
-  .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.12em; color:var(--ink-soft); font-weight:500; }
-  .value{ font-size:16px; margin-top:4px; word-break:break-all; }
-  .secret-row{ display:flex; align-items:center; gap:6px; }
-  .secret-row .value{ flex:1; letter-spacing:0.08em; }
-  .btn{ width:100%; }
-  .error{ color:#FB7185; font-size:13px; margin-bottom:8px; }
-  .note{ margin-top:22px; font-size:12px; color:var(--ink-soft); line-height:1.5; }
-</style>
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css?v=5">
 </head>
 <body>
-  <div class="card">
-    <div class="eyebrow">Password Vault · Send</div>
-    <h1>{{ send.name }}</h1>
-    {% if pin_required %}
-      {% if error %}<div class="error">Incorrect PIN</div>{% endif %}
-      <form method="get" action="/vault/public/{{ token }}/page">
-        <label class="label" for="pin">PIN</label>
-        <input id="pin" type="password" name="pin" autofocus required>
-        <button class="btn" type="submit">Open</button>
-      </form>
-    {% else %}
-      {% if payload.text %}
-      <div class="row"><div class="label">Text</div><div class="value">{{ payload.text }}</div></div>
-      {% endif %}
-      {% if payload.username %}
-      <div class="row"><div class="label">Username</div><div class="value mono">{{ payload.username }}</div></div>
-      {% endif %}
-      {% if payload.password %}
-      <div class="row">
-        <div class="label">Password</div>
-        <div class="secret-row">
-          <div class="value mono js-secret-text" data-secret="{{ payload.password }}" data-shown="0">••••••••</div>
-          <button type="button" class="secret-btn" id="send-toggle" aria-label="Show password" title="Show">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-          <button type="button" class="secret-btn" id="send-copy" aria-label="Copy password" title="Copy">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-          </button>
+<div class="public-wrap">
+  <div class="public-card">
+    <div class="public-brand">
+      <span class="brand-mark">V</span>
+      <span class="brand-name">Vault</span>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-send"></i></span>
+        <div>
+          <h2 class="truncate">{{ send.name }}</h2>
+          <div class="card-sub">Password Vault · Send</div>
         </div>
       </div>
-      {% endif %}
-      {% if payload.uris %}
-      <div class="row"><div class="label">Website</div><div class="value mono">{{ payload.uris|join(', ') }}</div></div>
-      {% endif %}
-      {% if notes %}
-      <div class="row"><div class="label">Notes</div><div class="value">{{ notes }}</div></div>
-      {% endif %}
-      <p class="note">This link expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC. Opening is logged for the owner.</p>
+      <div class="card-body">
+        {% if pin_required %}
+          {% if error %}
+          <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>Incorrect PIN</span>
+          </div>
+          {% endif %}
+          <p class="text-muted">This send is locked. Enter the PIN the owner gave you.</p>
+          <form method="get" action="/vault/public/{{ token }}/page" class="stack">
+            <div>
+              <label class="form-label" for="pin">PIN <span class="req">*</span></label>
+              <input class="form-control" id="pin" type="password" name="pin" inputmode="numeric"
+                     autocomplete="one-time-code" autofocus required>
+            </div>
+            <button class="btn btn-primary btn-lg btn-block" type="submit">
+              <i class="bi bi-unlock-fill"></i> Open
+            </button>
+          </form>
+        {% else %}
+          <div class="stack">
+            {% if payload.text %}
+            <div>
+              <div class="form-label">Text</div>
+              <div class="text-break">{{ payload.text }}</div>
+            </div>
+            {% endif %}
+            {% if payload.username %}
+            <div>
+              <div class="form-label">Username</div>
+              <div class="mono text-break">{{ payload.username }}</div>
+            </div>
+            {% endif %}
+            {% if payload.password %}
+            <div>
+              <div class="form-label">Password</div>
+              <div class="secret-cell">
+                <span class="secret-plain js-secret-text" data-secret="{{ payload.password }}" data-shown="0">••••••••</span>
+                <button type="button" class="secret-btn" id="send-toggle" aria-label="Show password" title="Show">
+                  <i class="bi bi-eye"></i>
+                </button>
+                <button type="button" class="secret-btn" id="send-copy" aria-label="Copy password" title="Copy">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+              </div>
+            </div>
+            {% endif %}
+            {% if payload.uris %}
+            <div>
+              <div class="form-label">Website</div>
+              <div class="mono text-break">{{ payload.uris|join(', ') }}</div>
+            </div>
+            {% endif %}
+            {% if notes %}
+            <div>
+              <div class="form-label">Notes</div>
+              <div class="surface surface-quiet text-break">{{ notes }}</div>
+            </div>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if not pin_required %}
+    <div class="public-foot">
+      <i class="bi bi-clock-history"></i>
+      This link expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC · opening is logged for the owner.
+    </div>
     {% endif %}
   </div>
-  {% if not pin_required and payload and payload.password %}
-  <script>
-  (function(){
-    var el = document.querySelector(".js-secret-text");
-    var toggle = document.getElementById("send-toggle");
-    var copy = document.getElementById("send-copy");
-    if(!el || !toggle) return;
-    var secret = el.getAttribute("data-secret") || "";
-    var eye = toggle.innerHTML;
-    var eyeOff = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-4.4"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.2 3.9"/><path d="M6.1 6.1C3.7 7.8 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8"/></svg>';
-    toggle.addEventListener("click", function(){
-      var shown = el.getAttribute("data-shown") === "1";
-      el.setAttribute("data-shown", shown ? "0" : "1");
-      el.textContent = shown ? "••••••••" : secret;
-      el.style.letterSpacing = shown ? "0.08em" : "0";
-      toggle.innerHTML = shown ? eye : eyeOff;
-      toggle.setAttribute("aria-label", shown ? "Show password" : "Hide password");
+</div>
+{% if not pin_required and payload and payload.password %}
+<script>
+(function(){
+  var ICO_EYE = '<i class="bi bi-eye"></i>';
+  var ICO_EYE_OFF = '<i class="bi bi-eye-slash"></i>';
+  var ICO_COPY = '<i class="bi bi-clipboard"></i>';
+  var ICO_CHECK = '<i class="bi bi-check2"></i>';
+  var el = document.querySelector(".js-secret-text");
+  var toggle = document.getElementById("send-toggle");
+  var copy = document.getElementById("send-copy");
+  if(!el || !toggle) return;
+  var secret = el.getAttribute("data-secret") || "";
+  toggle.addEventListener("click", function(){
+    var shown = el.getAttribute("data-shown") === "1";
+    el.setAttribute("data-shown", shown ? "0" : "1");
+    el.textContent = shown ? "••••••••" : secret;
+    toggle.innerHTML = shown ? ICO_EYE : ICO_EYE_OFF;
+    toggle.setAttribute("aria-label", shown ? "Show password" : "Hide password");
+    toggle.setAttribute("title", shown ? "Show" : "Hide");
+  });
+  if(copy){
+    copy.addEventListener("click", function(){
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(secret);
+      }
+      copy.innerHTML = ICO_CHECK;
+      copy.setAttribute("aria-label", "Copied");
+      setTimeout(function(){ copy.innerHTML = ICO_COPY; copy.setAttribute("aria-label", "Copy password"); }, 1200);
     });
-    if(copy){
-      copy.addEventListener("click", function(){
-        if(navigator.clipboard && navigator.clipboard.writeText){
-          navigator.clipboard.writeText(secret);
-        }
-      });
-    }
-  })();
-  </script>
-  {% endif %}
+  }
+})();
+</script>
+{% endif %}
 </body>
 </html>

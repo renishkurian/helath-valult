@@ -2,76 +2,171 @@
 {% block title %}Document Vault{% endblock %}
 {% block content %}
 {% set type_colors = {
-  'aadhaar':'#5B8CFF','pan':'#F5B942','passport':'#A89BFF','driving_license':'#3DDC97',
-  'voter_id':'#22D3EE','certificate':'#FB7185','rc':'#F97316','insurance':'#F5B942',
+  'aadhaar':'#7FA6FF','pan':'#F0C36A','passport':'#C0A8FF','driving_license':'#4ADE9B',
+  'voter_id':'#22D3EE','certificate':'#FF8095','rc':'#F5A65B','insurance':'#F0C36A',
   'warranty':'#84CC16','property':'#38BDF8','other':'#8B95A8'
 } %}
+{# Expiry colouring uses the same 60-day window the locker router treats as "expiring". #}
+{% set now = items[0].created_at.utcnow() if items else None %}
+{% set today = now.strftime('%Y-%m-%d') if now else '' %}
+{% set soon = (now + now.resolution * 5184000000000).strftime('%Y-%m-%d') if now else '' %}
+
 <div class="page-head">
   <div>
-    <div class="eyebrow">Document Vault</div>
-    <div class="page-title">Locker</div>
-    <p class="page-lead" style="margin:8px 0 0;">IDs, papers, and warranties — files stay on your Pi.</p>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Document Vault
+    </div>
+    <h1 class="page-title">Locker</h1>
+    <p class="page-lead">IDs, papers, and warranties — files stay on your Pi.</p>
   </div>
-  <a class="btn" href="/admin/locker/add{% if doc_type %}?doc_type={{ doc_type }}{% endif %}">+ Add</a>
+  <div class="page-actions">
+    <a class="btn btn-primary" href="/admin/locker/add{% if doc_type %}?doc_type={{ doc_type }}{% endif %}">
+      <i class="bi bi-plus-lg"></i> Add document
+    </a>
+  </div>
 </div>
 
-<div class="mm-summary">
-  <div class="cell"><div class="lbl">Documents</div><div class="val">{{ summary.total }}</div></div>
-  <div class="cell"><div class="lbl">Expiring (60d)</div><div class="val {% if summary.expiring %}mm-expense{% endif %}">{{ summary.expiring }}</div></div>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-safe2"></i> Documents</div>
+      <div class="val">{{ summary.total }}</div>
+      <div class="sub">stored in this locker</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat {% if summary.expiring %}accent{% endif %}">
+      <div class="lbl"><i class="bi bi-clock-history"></i> Expiring</div>
+      <div class="val">{{ summary.expiring }}</div>
+      <div class="sub">within 60 days</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-folder2"></i> Types in use</div>
+      <div class="val">{{ summary.types | selectattr('count') | list | length }}</div>
+      <div class="sub">of {{ summary.types | length }} categories</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-list-ul"></i> Showing</div>
+      <div class="val">{{ items | length }}</div>
+      <div class="sub">
+        {% if expiring %}expiring soon{% elif q %}search results{% elif doc_type %}one document type{% else %}all documents{% endif %}
+      </div>
+    </div>
+  </div>
 </div>
 
-<div class="folders" style="margin-top:4px;">
+<form class="filter-bar" method="get" action="/admin/locker">
+  <div class="search-field">
+    <i class="bi bi-search"></i>
+    <label class="visually-hidden" for="lk-q">Search documents</label>
+    <input class="form-control" id="lk-q" type="search" name="q" value="{{ q }}" placeholder="Search title, holder, issuer…">
+  </div>
+  <label class="visually-hidden" for="lk-type">Document type</label>
+  <select class="form-select grow" id="lk-type" name="doc_type">
+    <option value="">All types</option>
+    {% for id, label in types %}
+    <option value="{{ id }}" {% if doc_type == id %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-outline-light" type="submit"><i class="bi bi-funnel"></i> Filter</button>
+  {% if q or doc_type or expiring %}
+  <a class="btn btn-ghost" href="/admin/locker">Clear</a>
+  {% endif %}
+</form>
+
+<div class="section-head"><h2>Folders</h2></div>
+<div class="folder-grid mb-4">
   <a class="folder {% if not doc_type and not expiring %}on{% endif %}" href="/admin/locker">
-    All
+    <span class="folder-name"><i class="bi bi-collection"></i> All</span>
     <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
   </a>
-  <a class="folder {% if expiring %}on{% endif %}" href="/admin/locker?expiring=1" style="border-color:rgba(255,107,122,0.35);">
-    Expiring
+  <a class="folder {% if expiring %}on{% endif %}" href="/admin/locker?expiring=1">
+    <span class="folder-name"><i class="bi bi-clock-history"></i> Expiring</span>
     <span class="fcount">{{ '%02d'|format(summary.expiring) }}</span>
   </a>
   {% for t in summary.types %}
-  <a class="folder {% if doc_type==t.id %}on{% endif %}" href="/admin/locker?doc_type={{ t.id }}" style="border-color:{{ type_colors.get(t.id, '#8B95A8') }}33;">
-    {{ t.label }}
+  <a class="folder {% if doc_type==t.id %}on{% endif %}" href="/admin/locker?doc_type={{ t.id }}">
+    <span class="folder-name">
+      <span class="folder-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
+      {{ t.label }}
+    </span>
     <span class="fcount">{{ '%02d'|format(t.count) }}</span>
   </a>
   {% endfor %}
 </div>
 
-<form method="get" action="/admin/locker" class="lk-search">
-  {% if doc_type %}<input type="hidden" name="doc_type" value="{{ doc_type }}">{% endif %}
-  <input type="search" name="q" value="{{ q }}" placeholder="Search title, holder, issuer…">
-  <button class="btn-outline" type="submit">Search</button>
-</form>
-
-<div class="surface" style="padding:0;">
-  <table class="ledger">
-    <thead><tr><th>Document</th><th>Holder</th><th>Expiry</th><th>Files</th><th></th></tr></thead>
-    <tbody>
-      {% for item in items %}
-      <tr>
-        <td>
-          <a href="/admin/locker/{{ item.id }}" style="display:flex; align-items:center; gap:10px; color:inherit;">
-            <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
-            <span>
-              <strong>{{ item.title }}</strong>
-              <div style="font-size:12px; color:var(--ink-soft);">{{ item.type_label }}{% if item.issuer %} · {{ item.issuer }}{% endif %}</div>
-            </span>
-          </a>
-        </td>
-        <td>{{ item.holder_name or '—' }}</td>
-        <td class="mono">{{ item.expiry_date or '—' }}</td>
-        <td class="mono">{{ item.file_count }}</td>
-        <td><a class="tag tag-sage" href="/admin/locker/{{ item.id }}/download">Open</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="empty">No documents yet. Add Aadhaar, PAN, RC, warranties…</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="section-head"><h2>Documents</h2></div>
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Document</th>
+          <th>Holder</th>
+          <th>Expiry</th>
+          <th>Files</th>
+          <th class="table-actions">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td>
+            <a class="d-flex align-items-center gap-2 text-reset text-decoration-none" href="/admin/locker/{{ item.id }}">
+              <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
+              <span>
+                <span class="fw-semibold d-block truncate">{{ item.title }}</span>
+                <span class="small text-faint">{{ item.type_label }}{% if item.issuer %} · {{ item.issuer }}{% endif %}</span>
+              </span>
+            </a>
+          </td>
+          <td>{{ item.holder_name or '—' }}</td>
+          <td>
+            {% if item.expiry_date %}
+              {% if today and item.expiry_date < today %}
+                <span class="badge badge-bad"><i class="bi bi-exclamation-octagon"></i> Expired {{ item.expiry_date }}</span>
+              {% elif soon and item.expiry_date <= soon %}
+                <span class="badge badge-warn"><i class="bi bi-clock-history"></i> {{ item.expiry_date }}</span>
+              {% else %}
+                <span class="mono text-muted">{{ item.expiry_date }}</span>
+              {% endif %}
+            {% else %}
+              <span class="text-faint">—</span>
+            {% endif %}
+          </td>
+          <td class="mono text-muted">{{ item.file_count }}</td>
+          <td class="table-actions">
+            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}/download">
+              <i class="bi bi-box-arrow-up-right"></i> Open
+            </a>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5">
+            <div class="empty-state">
+              <div class="empty-ico"><i class="bi bi-safe2"></i></div>
+              {% if q or doc_type or expiring %}
+                <div class="empty-title">Nothing matches this filter</div>
+                <p>Try another search term, or clear the filter to see every document.</p>
+                <a class="btn btn-outline-light" href="/admin/locker"><i class="bi bi-arrow-counterclockwise"></i> Clear filter</a>
+              {% else %}
+                <div class="empty-title">No documents yet</div>
+                <p>File Aadhaar, PAN, vehicle RC, insurance, and warranties — all encrypted on your own server.</p>
+                <a class="btn btn-primary" href="/admin/locker/add"><i class="bi bi-plus-lg"></i> Add the first document</a>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
-<style>
-  .lk-search{ display:flex; gap:8px; margin:0 0 18px; }
-  .lk-search input{ flex:1; }
-  .mm-summary{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
-</style>
 {% endblock %}
