@@ -1,41 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Modules{% endblock %}
 {% block content %}
-<div class="eyebrow">Your workspace</div>
-<div class="page-title">Choose a module</div>
-<p style="color:var(--ink-soft); margin-bottom:28px; max-width:560px; font-size:15px;">
-  One account, five modules. Switch anytime.
-</p>
-<div class="grid grid-cards">
-  <a class="module-card" href="/admin">
-    <div class="icon-well" style="background:rgba(61,220,151,0.14); color:#3DDC97;">+</div>
-    <div class="eyebrow">Medical records</div>
-    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">Health Vault</h2>
-    <p style="color:var(--ink-soft); font-size:14px;">Cards, documents, care, reminders, and family profiles.</p>
+<div class="eyebrow">Workspace</div>
+<div class="page-title">The collection</div>
+<p class="page-lead">Five rooms. One key. Open only what you need.</p>
+<div class="index-list">
+  <a class="index-row" href="/admin">
+    <div class="index-num">01</div>
+    <div class="index-copy">
+      <div class="eyebrow">Medical records</div>
+      <h2>Health Vault</h2>
+      <p>Cards, documents, care, reminders, and family profiles.</p>
+    </div>
+    <div class="index-go" aria-hidden="true">→</div>
   </a>
-  <a class="module-card" href="/admin/passwords">
-    <div class="icon-well" style="background:var(--accent-soft); color:var(--navy);">#</div>
-    <div class="eyebrow">Secrets</div>
-    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">Password Vault</h2>
-    <p style="color:var(--ink-soft); font-size:14px;">Logins, notes, cards, identities, generator, authenticator, and Send.</p>
+  <a class="index-row" href="/admin/passwords">
+    <div class="index-num">02</div>
+    <div class="index-copy">
+      <div class="eyebrow">Secrets</div>
+      <h2>Password Vault</h2>
+      <p>Logins, notes, cards, identities, generator, authenticator, and Send.</p>
+    </div>
+    <div class="index-go" aria-hidden="true">→</div>
   </a>
-  <a class="module-card" href="/admin/finance">
-    <div class="icon-well" style="background:rgba(255,107,122,0.14); color:var(--stamp);">₹</div>
-    <div class="eyebrow">Money</div>
-    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">Money Manager</h2>
-    <p style="color:var(--ink-soft); font-size:14px;">Accounts, daily ledger, stats, budgets, and SMS auto-tag with AI keys.</p>
+  <a class="index-row" href="/admin/finance">
+    <div class="index-num">03</div>
+    <div class="index-copy">
+      <div class="eyebrow">Money</div>
+      <h2>Money Manager</h2>
+      <p>Accounts, daily ledger, stats, budgets, and SMS auto-tag.</p>
+    </div>
+    <div class="index-go" aria-hidden="true">→</div>
   </a>
-  <a class="module-card" href="/admin/locker">
-    <div class="icon-well" style="background:rgba(245,185,66,0.16); color:var(--mustard);">▣</div>
-    <div class="eyebrow">IDs & papers</div>
-    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">Document Vault</h2>
-    <p style="color:var(--ink-soft); font-size:14px;">Aadhaar, PAN, passport, RC, insurance, warranties — encrypted on the Pi.</p>
+  <a class="index-row" href="/admin/locker">
+    <div class="index-num">04</div>
+    <div class="index-copy">
+      <div class="eyebrow">IDs &amp; papers</div>
+      <h2>Document Vault</h2>
+      <p>Aadhaar, PAN, passport, RC, insurance, warranties — encrypted on the Pi.</p>
+    </div>
+    <div class="index-go" aria-hidden="true">→</div>
   </a>
-  <a class="module-card" href="/admin/urls">
-    <div class="icon-well" style="background:rgba(56,189,248,0.16); color:#38BDF8;">↗</div>
-    <div class="eyebrow">Bookmarks</div>
-    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">URL Vault</h2>
-    <p style="color:var(--ink-soft); font-size:14px;">Save links with previews, categories, tags, search, and shareable pages.</p>
+  <a class="index-row" href="/admin/urls">
+    <div class="index-num">05</div>
+    <div class="index-copy">
+      <div class="eyebrow">Bookmarks</div>
+      <h2>URL Vault</h2>
+      <p>Save links with previews, categories, tags, search, and shareable pages.</p>
+    </div>
+    <div class="index-go" aria-hidden="true">→</div>
   </a>
 </div>
 {% endblock %}

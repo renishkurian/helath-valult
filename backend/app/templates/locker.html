@@ -10,6 +10,7 @@
   <div>
     <div class="eyebrow">Document Vault</div>
     <div class="page-title">Locker</div>
+    <p class="page-lead" style="margin:8px 0 0;">IDs, papers, and warranties — files stay on your Pi.</p>
   </div>
   <a class="btn" href="/admin/locker/add{% if doc_type %}?doc_type={{ doc_type }}{% endif %}">+ Add</a>
 </div>
@@ -69,7 +70,6 @@
   </table>
 </div>
 <style>
-  .folder.on{ border-color:var(--navy); background:rgba(91,140,255,0.12); }
   .lk-search{ display:flex; gap:8px; margin:0 0 18px; }
   .lk-search input{ flex:1; }
   .mm-summary{ grid-template-columns:repeat(2, minmax(0, 1fr)); }

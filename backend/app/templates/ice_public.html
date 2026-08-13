@@ -5,46 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>ICE — {{ person.name | nice }}</title>
-<meta name="theme-color" content="#0B0F17">
+<meta name="theme-color" content="#0B1018">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="/static/vault.css?v=3">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
-  *{ box-sizing:border-box; }
-  body{
-    font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:#0B0F17; color:#F4F6FA;
-    margin:0; min-height:100vh; padding:24px;
-    background-image:
-      radial-gradient(800px 400px at 10% -10%, rgba(255,107,122,0.16), transparent 50%),
-      radial-gradient(700px 400px at 100% 0%, rgba(91,140,255,0.12), transparent 45%);
-  }
+  body{ min-height:100vh; padding:32px 20px; }
   .card{
     position:relative; overflow:hidden; max-width:440px; margin:0 auto;
-    background:linear-gradient(160deg, #1B2744 0%, #121A2C 58%, #0E1624 100%);
-    border:1px solid rgba(255,107,122,0.22); border-radius:24px; padding:28px;
-    box-shadow:0 22px 50px rgba(0,0,0,0.32);
+    border:1px solid rgba(251,113,133,0.28); border-radius:var(--radius); padding:36px;
+    background:var(--paper-deep);
   }
   .card::before{
     content:""; position:absolute; right:-10px; top:-16px; width:140px; height:140px;
     background:
-      linear-gradient(#FF6B7A,#FF6B7A) center / 28px 8px no-repeat,
-      linear-gradient(#FF6B7A,#FF6B7A) center / 8px 28px no-repeat;
+      linear-gradient(#FB7185,#FB7185) center / 28px 8px no-repeat,
+      linear-gradient(#FB7185,#FB7185) center / 8px 28px no-repeat;
     opacity:0.18; transform:rotate(12deg);
   }
-  .kicker{ font-size:11px; letter-spacing:0.16em; text-transform:uppercase; color:#FF8A96; font-weight:700; }
-  h1{ margin:8px 0 20px; font-size:28px; letter-spacing:-0.03em; }
+  .kicker{ font-size:11px; letter-spacing:0.2em; text-transform:uppercase; color:#FB7185; font-weight:600; }
+  h1{ font-family:var(--display); margin:12px 0 24px; font-size:40px; font-weight:400; font-style:italic; letter-spacing:-0.03em; line-height:1.05; }
   .layout{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; }
   .blood{
-    width:96px; height:96px; border-radius:20px;
-    background:linear-gradient(180deg, rgba(255,107,122,0.22), rgba(255,107,122,0.08));
-    border:1px solid rgba(255,107,122,0.35);
+    width:96px; height:96px; border-radius:var(--radius);
+    background:rgba(251,113,133,0.1); border:1px solid rgba(251,113,133,0.35);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
   }
-  .blood .bg{ font-size:28px; font-weight:800; color:#FFD0D5; line-height:1; }
-  .blood .bl{ font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#FF8A96; margin-top:8px; font-weight:700; }
-  .lbl{ font-size:10px; letter-spacing:0.1em; text-transform:uppercase; color:#9BB0D0; font-weight:600; }
-  .val{ font-size:16px; font-weight:600; margin:2px 0 12px; }
-  .pill{ display:inline-flex; padding:5px 10px; border-radius:999px; font-size:12px; font-weight:600; margin:0 6px 6px 0; background:rgba(255,107,122,0.14); color:#FF8A96; }
-  .id{ font-family:'JetBrains Mono', monospace; font-size:12px; color:#C9D4EA; }
-  a{ color:#9BB8FF; }
+  .blood .bg{ font-family:var(--display); font-size:28px; font-weight:500; color:#FFD0D5; line-height:1; }
+  .blood .bl{ font-size:9px; letter-spacing:0.14em; text-transform:uppercase; color:#FB7185; margin-top:8px; font-weight:700; }
+  .lbl{ font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; margin-top:18px; }
+  .val{ font-size:16px; font-weight:600; margin:4px 0 0; }
+  .pill{ margin:6px 6px 0 0; background:rgba(251,113,133,0.14); color:#FB7185; }
+  .id{ font-family:'JetBrains Mono', monospace; font-size:12px; color:var(--ink); }
+  a{ color:var(--ink); text-decoration:underline; text-underline-offset:3px; }
   @media (max-width: 420px){ .layout{ grid-template-columns:1fr; } }
 </style>
 </head>
@@ -58,9 +50,9 @@
         <div class="bl">Blood group</div>
       </div>
       <div>
-        <div class="lbl">Emergency contact</div>
+        <div class="lbl" style="margin-top:0;">Emergency contact</div>
         <div class="val">{{ (person.emergency_name | nice) if person.emergency_name else '—' }}</div>
-        {% if person.emergency_phone %}<div class="val" style="margin-top:-8px;"><a href="tel:{{ person.emergency_phone }}">{{ person.emergency_phone }}</a></div>{% endif %}
+        {% if person.emergency_phone %}<div class="val"><a href="tel:{{ person.emergency_phone }}">{{ person.emergency_phone }}</a></div>{% endif %}
       </div>
     </div>
     <div class="lbl">Allergies</div>

@@ -3,17 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ doc.title }} — Health Vault</title>
-<meta name="theme-color" content="#0B0F17">
+<title>{{ doc.title }} — Vault</title>
+<meta name="theme-color" content="#0B1018">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="/static/vault.css?v=3">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
-  body{ font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:#0B0F17; color:#F4F6FA; margin:0; padding:24px; min-height:100vh; display:flex; align-items:center; }
-  .card{ max-width:520px; margin:0 auto; background:#151B28; border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:28px; width:100%; }
-  .eyebrow{ font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8B95A8; font-weight:600; }
-  h1{ font-size:24px; margin:8px 0 8px; letter-spacing:-0.03em; }
-  .meta{ color:#8B95A8; font-size:14px; margin-bottom:20px; }
-  .btn{ display:inline-block; background:linear-gradient(180deg,#6B98FF,#4E7FFF); color:#fff; text-decoration:none; padding:12px 18px; border-radius:12px; font-weight:600; }
-  .note{ margin-top:18px; font-size:12px; color:#8B95A8; }
+  body{ min-height:100vh; display:flex; align-items:center; padding:32px 20px; }
+  .card{ max-width:520px; margin:0 auto; width:100%; border:1px solid var(--line); border-radius:var(--radius); padding:40px 36px; }
+  h1{ font-family:var(--display); font-size:36px; font-weight:400; font-style:italic; margin:10px 0 14px; letter-spacing:-0.03em; line-height:1.1; }
+  .meta{ color:var(--ink-soft); font-size:14px; margin-bottom:28px; line-height:1.55; }
+  .note{ margin-top:22px; font-size:12px; color:var(--ink-soft); line-height:1.5; }
 </style>
 </head>
 <body>

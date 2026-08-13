@@ -5,6 +5,7 @@
   <div>
     <div class="eyebrow">URL Vault</div>
     <div class="page-title">{% if favorite %}Favorites{% else %}Links{% endif %}</div>
+    <p class="page-lead" style="margin:8px 0 0;">Previews, tags, and shareable pages — yours to keep.</p>
   </div>
   <a class="btn" href="/admin/urls/add{% if category_id %}?category_id={{ category_id }}{% endif %}">+ Add</a>
 </div>
@@ -98,25 +99,25 @@
   {% endfor %}
 </div>
 <style>
-  .folder.on{ border-color:var(--navy); background:rgba(91,140,255,0.12); }
   .lk-search{ display:flex; gap:8px; margin:0 0 18px; }
   .lk-search input{ flex:1; }
   .mm-summary{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .uv-dot{ width:8px; height:8px; border-radius:50%; display:inline-block; }
   .uv-tags{ display:flex; flex-wrap:wrap; gap:8px; margin:-8px 0 18px; }
   .uv-tags .pill{ font-size:11px; color:var(--ink-soft); }
-  .uv-tags .chip.active .pill{ color:#fff; }
+  .uv-tags .chip.active .pill{ color:var(--on-gold); }
   .uv-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap:14px; }
-  .uv-card{ background:var(--white); border:1px solid var(--line); border-radius:18px; overflow:hidden; display:flex; flex-direction:column; }
+  .uv-card{ background:transparent; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; display:flex; flex-direction:column; transition:border-color .22s var(--ease); }
+  .uv-card:hover{ border-color:rgba(244,240,230,0.28); }
   .uv-card-link{ color:inherit; text-decoration:none; display:block; flex:1; }
-  .uv-thumb{ height:128px; background-size:cover; background-position:center; background-color:#121826; }
+  .uv-thumb{ height:128px; background-size:cover; background-position:center; background-color:#0C0C10; }
   .uv-thumb-empty{ display:grid; place-items:center; color:#fff; font-weight:800; font-size:22px; }
   .uv-thumb-empty img{ border-radius:6px; }
   .uv-body{ padding:14px 16px 8px; }
   .uv-kicker{ font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; display:flex; gap:8px; align-items:center; }
   .uv-star{ color:var(--mustard); }
   .uv-date{ margin-left:auto; letter-spacing:0; text-transform:none; font-family:'JetBrains Mono', monospace; }
-  .uv-body h2{ font-size:16px; margin:6px 0 6px; letter-spacing:-0.02em; line-height:1.3; }
+  .uv-body h2{ font-family:var(--display); font-size:20px; font-weight:400; margin:6px 0 6px; letter-spacing:-0.03em; line-height:1.3; }
   .uv-body p{ font-size:13px; color:var(--ink-soft); line-height:1.45; }
   .uv-meta{ display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
   .uv-actions{ display:flex; gap:8px; padding:0 16px 14px; }
