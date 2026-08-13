@@ -33,9 +33,22 @@ DEFAULT_BASES = {
 EXPENSE_CATEGORIES = [
     "Food & dining", "Groceries", "Transport", "Fuel", "Shopping",
     "Bills & utilities", "Rent", "Health", "Education", "Entertainment",
-    "Travel", "Subscriptions", "UPI / transfers", "EMI / loans",
-    "Insurance", "Family", "Other",
+    "Travel", "Subscriptions", "UPI / transfers", "ATM / cash",
+    "EMI / loans", "Insurance", "Family", "Other",
 ]
+
+PAYMENT_METHODS = (
+    "upi", "credit_card", "debit_card", "atm", "netbanking", "cash", "other",
+)
+PAYMENT_LABELS = {
+    "upi": "UPI",
+    "credit_card": "Credit card",
+    "debit_card": "Debit card",
+    "atm": "ATM cash withdrawal",
+    "netbanking": "Net banking",
+    "cash": "Cash",
+    "other": "Other",
+}
 INCOME_CATEGORIES = [
     "Salary", "Freelance", "Business", "Interest", "Refund", "Gift", "Other income",
 ]
@@ -69,7 +82,15 @@ _AMOUNT_ALT_RE = re.compile(
     re.I,
 )
 _DEBIT_RE = re.compile(r"\b(debited|debit|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to)\b", re.I)
-_CREDIT_RE = re.compile(r"\b(credited|credit|received|refund(?:ed)?|deposited|cr\b|added to)\b", re.I)
+_CREDIT_RE = re.compile(
+    r"\b(credited|received|refund(?:ed)?|deposited|cr\b|added to)\b|(?<!\w)credit(?!\s*card)\b",
+    re.I,
+)
+_ATM_RE = re.compile(r"\batm\b|atm\s*wdl|cash withdraw|withdrawn (?:at|from) atm|atm withdrawal", re.I)
+_CC_RE = re.compile(r"credit\s*card|\bcc\s*(?:xx|ending|no\.?)|on your credit card", re.I)
+_DC_RE = re.compile(r"debit\s*card|\bdc\s*(?:xx|ending)|pos\s+(?:purchase|txn)", re.I)
+_UPI_RE = re.compile(r"\bupi\b|vpa|upi[\s-]?ref|upi-?id|@oksbi|@okaxis|@ybl|@paytm|@ibl", re.I)
+_NB_RE = re.compile(r"\bneft\b|\bimps\b|\brtgs\b|net\s*banking|internet banking", re.I)
 _PAYEE_RE = re.compile(
     r"(?:to|from|at|via u?pi(?:/.*?|id)?(?:\s+to)?)\s+([A-Z0-9][A-Za-z0-9 .&@_-]{2,40})",
     re.I,
@@ -129,6 +150,39 @@ def _guess_payee(text: str) -> str | None:
     return payee[:80]
 
 
+def detect_payment_method(text: str) -> tuple[str, float]:
+    if _ATM_RE.search(text):
+        return "atm", 0.92
+    if _CC_RE.search(text):
+        return "credit_card", 0.9
+    if _DC_RE.search(text):
+        return "debit_card", 0.9
+    if _UPI_RE.search(text):
+        return "upi", 0.93
+    if _NB_RE.search(text):
+        return "netbanking", 0.86
+    return "other", 0.3
+
+
+def build_description(
+    method: str | None,
+    payee: str | None,
+    category: str | None,
+    notes: str | None = None,
+) -> str | None:
+    if notes and str(notes).strip():
+        return str(notes).strip()[:200]
+    label = PAYMENT_LABELS.get(method or "")
+    if label == "Other":
+        label = None
+    who = (payee or category or "").strip() or None
+    if who in {"ATM / cash", "Other", "Other income"}:
+        who = None
+    if label and who:
+        return f"{label} · {who}"[:200]
+    return label or who
+
+
 def _keyword_category(text: str, direction: str) -> tuple[str, float]:
     lower = text.lower()
     for keys, cat in _PAYEE_MAP:
@@ -162,18 +216,27 @@ def classify_heuristic(text: str) -> dict[str, Any]:
     amount = _parse_amount(text)
     payee = _guess_payee(text)
     category, conf = _keyword_category(text, direction)
+    method, mconf = detect_payment_method(text)
+    if method == "atm" and category in {"Other", "Other income", "UPI / transfers"}:
+        category = "ATM / cash"
+        conf = max(conf, 0.84)
+        payee = payee or "ATM"
     if direction == "unknown":
         conf = min(conf, 0.35)
     if amount is None:
         conf = min(conf, 0.4)
+    if method != "other":
+        conf = max(conf, min(mconf, 0.88))
     return {
         "direction": direction,
         "amount": amount,
         "payee": payee,
         "date": _parse_date(text),
         "category": category,
+        "payment_method": method,
         "confidence": round(conf, 3),
         "notes": None,
+        "description": build_description(method, payee, category),
         "provider": "heuristic",
     }
 
@@ -259,11 +322,14 @@ def classify_with_ai(
     model = model or DEFAULT_MODELS.get(kind, "gpt-4o-mini")
     base = (base_url or DEFAULT_BASES.get(kind) or "https://api.openai.com/v1").rstrip("/")
     system = (
-        "You classify bank SMS, UPI, wallet, and card alerts. "
+        "You classify bank SMS, UPI, wallet, card, and ATM alerts. "
         "Return JSON only with keys: direction (debit|credit|unknown), "
         "amount (number or null), payee (string or null), date (YYYY-MM-DD or null), "
-        f"category (one of {ALL_CATEGORIES}), confidence (0-1), notes (short). "
-        "debit = payment/expense, credit = money received."
+        f"category (one of {ALL_CATEGORIES}), "
+        f"payment_method (one of {list(PAYMENT_METHODS)}), "
+        "confidence (0-1), notes (short description). "
+        "debit = payment/expense/ATM withdrawal. credit = money received. "
+        "A credit-card spend is debit with payment_method credit_card, not income."
     )
     user = f"Message:\n{text}"
     if kind == "anthropic":
@@ -289,14 +355,21 @@ def classify_with_ai(
         conf = max(0.0, min(1.0, float(conf)))
     except (TypeError, ValueError):
         conf = 0.6
+    method = str(data.get("payment_method") or "other").lower().replace(" ", "_")
+    if method not in PAYMENT_METHODS:
+        method, _ = detect_payment_method(text)
+    notes = data.get("notes")
+    notes = str(notes).strip()[:200] if notes else None
     return {
         "direction": direction,
         "amount": amount,
         "payee": (str(data["payee"])[:80] if data.get("payee") else None),
         "date": data.get("date") or datetime.utcnow().strftime("%Y-%m-%d"),
         "category": cat,
+        "payment_method": method,
         "confidence": round(conf, 3),
-        "notes": data.get("notes"),
+        "notes": notes,
+        "description": build_description(method, data.get("payee"), cat, notes),
         "provider": kind,
     }
 

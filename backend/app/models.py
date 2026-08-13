@@ -548,6 +548,7 @@ class FinanceCategory(Base):
     kind = Column(String(20), default="expense", nullable=False)  # expense | income
     color = Column(String(16), nullable=True)
     is_system = Column(Boolean, default=False, nullable=False)
+    account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=True, index=True)  # null = general / all accounts
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -566,6 +567,7 @@ class FinanceTransaction(Base):
     payee = Column(String(255), nullable=True)
     notes = Column(Text, nullable=True)
     description = Column(Text, nullable=True)
+    payment_method = Column(String(30), nullable=True)  # upi | credit_card | debit_card | atm | netbanking | cash | other
     tags = Column(String(500), nullable=True)
     source = Column(String(20), default="manual", nullable=False)  # manual | message | recurring
     message_id = Column(String(32), nullable=True, index=True)
@@ -632,6 +634,7 @@ class FinanceMessage(Base):
     amount = Column(Numeric(14, 2), nullable=True)
     payee = Column(String(255), nullable=True)
     txn_date = Column(String(20), nullable=True)
+    payment_method = Column(String(30), nullable=True)
     category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True)
     suggested_category = Column(String(120), nullable=True)
     confidence = Column(Numeric(4, 3), nullable=True)

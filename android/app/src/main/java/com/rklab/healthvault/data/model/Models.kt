@@ -549,7 +549,15 @@ data class FinanceCategoryOut(
     val name: String,
     val kind: String,
     val color: String? = null,
-    val is_system: Boolean = false
+    val is_system: Boolean = false,
+    val account_id: String? = null,
+    val account_name: String? = null,
+    val scope: String = "general"
+)
+data class FinanceCategoryIn(
+    val name: String,
+    val kind: String = "expense",
+    val account_id: String? = null
 )
 data class FinanceTxnOut(
     val id: String,
@@ -568,6 +576,7 @@ data class FinanceTxnOut(
     val payee: String? = null,
     val notes: String? = null,
     val description: String? = null,
+    val payment_method: String? = null,
     val tags: String? = null,
     val source: String = "manual",
     val created_at: String = ""
@@ -583,6 +592,7 @@ data class FinanceTxnIn(
     val payee: String? = null,
     val notes: String? = null,
     val description: String? = null,
+    val payment_method: String? = null,
     val frequency: String? = null
 )
 data class FinanceSummaryOut(
@@ -590,6 +600,12 @@ data class FinanceSummaryOut(
     val income: Double = 0.0,
     val expense: Double = 0.0,
     val total: Double = 0.0,
+    val opening: Double = 0.0,
+    val closing: Double = 0.0,
+    val prev_month: String? = null,
+    val prev_income: Double = 0.0,
+    val prev_expense: Double = 0.0,
+    val prev_total: Double = 0.0,
     val assets: Double = 0.0,
     val liabilities: Double = 0.0,
     val net: Double = 0.0,
@@ -632,6 +648,7 @@ data class FinanceMessageOut(
     val amount: Double? = null,
     val payee: String? = null,
     val txn_date: String? = null,
+    val payment_method: String? = null,
     val category_id: String? = null,
     val suggested_category: String? = null,
     val confidence: Double? = null,

@@ -3,45 +3,66 @@
 {% block content %}
 <div class="eyebrow"><a href="/admin/finance/more" style="color:var(--ink-soft);">← More</a></div>
 <div class="page-title">Categories</div>
+<p class="mm-muted">General categories apply to every account. Account categories (Home, Personal…) only show when that account is selected.</p>
 
-<div class="grid grid-2">
-  <div class="panel">
-    <div class="group-label">Expense</div>
-    {% for c in categories if c.kind=='expense' %}
-    <div class="record">
-      <span class="record-dot" style="background:{{ c.color or 'var(--mm-expense)' }};"></span>
-      <div class="record-title">{{ c.name }}</div>
-      {% if not c.is_system %}
-      <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-  <div class="panel">
-    <div class="group-label">Income</div>
-    {% for c in categories if c.kind=='income' %}
-    <div class="record">
-      <span class="record-dot" style="background:{{ c.color or 'var(--mm-income)' }};"></span>
-      <div class="record-title">{{ c.name }}</div>
-      {% if not c.is_system %}
-      <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </div>
-</div>
-
-<div class="surface" style="max-width:480px; margin-top:18px;">
+<div class="surface" style="max-width:560px; margin:12px 0 22px;">
   <div class="group-label">Add category</div>
   <form method="post" action="/admin/finance/categories">
     <div class="form-grid">
-      <div class="field"><label>Name</label><input name="name" required placeholder="grocessory, charity…"></div>
+      <div class="field"><label>Name</label><input name="name" required placeholder="Groceries, maid, school…"></div>
       <div class="field">
         <label>Kind</label>
         <select name="kind"><option value="expense">Expense</option><option value="income">Income</option></select>
       </div>
     </div>
+    <div class="field">
+      <label>Scope</label>
+      <select name="account_id">
+        <option value="">General — all accounts</option>
+        {% for a in accounts %}
+        <option value="{{ a.id }}">Only {{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <button class="btn" type="submit">Save category</button>
   </form>
 </div>
+
+<div class="panel" style="margin-bottom:18px;">
+  <div class="group-label">General — all accounts</div>
+  {% for c in categories if not c.account_id %}
+  <div class="record">
+    <span class="record-dot" style="background:{{ c.color or 'var(--mm-expense)' }};"></span>
+    <div>
+      <div class="record-title">{{ c.name }}</div>
+      <div class="record-meta">{{ c.kind }} · all accounts</div>
+    </div>
+    {% if not c.is_system %}
+    <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="mm-muted">No general categories yet.</p>
+  {% endfor %}
+</div>
+
+{% for a in accounts %}
+<div class="panel" style="margin-bottom:18px;">
+  <div class="group-label">{{ a.name }} only</div>
+  {% for c in categories if c.account_id == a.id %}
+  <div class="record">
+    <span class="record-dot" style="background:{{ c.color or 'var(--mm-expense)' }};"></span>
+    <div>
+      <div class="record-title">{{ c.name }}</div>
+      <div class="record-meta">{{ c.kind }} · {{ a.name }}</div>
+    </div>
+    {% if not c.is_system %}
+    <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="mm-muted">No categories just for {{ a.name }}. Add one above and pick “Only {{ a.name }}”.</p>
+  {% endfor %}
+</div>
+{% endfor %}
 {% endblock %}

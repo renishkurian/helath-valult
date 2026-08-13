@@ -1005,6 +1005,7 @@ def finance_add(
     payee: str = Form(""),
     notes: str = Form(""),
     description: str = Form(""),
+    payment_method: str = Form(""),
     frequency: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -1018,7 +1019,7 @@ def finance_add(
         category_id=category_id or None, txn_type=txn_type, amount=float(amount or 0),
         txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
         notes=notes or None, description=description or None,
-        frequency=frequency or None,
+        payment_method=payment_method or None, frequency=frequency or None,
     ), db=db, current_user=user)
     return RedirectResponse("/admin/finance", status_code=302)
 
@@ -1250,18 +1251,29 @@ def finance_categories(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     return templates.TemplateResponse("finance_categories.html", _fn_ctx(
-        request, user, "fn_more", categories=fn.list_categories(db=db, current_user=user),
+        request, user, "fn_more",
+        categories=fn.list_categories(db=db, current_user=user),
+        accounts=fn.list_accounts(db=db, current_user=user),
     ))
 
 
 @router.post("/finance/categories")
-def finance_category_add(request: Request, name: str = Form(...), kind: str = Form("expense"), db: Session = Depends(get_db)):
+def finance_category_add(
+    request: Request,
+    name: str = Form(...),
+    kind: str = Form("expense"),
+    account_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers.finance import create_category
     from app import schemas as sc
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    create_category(sc.FinanceCategoryIn(name=name, kind=kind), db=db, current_user=user)
+    create_category(
+        sc.FinanceCategoryIn(name=name, kind=kind, account_id=account_id or None),
+        db=db, current_user=user,
+    )
     return RedirectResponse("/admin/finance/categories", status_code=302)
 
 

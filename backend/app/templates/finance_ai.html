@@ -30,7 +30,7 @@
       <span class="record-dot" style="background:{% if m.direction=='credit' %}var(--mm-income){% else %}var(--mm-expense){% endif %};"></span>
       <div style="flex:1;">
         <div class="record-title">{{ m.payee or m.suggested_category or m.direction }} · {% if m.amount %}{{ inr(m.amount) }}{% else %}no amount{% endif %}</div>
-        <div class="record-meta">{{ m.direction }} · {{ m.suggested_category or '—' }} · {{ m.provider_used }} · {{ '%.0f'|format((m.confidence or 0)*100) }}%</div>
+        <div class="record-meta">{{ m.direction }} · {{ m.payment_method or '—' }} · {{ m.suggested_category or '—' }} · {{ m.provider_used }} · {{ '%.0f'|format((m.confidence or 0)*100) }}%</div>
         <div class="record-meta" style="margin-top:4px;">{{ m.raw_text[:160] }}</div>
         <div style="display:flex; gap:8px; margin-top:10px;">
           <form method="post" action="/admin/finance/ai/messages/{{ m.id }}/accept">

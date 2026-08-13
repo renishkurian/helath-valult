@@ -173,7 +173,8 @@ class HealthVaultRepository(
     suspend fun financeSummary(yearMonth: String? = null) = api.financeSummary(yearMonth)
     suspend fun listFinanceAccounts() = api.listFinanceAccounts()
     suspend fun createFinanceAccount(body: FinanceAccountIn) = api.createFinanceAccount(body)
-    suspend fun listFinanceCategories() = api.listFinanceCategories()
+    suspend fun listFinanceCategories(accountId: String? = null) = api.listFinanceCategories(accountId)
+    suspend fun createFinanceCategory(body: FinanceCategoryIn) = api.createFinanceCategory(body)
     suspend fun listFinanceTransactions(yearMonth: String? = null, q: String? = null) =
         api.listFinanceTransactions(yearMonth, q = q)
     suspend fun createFinanceTransaction(body: FinanceTxnIn) = api.createFinanceTransaction(body)

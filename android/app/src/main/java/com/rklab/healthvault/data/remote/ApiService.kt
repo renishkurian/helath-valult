@@ -365,7 +365,10 @@ interface ApiService {
     suspend fun createFinanceAccount(@Body body: FinanceAccountIn): FinanceAccountOut
 
     @GET("finance/categories")
-    suspend fun listFinanceCategories(): List<FinanceCategoryOut>
+    suspend fun listFinanceCategories(@Query("account_id") accountId: String? = null): List<FinanceCategoryOut>
+
+    @POST("finance/categories")
+    suspend fun createFinanceCategory(@Body body: FinanceCategoryIn): FinanceCategoryOut
 
     @GET("finance/transactions")
     suspend fun listFinanceTransactions(

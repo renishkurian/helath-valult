@@ -26,10 +26,12 @@
 </div>
 
 <div class="mm-summary">
+  <div class="cell"><div class="lbl">Opening</div><div class="val">{{ inr(ledger.opening) }}</div></div>
   <div class="cell"><div class="lbl">Income</div><div class="val mm-income">{{ inr(ledger.income) }}</div></div>
   <div class="cell"><div class="lbl">Expenses</div><div class="val mm-expense">{{ inr(ledger.expense) }}</div></div>
-  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(ledger.total) }}</div></div>
+  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(ledger.closing) }}</div></div>
 </div>
+<p class="mm-muted" style="margin:8px 0 16px;">Last month carried {{ inr(ledger.prev_income) }} in · {{ inr(ledger.prev_expense) }} out. This month {{ inr(ledger.total) }} plus opening becomes total.</p>
 
 {% if view == 'calendar' %}
 <div class="mm-cal" style="margin-bottom:24px;">
@@ -54,8 +56,8 @@
   <div class="mm-row">
     <div class="cat">{{ item.category_name or item.txn_type }}</div>
     <div>
-      <div class="payee">{{ item.payee or item.description or '—' }}</div>
-      <div class="acct">{{ item.account_name }} · {{ item.txn_date }}</div>
+        <div class="payee">{{ item.payee or item.description or '—' }}</div>
+        <div class="acct">{{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %} · {{ item.txn_date }}</div>
     </div>
     <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">{{ inr(item.amount) }}</div>
   </div>
@@ -75,7 +77,7 @@
       <div class="cat">{{ item.category_name or item.txn_type }}</div>
       <div>
         <div class="payee">{{ item.payee or item.description or '—' }}</div>
-        <div class="acct">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}</div>
+        <div class="acct">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
       </div>
       <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">
         {{ inr(item.amount) }}

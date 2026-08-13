@@ -779,6 +779,7 @@ class FinanceCategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     kind: str = "expense"
     color: Optional[str] = None
+    account_id: Optional[str] = None  # null = general / all accounts
 
 
 class FinanceCategoryOut(BaseModel):
@@ -787,6 +788,9 @@ class FinanceCategoryOut(BaseModel):
     kind: str
     color: Optional[str] = None
     is_system: bool = False
+    account_id: Optional[str] = None
+    account_name: Optional[str] = None
+    scope: str = "general"  # general | account
 
 
 class FinanceTxnIn(BaseModel):
@@ -800,6 +804,7 @@ class FinanceTxnIn(BaseModel):
     payee: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
+    payment_method: Optional[str] = None  # upi | credit_card | debit_card | atm | netbanking | cash | other
     tags: Optional[str] = None
     frequency: Optional[str] = None  # if set, also create recurring
 
@@ -821,6 +826,7 @@ class FinanceTxnOut(BaseModel):
     payee: Optional[str] = None
     notes: Optional[str] = None
     description: Optional[str] = None
+    payment_method: Optional[str] = None
     tags: Optional[str] = None
     source: str = "manual"
     created_at: datetime
@@ -916,6 +922,7 @@ class FinanceMessageOut(BaseModel):
     amount: Optional[float] = None
     payee: Optional[str] = None
     txn_date: Optional[str] = None
+    payment_method: Optional[str] = None
     category_id: Optional[str] = None
     suggested_category: Optional[str] = None
     confidence: Optional[float] = None
@@ -930,6 +937,12 @@ class FinanceSummaryOut(BaseModel):
     income: float
     expense: float
     total: float
+    opening: float = 0
+    closing: float = 0
+    prev_month: Optional[str] = None
+    prev_income: float = 0
+    prev_expense: float = 0
+    prev_total: float = 0
     assets: float
     liabilities: float
     net: float

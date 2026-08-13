@@ -26,7 +26,7 @@
     <div class="mm-picker">
       {% for a in accounts %}
       <label style="margin:0;">
-        <input type="radio" name="account_id" value="{{ a.id }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="document.querySelectorAll('.acct-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
+        <input type="radio" name="account_id" value="{{ a.id }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="document.querySelectorAll('.acct-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on'); filterCats();">
         <span class="acct-pick {% if loop.first %}on{% endif %}">{{ a.name }}</span>
       </label>
       {% endfor %}
@@ -45,9 +45,9 @@
     <label>Category</label>
     <div class="mm-picker">
       {% for c in categories if c.kind==txn_type %}
-      <label style="margin:0;">
-        <input type="radio" name="category_id" value="{{ c.id }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="this.form.querySelectorAll('.cat-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
-        <span class="cat-pick {% if loop.first %}on{% endif %}">{{ c.name }}</span>
+      <label class="cat-opt" style="margin:0;" data-account="{{ c.account_id or '' }}">
+        <input type="radio" name="category_id" value="{{ c.id }}" {% if loop.first and not c.account_id %}checked{% endif %} style="display:none;" onchange="this.form.querySelectorAll('.cat-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
+        <span class="cat-pick {% if loop.first and not c.account_id %}on{% endif %}">{{ c.name }}{% if c.account_name %}<br><small>{{ c.account_name }}</small>{% endif %}</span>
       </label>
       {% endfor %}
     </div>
@@ -55,6 +55,17 @@
   {% endif %}
 
   <div class="field"><label>Amount</label><input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00"></div>
+  <div class="field">
+    <label>Paid by</label>
+    <div class="mm-picker">
+      {% for key, label in [('upi','UPI'),('debit_card','Debit card'),('credit_card','Credit card'),('atm','ATM cash'),('netbanking','Net banking'),('cash','Cash'),('other','Other')] %}
+      <label style="margin:0;">
+        <input type="radio" name="payment_method" value="{{ key }}" {% if key=='other' %}checked{% endif %} style="display:none;" onchange="this.form.querySelectorAll('.pay-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
+        <span class="pay-pick {% if key=='other' %}on{% endif %}">{{ label }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
   <div class="field"><label>Note</label><input type="text" name="payee" placeholder="Swiggy, salary, Mixi…"></div>
   <div class="field"><label>Description</label><textarea name="description" rows="2" placeholder="Optional details"></textarea></div>
   <div class="field">
@@ -72,5 +83,30 @@
 <style>
   .mm-picker label span{ display:block; background:#121826; border:1px solid var(--line); border-radius:12px; padding:16px 10px; }
   .mm-picker label span.on{ border-color:var(--navy); background:var(--accent-soft); }
+  .mm-picker small{ color:var(--ink-soft); font-size:11px; }
 </style>
+<script>
+function filterCats(){
+  const acc = document.querySelector('input[name=account_id]:checked');
+  const id = acc ? acc.value : '';
+  let firstVisible = null;
+  document.querySelectorAll('.cat-opt').forEach(el => {
+    const scope = el.getAttribute('data-account') || '';
+    const ok = !scope || scope === id;
+    el.style.display = ok ? '' : 'none';
+    const radio = el.querySelector('input');
+    if(!ok && radio) radio.checked = false;
+    if(ok && !firstVisible) firstVisible = el;
+  });
+  const anyOn = document.querySelector('.cat-opt input:checked');
+  if(!anyOn && firstVisible){
+    const radio = firstVisible.querySelector('input');
+    if(radio){ radio.checked = true; firstVisible.querySelector('.cat-pick')?.classList.add('on'); }
+  }
+  document.querySelectorAll('.cat-opt').forEach(el => {
+    if(el.style.display === 'none') el.querySelector('.cat-pick')?.classList.remove('on');
+  });
+}
+filterCats();
+</script>
 {% endblock %}

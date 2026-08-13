@@ -27,13 +27,30 @@ import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val ExpenseRed = Color(0xFFFF6B7A)
 private val IncomeBlue = Color(0xFF5B9CFF)
 private val monthFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM")
+private val monthLabelFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM yyyy")
+
+private val PAY_METHODS = listOf(
+    "upi" to "UPI",
+    "debit_card" to "Debit card",
+    "credit_card" to "Credit card",
+    "atm" to "ATM cash",
+    "netbanking" to "Net banking",
+    "cash" to "Cash",
+    "other" to "Other"
+)
+
+private fun methodLabel(key: String?): String? =
+    PAY_METHODS.firstOrNull { it.first == key }?.second ?: key?.replace('_', ' ')
 
 private fun inr(n: Double): String {
     val sign = if (n < 0) "-" else ""
@@ -63,7 +80,8 @@ fun FinanceTransScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val month = remember { LocalDate.now().format(monthFmt) }
+    var month by remember { mutableStateOf(YearMonth.now()) }
+    val monthKey = month.format(monthFmt)
     var summary by remember { mutableStateOf<FinanceSummaryOut?>(null) }
     var items by remember { mutableStateOf<List<FinanceTxnOut>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -71,12 +89,12 @@ fun FinanceTransScreen(
     fun reload() {
         scope.launch {
             runCatching {
-                summary = repository.financeSummary(month)
-                items = repository.listFinanceTransactions(month)
+                summary = repository.financeSummary(monthKey)
+                items = repository.listFinanceTransactions(monthKey)
             }.onFailure { error = it.message }
         }
     }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(monthKey) {
         reload()
         FinanceSmsIngestor.scanInbox(context)
     }
@@ -90,7 +108,11 @@ fun FinanceTransScreen(
             ) {
                 Column {
                     Text("MONEY MANAGER", style = MaterialTheme.typography.labelMedium, color = InkSoft)
-                    Text("Daily", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("‹", color = InkSoft, modifier = Modifier.clickable { month = month.minusMonths(1) }.padding(end = 8.dp), fontWeight = FontWeight.Bold)
+                        Text(month.format(monthLabelFmt), style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+                        Text("›", color = InkSoft, modifier = Modifier.clickable { month = month.plusMonths(1) }.padding(start = 8.dp), fontWeight = FontWeight.Bold)
+                    }
                 }
                 IconButton(onClick = onOpenModules) {
                     Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
@@ -99,10 +121,17 @@ fun FinanceTransScreen(
             IncomingSmsBanner(onChanged = { reload() })
             summary?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SummaryChip("Opening", inr(s.opening), Ink, Modifier.weight(1f))
                     SummaryChip("Income", inr(s.income), IncomeBlue, Modifier.weight(1f))
                     SummaryChip("Expenses", inr(s.expense), ExpenseRed, Modifier.weight(1f))
-                    SummaryChip("Total", inr(s.total), Ink, Modifier.weight(1f))
+                    SummaryChip("Total", inr(s.closing), Ink, Modifier.weight(1f))
                 }
+                Text(
+                    "Last month ${inr(s.prev_income)} in · ${inr(s.prev_expense)} out carried into this month.",
+                    color = InkSoft,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
             }
             error?.let { Text(it, color = StampRed, modifier = Modifier.padding(16.dp)) }
             LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
@@ -114,7 +143,17 @@ fun FinanceTransScreen(
                         Column(Modifier.weight(1f)) {
                             Text(t.category_name ?: t.txn_type, color = InkSoft, style = MaterialTheme.typography.labelMedium)
                             Text(t.payee ?: t.description ?: "—", color = Ink, fontWeight = FontWeight.SemiBold)
-                            Text(t.account_name, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                buildString {
+                                    append(t.account_name)
+                                    methodLabel(t.payment_method)?.let { append(" · "); append(it) }
+                                    if (!t.description.isNullOrBlank() && !t.payee.isNullOrBlank()) {
+                                        append(" · "); append(t.description)
+                                    }
+                                },
+                                color = InkSoft,
+                                style = MaterialTheme.typography.bodySmall
+                            )
                         }
                         Text(
                             inr(t.amount),
@@ -183,15 +222,23 @@ fun FinanceAccountsScreen(repository: HealthVaultRepository) {
     val scope = rememberCoroutineScope()
     var summary by remember { mutableStateOf<FinanceSummaryOut?>(null) }
     var accounts by remember { mutableStateOf<List<FinanceAccountOut>>(emptyList()) }
+    var categories by remember { mutableStateOf<List<FinanceCategoryOut>>(emptyList()) }
     var name by remember { mutableStateOf("") }
-    LaunchedEffect(Unit) {
+    var accountType by remember { mutableStateOf("bank") }
+    var catName by remember { mutableStateOf("") }
+    var catKind by remember { mutableStateOf("expense") }
+    var catScope by remember { mutableStateOf<String?>(null) }
+    fun reload() {
         scope.launch {
             runCatching {
                 summary = repository.financeSummary()
                 accounts = repository.listFinanceAccounts()
+                categories = repository.listFinanceCategories()
             }
         }
     }
+    LaunchedEffect(Unit) { reload() }
+    val scopedCats = categories.filter { if (catScope == null) it.account_id == null else it.account_id == catScope }
     Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
         Text("Accounts", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         summary?.let { s ->
@@ -206,7 +253,10 @@ fun FinanceAccountsScreen(repository: HealthVaultRepository) {
         Spacer(Modifier.height(16.dp))
         LazyColumn(Modifier.weight(1f)) {
             items(accounts, key = { it.id }) { a ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(
+                    Modifier.fillMaxWidth().clickable { catScope = a.id }.padding(vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Column {
                         Text(a.name, color = Ink, fontWeight = FontWeight.SemiBold)
                         Text(a.account_type.replace('_', ' '), color = InkSoft, style = MaterialTheme.typography.bodySmall)
@@ -215,21 +265,89 @@ fun FinanceAccountsScreen(repository: HealthVaultRepository) {
                 }
                 HorizontalDivider(color = LineColor)
             }
+            item {
+                Spacer(Modifier.height(18.dp))
+                Text("Categories", color = Ink, fontWeight = FontWeight.Bold)
+                Text(
+                    "General ones apply to every account. Account ones only show for Home, Personal, and so on.",
+                    color = InkSoft,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    FilterChip(
+                        selected = catScope == null,
+                        onClick = { catScope = null },
+                        label = { Text("All accounts") }
+                    )
+                }
+                accounts.chunked(3).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                        row.forEach { a ->
+                            FilterChip(
+                                selected = catScope == a.id,
+                                onClick = { catScope = a.id },
+                                label = { Text(a.name) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                scopedCats.forEach { c ->
+                    Text(
+                        "${c.name}  ·  ${c.kind}${if (c.account_name != null) "  ·  ${c.account_name}" else "  ·  general"}",
+                        color = Ink,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                }
+                if (scopedCats.isEmpty()) {
+                    Text("No categories in this scope yet.", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("New account") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("New account (Home, Personal…)") }, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+            listOf("cash" to "Cash", "bank" to "Bank", "credit_card" to "Card", "wallet" to "Wallet").forEach { (key, label) ->
+                FilterChip(selected = accountType == key, onClick = { accountType = key }, label = { Text(label) })
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Button(
             onClick = {
                 val n = name.trim(); if (n.isEmpty()) return@Button
                 scope.launch {
-                    runCatching { repository.createFinanceAccount(FinanceAccountIn(n)) }
+                    runCatching { repository.createFinanceAccount(FinanceAccountIn(n, accountType)) }
                     name = ""
-                    accounts = repository.listFinanceAccounts()
-                    summary = repository.financeSummary()
+                    reload()
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Navy)
         ) { Text("Save account") }
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = catName,
+            onValueChange = { catName = it },
+            label = { Text(if (catScope == null) "New general category" else "New category for this account") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+            FilterChip(selected = catKind == "expense", onClick = { catKind = "expense" }, label = { Text("Expense") })
+            FilterChip(selected = catKind == "income", onClick = { catKind = "income" }, label = { Text("Income") })
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = {
+                val n = catName.trim(); if (n.isEmpty()) return@Button
+                scope.launch {
+                    runCatching { repository.createFinanceCategory(FinanceCategoryIn(n, catKind, catScope)) }
+                    catName = ""
+                    categories = repository.listFinanceCategories()
+                }
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Navy)
+        ) { Text("Save category") }
     }
 }
 
@@ -361,6 +479,8 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
     var categoryId by remember { mutableStateOf<String?>(null) }
     var amount by remember { mutableStateOf("") }
     var payee by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var paymentMethod by remember { mutableStateOf("other") }
     var error by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         scope.launch {
@@ -370,10 +490,27 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
             categoryId = categories.firstOrNull { it.kind == txnType }?.id
         }
     }
-    LaunchedEffect(txnType, categories) {
-        categoryId = categories.firstOrNull { it.kind == txnType }?.id
+    val visibleCats = categories.filter {
+        it.kind == txnType && (it.account_id == null || it.account_id == accountId)
     }
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    LaunchedEffect(txnType, categories, accountId) {
+        if (visibleCats.none { it.id == categoryId }) {
+            categoryId = visibleCats.firstOrNull()?.id
+        }
+    }
+    LaunchedEffect(paymentMethod, accounts, categories, txnType) {
+        val want = when (paymentMethod) {
+            "credit_card" -> "credit_card"
+            "cash" -> "cash"
+            "upi", "debit_card", "netbanking", "atm" -> "bank"
+            else -> null
+        }
+        want?.let { type -> accounts.firstOrNull { it.account_type == type }?.id?.let { accountId = it } }
+        if (paymentMethod == "atm" && txnType == "expense") {
+            categories.firstOrNull { it.name == "ATM / cash" }?.id?.let { categoryId = it }
+        }
+    }
+    Column(Modifier.fillMaxSize().background(Paper).verticalScroll(rememberScrollState()).padding(20.dp)) {
         Text(txnType.replaceFirstChar { it.uppercase() }, style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -392,10 +529,15 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
         }
         Spacer(Modifier.height(8.dp))
         if (txnType != "transfer") {
-            categories.filter { it.kind == txnType }.chunked(3).forEach { row ->
+            visibleCats.chunked(3).forEach { row ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     row.forEach { c ->
-                        FilterChip(selected = categoryId == c.id, onClick = { categoryId = c.id }, label = { Text(c.name) }, modifier = Modifier.weight(1f))
+                        FilterChip(
+                            selected = categoryId == c.id,
+                            onClick = { categoryId = c.id },
+                            label = { Text(if (c.account_name != null) "${c.name}" else c.name) },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                     repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
@@ -403,7 +545,18 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
         }
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount") }, modifier = Modifier.fillMaxWidth())
+        Spacer(Modifier.height(8.dp))
+        Text("Paid by", color = InkSoft, style = MaterialTheme.typography.labelMedium)
+        PAY_METHODS.chunked(3).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                row.forEach { (key, label) ->
+                    FilterChip(selected = paymentMethod == key, onClick = { paymentMethod = key }, label = { Text(label) }, modifier = Modifier.weight(1f))
+                }
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
         OutlinedTextField(value = payee, onValueChange = { payee = it }, label = { Text("Note") }, modifier = Modifier.fillMaxWidth())
+        OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
         error?.let { Text(it, color = StampRed, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(16.dp))
         Button(
@@ -421,7 +574,9 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
                                 txn_type = txnType,
                                 amount = amt,
                                 txn_date = LocalDate.now().toString(),
-                                payee = payee.ifBlank { null }
+                                payee = payee.ifBlank { null },
+                                description = description.ifBlank { null },
+                                payment_method = paymentMethod.takeIf { it != "other" }
                             )
                         )
                     }.onSuccess { onDone() }.onFailure { error = it.message }
@@ -466,7 +621,7 @@ fun FinanceInboxScreen(repository: HealthVaultRepository, onBack: () -> Unit) {
             items(messages, key = { it.id }) { m ->
                 Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     Text("${m.payee ?: m.suggested_category}  ${m.amount?.let { inr(it) } ?: ""}", color = Ink, fontWeight = FontWeight.SemiBold)
-                    Text("${m.direction} · ${m.suggested_category ?: "—"}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    Text("${m.direction} · ${methodLabel(m.payment_method) ?: "—"} · ${m.suggested_category ?: "—"}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         TextButton(onClick = { scope.launch { runCatching { repository.acceptFinanceMessage(m.id) }; reload() } }) { Text("Accept") }
                     }

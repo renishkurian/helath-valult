@@ -314,7 +314,7 @@
   .mm-type .on-income{ color:var(--mm-income); border-color:var(--mm-income); }
   .mm-type .on-expense{ color:var(--mm-expense); border-color:var(--mm-expense); }
   .mm-type .on-transfer{ color:var(--mm-transfer); border-color:var(--mm-transfer); }
-  .mm-summary{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:18px; }
+  .mm-summary{ display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-bottom:18px; }
   .mm-summary .cell{ background:rgba(21,27,40,0.82); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
   .mm-summary .lbl{ font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.08em; font-weight:600; }
   .mm-summary .val{ font-size:18px; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; }

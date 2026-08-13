@@ -49,9 +49,16 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "finance_accounts": [
         ("credit_limit", "NUMERIC(14,2)"),
     ],
+    "finance_categories": [
+        ("account_id", "VARCHAR(32)"),
+    ],
     "finance_transactions": [
         ("txn_time", "VARCHAR(8)"),
         ("description", "TEXT"),
+        ("payment_method", "VARCHAR(30)"),
+    ],
+    "finance_messages": [
+        ("payment_method", "VARCHAR(30)"),
     ],
 }
 

@@ -16,7 +16,8 @@ from app import models, schemas, crypto
 from app.deps import get_current_user, require_owner, vault_id
 from app.finance_ai import (
     DEFAULT_BASES, DEFAULT_MODELS, EXPENSE_CATEGORIES,
-    INCOME_CATEGORIES, classify_message, split_messages, test_provider,
+    INCOME_CATEGORIES, PAYMENT_METHODS,
+    build_description, classify_message, split_messages, test_provider,
 )
 
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -98,21 +99,40 @@ def _owned(db: Session, user: models.User):
 
 def ensure_defaults(db: Session, user: models.User) -> None:
     uid = _owned(db, user)
-    if db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).first():
-        return
-    for i, name in enumerate(EXPENSE_CATEGORIES):
-        db.add(models.FinanceCategory(
-            user_id=uid, name=name, kind="expense",
-            color=CAT_COLORS[i % len(CAT_COLORS)], is_system=True,
-        ))
-    for i, name in enumerate(INCOME_CATEGORIES):
-        db.add(models.FinanceCategory(
-            user_id=uid, name=name, kind="income",
-            color=CAT_COLORS[i % len(CAT_COLORS)], is_system=True,
-        ))
+    cats = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).all()
+    have = {c.name.lower() for c in cats}
+    changed = False
+    if not cats:
+        for i, name in enumerate(EXPENSE_CATEGORIES):
+            db.add(models.FinanceCategory(
+                user_id=uid, name=name, kind="expense",
+                color=CAT_COLORS[i % len(CAT_COLORS)], is_system=True,
+            ))
+        for i, name in enumerate(INCOME_CATEGORIES):
+            db.add(models.FinanceCategory(
+                user_id=uid, name=name, kind="income",
+                color=CAT_COLORS[i % len(CAT_COLORS)], is_system=True,
+            ))
+        changed = True
+    else:
+        for i, name in enumerate(EXPENSE_CATEGORIES + INCOME_CATEGORIES):
+            if name.lower() in have:
+                continue
+            kind = "income" if name in INCOME_CATEGORIES else "expense"
+            db.add(models.FinanceCategory(
+                user_id=uid, name=name, kind=kind,
+                color=CAT_COLORS[i % len(CAT_COLORS)], is_system=True,
+            ))
+            changed = True
+    accts = db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid).all()
+    have_types = {a.account_type for a in accts}
     for name, kind in _DEFAULT_ACCOUNTS:
+        if kind in have_types:
+            continue
         db.add(models.FinanceAccount(user_id=uid, name=name, account_type=kind, opening_balance=0))
-    db.commit()
+        changed = True
+    if changed:
+        db.commit()
 
 
 def _get_account(db: Session, user: models.User, account_id: str) -> models.FinanceAccount:
@@ -188,8 +208,8 @@ def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.Fina
         category_color=cat.color if cat else None,
         txn_type=t.txn_type, amount=_f(t.amount), currency=t.currency or "INR",
         txn_date=t.txn_date, txn_time=t.txn_time, payee=t.payee, notes=t.notes,
-        description=t.description, tags=t.tags, source=t.source or "manual",
-        created_at=t.created_at,
+        description=t.description, payment_method=t.payment_method, tags=t.tags,
+        source=t.source or "manual", created_at=t.created_at,
     )
 
 
@@ -204,15 +224,145 @@ def _account_out(db: Session, a: models.FinanceAccount) -> schemas.FinanceAccoun
     )
 
 
-def _find_category(categories: list[models.FinanceCategory], name: str, kind: str) -> models.FinanceCategory | None:
+def _month_ie(txns) -> tuple[Decimal, Decimal]:
+    income = sum((_dec(t.amount) for t in txns if t.txn_type == "income"), Decimal("0"))
+    expense = sum((_dec(t.amount) for t in txns if t.txn_type == "expense"), Decimal("0"))
+    return income, expense
+
+
+def _txns_in_month(db: Session, uid: str, year_month: str):
+    start, end = _month_bounds(year_month)
+    return db.query(models.FinanceTransaction).filter(
+        models.FinanceTransaction.user_id == uid,
+        models.FinanceTransaction.txn_date >= start,
+        models.FinanceTransaction.txn_date <= end,
+    ).all()
+
+
+def _txns_before(db: Session, uid: str, year_month: str):
+    start, _ = _month_bounds(year_month)
+    return db.query(models.FinanceTransaction).filter(
+        models.FinanceTransaction.user_id == uid,
+        models.FinanceTransaction.txn_date < start,
+    ).all()
+
+
+def _account_for_method(accounts: list[models.FinanceAccount], method: str | None, override: models.FinanceAccount | None = None) -> models.FinanceAccount | None:
+    if override:
+        return override
+    want = {
+        "credit_card": "credit_card",
+        "cash": "cash",
+        "atm": "bank",
+        "debit_card": "bank",
+        "upi": "bank",
+        "netbanking": "bank",
+    }.get(method or "", "bank")
+    return next((a for a in accounts if a.account_type == want), None) or (accounts[0] if accounts else None)
+
+
+def _cash_account(accounts: list[models.FinanceAccount]) -> models.FinanceAccount | None:
+    return next((a for a in accounts if a.account_type == "cash"), None)
+
+
+def _clean_method(value: str | None) -> str | None:
+    if not value:
+        return None
+    method = value.strip().lower().replace(" ", "_").replace("-", "_")
+    return method if method in PAYMENT_METHODS else None
+
+
+def _message_out(m: models.FinanceMessage) -> schemas.FinanceMessageOut:
+    return schemas.FinanceMessageOut(
+        id=m.id, raw_text=m.raw_text, direction=m.direction,
+        amount=_f(m.amount) if m.amount is not None else None,
+        payee=m.payee, txn_date=m.txn_date, payment_method=m.payment_method,
+        category_id=m.category_id, suggested_category=m.suggested_category,
+        confidence=_f(m.confidence) if m.confidence is not None else None,
+        provider_used=m.provider_used, status=m.status,
+        transaction_id=m.transaction_id, created_at=m.created_at,
+    )
+
+
+def _post_message_txn(
+    db: Session,
+    uid: str,
+    msg: models.FinanceMessage,
+    accounts: list[models.FinanceAccount],
+    override: models.FinanceAccount | None = None,
+) -> models.FinanceTransaction | None:
+    if not msg.amount:
+        return None
+    method = _clean_method(msg.payment_method) or "other"
+    desc = build_description(method, msg.payee, msg.suggested_category)
+    if method == "atm" and msg.direction != "credit" and override is None:
+        bank = next((a for a in accounts if a.account_type == "bank"), None)
+        cash = _cash_account(accounts)
+        if bank and cash:
+            txn = models.FinanceTransaction(
+                user_id=uid, account_id=bank.id, to_account_id=cash.id,
+                category_id=msg.category_id, txn_type="transfer", amount=msg.amount,
+                txn_date=msg.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
+                payee=msg.payee or "ATM", notes=(msg.raw_text or "")[:400],
+                description=desc or "ATM cash withdrawal", payment_method="atm",
+                source="message", message_id=msg.id,
+            )
+            db.add(txn)
+            db.flush()
+            return txn
+    acc = _account_for_method(accounts, method, override)
+    if not acc:
+        return None
+    txn = models.FinanceTransaction(
+        user_id=uid, account_id=acc.id, category_id=msg.category_id,
+        txn_type="income" if msg.direction == "credit" else "expense",
+        amount=msg.amount, txn_date=msg.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
+        payee=msg.payee, notes=(msg.raw_text or "")[:400],
+        description=desc, payment_method=method if method != "other" else None,
+        source="message", message_id=msg.id,
+    )
+    db.add(txn)
+    db.flush()
+    return txn
+
+
+def _category_out(c: models.FinanceCategory, accounts: dict | None = None) -> schemas.FinanceCategoryOut:
+    acc = accounts.get(c.account_id) if accounts and c.account_id else None
+    return schemas.FinanceCategoryOut(
+        id=c.id, name=c.name, kind=c.kind, color=c.color, is_system=bool(c.is_system),
+        account_id=c.account_id, account_name=acc.name if acc else None,
+        scope="account" if c.account_id else "general",
+    )
+
+
+def _find_category(
+    categories: list[models.FinanceCategory],
+    name: str,
+    kind: str,
+    account_id: str | None = None,
+) -> models.FinanceCategory | None:
     want = (name or "").strip().lower()
+    if not want:
+        return None
+    if account_id:
+        for c in categories:
+            if c.name.lower() == want and c.kind == kind and c.account_id == account_id:
+                return c
+    for c in categories:
+        if c.name.lower() == want and c.kind == kind and not c.account_id:
+            return c
     for c in categories:
         if c.name.lower() == want and c.kind == kind:
             return c
     for c in categories:
-        if c.name.lower() == want:
+        if c.name.lower() == want and (not c.account_id or c.account_id == account_id):
             return c
     return None
+
+
+def _assert_category_for_account(cat: models.FinanceCategory | None, account_id: str) -> None:
+    if cat and cat.account_id and cat.account_id != account_id:
+        raise HTTPException(400, "That category belongs to another account")
 
 
 def _ai_bundle(db: Session, user: models.User) -> dict | None:
@@ -269,14 +419,12 @@ def summary(
     ensure_defaults(db, current_user)
     uid = _owned(db, current_user)
     ym = year_month or datetime.utcnow().strftime("%Y-%m")
-    start, end = _month_bounds(ym)
-    txns = db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
-        models.FinanceTransaction.txn_date >= start,
-        models.FinanceTransaction.txn_date <= end,
-    ).all()
-    income = sum((_dec(t.amount) for t in txns if t.txn_type == "income"), Decimal("0"))
-    expense = sum((_dec(t.amount) for t in txns if t.txn_type == "expense"), Decimal("0"))
+    income, expense = _month_ie(_txns_in_month(db, uid, ym))
+    prev_ym = _shift_month(ym, -1)
+    prev_income, prev_expense = _month_ie(_txns_in_month(db, uid, prev_ym))
+    open_income, open_expense = _month_ie(_txns_before(db, uid, ym))
+    opening = open_income - open_expense
+    month_total = income - expense
     accounts = db.query(models.FinanceAccount).filter(
         models.FinanceAccount.user_id == uid, models.FinanceAccount.archived.is_(False),
     ).all()
@@ -292,7 +440,10 @@ def summary(
         models.FinanceMessage.user_id == uid, models.FinanceMessage.status == "pending",
     ).count()
     return schemas.FinanceSummaryOut(
-        year_month=ym, income=_f(income), expense=_f(expense), total=_f(income - expense),
+        year_month=ym, income=_f(income), expense=_f(expense), total=_f(month_total),
+        opening=_f(opening), closing=_f(opening + month_total),
+        prev_month=prev_ym, prev_income=_f(prev_income), prev_expense=_f(prev_expense),
+        prev_total=_f(prev_income - prev_expense),
         assets=_f(assets), liabilities=_f(liabilities), net=_f(assets - liabilities),
         pending_messages=pending,
     )
@@ -364,15 +515,22 @@ def delete_account(
 
 # ---------- categories ----------
 @router.get("/categories", response_model=list[schemas.FinanceCategoryOut])
-def list_categories(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def list_categories(
+    account_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
     ensure_defaults(db, current_user)
-    rows = db.query(models.FinanceCategory).filter(
-        models.FinanceCategory.user_id == _owned(db, current_user),
-    ).order_by(models.FinanceCategory.kind, models.FinanceCategory.name).all()
-    return [
-        schemas.FinanceCategoryOut(id=c.id, name=c.name, kind=c.kind, color=c.color, is_system=bool(c.is_system))
-        for c in rows
-    ]
+    uid = _owned(db, current_user)
+    query = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid)
+    if account_id:
+        query = query.filter(
+            (models.FinanceCategory.account_id.is_(None))
+            | (models.FinanceCategory.account_id == account_id)
+        )
+    rows = query.order_by(models.FinanceCategory.kind, models.FinanceCategory.name).all()
+    accounts = _acct_map(db, uid)
+    return [_category_out(c, accounts) for c in rows]
 
 
 @router.post("/categories", response_model=schemas.FinanceCategoryOut)
@@ -383,15 +541,20 @@ def create_category(
 ):
     require_owner(current_user)
     ensure_defaults(db, current_user)
+    uid = _owned(db, current_user)
+    acc_id = None
+    if body.account_id:
+        acc_id = _get_account(db, current_user, body.account_id).id
     row = models.FinanceCategory(
-        user_id=_owned(db, current_user), name=body.name.strip(),
+        user_id=uid, name=body.name.strip(),
         kind="income" if body.kind == "income" else "expense",
         color=body.color or CAT_COLORS[0],
+        account_id=acc_id,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return schemas.FinanceCategoryOut(id=row.id, name=row.name, kind=row.kind, color=row.color, is_system=False)
+    return _category_out(row, _acct_map(db, uid))
 
 
 @router.delete("/categories/{category_id}")
@@ -469,11 +632,19 @@ def create_transaction(
         to_id = dest.id
     if body.amount <= 0:
         raise HTTPException(400, "Amount must be greater than 0")
+    if body.category_id:
+        cat = _get_category(db, current_user, body.category_id)
+        _assert_category_for_account(cat, acc.id)
+    method = _clean_method(body.payment_method)
+    desc = (body.description or "").strip() or None
+    if not desc:
+        desc = build_description(method, body.payee, None)
     row = models.FinanceTransaction(
         user_id=uid, account_id=acc.id, to_account_id=to_id,
         category_id=body.category_id, txn_type=txn_type, amount=_dec(body.amount),
         txn_date=body.txn_date, txn_time=body.txn_time, payee=body.payee,
-        notes=body.notes, description=body.description, tags=body.tags, source="manual",
+        notes=body.notes, description=desc, payment_method=method,
+        tags=body.tags, source="manual",
     )
     db.add(row)
     if body.frequency and body.frequency != "none":
@@ -818,15 +989,7 @@ def list_messages(
     if status:
         q = q.filter(models.FinanceMessage.status == status)
     rows = q.order_by(models.FinanceMessage.created_at.desc()).limit(200).all()
-    return [
-        schemas.FinanceMessageOut(
-            id=m.id, raw_text=m.raw_text, direction=m.direction, amount=_f(m.amount) if m.amount is not None else None,
-            payee=m.payee, txn_date=m.txn_date, category_id=m.category_id, suggested_category=m.suggested_category,
-            confidence=_f(m.confidence) if m.confidence is not None else None, provider_used=m.provider_used,
-            status=m.status, transaction_id=m.transaction_id, created_at=m.created_at,
-        )
-        for m in rows
-    ]
+    return [_message_out(m) for m in rows]
 
 
 @router.post("/messages/ingest", response_model=list[schemas.FinanceMessageOut])
@@ -858,12 +1021,15 @@ def ingest_messages(
         parsed = classify_message(chunk, rules=rules, ai=ai)
         direction = parsed.get("direction") or "unknown"
         kind = "income" if direction == "credit" else "expense"
-        cat = _find_category(cats, parsed.get("category") or "", kind)
+        method = _clean_method(parsed.get("payment_method"))
+        override = default_account if body.account_id else None
+        target = _account_for_method(accounts, method, override)
+        cat = _find_category(cats, parsed.get("category") or "", kind, target.id if target else None)
         msg = models.FinanceMessage(
             user_id=uid, raw_text=chunk, direction=direction,
             amount=_dec(parsed["amount"]) if parsed.get("amount") is not None else None,
             payee=parsed.get("payee"), txn_date=parsed.get("date"),
-            category_id=cat.id if cat else None,
+            payment_method=method, category_id=cat.id if cat else None,
             suggested_category=parsed.get("category"),
             confidence=_dec(parsed.get("confidence") or 0),
             provider_used=parsed.get("provider"), status="pending",
@@ -872,29 +1038,16 @@ def ingest_messages(
         db.flush()
         created.append(msg)
         conf = float(parsed.get("confidence") or 0)
-        if body.auto_accept and default_account and parsed.get("amount") and direction in {"debit", "credit"} and conf >= 0.7:
-            txn = models.FinanceTransaction(
-                user_id=uid, account_id=default_account.id, category_id=msg.category_id,
-                txn_type="income" if direction == "credit" else "expense",
-                amount=msg.amount, txn_date=msg.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
-                payee=msg.payee, notes=chunk[:400], source="message", message_id=msg.id,
-            )
-            db.add(txn)
-            db.flush()
-            msg.status = "accepted"
-            msg.transaction_id = txn.id
+        if body.auto_accept and parsed.get("amount") and direction in {"debit", "credit"} and conf >= 0.7:
+            override = default_account if body.account_id else None
+            txn = _post_message_txn(db, uid, msg, accounts, override)
+            if txn:
+                msg.status = "accepted"
+                msg.transaction_id = txn.id
     db.commit()
     for m in created:
         db.refresh(m)
-    return [
-        schemas.FinanceMessageOut(
-            id=m.id, raw_text=m.raw_text, direction=m.direction, amount=_f(m.amount) if m.amount is not None else None,
-            payee=m.payee, txn_date=m.txn_date, category_id=m.category_id, suggested_category=m.suggested_category,
-            confidence=_f(m.confidence) if m.confidence is not None else None, provider_used=m.provider_used,
-            status=m.status, transaction_id=m.transaction_id, created_at=m.created_at,
-        )
-        for m in created
-    ]
+    return [_message_out(m) for m in created]
 
 
 @router.post("/messages/{message_id}/accept", response_model=schemas.FinanceTxnOut)
@@ -917,23 +1070,13 @@ def accept_message(
             return _txn_out(txn, _acct_map(db, uid), _cat_map(db, uid))
     if not msg.amount:
         raise HTTPException(400, "No amount detected — edit and save as a normal transaction")
-    acc = None
-    if account_id:
-        acc = _get_account(db, current_user, account_id)
-    else:
-        acc = db.query(models.FinanceAccount).filter(
-            models.FinanceAccount.user_id == uid, models.FinanceAccount.archived.is_(False),
-        ).first()
-    if not acc:
+    accounts = [a for a in db.query(models.FinanceAccount).filter(
+        models.FinanceAccount.user_id == uid, models.FinanceAccount.archived.is_(False),
+    ).all()]
+    override = _get_account(db, current_user, account_id) if account_id else None
+    txn = _post_message_txn(db, uid, msg, accounts, override)
+    if not txn:
         raise HTTPException(400, "Add an account first")
-    txn = models.FinanceTransaction(
-        user_id=uid, account_id=acc.id, category_id=msg.category_id,
-        txn_type="income" if msg.direction == "credit" else "expense",
-        amount=msg.amount, txn_date=msg.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
-        payee=msg.payee, notes=msg.raw_text[:400], source="message", message_id=msg.id,
-    )
-    db.add(txn)
-    db.flush()
     msg.status = "accepted"
     msg.transaction_id = txn.id
     db.commit()
@@ -982,6 +1125,11 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
     items = [_txn_out(t, accounts, categories) for t in rows]
     income = sum(i.amount for i in items if i.txn_type == "income")
     expense = sum(i.amount for i in items if i.txn_type == "expense")
+    prev_ym = _shift_month(year_month, -1)
+    prev_income, prev_expense = _month_ie(_txns_in_month(db, uid, prev_ym))
+    open_income, open_expense = _month_ie(_txns_before(db, uid, year_month))
+    opening = _f(open_income - open_expense)
+    month_total = income - expense
     days: dict[str, dict] = {}
     for item in items:
         bucket = days.setdefault(item.txn_date, {"date": item.txn_date, "income": 0.0, "expense": 0.0, "items": []})
@@ -1021,7 +1169,13 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
         "next": _shift_month(year_month, 1),
         "income": income,
         "expense": expense,
-        "total": income - expense,
+        "total": month_total,
+        "opening": opening,
+        "closing": opening + month_total,
+        "prev_month": prev_ym,
+        "prev_income": _f(prev_income),
+        "prev_expense": _f(prev_expense),
+        "prev_total": _f(prev_income - prev_expense),
         "days": day_list,
         "weeks": weeks,
         "items": items,
