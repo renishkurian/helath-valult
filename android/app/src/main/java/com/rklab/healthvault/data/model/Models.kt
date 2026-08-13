@@ -5,7 +5,18 @@ import com.google.gson.annotations.SerializedName
 // ---------- Auth ----------
 data class RegisterRequest(val email: String, val password: String, val full_name: String)
 data class LoginResponse(val access_token: String, val refresh_token: String, val token_type: String)
-data class UserOut(val id: String, val email: String, val full_name: String)
+data class UserOut(
+    val id: String,
+    val email: String,
+    val full_name: String,
+    val role: String = "owner",
+    val vault_owner_id: String? = null
+) {
+    val isViewer: Boolean get() = role == "viewer"
+}
+
+data class InviteViewerRequest(val email: String, val password: String, val full_name: String)
+data class DeviceTokenIn(val token: String, val platform: String = "android")
 
 // ---------- People ----------
 enum class Relation {
@@ -84,6 +95,7 @@ data class DocumentOut(
     val file_size: Long?,
     val file_count: Int = 1,
     val notes: String?,
+    val extracted_text: String? = null,
     val created_at: String
 )
 
@@ -181,3 +193,19 @@ data class ReminderCreate(
 
 // ---------- Search ----------
 data class SearchResult(val cards: List<CardOut>, val documents: List<DocumentOut>)
+
+data class LabReadingOut(
+    val id: String,
+    val person_id: String,
+    val document_id: String?,
+    val metric: String,
+    val value: Double,
+    val unit: String?,
+    val measured_at: String?
+)
+
+data class LabTrend(
+    val metric: String,
+    val unit: String?,
+    val points: List<LabReadingOut>
+)

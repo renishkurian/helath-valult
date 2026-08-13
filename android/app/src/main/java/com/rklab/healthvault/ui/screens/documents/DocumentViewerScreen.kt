@@ -2,12 +2,20 @@ package com.rklab.healthvault.ui.screens.documents
 
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
+import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,9 +26,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.rklab.healthvault.data.model.DocumentVersionOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.theme.Ink
+import com.rklab.healthvault.ui.theme.InkSoft
 import com.rklab.healthvault.ui.theme.Navy
 import com.rklab.healthvault.ui.theme.Paper
+import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,14 +53,49 @@ fun DocumentViewerScreen(
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var mimeType by remember { mutableStateOf<String?>(null) }
+    var extractedText by remember { mutableStateOf<String?>(null) }
+    var versions by remember { mutableStateOf<List<DocumentVersionOut>>(emptyList()) }
+    var showVersions by remember { mutableStateOf(false) }
+    var replacing by remember { mutableStateOf(false) }
+    val isViewer = repository.isViewer
+
+    val replaceLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        replacing = true
+        scope.launch {
+            try {
+                val files = withContext(Dispatchers.IO) {
+                    uris.map { uri ->
+                        val mime = FileUtil.mimeTypeOf(context, uri)
+                        FileUtil.copyUriToCacheFile(context, uri, "v_${System.currentTimeMillis()}") to mime
+                    }
+                }
+                if (files.isNotEmpty()) {
+                    withContext(Dispatchers.IO) {
+                        repository.replaceDocumentVersion(
+                            docId, null, null,
+                            files.map { it.first }, files.map { it.second }
+                        )
+                    }
+                    Toast.makeText(context, "New version saved.", Toast.LENGTH_SHORT).show()
+                    versions = withContext(Dispatchers.IO) { repository.listDocumentVersions(docId) }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Replace failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                replacing = false
+            }
+        }
+    }
 
     LaunchedEffect(docId, fileId) {
         isLoading = true
         errorMessage = null
         try {
-            val documentsDir = File(context.filesDir, "documents")
-            documentsDir.mkdirs()
-            val dest = File(documentsDir, fileId ?: docId)
+            val dest = com.rklab.healthvault.data.local.DocumentCache.fileFor(context, fileId ?: docId)
+            dest.parentFile?.mkdirs()
 
             val downloadedFile = withContext(Dispatchers.IO) {
                 if (dest.exists() && dest.length() > 0) {
@@ -62,6 +109,7 @@ fun DocumentViewerScreen(
                 }
             }
             file = downloadedFile
+            com.rklab.healthvault.data.local.DocumentCache.prune(context)
             
             // Determine basic MIME type by sniffing first few bytes or relying on the backend, 
             // but for simplicity, we'll try to sniff PDF magic number
@@ -76,6 +124,14 @@ fun DocumentViewerScreen(
             }
             mimeType = if (isPdf) "application/pdf" else "image/*"
 
+            withContext(Dispatchers.IO) {
+                runCatching { repository.getDocument(docId) }.getOrNull()?.extracted_text
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { extractedText = it }
+                runCatching { repository.listDocumentVersions(docId) }.getOrNull()
+                    ?.let { versions = it }
+            }
+
         } catch (e: Exception) {
             errorMessage = e.message ?: "Failed to download file"
         } finally {
@@ -89,6 +145,18 @@ fun DocumentViewerScreen(
                 title = { Text("Document Viewer", style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     TextButton(onClick = onBack) { Text("← Back", color = Navy) }
+                },
+                actions = {
+                    if (versions.isNotEmpty()) {
+                        IconButton(onClick = { showVersions = true }) {
+                            Icon(Icons.Filled.History, contentDescription = "Version history", tint = Navy)
+                        }
+                    }
+                    if (!isViewer) {
+                        IconButton(onClick = { replaceLauncher.launch(arrayOf("*/*")) }, enabled = !replacing) {
+                            Icon(Icons.Filled.UploadFile, contentDescription = "Upload new version", tint = Navy)
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Paper)
             )
@@ -109,20 +177,78 @@ fun DocumentViewerScreen(
                     Text("Error: $errorMessage", color = Color.Red)
                 }
                 file != null -> {
-                    if (mimeType == "application/pdf") {
-                        PdfViewer(file = file!!)
-                    } else {
-                        // Image Viewer
-                        AsyncImage(
-                            model = file,
-                            contentDescription = "Document Image",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit
-                        )
+                    Column(Modifier.fillMaxSize()) {
+                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                            if (mimeType == "application/pdf") {
+                                PdfViewer(file = file!!)
+                            } else {
+                                AsyncImage(
+                                    model = file,
+                                    contentDescription = "Document Image",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                        if (!extractedText.isNullOrBlank()) {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .background(Paper)
+                                    .padding(16.dp)
+                            ) {
+                                Text("EXTRACTED TEXT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                                Spacer(Modifier.height(6.dp))
+                                Text(extractedText!!, style = MaterialTheme.typography.bodySmall, color = Ink, maxLines = 8)
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showVersions) {
+        AlertDialog(
+            onDismissRequest = { showVersions = false },
+            title = { Text("Version history") },
+            text = {
+                if (versions.isEmpty()) {
+                    Text("No older versions.")
+                } else {
+                    Column {
+                        versions.forEach { v ->
+                            Text(
+                                "v${v.version} · ${v.title} · ${v.created_at.take(10)}",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        scope.launch {
+                                            try {
+                                                val dest = com.rklab.healthvault.data.local.DocumentCache.fileFor(
+                                                    context, "${docId}_v${v.version}"
+                                                )
+                                                withContext(Dispatchers.IO) {
+                                                    repository.downloadDocumentVersionFile(docId, v.id, 0, dest)
+                                                }
+                                                file = dest
+                                                showVersions = false
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                    .padding(vertical = 8.dp),
+                                color = Navy
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showVersions = false }) { Text("Close") }
+            }
+        )
     }
 }
 

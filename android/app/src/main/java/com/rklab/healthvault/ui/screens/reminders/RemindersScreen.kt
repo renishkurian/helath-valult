@@ -60,8 +60,12 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
                                 viewModel.deleteReminder(reminder.id)
                             },
                             onComplete = {
-                                ReminderScheduler.cancel(context, reminder.id)
-                                viewModel.completeReminder(reminder.id)
+                                viewModel.completeReminder(reminder.id) { updated ->
+                                    ReminderScheduler.cancel(context, reminder.id)
+                                    if (updated.is_active) {
+                                        ReminderScheduler.schedule(context, updated.id, updated.title, updated.description, updated.remind_at, updated.repeat_rule)
+                                    }
+                                }
                             }
                         )
                     }
@@ -69,11 +73,13 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
             }
         }
 
+        if (!repository.isViewer) {
         FloatingActionButton(
             onClick = { showAddDialog = true },
             containerColor = Navy, contentColor = White,
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
         ) { Icon(Icons.Filled.Add, contentDescription = "Add reminder") }
+        }
     }
 
     if (showAddDialog && activePersonId != null) {
@@ -82,7 +88,7 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
             onDismiss = { showAddDialog = false },
             onConfirm = { title, description, remindAtIso, repeat ->
                 viewModel.addReminder(activePersonId, title, description, remindAtIso, repeat) { created ->
-                    ReminderScheduler.schedule(context, created.id, created.title, created.description, created.remind_at)
+                    ReminderScheduler.schedule(context, created.id, created.title, created.description, created.remind_at, created.repeat_rule)
                     showAddDialog = false
                 }
             }

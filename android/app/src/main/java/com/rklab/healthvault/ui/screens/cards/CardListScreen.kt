@@ -30,6 +30,7 @@ fun CardListScreen(
     val viewModel: CardsViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
     var showAddSheet by remember { mutableStateOf(false) }
+    val isViewer = repository.isViewer
 
     LaunchedEffect(personId) { viewModel.load(personId) }
 
@@ -53,7 +54,7 @@ fun CardListScreen(
                         Box(
                             modifier = Modifier.combinedClickable(
                                 onClick = {},
-                                onLongClick = { viewModel.deleteCard(personId, card.id) }
+                                onLongClick = { if (!isViewer) viewModel.deleteCard(personId, card.id) }
                             )
                         ) {
                             HealthIdCard(card = card, patientName = personName, modifier = Modifier.fillMaxWidth())
@@ -63,11 +64,13 @@ fun CardListScreen(
             }
         }
 
+        if (!isViewer) {
         FloatingActionButton(
             onClick = { showAddSheet = true },
             containerColor = Navy, contentColor = White,
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
         ) { Icon(Icons.Filled.Add, contentDescription = "Add card") }
+        }
     }
 
     if (showAddSheet) {

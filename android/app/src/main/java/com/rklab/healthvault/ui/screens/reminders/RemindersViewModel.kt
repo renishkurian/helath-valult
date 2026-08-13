@@ -65,11 +65,12 @@ class RemindersViewModel(private val repository: HealthVaultRepository) : ViewMo
         }
     }
 
-    fun completeReminder(id: String) {
+    fun completeReminder(id: String, onUpdated: (ReminderOut) -> Unit = {}) {
         viewModelScope.launch {
             try {
-                repository.completeReminder(id)
+                val updated = repository.completeReminder(id)
                 load()
+                onUpdated(updated)
             } catch (e: Exception) {
                 _state.value = _state.value.copy(error = "Couldn't update reminder.")
             }

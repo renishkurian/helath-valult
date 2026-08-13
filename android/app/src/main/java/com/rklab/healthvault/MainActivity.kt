@@ -1,5 +1,6 @@
 package com.rklab.healthvault
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -31,6 +32,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureQuickAdd(intent)
         enableEdgeToEdge()
 
         val app = application as HealthVaultApp
@@ -108,6 +110,21 @@ class MainActivity : FragmentActivity() {
             .build()
 
         biometricPrompt.authenticate(promptInfo)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        captureQuickAdd(intent)
+    }
+
+    private fun captureQuickAdd(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_QUICK_ADD, false) == true) {
+            (application as HealthVaultApp).pendingQuickAdd = true
+        }
+    }
+
+    companion object {
+        const val EXTRA_QUICK_ADD = "quick_add"
     }
 
     enum class AuthState { Checking, Authenticated }

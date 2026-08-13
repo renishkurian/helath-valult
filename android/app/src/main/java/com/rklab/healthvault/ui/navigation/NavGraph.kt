@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -34,14 +35,15 @@ private object Routes {
     const val AUDIT = "audit"
     const val CARDS = "cards/{personId}/{personName}"
     const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}"
-    const val UPLOAD = "upload/{personId}?category={category}"
+    const val UPLOAD = "upload/{personId}?category={category}&camera={camera}"
     const val VIEWER = "viewer/{docId}?fileId={fileId}"
     const val EDIT = "edit/{docId}"
 
     fun cards(personId: String, personName: String) = "cards/$personId/$personName"
     fun documents(personId: String, category: DocCategory?, customCategory: String?) =
         "documents/$personId?category=${category?.name ?: ""}&custom_category=${customCategory ?: ""}&label=${customCategory ?: category?.name ?: "Documents"}"
-    fun upload(personId: String, category: DocCategory?) = "upload/$personId?category=${category?.name ?: ""}"
+    fun upload(personId: String, category: DocCategory?, camera: Boolean = false) =
+        "upload/$personId?category=${category?.name ?: ""}&camera=${if (camera) "1" else "0"}"
     fun viewer(docId: String, fileId: String?) = "viewer/$docId?fileId=${fileId ?: ""}"
     fun edit(docId: String) = "edit/$docId"
 }
@@ -50,12 +52,18 @@ private object Routes {
 fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val navController = rememberNavController()
     var startDestination by remember { mutableStateOf<String?>(null) }
+    var isViewer by remember { mutableStateOf(repository.isViewer) }
+    val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         startDestination = when {
             !repository.isServerConfigured() -> Routes.SERVER_SETUP
             !repository.isLoggedIn -> Routes.LOGIN
             else -> Routes.HOME
+        }
+        if (repository.isLoggedIn) {
+            runCatching { repository.me() }
+            isViewer = repository.isViewer
         }
     }
 
@@ -106,6 +114,8 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 LoginScreen(
                     repository = repository,
                     onAuthenticated = {
+                        isViewer = repository.isViewer
+                        com.rklab.healthvault.util.ReminderScheduler.rescheduleAll(context)
                         navController.navigate(Routes.HOME) { popUpTo(Routes.LOGIN) { inclusive = true } }
                     },
                     onChangeServer = { navController.navigate(Routes.SERVER_SETUP) }
@@ -131,6 +141,18 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             }
 
             composable(Routes.HOME) {
+                val ctx = LocalContext.current
+                LaunchedEffect(Unit) {
+                    val app = ctx.applicationContext as com.rklab.healthvault.HealthVaultApp
+                    if (app.pendingQuickAdd) {
+                        app.pendingQuickAdd = false
+                        val pid = repository.activePersonFlow().first()
+                            ?: repository.listPeople().firstOrNull()?.id
+                        if (!pid.isNullOrBlank() && !repository.isViewer) {
+                            navController.navigate(Routes.upload(pid, DocCategory.HOSPITAL_CARD, camera = true))
+                        }
+                    }
+                }
                 HomeScreen(
                     repository = repository,
                     onAddFamily = { navController.navigate(Routes.FAMILY) },
@@ -144,11 +166,17 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         navController.navigate(Routes.viewer(doc.id, fileId))
                     },
                     onAddCard = { navController.navigate(Routes.FAMILY) },
-                    onOpenSettings = { navController.navigate(Routes.SETTINGS) }
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    isViewer = isViewer
                 )
             }
 
-            composable(Routes.SEARCH) { SearchScreen(repository = repository) }
+            composable(Routes.SEARCH) {
+                SearchScreen(
+                    repository = repository,
+                    onOpenDocument = { doc -> navController.navigate(Routes.viewer(doc.id, null)) }
+                )
+            }
 
             composable(Routes.REMINDERS) {
                 var activePersonId by remember { mutableStateOf<String?>(null) }
@@ -237,12 +265,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 Routes.UPLOAD,
                 arguments = listOf(
                     navArgument("personId") { type = NavType.StringType },
-                    navArgument("category") { type = NavType.StringType; nullable = true; defaultValue = "" }
+                    navArgument("category") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                    navArgument("camera") { type = NavType.StringType; nullable = true; defaultValue = "0" }
                 )
             ) { entry ->
                 val personId = entry.arguments?.getString("personId").orEmpty()
                 val categoryStr = entry.arguments?.getString("category").orEmpty()
                 val category = categoryStr.takeIf { it.isNotBlank() }?.let { DocCategory.valueOf(it) }
+                val autoCamera = entry.arguments?.getString("camera") == "1"
 
                 var resolvedPersonId by remember { mutableStateOf(personId) }
                 LaunchedEffect(Unit) {
@@ -262,6 +292,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         repository = repository,
                         personId = resolvedPersonId,
                         defaultCategory = category,
+                        autoOpenCamera = autoCamera,
                         onDone = { navController.popBackStack() },
                         onBack = { navController.popBackStack() }
                     )

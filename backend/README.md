@@ -150,7 +150,14 @@ All endpoints except `/auth/register` and `/auth/login` require
 | POST   | `/reminders`                   | Create a reminder                         |
 | PATCH  | `/reminders/{id}`              | Update a reminder                         |
 | DELETE | `/reminders/{id}`              | Delete a reminder                         |
-| GET    | `/search?q=&person_id=`        | Search cards + documents by hospital/title |
+| GET    | `/search?q=&person_id=`        | Search cards + documents by title, tags, and OCR/PDF text |
+| POST   | `/share`                       | Timed read-only link for a document (hospital front desk) |
+| GET    | `/share/public/{token}`        | Public view of a shared document (no login) |
+| GET    | `/labs/trends?person_id=`      | Parsed lab/vital values over time |
+| GET    | `/backup/export`               | Zip of the vault (`?person_id=` for one person, `?password=` to encrypt) |
+| POST   | `/backup/restore`              | Restore an exported zip / encrypted backup |
+| POST   | `/auth/invite`                 | Create a view-only login for this vault |
+| GET    | `/audit`                       | Who viewed/downloaded/shared what |
 
 `category` for documents is one of: `hospital_card`, `prescription`,
 `lab_report`, `insurance`, `vaccination`, `bill`, `medicine`, `other`.

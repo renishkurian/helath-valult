@@ -46,12 +46,21 @@ class AuditAction(str, enum.Enum):
     share_view = "share_view"
 
 
+class UserRole(str, enum.Enum):
+    owner = "owner"
+    viewer = "viewer"
+
+
 class User(Base):
     __tablename__ = "users"
     id = Column(String(32), primary_key=True, default=gen_id)
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
+    # owner = full access to this vault; viewer = read-only (e.g. spouse abroad)
+    role = Column(String(20), default=UserRole.owner.value, nullable=False)
+    # The vault this account belongs to. Owners: vault_owner_id == id.
+    vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")
@@ -110,6 +119,7 @@ class Document(Base):
     expiry_date = Column(String(20), nullable=True, index=True)  # ISO date; e.g. insurance/prescription validity
     tags = Column(String(500), nullable=True)  # comma-separated free-text tags, e.g. "diabetes,annual-checkup"
     version = Column(Integer, default=1, nullable=False)  # bumped on each re-upload via /versions
+    extracted_text = Column(Text, nullable=True)  # OCR / PDF text, plaintext so /search can match content
 
     # Legacy single-file columns — kept for backward compatibility.
     # New uploads use the DocumentFile child table instead.
@@ -207,3 +217,26 @@ class Reminder(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     person = relationship("Person", back_populates="reminders")
+
+
+class LabReading(Base):
+    """A numeric lab (or vitals) value parsed from a document, for simple trend charts."""
+    __tablename__ = "lab_readings"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=True, index=True)
+    metric = Column(String(40), nullable=False, index=True)  # glucose, hba1c, cholesterol, ldl, hdl, triglycerides, bp_sys, bp_dia, creatinine
+    value = Column(String(20), nullable=False)  # stored as string to keep SQLAlchemy simple; parsed as float by API
+    unit = Column(String(20), nullable=True)
+    measured_at = Column(String(20), nullable=True)  # ISO date from the document
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class DeviceToken(Base):
+    """Android FCM (or similar) token so the Pi can push reminder notifications instead of the app polling."""
+    __tablename__ = "device_tokens"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    token = Column(String(512), nullable=False, unique=True)
+    platform = Column(String(20), default="android", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)

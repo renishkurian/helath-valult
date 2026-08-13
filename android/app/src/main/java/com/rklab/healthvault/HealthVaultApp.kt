@@ -17,6 +17,8 @@ class HealthVaultApp : Application() {
     lateinit var repository: HealthVaultRepository
         private set
 
+    @Volatile var pendingQuickAdd: Boolean = false
+
     override fun onCreate() {
         super.onCreate()
 
@@ -39,6 +41,7 @@ class HealthVaultApp : Application() {
         // connectivity is available, then run it automatically.
         if (tokenManager.getAccessToken() != null) {
             SyncWorker.enqueue(this)
+            com.rklab.healthvault.util.ReminderScheduler.rescheduleAll(this)
         }
 
         createReminderNotificationChannel()

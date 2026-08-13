@@ -2,8 +2,10 @@ package com.rklab.healthvault.ui.screens.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -43,7 +45,7 @@ fun SettingsScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    Column(modifier = Modifier.fillMaxSize().background(Paper).padding(20.dp).verticalScroll(rememberScrollState())) {
         TextButton(onClick = onBack) { Text("← Back", color = Navy) }
         Text("SETTINGS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
         Spacer(Modifier.height(4.dp))
@@ -134,21 +136,53 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White).padding(16.dp)
         ) {
             var exporting by remember { mutableStateOf(false) }
+            var backupPassword by remember { mutableStateOf("") }
+            var restoring by remember { mutableStateOf(false) }
+            val restorePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+                androidx.activity.result.contract.ActivityResultContracts.GetContent()
+            ) { uri ->
+                if (uri == null) return@rememberLauncherForActivityResult
+                restoring = true
+                scope.launch {
+                    try {
+                        val tmp = java.io.File(context.cacheDir, "restore-in.bin")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            tmp.outputStream().use { output -> input.copyTo(output) }
+                        }
+                        repository.restoreBackup(tmp, backupPassword.ifBlank { null })
+                        Toast.makeText(context, "Restore complete.", Toast.LENGTH_SHORT).show()
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Restore failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    } finally {
+                        restoring = false
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = backupPassword,
+                onValueChange = { backupPassword = it },
+                label = { Text("Backup password (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
             Button(
                 onClick = {
                     exporting = true
                     scope.launch {
                         try {
+                            val encrypted = backupPassword.isNotBlank()
                             val dest = java.io.File(
                                 context.getExternalFilesDir(null),
-                                "healthvault-backup-${System.currentTimeMillis()}.zip"
+                                if (encrypted) "healthvault-backup-${System.currentTimeMillis()}.hvbak"
+                                else "healthvault-backup-${System.currentTimeMillis()}.zip"
                             )
-                            repository.exportBackup(dest)
+                            repository.exportBackup(dest, password = backupPassword.ifBlank { null })
                             val uri = androidx.core.content.FileProvider.getUriForFile(
                                 context, "${context.packageName}.fileprovider", dest
                             )
                             val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                type = "application/zip"
+                                type = "application/octet-stream"
                                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
@@ -164,8 +198,14 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Sage)
             ) {
-                Text(if (exporting) "Exporting…" else "Export full backup (.zip)", color = White)
+                Text(if (exporting) "Exporting…" else "Export full backup", color = White)
             }
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = { restorePicker.launch("*/*") },
+                enabled = !restoring && !repository.isViewer,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (restoring) "Restoring…" else "Restore from backup", color = Navy) }
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onOpenAuditLog,

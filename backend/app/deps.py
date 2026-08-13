@@ -8,6 +8,21 @@ from app import models, security
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
+def vault_id(user: models.User) -> str:
+    """The account whose people/docs this login may see. Viewers share the owner's vault."""
+    return user.vault_owner_id or user.id
+
+
+def is_viewer(user: models.User) -> bool:
+    return (user.role or models.UserRole.owner.value) == models.UserRole.viewer.value
+
+
+def require_owner(user: models.User) -> models.User:
+    if is_viewer(user):
+        raise HTTPException(status_code=403, detail="This account is view-only")
+    return user
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
@@ -41,7 +56,7 @@ def get_owned_person(
     """Fetch a Person and verify it belongs to the current account (self or family member)."""
     person = db.query(models.Person).filter(
         models.Person.id == person_id,
-        models.Person.user_id == current_user.id,
+        models.Person.user_id == vault_id(current_user),
     ).first()
     if not person:
         raise HTTPException(status_code=404, detail="Person not found")

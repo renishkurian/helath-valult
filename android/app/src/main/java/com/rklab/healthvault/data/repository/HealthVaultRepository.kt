@@ -61,11 +61,13 @@ class HealthVaultRepository(
     suspend fun login(email: String, password: String) {
         val res = api.login(email, password)
         tokenManager.saveTokens(res.access_token, res.refresh_token)
+        runCatching { me() }
     }
 
     suspend fun register(email: String, password: String, fullName: String) {
         val res = api.register(RegisterRequest(email, password, fullName))
         tokenManager.saveTokens(res.access_token, res.refresh_token)
+        runCatching { me() }
     }
 
     fun logout() {
@@ -80,7 +82,20 @@ class HealthVaultRepository(
         }
     }
 
-    suspend fun me(): UserOut = api.me()
+    suspend fun me(): UserOut {
+        val user = api.me()
+        tokenManager.setRole(user.role)
+        return user
+    }
+
+    suspend fun inviteViewer(email: String, password: String, fullName: String) =
+        api.inviteViewer(InviteViewerRequest(email, password, fullName))
+
+    suspend fun listVaultMembers() = api.listVaultMembers()
+
+    suspend fun removeVaultMember(id: String) = api.removeVaultMember(id)
+
+    val isViewer: Boolean get() = tokenManager.getRole() == "viewer"
 
     // ---------- People ----------
 
@@ -285,13 +300,25 @@ class HealthVaultRepository(
         api.listAuditLog(documentId, limit)
 
     // ---------- Backup ----------
-    suspend fun exportBackup(destination: File): File {
-        val body = api.exportBackup()
+    suspend fun exportBackup(destination: File, personId: String? = null, password: String? = null): File {
+        val body = api.exportBackup(personId, password)
         body.byteStream().use { input ->
             destination.outputStream().use { output -> input.copyTo(output) }
         }
         return destination
     }
+
+    suspend fun restoreBackup(file: File, password: String?) {
+        val part = MultipartBody.Part.createFormData(
+            "file", file.name, file.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+        )
+        api.restoreBackup(part, password?.toRequestBody("text/plain".toMediaTypeOrNull()))
+    }
+
+    suspend fun labTrends(personId: String, metric: String? = null): List<LabTrend> =
+        api.labTrends(personId, metric)
+
+    suspend fun getDocument(id: String): DocumentOut = api.getDocument(id)
 
     suspend fun downloadDocumentFile(documentId: String, fileId: String, destination: File): File {
         val body = api.downloadDocumentFile(documentId, fileId)

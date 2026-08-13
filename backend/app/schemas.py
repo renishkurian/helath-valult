@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
-from app.models import Relation, DocCategory, RepeatRule, AuditAction
+from app.models import Relation, DocCategory, RepeatRule, AuditAction, UserRole
 
 
 # ---------- Auth ----------
@@ -21,9 +21,22 @@ class UserOut(BaseModel):
     id: str
     email: EmailStr
     full_name: str
+    role: str = UserRole.owner.value
+    vault_owner_id: Optional[str] = None
 
     class Config:
         from_attributes = True
+
+
+class InviteViewerRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    full_name: str
+
+
+class DeviceTokenIn(BaseModel):
+    token: str
+    platform: str = "android"
 
 
 # ---------- People (self / family members) ----------
@@ -130,6 +143,7 @@ class DocumentOut(BaseModel):
     file_size: Optional[int]   # legacy, first file's size
     file_count: int = 1        # total number of attached files
     notes: Optional[str]
+    extracted_text: Optional[str] = None
     created_at: datetime
 
     class Config:
@@ -217,3 +231,22 @@ class ReminderOut(BaseModel):
 class SearchResult(BaseModel):
     cards: List[CardOut]
     documents: List[DocumentOut]
+
+
+class LabReadingOut(BaseModel):
+    id: str
+    person_id: str
+    document_id: Optional[str]
+    metric: str
+    value: float
+    unit: Optional[str]
+    measured_at: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class LabTrend(BaseModel):
+    metric: str
+    unit: Optional[str]
+    points: List[LabReadingOut]

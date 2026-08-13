@@ -58,4 +58,17 @@ class FamilyViewModel(private val repository: HealthVaultRepository) : ViewModel
             }
         }
     }
+
+    fun inviteViewer(email: String, password: String, fullName: String, onDone: () -> Unit) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(saving = true, error = null)
+            try {
+                repository.inviteViewer(email.trim(), password, fullName.trim())
+                _state.value = _state.value.copy(saving = false)
+                onDone()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(saving = false, error = e.message ?: "Couldn't invite viewer.")
+            }
+        }
+    }
 }

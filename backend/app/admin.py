@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, security, crypto
 from app.config import settings
+from app.deps import vault_id, is_viewer
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -76,7 +77,7 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
 
-    people = db.query(models.Person).filter(models.Person.user_id == user.id).all()
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     active_person = None
     if person:
         active_person = next((p for p in people if p.id == person), None)
@@ -119,7 +120,7 @@ def family_page(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    people = db.query(models.Person).filter(models.Person.user_id == user.id).all()
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     return templates.TemplateResponse("family.html", {
         "request": request, "session_user": user, "active_nav": "family", "people": people,
         "active_person_id": None,
@@ -137,7 +138,7 @@ def family_add(
         return RedirectResponse("/admin/login", status_code=302)
     initials = "".join([p[0].upper() for p in name.split()[:2]]) or "FM"
     person = models.Person(
-        user_id=user.id, name=name, relation=models.Relation(relation),
+        user_id=vault_id(user), name=name, relation=models.Relation(relation),
         blood_group=blood_group or None, avatar_initials=initials,
     )
     db.add(person)
@@ -150,7 +151,7 @@ def people_delete(request: Request, person_id: str, db: Session = Depends(get_db
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    p = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == user.id).first()
+    p = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if p and p.relation != models.Relation.self_:
         db.delete(p)
         db.commit()
@@ -170,7 +171,7 @@ def cards_add(
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == user.id).first()
+    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if person:
         card = models.HospitalCard(
             person_id=person.id, hospital_name=hospital_name, ward=ward or None, blood_group=blood_group or None,
@@ -189,7 +190,7 @@ def cards_delete(request: Request, card_id: str, person_id: str = Form(...), db:
         return RedirectResponse("/admin/login", status_code=302)
     card = (
         db.query(models.HospitalCard).join(models.Person)
-        .filter(models.HospitalCard.id == card_id, models.Person.user_id == user.id).first()
+        .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
     )
     if card:
         db.delete(card)
@@ -204,7 +205,7 @@ def documents_page(request: Request, person: str, category: Optional[str] = None
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
 
-    active_person = db.query(models.Person).filter(models.Person.id == person, models.Person.user_id == user.id).first()
+    active_person = db.query(models.Person).filter(models.Person.id == person, models.Person.user_id == vault_id(user)).first()
     if not active_person:
         return RedirectResponse("/admin", status_code=302)
 
@@ -213,7 +214,7 @@ def documents_page(request: Request, person: str, category: Optional[str] = None
         q = q.filter(models.Document.category == models.DocCategory(category))
     docs = [doc_out(d) for d in q.order_by(models.Document.created_at.desc()).all()]
 
-    people = db.query(models.Person).filter(models.Person.user_id == user.id).all()
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     return templates.TemplateResponse("documents.html", {
         "request": request, "session_user": user, "active_nav": "dashboard",
         "people": people, "active_person": active_person, "active_person_id": active_person.id,
@@ -235,7 +236,7 @@ async def documents_add(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
 
-    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == user.id).first()
+    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if person:
         raw = await file.read()
         doc = models.Document(
@@ -248,7 +249,7 @@ async def documents_add(
         db.add(doc)
         db.flush()
 
-        person_dir = settings.STORAGE_DIR / user.id / person.id
+        person_dir = settings.STORAGE_DIR / vault_id(user) / person.id
         person_dir.mkdir(parents=True, exist_ok=True)
         enc_path = person_dir / f"{doc.id}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
@@ -283,7 +284,7 @@ def documents_download(request: Request, document_id: str, db: Session = Depends
         return RedirectResponse("/admin/login", status_code=302)
     doc = (
         db.query(models.Document).join(models.Person)
-        .filter(models.Document.id == document_id, models.Person.user_id == user.id).first()
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user)).first()
     )
     if not doc:
         return RedirectResponse("/admin", status_code=302)
@@ -306,7 +307,7 @@ def documents_delete(
         return RedirectResponse("/admin/login", status_code=302)
     doc = (
         db.query(models.Document).join(models.Person)
-        .filter(models.Document.id == document_id, models.Person.user_id == user.id).first()
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user)).first()
     )
     if doc:
         enc_path = settings.STORAGE_DIR / doc.file_path
@@ -326,19 +327,19 @@ def activity_page(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
 
-    people = db.query(models.Person).filter(models.Person.user_id == user.id).all()
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     active_person = people[0] if people else None
 
     entries = (
         db.query(models.AuditLog)
         .join(models.Document, models.AuditLog.document_id == models.Document.id, isouter=True)
         .join(models.Person, models.Document.person_id == models.Person.id, isouter=True)
-        .filter((models.Person.user_id == user.id) | (models.AuditLog.document_id.is_(None)))
+        .filter((models.Person.user_id == vault_id(user)) | (models.AuditLog.document_id.is_(None)))
         .order_by(models.AuditLog.created_at.desc())
         .limit(200)
         .all()
     )
-    doc_titles = {d.id: d.title for d in db.query(models.Document).join(models.Person).filter(models.Person.user_id == user.id).all()}
+    doc_titles = {d.id: d.title for d in db.query(models.Document).join(models.Person).filter(models.Person.user_id == vault_id(user)).all()}
 
     share_links = (
         db.query(models.ShareLink)
@@ -375,13 +376,13 @@ def reminders_page(request: Request, person: Optional[str] = None, db: Session =
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
 
-    people = db.query(models.Person).filter(models.Person.user_id == user.id).all()
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     active_person = next((p for p in people if p.id == person), None) or (people[0] if people else None)
     person_names = {p.id: p.name for p in people}
 
     reminders = (
         db.query(models.Reminder).join(models.Person)
-        .filter(models.Person.user_id == user.id)
+        .filter(models.Person.user_id == vault_id(user))
         .order_by(models.Reminder.remind_at.asc()).all()
     )
 
@@ -402,7 +403,7 @@ def reminders_add(
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == user.id).first()
+    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if person:
         reminder = models.Reminder(
             person_id=person.id, title=title, description=description or None,
@@ -420,7 +421,7 @@ def reminders_delete(request: Request, reminder_id: str, db: Session = Depends(g
         return RedirectResponse("/admin/login", status_code=302)
     r = (
         db.query(models.Reminder).join(models.Person)
-        .filter(models.Reminder.id == reminder_id, models.Person.user_id == user.id).first()
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
     )
     person_id = r.person_id if r else None
     if r:

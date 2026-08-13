@@ -28,6 +28,8 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
     val viewModel: FamilyViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
+    var showInviteDialog by remember { mutableStateOf(false) }
+    val isViewer = repository.isViewer
 
     LaunchedEffect(Unit) { viewModel.load() }
 
@@ -36,6 +38,12 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
             Text("FAMILY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
             Spacer(Modifier.height(4.dp))
             Text("Who you're managing", style = MaterialTheme.typography.headlineMedium, color = Ink)
+            if (!isViewer) {
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = { showInviteDialog = true }) {
+                    Text("Invite viewer (spouse login)", color = Navy)
+                }
+            }
             Spacer(Modifier.height(18.dp))
 
             if (state.loading) {
@@ -48,7 +56,7 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
                         PersonRow(
                             person = person,
                             onClick = { onOpenPerson(person) },
-                            onDelete = if (person.relation != Relation.SELF) {
+                            onDelete = if (!isViewer && person.relation != Relation.SELF) {
                                 { viewModel.removeMember(person.id) }
                             } else null
                         )
@@ -57,6 +65,7 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
             }
         }
 
+        if (!isViewer) {
         FloatingActionButton(
             onClick = { showAddDialog = true },
             containerColor = Navy,
@@ -65,6 +74,18 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
         ) {
             Icon(Icons.Filled.Add, contentDescription = "Add family member")
         }
+        }
+    }
+
+    if (showInviteDialog) {
+        InviteViewerDialog(
+            saving = state.saving,
+            error = state.error,
+            onDismiss = { showInviteDialog = false },
+            onConfirm = { email, password, name ->
+                viewModel.inviteViewer(email, password, name) { showInviteDialog = false }
+            }
+        )
     }
 
     if (showAddDialog) {
@@ -171,6 +192,44 @@ private fun AddFamilyMemberDialog(
                 onClick = { onConfirm(name, relation, dob.ifBlank { null }, bloodGroup.ifBlank { null }) },
                 enabled = name.isNotBlank() && !saving
             ) { Text(if (saving) "Adding…" else "Add", color = Navy) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = InkSoft) } }
+    )
+}
+
+@Composable
+private fun InviteViewerDialog(
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Invite viewer") },
+        text = {
+            Column {
+                Text("Creates a view-only login — they can see the vault but not change it.", style = MaterialTheme.typography.bodySmall, color = InkSoft)
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password (8+ chars)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(error, color = StampRed, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(email, password, name) },
+                enabled = email.isNotBlank() && password.length >= 8 && name.isNotBlank() && !saving
+            ) { Text(if (saving) "Inviting…" else "Invite", color = Navy) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = InkSoft) } }
     )

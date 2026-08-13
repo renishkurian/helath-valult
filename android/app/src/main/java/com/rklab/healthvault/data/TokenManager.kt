@@ -45,6 +45,12 @@ class TokenManager(private val context: Context) {
     fun getAccessToken(): String? = encryptedPrefs.getString(KEY_ACCESS, null)
     fun getRefreshToken(): String? = encryptedPrefs.getString(KEY_REFRESH, null)
 
+    fun setRole(role: String) {
+        encryptedPrefs.edit().putString(KEY_ROLE, role).apply()
+    }
+
+    fun getRole(): String = encryptedPrefs.getString(KEY_ROLE, "owner") ?: "owner"
+
     fun clear() {
         encryptedPrefs.edit().clear().apply()
         CoroutineScope(Dispatchers.IO).launch {
@@ -77,6 +83,7 @@ class TokenManager(private val context: Context) {
     companion object {
         private const val KEY_ACCESS = "access_token"
         private const val KEY_REFRESH = "refresh_token"
+        private const val KEY_ROLE = "user_role"
         private val ACTIVE_PERSON = stringPreferencesKey("active_person_id")
         private val BIOMETRIC_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("biometric_enabled")
     }

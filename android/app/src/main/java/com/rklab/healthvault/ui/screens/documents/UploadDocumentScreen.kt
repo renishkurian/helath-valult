@@ -48,6 +48,7 @@ fun UploadDocumentScreen(
     repository: HealthVaultRepository,
     personId: String,
     defaultCategory: DocCategory?,
+    autoOpenCamera: Boolean = false,
     onDone: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -133,6 +134,10 @@ fun UploadDocumentScreen(
             PackageManager.PERMISSION_GRANTED
         if (hasPermission) { permissionDeniedMessage = null; launchCamera() }
         else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    LaunchedEffect(autoOpenCamera) {
+        if (autoOpenCamera) onCameraTapped()
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Paper)) {

@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas, crypto
 from app.config import settings
-from app.deps import get_current_user
+from app.deps import get_current_user, require_owner
 from app.routers.documents import _get_owned_document, _to_out as doc_to_out
 
 router = APIRouter(prefix="/share", tags=["share"])
@@ -22,6 +22,7 @@ def create_share_link(
 ):
     """Create a read-only, expiring link for a single document — e.g. to show a
     hospital insurance card at a front desk without handing over your account."""
+    require_owner(current_user)
     doc = _get_owned_document(body.document_id, db, current_user)
 
     link = models.ShareLink(

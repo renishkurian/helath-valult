@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas, crypto
 from app.config import settings
-from app.deps import get_current_user, get_owned_person
+from app.deps import get_current_user, get_owned_person, require_owner, vault_id
+from app.extract import extract_text, parse_lab_readings
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -42,7 +43,7 @@ def _to_file_out(f: models.DocumentFile) -> schemas.DocumentFileOut:
     )
 
 
-def _to_out(doc: models.Document) -> schemas.DocumentOut:
+def _to_out(doc: models.Document, include_text: bool = False) -> schemas.DocumentOut:
     # Determine effective file_type / file_size:
     # Prefer the first DocumentFile row; fall back to legacy columns.
     first_file = doc.files[0] if doc.files else None
@@ -61,6 +62,7 @@ def _to_out(doc: models.Document) -> schemas.DocumentOut:
         file_size=first_file.file_size if first_file else doc.file_size,
         file_count=len(doc.files) if doc.files else (1 if doc.file_path else 0),
         notes=crypto.decrypt_text(doc.notes_enc),
+        extracted_text=doc.extracted_text if include_text else None,
         created_at=doc.created_at,
     )
 
@@ -69,14 +71,17 @@ def _to_out(doc: models.Document) -> schemas.DocumentOut:
 def list_documents(
     person_id: Optional[str] = None,
     category: Optional[models.DocCategory] = None,
+    tag: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    q = db.query(models.Document).join(models.Person).filter(models.Person.user_id == current_user.id)
+    q = db.query(models.Document).join(models.Person).filter(models.Person.user_id == vault_id(current_user))
     if person_id:
         q = q.filter(models.Document.person_id == person_id)
     if category:
         q = q.filter(models.Document.category == category)
+    if tag:
+        q = q.filter(models.Document.tags.ilike(f"%{tag}%"))
     return [_to_out(d) for d in q.order_by(models.Document.created_at.desc()).all()]
 
 
@@ -96,6 +101,7 @@ async def upload_document(
     current_user: models.User = Depends(get_current_user),
 ):
     """Upload a document entry with one or more files (pages, scans, PDFs)."""
+    require_owner(current_user)
     get_owned_person(person_id, db, current_user)
 
     if not files:
@@ -119,9 +125,10 @@ async def upload_document(
     db.add(doc)
     db.flush()  # get doc.id without committing
 
-    person_dir: Path = settings.STORAGE_DIR / current_user.id / person_id
+    person_dir: Path = settings.STORAGE_DIR / vault_id(current_user) / person_id
     person_dir.mkdir(parents=True, exist_ok=True)
 
+    ocr_chunks: list[str] = []
     for idx, upload in enumerate(files):
         raw = await upload.read()
         size_mb = len(raw) / (1024 * 1024)
@@ -135,6 +142,8 @@ async def upload_document(
         enc_path = person_dir / f"{doc.id}_{idx}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
 
+        ocr_chunks.append(extract_text(raw, upload.content_type, upload.filename))
+
         doc_file = models.DocumentFile(
             document_id=doc.id,
             original_filename=upload.filename or f"file_{idx}",
@@ -143,6 +152,19 @@ async def upload_document(
             file_size=len(raw),
         )
         db.add(doc_file)
+
+    combined = "\n".join(c for c in ocr_chunks if c).strip() or None
+    doc.extracted_text = combined
+    if combined:
+        for reading in parse_lab_readings(combined):
+            db.add(models.LabReading(
+                person_id=person_id,
+                document_id=doc.id,
+                metric=reading["metric"],
+                value=reading["value"],
+                unit=reading["unit"],
+                measured_at=doc_date,
+            ))
 
     if expiry_date:
         db.add(models.Reminder(
@@ -163,7 +185,7 @@ def _get_owned_document(document_id: str, db: Session, current_user: models.User
     doc = (
         db.query(models.Document)
         .join(models.Person)
-        .filter(models.Document.id == document_id, models.Person.user_id == current_user.id)
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(current_user))
         .first()
     )
     if not doc:
@@ -180,7 +202,7 @@ def get_document(
     doc = _get_owned_document(document_id, db, current_user)
     _log(db, current_user, doc.id, models.AuditAction.view)
     db.commit()
-    return _to_out(doc)
+    return _to_out(doc, include_text=True)
 
 
 @router.put("/{document_id}", response_model=schemas.DocumentOut)
@@ -190,6 +212,7 @@ def update_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     doc = _get_owned_document(document_id, db, current_user)
 
     if update_data.title is not None:
@@ -297,6 +320,7 @@ async def replace_document_version(
     """Re-upload a document: archives the current files as a version snapshot, then
     replaces them with the new ones. Old versions stay retrievable via
     GET /{document_id}/versions and /versions/{version_id}/download."""
+    require_owner(current_user)
     doc = _get_owned_document(document_id, db, current_user)
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
@@ -331,9 +355,10 @@ async def replace_document_version(
     if notes is not None:
         doc.notes_enc = crypto.encrypt_text(notes if notes != "" else None)
 
-    person_dir: Path = settings.STORAGE_DIR / current_user.id / doc.person_id
+    person_dir: Path = settings.STORAGE_DIR / vault_id(current_user) / doc.person_id
     person_dir.mkdir(parents=True, exist_ok=True)
 
+    ocr_chunks: list[str] = []
     for idx, upload in enumerate(files):
         raw = await upload.read()
         size_mb = len(raw) / (1024 * 1024)
@@ -343,6 +368,7 @@ async def replace_document_version(
 
         enc_path = person_dir / f"{doc.id}_v{doc.version}_{idx}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
+        ocr_chunks.append(extract_text(raw, upload.content_type, upload.filename))
 
         db.add(models.DocumentFile(
             document_id=doc.id,
@@ -351,6 +377,20 @@ async def replace_document_version(
             file_type=upload.content_type,
             file_size=len(raw),
         ))
+
+    combined = "\n".join(c for c in ocr_chunks if c).strip() or None
+    doc.extracted_text = combined
+    db.query(models.LabReading).filter(models.LabReading.document_id == doc.id).delete()
+    if combined:
+        for reading in parse_lab_readings(combined):
+            db.add(models.LabReading(
+                person_id=doc.person_id,
+                document_id=doc.id,
+                metric=reading["metric"],
+                value=reading["value"],
+                unit=reading["unit"],
+                measured_at=doc.doc_date,
+            ))
 
     db.commit()
     db.refresh(doc)
@@ -416,6 +456,7 @@ def delete_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     doc = _get_owned_document(document_id, db, current_user)
     # Delete all associated files from disk
     for f in doc.files:
@@ -437,5 +478,6 @@ def delete_document(
         db.delete(v)
     db.query(models.ShareLink).filter(models.ShareLink.document_id == doc.id).delete()
     db.query(models.AuditLog).filter(models.AuditLog.document_id == doc.id).delete()
+    db.query(models.LabReading).filter(models.LabReading.document_id == doc.id).delete()
     db.delete(doc)
     db.commit()

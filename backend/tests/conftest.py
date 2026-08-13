@@ -10,6 +10,14 @@ os.environ.setdefault("JWT_SECRET", "ci-test-secret")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_ci.db")
 os.environ.setdefault("STORAGE_DIR", "./test_ci_storage")
 
+# Drop leftover artifacts from a previous run before app.main create_all().
+for _path in ("test_ci.db", "test_ci_storage"):
+    _p = Path(_path)
+    if _p.is_dir():
+        shutil.rmtree(_p, ignore_errors=True)
+    elif _p.exists():
+        _p.unlink()
+
 import pytest
 
 

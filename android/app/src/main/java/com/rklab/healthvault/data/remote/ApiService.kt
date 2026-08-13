@@ -23,6 +23,18 @@ interface ApiService {
     @GET("auth/me")
     suspend fun me(): UserOut
 
+    @POST("auth/invite")
+    suspend fun inviteViewer(@Body body: InviteViewerRequest): UserOut
+
+    @GET("auth/members")
+    suspend fun listVaultMembers(): List<UserOut>
+
+    @DELETE("auth/members/{id}")
+    suspend fun removeVaultMember(@Path("id") id: String): Response<Unit>
+
+    @POST("auth/devices")
+    suspend fun registerDevice(@Body body: DeviceTokenIn): Response<Unit>
+
     // ---------- People ----------
     @GET("people")
     suspend fun listPeople(): List<PersonOut>
@@ -91,6 +103,9 @@ interface ApiService {
         @Body body: DocumentUpdate
     ): DocumentOut
 
+    @GET("documents/{id}")
+    suspend fun getDocument(@Path("id") id: String): DocumentOut
+
     @GET("documents/{id}/files")
     suspend fun listDocumentFiles(@Path("id") id: String): List<DocumentFileOut>
 
@@ -148,5 +163,21 @@ interface ApiService {
     // ---------- Backup ----------
     @Streaming
     @GET("backup/export")
-    suspend fun exportBackup(): ResponseBody
+    suspend fun exportBackup(
+        @Query("person_id") personId: String? = null,
+        @Query("password") password: String? = null
+    ): ResponseBody
+
+    @Multipart
+    @POST("backup/restore")
+    suspend fun restoreBackup(
+        @Part file: MultipartBody.Part,
+        @Part("password") password: RequestBody?
+    ): okhttp3.ResponseBody
+
+    @GET("labs/trends")
+    suspend fun labTrends(
+        @Query("person_id") personId: String,
+        @Query("metric") metric: String? = null
+    ): List<LabTrend>
 }

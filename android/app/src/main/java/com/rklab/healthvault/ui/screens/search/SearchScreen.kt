@@ -66,7 +66,7 @@ class SearchViewModel(private val repository: HealthVaultRepository) : ViewModel
 }
 
 @Composable
-fun SearchScreen(repository: HealthVaultRepository) {
+fun SearchScreen(repository: HealthVaultRepository, onOpenDocument: (DocumentOut) -> Unit = {}) {
     val viewModel: SearchViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
 
@@ -79,7 +79,7 @@ fun SearchScreen(repository: HealthVaultRepository) {
         OutlinedTextField(
             value = state.query,
             onValueChange = { viewModel.search(it) },
-            placeholder = { Text("Search by hospital name…") },
+            placeholder = { Text("Search titles, tags, or text inside PDFs…") },
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = InkSoft) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
@@ -117,7 +117,7 @@ fun SearchScreen(repository: HealthVaultRepository) {
                                 tagLabel = "Open",
                                 tagColor = Sage,
                                 tagBg = SageBg,
-                                onClick = {}
+                                onClick = { onOpenDocument(doc) }
                             )
                             Divider(color = PaperDeep, thickness = 1.dp)
                         }

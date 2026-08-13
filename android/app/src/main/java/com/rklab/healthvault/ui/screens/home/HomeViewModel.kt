@@ -24,7 +24,9 @@ data class HomeUiState(
     val recentDocuments: List<DocumentOut> = emptyList(),
     val folders: List<com.rklab.healthvault.ui.components.FolderDef> = emptyList(),
     val folderCounts: Map<String, Int> = emptyMap(), // key is either category name or custom category name
-    val expiringCards: List<CardOut> = emptyList()
+    val expiringCards: List<CardOut> = emptyList(),
+    val expiringDocuments: List<DocumentOut> = emptyList(),
+    val labTrends: List<LabTrend> = emptyList()
 )
 
 class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel() {
@@ -122,6 +124,8 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
         val allFolders = baseFolders + generatedCustomFolders
 
         val expiring = cards.filter { isExpiringSoon(it.valid_till) }
+        val expiringDocs = documents.filter { isExpiringSoon(it.expiry_date) }
+        val trends = try { repository.labTrends(active.id) } catch (_: Exception) { emptyList() }
 
         _state.value = HomeUiState(
             loading = false,
@@ -131,7 +135,9 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
             recentDocuments = documents.sortedByDescending { it.created_at }.take(6),
             folders = allFolders,
             folderCounts = counts,
-            expiringCards = expiring
+            expiringCards = expiring,
+            expiringDocuments = expiringDocs,
+            labTrends = trends
         )
     }
 

@@ -99,6 +99,25 @@ fun DocumentListScreen(
                 Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
                 Spacer(Modifier.height(4.dp))
                 Text("${state.documents.size} documents", style = MaterialTheme.typography.headlineMedium, color = Ink)
+                if (!repository.isViewer) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        scope.launch {
+                            try {
+                                val dest = File(context.getExternalFilesDir(null), "${title}-export.zip")
+                                withContext(Dispatchers.IO) { repository.exportBackup(dest, personId = personId) }
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dest)
+                                context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/zip"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }, "Export documents"))
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) { Text("Export this person as zip", color = Navy) }
+                }
 
                 if (state.error != null) {
                     Spacer(Modifier.height(8.dp))
@@ -133,8 +152,10 @@ fun DocumentListScreen(
                         contentPadding = PaddingValues(bottom = 90.dp)
                     ) {
                         items(state.documents, key = { it.id }) { doc ->
+                            val canWrite = !repository.isViewer
                             val dismissState = rememberSwipeToDismissBoxState(
                                 confirmValueChange = { value ->
+                                    if (!canWrite) return@rememberSwipeToDismissBoxState false
                                     if (value == SwipeToDismissBoxValue.EndToStart) {
                                         docToDelete = doc
                                         false // Don't dismiss immediately, wait for confirmation
@@ -149,7 +170,8 @@ fun DocumentListScreen(
 
                             SwipeToDismissBox(
                                 state = dismissState,
-                                enableDismissFromStartToEnd = true,
+                                enableDismissFromStartToEnd = canWrite,
+                                enableDismissFromEndToStart = canWrite,
                                 backgroundContent = {
                                     val direction = dismissState.dismissDirection
                                     if (direction == SwipeToDismissBoxValue.StartToEnd) {
@@ -178,7 +200,13 @@ fun DocumentListScreen(
                                 val isDownloading = downloadingDocId == doc.id
                                 LedgerRow(
                                     title = doc.title,
-                                    metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${doc.hospital_name ?: "—"}",
+                                    metaLine = buildString {
+                                        append(doc.doc_date ?: doc.created_at.take(10))
+                                        append(" · ")
+                                        append(doc.hospital_name ?: "—")
+                                        if (!doc.tags.isNullOrBlank()) append(" · ${doc.tags}")
+                                        if (doc.version > 1) append(" · v${doc.version}")
+                                    },
                                     category = doc.category,
                                     tagLabel = if (isDownloading) "..." else if (doc.file_count > 1) "${doc.file_count} files" else "Open",
                                     tagColor = Sage,
@@ -191,8 +219,10 @@ fun DocumentListScreen(
                                         }
                                     },
                                     trailingAction = {
-                                        IconButton(onClick = { docToShare = doc }) {
-                                            Icon(Icons.Filled.Share, contentDescription = "Share", tint = Navy)
+                                        if (!repository.isViewer) {
+                                            IconButton(onClick = { docToShare = doc }) {
+                                                Icon(Icons.Filled.Share, contentDescription = "Share", tint = Navy)
+                                            }
                                         }
                                     }
                                 )
@@ -226,11 +256,13 @@ fun DocumentListScreen(
                 }
             }
 
+            if (!repository.isViewer) {
             FloatingActionButton(
                 onClick = onAddDocument,
                 containerColor = Navy, contentColor = White,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
             ) { Icon(Icons.Filled.Add, contentDescription = "Add document") }
+            }
         }
     }
 

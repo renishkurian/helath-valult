@@ -5,7 +5,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import Base, engine
 from app import models  # noqa: F401 — ensures models are registered before create_all
 from app.config import settings
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs
 from app import admin
 
 Base.metadata.create_all(bind=engine)
@@ -39,6 +39,7 @@ app.include_router(search.router)
 app.include_router(share.router)
 app.include_router(audit.router)
 app.include_router(backup.router)
+app.include_router(labs.router)
 app.include_router(admin.router)
 
 

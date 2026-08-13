@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
-from app.deps import get_current_user, get_owned_person
+from app.deps import get_current_user, get_owned_person, require_owner, vault_id
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
 
@@ -30,7 +30,7 @@ def list_reminders(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    q = db.query(models.Reminder).join(models.Person).filter(models.Person.user_id == current_user.id)
+    q = db.query(models.Reminder).join(models.Person).filter(models.Person.user_id == vault_id(current_user))
     if person_id:
         q = q.filter(models.Reminder.person_id == person_id)
     if upcoming_only:
@@ -44,6 +44,7 @@ def create_reminder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     get_owned_person(body.person_id, db, current_user)
     reminder = models.Reminder(**body.dict())
     db.add(reminder)
@@ -56,7 +57,7 @@ def _get_owned_reminder(reminder_id: str, db: Session, current_user: models.User
     r = (
         db.query(models.Reminder)
         .join(models.Person)
-        .filter(models.Reminder.id == reminder_id, models.Person.user_id == current_user.id)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(current_user))
         .first()
     )
     if not r:
@@ -71,6 +72,7 @@ def update_reminder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     r = _get_owned_reminder(reminder_id, db, current_user)
     for field, value in body.dict(exclude_unset=True).items():
         setattr(r, field, value)
@@ -87,6 +89,7 @@ def complete_reminder(
 ):
     """Mark a reminder done. If it repeats, advances remind_at to the next occurrence
     and keeps it active; one-shot reminders get deactivated."""
+    require_owner(current_user)
     r = _get_owned_reminder(reminder_id, db, current_user)
     nxt = _next_occurrence(r.remind_at, r.repeat_rule)
     if nxt is not None:
@@ -105,6 +108,49 @@ def delete_reminder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     r = _get_owned_reminder(reminder_id, db, current_user)
     db.delete(r)
     db.commit()
+
+
+@router.post("/dispatch")
+def dispatch_due_reminders(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Push due reminders to registered Android devices (FCM). Call from a Pi cron,
+    e.g. every 5 minutes. If FCM_SERVER_KEY is unset this still returns the due
+    list so a local scheduler can fire notifications without polling the API from
+    the phone every few seconds."""
+    from datetime import datetime
+    from app.push import send_fcm
+
+    now = datetime.utcnow()
+    due = (
+        db.query(models.Reminder)
+        .join(models.Person)
+        .filter(
+            models.Person.user_id == vault_id(current_user),
+            models.Reminder.is_active == True,  # noqa: E712
+            models.Reminder.remind_at <= now,
+        )
+        .all()
+    )
+    tokens = (
+        db.query(models.DeviceToken)
+        .filter(models.DeviceToken.user_id.in_([current_user.id, vault_id(current_user)]))
+        .all()
+    )
+    sent = 0
+    payload = []
+    for rem in due:
+        payload.append({
+            "id": rem.id, "title": rem.title, "description": rem.description,
+            "remind_at": rem.remind_at.isoformat() if hasattr(rem.remind_at, "isoformat") else str(rem.remind_at),
+            "repeat_rule": rem.repeat_rule.value,
+        })
+        for tok in tokens:
+            if send_fcm(tok.token, rem.title, rem.description or ""):
+                sent += 1
+    return {"due": payload, "pushed": sent}

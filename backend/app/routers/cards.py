@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crypto
-from app.deps import get_current_user, get_owned_person
+from app.deps import get_current_user, get_owned_person, require_owner, vault_id
 
 router = APIRouter(prefix="/cards", tags=["cards"])
 
@@ -30,7 +30,7 @@ def list_cards(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    q = db.query(models.HospitalCard).join(models.Person).filter(models.Person.user_id == current_user.id)
+    q = db.query(models.HospitalCard).join(models.Person).filter(models.Person.user_id == vault_id(current_user))
     if person_id:
         q = q.filter(models.HospitalCard.person_id == person_id)
     return [_to_out(c) for c in q.order_by(models.HospitalCard.created_at.desc()).all()]
@@ -42,6 +42,7 @@ def create_card(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     get_owned_person(body.person_id, db, current_user)  # 404s if not owned
 
     card = models.HospitalCard(
@@ -55,6 +56,23 @@ def create_card(
         notes_enc=crypto.encrypt_text(body.notes),
     )
     db.add(card)
+    db.flush()
+    if body.valid_till:
+        from datetime import datetime, timedelta
+        try:
+            expiry = datetime.strptime(body.valid_till, "%Y-%m-%d")
+            remind = (expiry - timedelta(days=7)).replace(hour=9, minute=0, second=0, microsecond=0)
+            if remind <= datetime.utcnow():
+                remind = datetime.utcnow() + timedelta(minutes=5)
+            db.add(models.Reminder(
+                person_id=body.person_id,
+                title=f"{body.hospital_name} card expires",
+                description=f"Renew before {body.valid_till}",
+                remind_at=remind,
+                repeat_rule=models.RepeatRule.none,
+            ))
+        except ValueError:
+            pass
     db.commit()
     db.refresh(card)
     return _to_out(card)
@@ -64,7 +82,7 @@ def _get_owned_card(card_id: str, db: Session, current_user: models.User) -> mod
     card = (
         db.query(models.HospitalCard)
         .join(models.Person)
-        .filter(models.HospitalCard.id == card_id, models.Person.user_id == current_user.id)
+        .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(current_user))
         .first()
     )
     if not card:
@@ -79,6 +97,7 @@ def update_card(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     card = _get_owned_card(card_id, db, current_user)
     data = body.dict(exclude_unset=True)
     if "patient_id" in data:
@@ -98,6 +117,7 @@ def delete_card(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    require_owner(current_user)
     card = _get_owned_card(card_id, db, current_user)
     db.delete(card)
     db.commit()

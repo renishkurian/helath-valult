@@ -31,6 +31,10 @@ class Settings:
     # --- CORS ---
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
 
+    # Optional FCM server key so /reminders/dispatch can push to Android.
+    # Leave empty to rely on on-device AlarmManager notifications only.
+    FCM_SERVER_KEY: str = os.getenv("FCM_SERVER_KEY", "")
+
 settings = Settings()
 settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 

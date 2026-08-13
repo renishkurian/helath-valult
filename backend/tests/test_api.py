@@ -93,7 +93,7 @@ def test_document_upload_download_is_encrypted_on_disk():
     person_id = client.get("/people", headers=headers).json()[0]["id"]
 
     payload = b"confidential lab result data"
-    files = {"file": ("report.txt", payload, "text/plain")}
+    files = {"files": ("report.txt", payload, "text/plain")}
     form = {"person_id": person_id, "category": "lab_report", "title": "CBC Report"}
     r = client.post("/documents", data=form, files=files, headers=headers)
     assert r.status_code == 201
@@ -172,3 +172,93 @@ def test_health_endpoint():
     r = client.get("/health")
     assert r.status_code == 200
     assert r.json() == {"status": "ok"}
+
+
+def test_viewer_role_is_read_only():
+    owner = _register("owner@example.com", "password123", "Vault Owner")
+    headers = _auth_headers(owner["access_token"])
+    person_id = client.get("/people", headers=headers).json()[0]["id"]
+
+    r = client.post(
+        "/auth/invite",
+        json={"email": "spouse@example.com", "password": "password123", "full_name": "Spouse Viewer"},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    assert r.json()["role"] == "viewer"
+
+    login = client.post("/auth/login", data={"username": "spouse@example.com", "password": "password123"})
+    vheaders = _auth_headers(login.json()["access_token"])
+
+    people = client.get("/people", headers=vheaders).json()
+    assert any(p["id"] == person_id for p in people)
+
+    r = client.post("/people", json={"name": "Should Fail", "relation": "child"}, headers=vheaders)
+    assert r.status_code == 403
+
+
+def test_ocr_text_is_searchable_and_labs_parse():
+    data = _register("ocr@example.com", "password123", "Ocr User")
+    headers = _auth_headers(data["access_token"])
+    person_id = client.get("/people", headers=headers).json()[0]["id"]
+
+    payload = b"Lab report\nGlucose 142 mg/dL\nHbA1c 6.4\nCholesterol 190\nBP 128/82\n"
+    files = {"files": ("labs.txt", payload, "text/plain")}
+    form = {"person_id": person_id, "category": "lab_report", "title": "Annual labs", "doc_date": "2026-08-01"}
+    r = client.post("/documents", data=form, files=files, headers=headers)
+    assert r.status_code == 201, r.text
+    doc_id = r.json()["id"]
+
+    r = client.get(f"/documents/{doc_id}", headers=headers)
+    assert "Glucose 142" in (r.json().get("extracted_text") or "")
+
+    r = client.get("/search?q=Glucose", headers=headers)
+    assert any(d["id"] == doc_id for d in r.json()["documents"])
+
+    r = client.get(f"/labs/trends?person_id={person_id}", headers=headers)
+    assert r.status_code == 200
+    metrics = {t["metric"] for t in r.json()}
+    assert "glucose" in metrics
+    assert "hba1c" in metrics
+    assert "bp_sys" in metrics
+
+
+def test_share_link_public_view():
+    data = _register("share@example.com", "password123", "Share User")
+    headers = _auth_headers(data["access_token"])
+    person_id = client.get("/people", headers=headers).json()[0]["id"]
+    files = {"files": ("card.txt", b"insurance card", "text/plain")}
+    form = {"person_id": person_id, "category": "insurance", "title": "Star Health"}
+    doc_id = client.post("/documents", data=form, files=files, headers=headers).json()["id"]
+
+    r = client.post("/share", json={"document_id": doc_id, "expires_in_hours": 4}, headers=headers)
+    assert r.status_code == 201
+    token = r.json()["token"]
+
+    public = client.get(f"/share/public/{token}")
+    assert public.status_code == 200
+    assert public.json()["title"] == "Star Health"
+
+
+def test_encrypted_backup_roundtrip():
+    data = _register("backup@example.com", "password123", "Backup User")
+    headers = _auth_headers(data["access_token"])
+    person_id = client.get("/people", headers=headers).json()[0]["id"]
+    files = {"files": ("note.txt", b"keep me", "text/plain")}
+    form = {"person_id": person_id, "category": "other", "title": "Keep"}
+    assert client.post("/documents", data=form, files=files, headers=headers).status_code == 201
+
+    r = client.get("/backup/export?password=secret-pass", headers=headers)
+    assert r.status_code == 200
+    blob = r.content
+    assert blob.startswith(b"HV1\0")
+
+    r = client.post(
+        "/backup/restore",
+        headers=headers,
+        files={"file": ("vault.hvbak", blob, "application/octet-stream")},
+        data={"password": "secret-pass"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["ok"] is True
+

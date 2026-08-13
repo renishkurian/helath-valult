@@ -17,6 +17,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -38,7 +41,8 @@ fun HomeScreen(
     onAddDocument: (String) -> Unit,
     onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    isViewer: Boolean = false
 ) {
     val viewModel: HomeViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
@@ -78,9 +82,11 @@ fun HomeScreen(
                 onAddDocument = { onAddDocument(activeId) },
                 onOpenDocument = onOpenDocument,
                 onAddCard = onAddCard,
-                onOpenSettings = onOpenSettings
+                onOpenSettings = onOpenSettings,
+                isViewer = isViewer
             )
 
+            if (!isViewer) {
             FloatingActionButton(
                 onClick = { onAddDocument(state.activePerson?.id.orEmpty()) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp).size(64.dp),
@@ -93,6 +99,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = "Add document", tint = TextWhite, modifier = Modifier.size(32.dp))
                 }
+            }
             }
         }
     }
@@ -107,7 +114,8 @@ private fun LazyColumnContent(
     onAddDocument: () -> Unit,
     onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    isViewer: Boolean = false
 ) {
     androidx.compose.foundation.lazy.LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -184,10 +192,14 @@ private fun LazyColumnContent(
             }
         }
 
-        if (state.expiringCards.isNotEmpty()) {
+        if (state.expiringCards.isNotEmpty() || state.expiringDocuments.isNotEmpty()) {
             item {
                 state.expiringCards.forEach { card ->
-                    ExpiryAlert(hospitalName = card.hospital_name, validTill = card.valid_till)
+                    ExpiryAlert(label = "${card.hospital_name} card", validTill = card.valid_till)
+                    Spacer(Modifier.height(12.dp))
+                }
+                state.expiringDocuments.forEach { doc ->
+                    ExpiryAlert(label = doc.title, validTill = doc.expiry_date)
                     Spacer(Modifier.height(12.dp))
                 }
                 Spacer(Modifier.height(10.dp))
@@ -206,7 +218,7 @@ private fun LazyColumnContent(
                         onOpenFolder(def.category, def.customCategory)
                     }
                 }
-                item {
+                if (!isViewer) item {
                     Column(
                         modifier = Modifier
                             .width(110.dp)
@@ -239,6 +251,18 @@ private fun LazyColumnContent(
                 }
             }
             Spacer(Modifier.height(28.dp))
+        }
+
+        if (state.labTrends.isNotEmpty()) {
+            item {
+                SectionHead("Lab trends", "from reports")
+                Spacer(Modifier.height(12.dp))
+                state.labTrends.take(4).forEach { trend ->
+                    LabTrendCard(trend)
+                    Spacer(Modifier.height(10.dp))
+                }
+                Spacer(Modifier.height(18.dp))
+            }
         }
 
         item {
@@ -325,7 +349,45 @@ private fun EmptyCardPrompt(onAddCard: () -> Unit) {
 }
 
 @Composable
-private fun ExpiryAlert(hospitalName: String, validTill: String?) {
+private fun LabTrendCard(trend: com.rklab.healthvault.data.model.LabTrend) {
+    val points = trend.points.map { it.value }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(White)
+            .padding(16.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(trend.metric.replace('_', ' '), style = MaterialTheme.typography.titleSmall, color = Ink)
+            Text(
+                buildString {
+                    append(points.lastOrNull()?.let { "%.1f".format(it) } ?: "—")
+                    if (!trend.unit.isNullOrBlank()) append(" ${trend.unit}")
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = Navy
+            )
+        }
+        if (points.size >= 2) {
+            Spacer(Modifier.height(10.dp))
+            val min = points.min()
+            val max = points.max().let { if (it == min) it + 1 else it }
+            Canvas(modifier = Modifier.fillMaxWidth().height(56.dp)) {
+                val path = Path()
+                points.forEachIndexed { i, v ->
+                    val x = size.width * i / (points.size - 1).coerceAtLeast(1)
+                    val y = size.height - ((v - min) / (max - min)).toFloat() * size.height
+                    if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
+                drawPath(path, color = Navy, style = Stroke(width = 4f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpiryAlert(label: String, validTill: String?) {
     val daysLeft = remember(validTill) {
         try {
             ChronoUnit.DAYS.between(LocalDate.now(), LocalDate.parse(validTill, DateTimeFormatter.ISO_DATE))
@@ -344,8 +406,8 @@ private fun ExpiryAlert(hospitalName: String, validTill: String?) {
         Spacer(Modifier.width(12.dp))
         Text(
             buildString {
-                append(hospitalName)
-                append(" card ")
+                append(label)
+                append(" ")
                 append(if (daysLeft != null) "expires in $daysLeft days" else "is expiring soon")
             },
             style = MaterialTheme.typography.bodyMedium,

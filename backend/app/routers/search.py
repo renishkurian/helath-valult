@@ -4,8 +4,8 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app import models, schemas, crypto
-from app.deps import get_current_user
+from app import models, schemas
+from app.deps import get_current_user, vault_id
 from app.routers.cards import _to_out as card_to_out
 from app.routers.documents import _to_out as doc_to_out
 
@@ -20,11 +20,12 @@ def search(
     current_user: models.User = Depends(get_current_user),
 ):
     like = f"%{q}%"
+    owner = vault_id(current_user)
 
     card_q = (
         db.query(models.HospitalCard)
         .join(models.Person)
-        .filter(models.Person.user_id == current_user.id)
+        .filter(models.Person.user_id == owner)
         .filter(
             or_(
                 models.HospitalCard.hospital_name.ilike(like),
@@ -35,11 +36,14 @@ def search(
     doc_q = (
         db.query(models.Document)
         .join(models.Person)
-        .filter(models.Person.user_id == current_user.id)
+        .filter(models.Person.user_id == owner)
         .filter(
             or_(
                 models.Document.title.ilike(like),
                 models.Document.hospital_name.ilike(like),
+                models.Document.tags.ilike(like),
+                models.Document.custom_category.ilike(like),
+                models.Document.extracted_text.ilike(like),
             )
         )
     )
