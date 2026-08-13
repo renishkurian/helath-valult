@@ -58,8 +58,17 @@ class HealthVaultRepository(
     suspend fun testServerConnection(url: String): Result<Unit> = serverConfig.testConnection(url)
 
     // ---------- Auth ----------
+    class TotpNeeded(val totpToken: String) : Exception("TOTP_REQUIRED")
+
     suspend fun login(email: String, password: String) {
         val res = api.login(email, password)
+        if (res.totp_required) throw TotpNeeded(res.totp_token.orEmpty())
+        tokenManager.saveTokens(res.access_token, res.refresh_token)
+        runCatching { me() }
+    }
+
+    suspend fun verifyTotp(totpToken: String, code: String) {
+        val res = api.totpVerify(TotpVerifyIn(totpToken, code))
         tokenManager.saveTokens(res.access_token, res.refresh_token)
         runCatching { me() }
     }
@@ -79,6 +88,7 @@ class HealthVaultRepository(
             db.documentDao().deleteAll()
             db.reminderDao().deleteAll()
             db.pendingUploadDao().deleteAll()
+            com.rklab.healthvault.data.VaultAutofillStore.clear(appContext)
         }
     }
 
@@ -88,8 +98,93 @@ class HealthVaultRepository(
         return user
     }
 
-    suspend fun inviteViewer(email: String, password: String, fullName: String) =
-        api.inviteViewer(InviteViewerRequest(email, password, fullName))
+    suspend fun inviteViewer(email: String, password: String, fullName: String, personIds: List<String> = emptyList()) =
+        api.inviteViewer(InviteViewerRequest(email, password, fullName, personIds))
+
+    suspend fun totpSetup() = api.totpSetup()
+    suspend fun totpEnable(code: String) = api.totpEnable(TotpVerifyIn(code = code))
+    suspend fun updatePerson(id: String, update: PersonUpdate) = api.updatePerson(id, update)
+    suspend fun enableIce(personId: String) = api.enableIce(personId)
+    suspend fun createSharePack(title: String, documentIds: List<String>, pin: String? = null, hours: Int = 48) =
+        api.createSharePack(SharePackCreate(title, documentIds, hours, pin = pin))
+    suspend fun listSharePacks() = api.listSharePacks()
+    suspend fun revokeSharePack(id: String) = api.revokeSharePack(id)
+    suspend fun listMedicines(personId: String) = api.listMedicines(personId)
+    suspend fun addMedicine(body: MedicineIn) = api.addMedicine(body)
+    suspend fun deleteMedicine(id: String) = api.deleteMedicine(id)
+    suspend fun listVaccinations(personId: String) = api.listVaccinations(personId)
+    suspend fun addVaccination(body: VaccinationIn) = api.addVaccination(body)
+    suspend fun listVisits(personId: String) = api.listVisits(personId)
+    suspend fun addVisit(body: VisitIn) = api.addVisit(body)
+    suspend fun listClaims(personId: String) = api.listClaims(personId)
+    suspend fun addClaim(body: ClaimIn) = api.addClaim(body)
+    suspend fun yearlySpend(personId: String) = api.yearlySpend(personId)
+    suspend fun listDoctors() = api.listDoctors()
+    suspend fun addDoctor(body: DoctorIn) = api.addDoctor(body)
+    suspend fun listGrowth(personId: String) = api.listGrowth(personId)
+    suspend fun addGrowth(body: GrowthIn) = api.addGrowth(body)
+    suspend fun listUhids(personId: String) = api.listUhids(personId)
+    suspend fun addUhid(body: UhidIn) = api.addUhid(body)
+    suspend fun timeline(personId: String) = api.timeline(personId)
+    suspend fun storageStats() = api.storageStats()
+
+    // ---------- Password Vault ----------
+    suspend fun listVaultFolders() = api.listVaultFolders()
+    suspend fun createVaultFolder(name: String) = api.createVaultFolder(VaultFolderIn(name))
+    suspend fun deleteVaultFolder(id: String) = api.deleteVaultFolder(id)
+    suspend fun listVaultItems(
+        q: String? = null,
+        itemType: String? = null,
+        folderId: String? = null,
+        favorite: Boolean = false
+    ): List<VaultItemOut> {
+        val items = api.listVaultItems(q, itemType, folderId, favorite)
+        com.rklab.healthvault.data.VaultAutofillStore.save(appContext, items)
+        return items
+    }
+    suspend fun createVaultItem(body: VaultItemIn): VaultItemOut {
+        val item = api.createVaultItem(body)
+        runCatching { listVaultItems() }
+        return item
+    }
+    suspend fun getVaultItem(id: String) = api.getVaultItem(id)
+    suspend fun updateVaultItem(id: String, body: VaultItemUpdate): VaultItemOut {
+        val item = api.updateVaultItem(id, body)
+        runCatching { listVaultItems() }
+        return item
+    }
+    suspend fun trashVaultItem(id: String) {
+        api.trashVaultItem(id)
+        runCatching { listVaultItems() }
+    }
+    suspend fun restoreVaultItem(id: String) = api.restoreVaultItem(id)
+    suspend fun deleteVaultItemForever(id: String) = api.deleteVaultItemForever(id)
+    suspend fun favoriteVaultItem(id: String) = api.favoriteVaultItem(id)
+    suspend fun unfavoriteVaultItem(id: String) = api.unfavoriteVaultItem(id)
+    suspend fun vaultItemTotp(id: String) = api.vaultItemTotp(id)
+    suspend fun vaultItemHistory(id: String) = api.vaultItemHistory(id)
+    suspend fun generatePassword(body: VaultGenerateIn = VaultGenerateIn()) = api.generatePassword(body)
+    suspend fun vaultHealth() = api.vaultHealth()
+    suspend fun listVaultTrash() = api.listVaultTrash()
+    suspend fun emptyVaultTrash() = api.emptyVaultTrash()
+    suspend fun listVaultSends() = api.listVaultSends()
+    suspend fun createVaultSend(body: VaultSendCreate) = api.createVaultSend(body)
+    suspend fun revokeVaultSend(id: String) = api.revokeVaultSend(id)
+    suspend fun labAlerts(personId: String) = api.labAlerts(personId)
+    suspend fun favoriteDocument(id: String) = api.favoriteDocument(id)
+    suspend fun unfavoriteDocument(id: String) = api.unfavoriteDocument(id)
+    suspend fun bulkDeleteDocuments(ids: List<String>) = api.bulkDeleteDocuments(BulkIds(ids))
+    suspend fun bulkTagDocuments(ids: List<String>, tags: String) = api.bulkTagDocuments(BulkIds(ids, tags))
+    suspend fun recentDocuments() = api.recentDocuments()
+    suspend fun listDocumentsFiltered(
+        personId: String?,
+        category: DocCategory? = null,
+        year: String? = null,
+        hospital: String? = null,
+        tag: String? = null,
+        expiring: Boolean = false,
+        favorite: Boolean = false
+    ) = api.listDocuments(personId, category?.name?.lowercase(), tag, year, hospital, expiring, favorite)
 
     suspend fun listVaultMembers() = api.listVaultMembers()
 
@@ -288,10 +383,12 @@ class HealthVaultRepository(
     }
 
     // ---------- Share links ----------
-    suspend fun createShareLink(documentId: String, expiresInHours: Int = 48, maxViews: Int? = null) =
-        api.createShareLink(com.rklab.healthvault.data.model.ShareLinkCreate(documentId, expiresInHours, maxViews))
+    suspend fun createShareLink(documentId: String, expiresInHours: Int = 48, maxViews: Int? = null, pin: String? = null) =
+        api.createShareLink(com.rklab.healthvault.data.model.ShareLinkCreate(documentId, expiresInHours, maxViews, pin))
 
-    suspend fun listMyShareLinks() = api.listMyShareLinks()
+    suspend fun listMyShareLinks(documentId: String? = null) = api.listMyShareLinks(documentId)
+
+    suspend fun getShareLink(id: String) = api.getShareLink(id)
 
     suspend fun revokeShareLink(id: String) = api.revokeShareLink(id)
 

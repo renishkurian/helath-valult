@@ -12,6 +12,10 @@ import com.rklab.healthvault.data.model.DocCategory
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.components.HealthVaultBottomNav
 import com.rklab.healthvault.ui.components.MainTab
+import com.rklab.healthvault.ui.components.PasswordTab
+import com.rklab.healthvault.ui.components.PasswordVaultBottomNav
+import com.rklab.healthvault.ui.screens.passwords.*
+import com.rklab.healthvault.ui.screens.shell.ModulePickerScreen
 import com.rklab.healthvault.ui.screens.cards.CardListScreen
 import com.rklab.healthvault.ui.screens.documents.DocumentListScreen
 import com.rklab.healthvault.ui.screens.documents.UploadDocumentScreen
@@ -27,12 +31,27 @@ import kotlinx.coroutines.flow.first
 private object Routes {
     const val SERVER_SETUP = "server_setup"
     const val LOGIN = "login"
+    const val MODULES = "modules"
     const val HOME = "home"
+    const val VAULT = "vault"
+    const val VAULT_GENERATOR = "vault_generator"
+    const val VAULT_HEALTH = "vault_health"
+    const val VAULT_SENDS = "vault_sends?itemId={itemId}"
+    const val VAULT_TRASH = "vault_trash"
+    const val VAULT_ITEM = "vault_item/{itemId}"
+    const val VAULT_EDIT = "vault_edit?itemId={itemId}&type={type}"
+
+    fun vaultSends(itemId: String? = null) = "vault_sends?itemId=${itemId ?: ""}"
+    fun vaultItem(itemId: String) = "vault_item/$itemId"
+    fun vaultEdit(itemId: String? = null, type: String = "login") =
+        "vault_edit?itemId=${itemId ?: ""}&type=$type"
     const val SEARCH = "search"
     const val REMINDERS = "reminders"
+    const val CARE = "care"
     const val FAMILY = "family"
     const val SETTINGS = "settings"
     const val AUDIT = "audit"
+    const val SHARES = "shares"
     const val CARDS = "cards/{personId}/{personName}"
     const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}"
     const val UPLOAD = "upload/{personId}?category={category}&camera={camera}"
@@ -59,7 +78,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
         startDestination = when {
             !repository.isServerConfigured() -> Routes.SERVER_SETUP
             !repository.isLoggedIn -> Routes.LOGIN
-            else -> Routes.HOME
+            else -> Routes.MODULES
         }
         if (repository.isLoggedIn) {
             runCatching { repository.me() }
@@ -71,13 +90,35 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val mainTabs = setOf(Routes.HOME, Routes.SEARCH, Routes.REMINDERS, Routes.FAMILY)
+    val mainTabs = setOf(Routes.HOME, Routes.SEARCH, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
+    val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
 
     Scaffold(
         bottomBar = {
-            if (currentRoute in mainTabs) {
+            if (currentRoute in passwordTabs || currentRoute?.startsWith("vault_sends") == true) {
+                val current = when {
+                    currentRoute == Routes.VAULT_GENERATOR -> PasswordTab.GENERATOR
+                    currentRoute == Routes.VAULT_HEALTH -> PasswordTab.HEALTH
+                    currentRoute?.startsWith("vault_sends") == true -> PasswordTab.SEND
+                    else -> PasswordTab.VAULT
+                }
+                PasswordVaultBottomNav(current = current) { tab ->
+                    val route = when (tab) {
+                        PasswordTab.VAULT -> Routes.VAULT
+                        PasswordTab.GENERATOR -> Routes.VAULT_GENERATOR
+                        PasswordTab.SEND -> Routes.vaultSends()
+                        PasswordTab.HEALTH -> Routes.VAULT_HEALTH
+                    }
+                    navController.navigate(route) {
+                        popUpTo(Routes.VAULT) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in mainTabs) {
                 val current = when (currentRoute) {
                     Routes.SEARCH -> MainTab.SEARCH
+                    Routes.CARE -> MainTab.CARE
                     Routes.REMINDERS -> MainTab.REMINDERS
                     Routes.FAMILY -> MainTab.FAMILY
                     else -> MainTab.HOME
@@ -86,6 +127,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     val route = when (tab) {
                         MainTab.HOME -> Routes.HOME
                         MainTab.SEARCH -> Routes.SEARCH
+                        MainTab.CARE -> Routes.CARE
                         MainTab.REMINDERS -> Routes.REMINDERS
                         MainTab.FAMILY -> Routes.FAMILY
                     }
@@ -105,7 +147,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
         ) {
             composable(Routes.SERVER_SETUP) {
                 ServerSetupScreen(repository = repository) {
-                    val next = if (repository.isLoggedIn) Routes.HOME else Routes.LOGIN
+                    val next = if (repository.isLoggedIn) Routes.MODULES else Routes.LOGIN
                     navController.navigate(next) { popUpTo(Routes.SERVER_SETUP) { inclusive = true } }
                 }
             }
@@ -116,7 +158,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     onAuthenticated = {
                         isViewer = repository.isViewer
                         com.rklab.healthvault.util.ReminderScheduler.rescheduleAll(context)
-                        navController.navigate(Routes.HOME) { popUpTo(Routes.LOGIN) { inclusive = true } }
+                        navController.navigate(Routes.MODULES) { popUpTo(Routes.LOGIN) { inclusive = true } }
                     },
                     onChangeServer = { navController.navigate(Routes.SERVER_SETUP) }
                 )
@@ -129,7 +171,81 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     onLoggedOut = {
                         navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } }
                     },
-                    onOpenAuditLog = { navController.navigate(Routes.AUDIT) }
+                    onOpenAuditLog = { navController.navigate(Routes.AUDIT) },
+                    onOpenShareHistory = { navController.navigate(Routes.SHARES) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) { popUpTo(Routes.MODULES) { inclusive = false } } }
+                )
+            }
+
+            composable(Routes.MODULES) {
+                ModulePickerScreen(
+                    onHealth = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onPasswords = {
+                        navController.navigate(Routes.VAULT) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onSettings = { navController.navigate(Routes.SETTINGS) }
+                )
+            }
+
+            composable(Routes.VAULT) {
+                VaultListScreen(
+                    repository = repository,
+                    onOpenItem = { navController.navigate(Routes.vaultItem(it)) },
+                    onAddItem = { type -> navController.navigate(Routes.vaultEdit(type = type)) },
+                    onOpenTrash = { navController.navigate(Routes.VAULT_TRASH) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.VAULT_GENERATOR) { GeneratorScreen(repository) }
+            composable(Routes.VAULT_HEALTH) {
+                VaultHealthScreen(repository) { navController.navigate(Routes.vaultItem(it)) }
+            }
+            composable(
+                Routes.VAULT_SENDS,
+                arguments = listOf(navArgument("itemId") { type = NavType.StringType; nullable = true; defaultValue = "" })
+            ) { entry ->
+                val itemId = entry.arguments?.getString("itemId")?.takeIf { it.isNotBlank() }
+                VaultSendsScreen(repository, prefillItemId = itemId)
+            }
+            composable(Routes.VAULT_TRASH) {
+                VaultTrashScreen(repository, onBack = { navController.popBackStack() })
+            }
+            composable(
+                Routes.VAULT_ITEM,
+                arguments = listOf(navArgument("itemId") { type = NavType.StringType })
+            ) { entry ->
+                val itemId = entry.arguments?.getString("itemId").orEmpty()
+                VaultItemScreen(
+                    repository = repository,
+                    itemId = itemId,
+                    onBack = { navController.popBackStack() },
+                    onEdit = { navController.navigate(Routes.vaultEdit(itemId)) },
+                    onSend = { navController.navigate(Routes.vaultSends(itemId)) }
+                )
+            }
+            composable(
+                Routes.VAULT_EDIT,
+                arguments = listOf(
+                    navArgument("itemId") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                    navArgument("type") { type = NavType.StringType; defaultValue = "login" }
+                )
+            ) { entry ->
+                val itemId = entry.arguments?.getString("itemId")?.takeIf { it.isNotBlank() }
+                val type = entry.arguments?.getString("type") ?: "login"
+                VaultEditScreen(
+                    repository = repository,
+                    itemId = itemId,
+                    defaultType = type,
+                    onDone = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
                 )
             }
 
@@ -140,10 +256,21 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 )
             }
 
+            composable(Routes.SHARES) {
+                com.rklab.healthvault.ui.screens.documents.ShareHistoryScreen(
+                    repository = repository,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
             composable(Routes.HOME) {
                 val ctx = LocalContext.current
                 LaunchedEffect(Unit) {
                     val app = ctx.applicationContext as com.rklab.healthvault.HealthVaultApp
+                    if (app.pendingOpenCare) {
+                        app.pendingOpenCare = false
+                        navController.navigate(Routes.CARE)
+                    }
                     if (app.pendingQuickAdd) {
                         app.pendingQuickAdd = false
                         val pid = repository.activePersonFlow().first()
@@ -167,6 +294,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     },
                     onAddCard = { navController.navigate(Routes.FAMILY) },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
                     isViewer = isViewer
                 )
             }
@@ -176,6 +304,10 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     repository = repository,
                     onOpenDocument = { doc -> navController.navigate(Routes.viewer(doc.id, null)) }
                 )
+            }
+
+            composable(Routes.CARE) {
+                com.rklab.healthvault.ui.screens.care.CareScreen(repository = repository)
             }
 
             composable(Routes.REMINDERS) {

@@ -41,8 +41,9 @@ class MainActivity : FragmentActivity() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
                 lifecycleScope.launch {
-                    val isEnabled = app.repository.tokenManager.isBiometricEnabled.first()
-                    if (isEnabled && app.repository.isLoggedIn) {
+                    val bio = app.repository.tokenManager.isBiometricEnabled.first()
+                    val pin = app.repository.tokenManager.hasAppPin()
+                    if ((bio || pin) && app.repository.isLoggedIn) {
                         requiresAuthFlow.value = true
                     }
                 }
@@ -52,34 +53,51 @@ class MainActivity : FragmentActivity() {
         setContent {
             val requiresAuth by requiresAuthFlow.collectAsState()
             var authState by remember { mutableStateOf<AuthState>(AuthState.Checking) }
+            var pinError by remember { mutableStateOf(false) }
+            val darkTheme by app.repository.tokenManager.isDarkTheme.collectAsState(initial = true)
+            val largeText by app.repository.tokenManager.isLargeText.collectAsState(initial = false)
 
             LaunchedEffect(requiresAuth) {
                 if (requiresAuth) {
                     authState = AuthState.Checking
-                    val isEnabled = app.repository.tokenManager.isBiometricEnabled.first()
-                    if (isEnabled && app.repository.isLoggedIn) {
-                        showBiometricPrompt { success ->
+                    val bio = app.repository.tokenManager.isBiometricEnabled.first()
+                    val pin = app.repository.tokenManager.hasAppPin()
+                    when {
+                        !app.repository.isLoggedIn -> {
+                            authState = AuthState.Authenticated
+                            requiresAuthFlow.value = false
+                        }
+                        pin -> authState = AuthState.Pin
+                        bio -> showBiometricPrompt { success ->
                             if (success) {
                                 authState = AuthState.Authenticated
                                 requiresAuthFlow.value = false
-                            } else {
-                                finish() // Close app if they cancel the lock screen
-                            }
+                            } else finish()
                         }
-                    } else {
-                        authState = AuthState.Authenticated
-                        requiresAuthFlow.value = false
+                        else -> {
+                            authState = AuthState.Authenticated
+                            requiresAuthFlow.value = false
+                        }
                     }
                 }
             }
 
-            HealthVaultTheme {
-                if (authState == AuthState.Checking) {
-                    Box(modifier = Modifier.fillMaxSize().background(Paper), contentAlignment = Alignment.Center) {
+            HealthVaultTheme(darkTheme = darkTheme, largeText = largeText) {
+                when (authState) {
+                    AuthState.Checking -> Box(modifier = Modifier.fillMaxSize().background(Paper), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Navy)
                     }
-                } else {
-                    HealthVaultNavGraph(repository = app.repository)
+                    AuthState.Pin -> com.rklab.healthvault.ui.screens.lock.PinLockScreen(
+                        error = pinError,
+                        onSubmit = { entered ->
+                            if (app.repository.tokenManager.verifyAppPin(entered)) {
+                                pinError = false
+                                authState = AuthState.Authenticated
+                                requiresAuthFlow.value = false
+                            } else pinError = true
+                        }
+                    )
+                    AuthState.Authenticated -> HealthVaultNavGraph(repository = app.repository)
                 }
             }
         }
@@ -118,14 +136,19 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun captureQuickAdd(intent: Intent?) {
+        val app = application as HealthVaultApp
         if (intent?.getBooleanExtra(EXTRA_QUICK_ADD, false) == true) {
-            (application as HealthVaultApp).pendingQuickAdd = true
+            app.pendingQuickAdd = true
+        }
+        if (intent?.getBooleanExtra(EXTRA_OPEN_CARE, false) == true) {
+            app.pendingOpenCare = true
         }
     }
 
     companion object {
         const val EXTRA_QUICK_ADD = "quick_add"
+        const val EXTRA_OPEN_CARE = "open_care"
     }
 
-    enum class AuthState { Checking, Authenticated }
+    enum class AuthState { Checking, Pin, Authenticated }
 }

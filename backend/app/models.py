@@ -61,6 +61,8 @@ class User(Base):
     role = Column(String(20), default=UserRole.owner.value, nullable=False)
     # The vault this account belongs to. Owners: vault_owner_id == id.
     vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
+    totp_secret_enc = Column(Text, nullable=True)
+    totp_enabled = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")
@@ -76,6 +78,13 @@ class Person(Base):
     dob = Column(String(20), nullable=True)  # ISO date string
     blood_group = Column(String(10), nullable=True)
     avatar_initials = Column(String(4), nullable=True)
+    allergies = Column(Text, nullable=True)
+    conditions = Column(Text, nullable=True)
+    emergency_name = Column(String(255), nullable=True)
+    emergency_phone = Column(String(40), nullable=True)
+    abha_id = Column(String(64), nullable=True)
+    ayushman_id = Column(String(64), nullable=True)
+    ice_token = Column(String(64), unique=True, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     owner = relationship("User", back_populates="people")
@@ -120,6 +129,8 @@ class Document(Base):
     tags = Column(String(500), nullable=True)  # comma-separated free-text tags, e.g. "diabetes,annual-checkup"
     version = Column(Integer, default=1, nullable=False)  # bumped on each re-upload via /versions
     extracted_text = Column(Text, nullable=True)  # OCR / PDF text, plaintext so /search can match content
+    amount = Column(String(20), nullable=True)  # bill / claim amount for yearly spend
+    pinned = Column(Boolean, default=False, nullable=False)
 
     # Legacy single-file columns — kept for backward compatibility.
     # New uploads use the DocumentFile child table instead.
@@ -145,6 +156,7 @@ class DocumentFile(Base):
     file_path = Column(String(500), nullable=False)    # path to the ENCRYPTED file on disk
     file_type = Column(String(100), nullable=True)     # original mime type
     file_size = Column(Integer, nullable=True)          # original (decrypted) size in bytes
+    content_hash = Column(String(64), nullable=True, index=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -184,10 +196,26 @@ class ShareLink(Base):
     max_views = Column(Integer, nullable=True)  # None = unlimited until expiry
     view_count = Column(Integer, default=0, nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
+    pin_hash = Column(String(255), nullable=True)
+    idle_days = Column(Integer, default=14, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
     document = relationship("Document")
+    accesses = relationship("ShareAccess", back_populates="share_link", cascade="all, delete-orphan")
+
+
+class ShareAccess(Base):
+    """One open/download of a share link — IP, browser, time, view vs download."""
+    __tablename__ = "share_accesses"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    share_link_id = Column(String(32), ForeignKey("share_links.id"), nullable=False, index=True)
+    action = Column(String(20), nullable=False, default="view")  # view | download
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    share_link = relationship("ShareLink", back_populates="accesses")
 
 
 class AuditLog(Base):
@@ -240,3 +268,257 @@ class DeviceToken(Base):
     token = Column(String(512), nullable=False, unique=True)
     platform = Column(String(20), default="android", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ViewerAccess(Base):
+    """If any rows exist for a viewer, they may only see these people."""
+    __tablename__ = "viewer_access"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    viewer_user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class RecentOpen(Base):
+    __tablename__ = "recent_opens"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=False, index=True)
+    opened_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class HospitalUhid(Base):
+    __tablename__ = "hospital_uhids"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    hospital_name = Column(String(255), nullable=False)
+    uhid = Column(String(80), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Medicine(Base):
+    __tablename__ = "medicines"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=True)
+    name = Column(String(255), nullable=False)
+    dose = Column(String(80), nullable=True)
+    timing = Column(String(120), nullable=True)
+    remaining = Column(Integer, nullable=True)
+    refill_at = Column(String(20), nullable=True)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VaccinationRecord(Base):
+    __tablename__ = "vaccinations"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=True)
+    vaccine_name = Column(String(255), nullable=False)
+    dose_number = Column(Integer, default=1, nullable=False)
+    given_on = Column(String(20), nullable=True)
+    next_due = Column(String(20), nullable=True, index=True)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Visit(Base):
+    __tablename__ = "visits"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    hospital_name = Column(String(255), nullable=True)
+    doctor_name = Column(String(255), nullable=True)
+    visit_date = Column(String(20), nullable=True, index=True)
+    reason = Column(String(255), nullable=True)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Claim(Base):
+    __tablename__ = "claims"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    visit_id = Column(String(32), ForeignKey("visits.id"), nullable=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=True)
+    insurer = Column(String(255), nullable=True)
+    claim_number = Column(String(80), nullable=True)
+    amount = Column(String(20), nullable=True)
+    status = Column(String(20), default="draft", nullable=False)  # draft/submitted/approved/rejected/paid
+    submitted_on = Column(String(20), nullable=True)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Doctor(Base):
+    __tablename__ = "doctors"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    specialty = Column(String(120), nullable=True)
+    hospital_name = Column(String(255), nullable=True)
+    phone = Column(String(40), nullable=True)
+    last_visit = Column(String(20), nullable=True)
+    notes = Column(String(500), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class GrowthReading(Base):
+    __tablename__ = "growth_readings"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    measured_at = Column(String(20), nullable=False)
+    height_cm = Column(String(20), nullable=True)
+    weight_kg = Column(String(20), nullable=True)
+    notes = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SharePack(Base):
+    __tablename__ = "share_packs"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    token = Column(String(64), unique=True, index=True, nullable=False)
+    created_by = Column(String(32), ForeignKey("users.id"), nullable=False)
+    title = Column(String(255), nullable=False, default="Shared pack")
+    pin_hash = Column(String(255), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    max_views = Column(Integer, nullable=True)
+    view_count = Column(Integer, default=0, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
+    idle_days = Column(Integer, default=14, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("SharePackItem", back_populates="pack", cascade="all, delete-orphan")
+    accesses = relationship("SharePackAccess", back_populates="pack", cascade="all, delete-orphan")
+
+
+class SharePackItem(Base):
+    __tablename__ = "share_pack_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    pack_id = Column(String(32), ForeignKey("share_packs.id"), nullable=False, index=True)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=False)
+    pack = relationship("SharePack", back_populates="items")
+
+
+class SharePackAccess(Base):
+    __tablename__ = "share_pack_accesses"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    pack_id = Column(String(32), ForeignKey("share_packs.id"), nullable=False, index=True)
+    action = Column(String(20), nullable=False, default="view")
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    pack = relationship("SharePack", back_populates="accesses")
+
+
+class VaultItemType(str, enum.Enum):
+    login = "login"
+    note = "note"
+    card = "card"
+    identity = "identity"
+
+
+class VaultFolder(Base):
+    __tablename__ = "vault_folders"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("VaultItem", back_populates="folder")
+
+
+class VaultItem(Base):
+    """Encrypted login / note / card / identity. Secrets live in *_enc columns."""
+    __tablename__ = "vault_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    folder_id = Column(String(32), ForeignKey("vault_folders.id"), nullable=True, index=True)
+    item_type = Column(String(20), default=VaultItemType.login.value, nullable=False, index=True)
+    name = Column(String(255), nullable=False, index=True)
+    favorite = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)
+
+    username = Column(String(255), nullable=True)
+    password_enc = Column(Text, nullable=True)
+    totp_secret_enc = Column(Text, nullable=True)
+    uris = Column(Text, nullable=True)  # JSON list of URIs / package names
+    notes_enc = Column(Text, nullable=True)
+
+    cardholder_name = Column(String(255), nullable=True)
+    card_brand = Column(String(40), nullable=True)
+    card_number_enc = Column(Text, nullable=True)
+    card_exp_month = Column(String(4), nullable=True)
+    card_exp_year = Column(String(8), nullable=True)
+    card_cvv_enc = Column(Text, nullable=True)
+
+    identity_title = Column(String(40), nullable=True)
+    first_name = Column(String(120), nullable=True)
+    middle_name = Column(String(120), nullable=True)
+    last_name = Column(String(120), nullable=True)
+    email = Column(String(255), nullable=True)
+    phone = Column(String(40), nullable=True)
+    address1 = Column(String(255), nullable=True)
+    address2 = Column(String(255), nullable=True)
+    city = Column(String(120), nullable=True)
+    state = Column(String(120), nullable=True)
+    postal_code = Column(String(40), nullable=True)
+    country = Column(String(80), nullable=True)
+    ssn_enc = Column(Text, nullable=True)
+    license_number_enc = Column(Text, nullable=True)
+    passport_number_enc = Column(Text, nullable=True)
+
+    password_changed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    folder = relationship("VaultFolder", back_populates="items")
+    history = relationship("VaultPasswordHistory", back_populates="item", cascade="all, delete-orphan")
+
+
+class VaultPasswordHistory(Base):
+    __tablename__ = "vault_password_history"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    item_id = Column(String(32), ForeignKey("vault_items.id"), nullable=False, index=True)
+    password_enc = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    item = relationship("VaultItem", back_populates="history")
+
+
+class VaultSend(Base):
+    """Bitwarden-style expiring share of a password or note."""
+    __tablename__ = "vault_sends"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    token = Column(String(64), unique=True, index=True, nullable=False)
+    name = Column(String(255), nullable=False)
+    send_type = Column(String(20), default="text", nullable=False)  # text | login
+    payload_enc = Column(Text, nullable=False)
+    notes_enc = Column(Text, nullable=True)
+    pin_hash = Column(String(255), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    max_views = Column(Integer, nullable=True)
+    view_count = Column(Integer, default=0, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    accesses = relationship("VaultSendAccess", back_populates="send", cascade="all, delete-orphan")
+
+
+class VaultSendAccess(Base):
+    __tablename__ = "vault_send_accesses"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    send_id = Column(String(32), ForeignKey("vault_sends.id"), nullable=False, index=True)
+    action = Column(String(20), nullable=False, default="view")
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    send = relationship("VaultSend", back_populates="accesses")

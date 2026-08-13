@@ -3,6 +3,7 @@ package com.rklab.healthvault.ui.screens.documents
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,13 +12,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -63,6 +64,9 @@ fun DocumentListScreen(
 
     // Share link state
     var docToShare by remember { mutableStateOf<DocumentOut?>(null) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var packPin by remember { mutableStateOf("") }
+    var showPackDialog by remember { mutableStateOf(false) }
     
     // Multi-file bottom sheet state
     var selectedDocForFiles by remember { mutableStateOf<DocumentOut?>(null) }
@@ -117,6 +121,19 @@ fun DocumentListScreen(
                             }
                         }
                     }) { Text("Export this person as zip", color = Navy) }
+                    if (selectedIds.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { showPackDialog = true }) { Text("Share ${selectedIds.size} as pack", color = Navy) }
+                            OutlinedButton(onClick = {
+                                scope.launch {
+                                    runCatching { repository.bulkDeleteDocuments(selectedIds.toList()) }
+                                    selectedIds = emptySet()
+                                    viewModel.load(personId, category, customCategory)
+                                }
+                            }) { Text("Delete selected", color = StampRed) }
+                        }
+                    }
                 }
 
                 if (state.error != null) {
@@ -147,87 +164,84 @@ fun DocumentListScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(White),
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(CardSurface)
+                            .border(1.dp, CardOutline, RoundedCornerShape(16.dp)),
                         contentPadding = PaddingValues(bottom = 90.dp)
                     ) {
                         items(state.documents, key = { it.id }) { doc ->
-                            val canWrite = !repository.isViewer
-                            val dismissState = rememberSwipeToDismissBoxState(
-                                confirmValueChange = { value ->
-                                    if (!canWrite) return@rememberSwipeToDismissBoxState false
-                                    if (value == SwipeToDismissBoxValue.EndToStart) {
-                                        docToDelete = doc
-                                        false // Don't dismiss immediately, wait for confirmation
-                                    } else if (value == SwipeToDismissBoxValue.StartToEnd) {
-                                        onEditDocument(doc.id)
-                                        false
+                            val isDownloading = downloadingDocId == doc.id
+                            var menuOpen by remember { mutableStateOf(false) }
+                            LedgerRow(
+                                title = doc.title,
+                                metaLine = buildString {
+                                    append(doc.doc_date ?: doc.created_at.take(10))
+                                    append(" · ")
+                                    append(doc.hospital_name ?: "—")
+                                    if (!doc.tags.isNullOrBlank()) append(" · ${doc.tags}")
+                                    if (doc.version > 1) append(" · v${doc.version}")
+                                },
+                                category = doc.category,
+                                tagLabel = if (isDownloading) "..." else if (doc.file_count > 1) "${doc.file_count} files" else "Open",
+                                onClick = {
+                                    if (selectedIds.isNotEmpty()) {
+                                        selectedIds = if (doc.id in selectedIds) selectedIds - doc.id else selectedIds + doc.id
+                                    } else if (doc.file_count > 1) {
+                                        selectedDocForFiles = doc
                                     } else {
-                                        false
+                                        openFile(doc.id, null)
                                     }
-                                }
-                            )
-
-                            SwipeToDismissBox(
-                                state = dismissState,
-                                enableDismissFromStartToEnd = canWrite,
-                                enableDismissFromEndToStart = canWrite,
-                                backgroundContent = {
-                                    val direction = dismissState.dismissDirection
-                                    if (direction == SwipeToDismissBoxValue.StartToEnd) {
-                                        Box(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .background(Navy)
-                                                .padding(horizontal = 20.dp),
-                                            contentAlignment = Alignment.CenterStart
-                                        ) {
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color.White)
-                                        }
-                                    } else {
-                                        Box(
-                                            Modifier
-                                                .fillMaxSize()
-                                                .background(Color(0xFFE53935))
-                                                .padding(horizontal = 20.dp),
-                                            contentAlignment = Alignment.CenterEnd
-                                        ) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White)
-                                        }
-                                    }
-                                }
-                            ) {
-                                val isDownloading = downloadingDocId == doc.id
-                                LedgerRow(
-                                    title = doc.title,
-                                    metaLine = buildString {
-                                        append(doc.doc_date ?: doc.created_at.take(10))
-                                        append(" · ")
-                                        append(doc.hospital_name ?: "—")
-                                        if (!doc.tags.isNullOrBlank()) append(" · ${doc.tags}")
-                                        if (doc.version > 1) append(" · v${doc.version}")
-                                    },
-                                    category = doc.category,
-                                    tagLabel = if (isDownloading) "..." else if (doc.file_count > 1) "${doc.file_count} files" else "Open",
-                                    tagColor = Sage,
-                                    tagBg = SageBg,
-                                    onClick = {
-                                        if (doc.file_count > 1) {
-                                            selectedDocForFiles = doc
-                                        } else {
-                                            openFile(doc.id, null)
-                                        }
-                                    },
-                                    trailingAction = {
-                                        if (!repository.isViewer) {
-                                            IconButton(onClick = { docToShare = doc }) {
+                                },
+                                trailingAction = {
+                                    if (!repository.isViewer) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { onEditDocument(doc.id) },
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = Navy)
+                                            }
+                                            IconButton(
+                                                onClick = { docToShare = doc },
+                                                modifier = Modifier.size(40.dp)
+                                            ) {
                                                 Icon(Icons.Filled.Share, contentDescription = "Share", tint = Navy)
+                                            }
+                                            Box {
+                                                IconButton(
+                                                    onClick = { menuOpen = true },
+                                                    modifier = Modifier.size(40.dp)
+                                                ) {
+                                                    Icon(
+                                                        Icons.Filled.MoreVert,
+                                                        contentDescription = "More",
+                                                        tint = TextGray
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = menuOpen,
+                                                    onDismissRequest = { menuOpen = false },
+                                                    containerColor = CardSurface
+                                                ) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(if (doc.id in selectedIds) "Unselect" else "Select for pack", color = TextWhite) },
+                                                        onClick = {
+                                                            menuOpen = false
+                                                            selectedIds = if (doc.id in selectedIds) selectedIds - doc.id else selectedIds + doc.id
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Delete", color = StampRed) },
+                                                        leadingIcon = { Icon(Icons.Filled.Delete, null, tint = StampRed) },
+                                                        onClick = { menuOpen = false; docToDelete = doc }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
-                                )
-                            }
-                            Divider(color = PaperDeep, thickness = 1.dp)
+                                }
+                            )
+                            Divider(color = CardOutline, thickness = 1.dp)
                         }
                     }
                 }
@@ -259,7 +273,8 @@ fun DocumentListScreen(
             if (!repository.isViewer) {
             FloatingActionButton(
                 onClick = onAddDocument,
-                containerColor = Navy, contentColor = White,
+                containerColor = Navy,
+                contentColor = TextWhite,
                 modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
             ) { Icon(Icons.Filled.Add, contentDescription = "Add document") }
             }
@@ -286,6 +301,40 @@ fun DocumentListScreen(
             dismissButton = {
                 TextButton(onClick = { docToDelete = null }) { Text("Cancel", color = Navy) }
             }
+        )
+    }
+
+    if (showPackDialog) {
+        AlertDialog(
+            onDismissRequest = { showPackDialog = false },
+            title = { Text("Share pack") },
+            text = {
+                Column {
+                    Text("${selectedIds.size} documents. Recipients open one link.")
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(packPin, { packPin = it.filter(Char::isDigit).take(8) }, label = { Text("Optional PIN") })
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        try {
+                            val pack = repository.createSharePack("Hospital pack", selectedIds.toList(), packPin.ifBlank { null })
+                            val url = "${repository.getServerUrl()?.trimEnd('/')}/p/${pack.token}"
+                            val uri = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_TEXT, url)
+                            }
+                            context.startActivity(android.content.Intent.createChooser(uri, "Share pack"))
+                            showPackDialog = false
+                            selectedIds = emptySet()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) { Text("Create & share", color = Navy) }
+            },
+            dismissButton = { TextButton(onClick = { showPackDialog = false }) { Text("Cancel") } }
         )
     }
 

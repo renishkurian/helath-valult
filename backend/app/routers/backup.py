@@ -96,6 +96,29 @@ def export_backup(
     )
 
 
+@router.post("/snapshot")
+def snapshot_to_disk(
+    password: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Write an encrypted backup into BACKUP_DIR (USB / Syncthing folder)."""
+    require_owner(current_user)
+    if not settings.BACKUP_DIR:
+        raise HTTPException(status_code=400, detail="BACKUP_DIR is not set on the server")
+    settings.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(current_user)).all()
+    blob = _build_zip(people)
+    if password:
+        blob = crypto.encrypt_backup(blob, password)
+        name = f"healthvault-{datetime.utcnow().strftime('%Y%m%d-%H%M')}.hvbak"
+    else:
+        name = f"healthvault-{datetime.utcnow().strftime('%Y%m%d-%H%M')}.zip"
+    dest = settings.BACKUP_DIR / name
+    dest.write_bytes(blob)
+    return {"ok": True, "path": str(dest), "bytes": len(blob)}
+
+
 @router.post("/restore")
 async def restore_backup(
     file: UploadFile = File(...),

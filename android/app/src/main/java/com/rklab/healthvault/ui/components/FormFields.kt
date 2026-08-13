@@ -1,15 +1,27 @@
 package com.rklab.healthvault.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import com.rklab.healthvault.ui.theme.Navy
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+private fun parseDateMillis(value: String): Long? {
+    if (value.isBlank()) return null
+    return try {
+        LocalDate.parse(value).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+    } catch (_: Exception) {
+        null
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,17 +32,13 @@ fun DatePickerField(
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = if (value.isNotBlank()) {
-            try {
-                java.time.LocalDate.parse(value).atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-            } catch (e: Exception) {
-                null
-            }
-        } else null
-    )
 
     if (showDialog) {
+        val initialMillis = parseDateMillis(value) ?: System.currentTimeMillis()
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialMillis,
+            initialDisplayedMonthMillis = initialMillis
+        )
         DatePickerDialog(
             onDismissRequest = { showDialog = false },
             confirmButton = {
@@ -40,32 +48,41 @@ fun DatePickerField(
                         onValueChange(date.format(DateTimeFormatter.ISO_LOCAL_DATE))
                     }
                     showDialog = false
-                }) {
-                    Text("OK")
-                }
+                }) { Text("OK", color = Navy) }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showDialog = false }) { Text("Cancel", color = Navy) }
             }
         ) {
             DatePicker(state = datePickerState)
         }
     }
 
-    OutlinedTextField(
-        value = value,
-        onValueChange = {},
-        label = { Text(label) },
-        readOnly = true,
-        trailingIcon = {
-            Icon(Icons.Filled.CalendarToday, contentDescription = "Pick date")
-        },
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable { showDialog = true }
-    )
+    // OutlinedTextField eats taps for focus, so a transparent overlay opens the calendar.
+    Box(modifier = modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            label = { Text(label) },
+            readOnly = true,
+            enabled = false,
+            trailingIcon = {
+                Icon(Icons.Filled.CalendarToday, contentDescription = "Pick date")
+            },
+            colors = OutlinedTextFieldDefaults.colors(
+                disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                disabledBorderColor = MaterialTheme.colorScheme.outline,
+                disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                disabledTrailingIconColor = Navy,
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Box(
+            Modifier
+                .matchParentSize()
+                .clickable { showDialog = true }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

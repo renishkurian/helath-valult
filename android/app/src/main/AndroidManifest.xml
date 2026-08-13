@@ -14,7 +14,7 @@
     <application
         android:name=".HealthVaultApp"
         android:allowBackup="false"
-        android:label="Health Vault"
+        android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
         android:theme="@style/Theme.HealthVault"
@@ -55,6 +55,30 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/inbox_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".widget.StatusWidgetProvider"
+            android:exported="true"
+            android:label="Health Vault care">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/status_widget_info" />
+        </receiver>
+
+        <service
+            android:name=".autofill.VaultAutofillService"
+            android:exported="true"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/autofill_service" />
+        </service>
 
         <provider
             android:name="androidx.core.content.FileProvider"

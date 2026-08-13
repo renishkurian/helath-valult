@@ -29,6 +29,7 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var fullName by remember { mutableStateOf("") }
+    var totpCode by remember { mutableStateOf("") }
 
     LaunchedEffect(state) {
         if (state is AuthUiState.Success) onAuthenticated()
@@ -41,7 +42,7 @@ fun LoginScreen(
             .padding(horizontal = 28.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        Text("HEALTH VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
         Spacer(Modifier.height(6.dp))
         Text(
             if (isRegisterMode) "Create your\naccount" else "Welcome\nback",
@@ -50,7 +51,7 @@ fun LoginScreen(
         )
         Spacer(Modifier.height(6.dp))
         Text(
-            "Your family's hospital cards, reports, and prescriptions — kept on your own server.",
+            "Health records and passwords — kept on your own server.",
             style = MaterialTheme.typography.bodyMedium,
             color = InkSoft
         )
@@ -86,6 +87,18 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
         )
 
+        if (state is AuthUiState.TotpRequired) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = totpCode,
+                onValueChange = { totpCode = it.filter(Char::isDigit).take(6) },
+                label = { Text("Authenticator code") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        }
+
         if (state is AuthUiState.Error) {
             Spacer(Modifier.height(10.dp))
             Text((state as AuthUiState.Error).message, color = StampRed, style = MaterialTheme.typography.bodySmall)
@@ -94,7 +107,9 @@ fun LoginScreen(
         Spacer(Modifier.height(20.dp))
         Button(
             onClick = {
-                if (isRegisterMode) viewModel.register(email, password, fullName)
+                val totp = state
+                if (totp is AuthUiState.TotpRequired) viewModel.verifyTotp(totp.totpToken, totpCode)
+                else if (isRegisterMode) viewModel.register(email, password, fullName)
                 else viewModel.login(email, password)
             },
             modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -104,7 +119,14 @@ fun LoginScreen(
             if (state is AuthUiState.Loading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), color = White, strokeWidth = 2.dp)
             } else {
-                Text(if (isRegisterMode) "Create account" else "Log in", color = White)
+                Text(
+                    when {
+                        state is AuthUiState.TotpRequired -> "Verify code"
+                        isRegisterMode -> "Create account"
+                        else -> "Log in"
+                    },
+                    color = White
+                )
             }
         }
 

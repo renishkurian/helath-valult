@@ -33,14 +33,16 @@ fun ShareLinkDialog(
 ) {
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var link by remember { mutableStateOf<ShareLinkOut?>(null) }
     var expiresHours by remember { mutableStateOf(48) }
+    var pin by remember { mutableStateOf("") }
     var creating by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun fullUrl(token: String): String {
         val base = repository.getServerUrl()?.trimEnd('/') ?: ""
-        return "$base/share/public/$token"
+        return "$base/s/$token"
     }
 
     AlertDialog(
@@ -60,12 +62,20 @@ fun ShareLinkDialog(
                             )
                         }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { if (it.length <= 8) pin = it.filter(Char::isDigit) },
+                        label = { Text("Optional PIN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
                     if (error != null) {
                         Spacer(Modifier.height(10.dp))
                         Text(error!!, color = StampRed, style = MaterialTheme.typography.bodySmall)
                     }
                 } else {
-                    Text("Link created — expires in $expiresHours hour(s), or after the person opens it once your Pi is offline again.")
+                    Text("Link created — expires in $expiresHours hour(s). Opens and downloads are logged (IP, browser, time) under Settings → Shared links.")
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(
                         value = fullUrl(link!!.token),
@@ -90,7 +100,7 @@ fun ShareLinkDialog(
                         error = null
                         scope.launch {
                             try {
-                                link = repository.createShareLink(doc.id, expiresHours)
+                                link = repository.createShareLink(doc.id, expiresHours, pin = pin.ifBlank { null })
                             } catch (e: Exception) {
                                 error = e.message ?: "Couldn't create link."
                             } finally {
@@ -102,9 +112,15 @@ fun ShareLinkDialog(
                 ) { Text(if (creating) "Creating…" else "Create link", color = Navy) }
             } else {
                 TextButton(onClick = {
-                    clipboard.setText(AnnotatedString(fullUrl(link!!.token)))
+                    val url = fullUrl(link!!.token)
+                    clipboard.setText(AnnotatedString(url))
+                    val ctx = context
+                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Health Vault document: $url")
+                    }, "Share via WhatsApp"))
                     onDismiss()
-                }) { Text("Copy & close", color = Navy) }
+                }) { Text("Copy & WhatsApp", color = Navy) }
             }
         },
         dismissButton = {

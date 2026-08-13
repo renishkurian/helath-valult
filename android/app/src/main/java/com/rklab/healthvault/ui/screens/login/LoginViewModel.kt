@@ -11,6 +11,7 @@ sealed class AuthUiState {
     data object Idle : AuthUiState()
     data object Loading : AuthUiState()
     data object Success : AuthUiState()
+    data class TotpRequired(val totpToken: String) : AuthUiState()
     data class Error(val message: String) : AuthUiState()
 }
 
@@ -29,6 +30,8 @@ class LoginViewModel(private val repository: HealthVaultRepository) : ViewModel(
             try {
                 repository.login(email.trim(), password)
                 _state.value = AuthUiState.Success
+            } catch (e: HealthVaultRepository.TotpNeeded) {
+                _state.value = AuthUiState.TotpRequired(e.totpToken)
             } catch (e: Exception) {
                 _state.value = AuthUiState.Error(friendlyError(e))
             }
@@ -44,6 +47,18 @@ class LoginViewModel(private val repository: HealthVaultRepository) : ViewModel(
         viewModelScope.launch {
             try {
                 repository.register(email.trim(), password, fullName.trim())
+                _state.value = AuthUiState.Success
+            } catch (e: Exception) {
+                _state.value = AuthUiState.Error(friendlyError(e))
+            }
+        }
+    }
+
+    fun verifyTotp(token: String, code: String) {
+        _state.value = AuthUiState.Loading
+        viewModelScope.launch {
+            try {
+                repository.verifyTotp(token, code)
                 _state.value = AuthUiState.Success
             } catch (e: Exception) {
                 _state.value = AuthUiState.Error(friendlyError(e))

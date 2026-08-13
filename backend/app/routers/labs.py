@@ -48,3 +48,37 @@ def lab_trends(
             ],
         ))
     return trends
+
+
+@router.get("/alerts", response_model=list[schemas.LabAlert])
+def lab_alerts(
+    person_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    trends = lab_trends(person_id, None, db, current_user)
+    alerts: list[schemas.LabAlert] = []
+    for t in trends:
+        if len(t.points) < 2:
+            continue
+        latest = t.points[-1].value
+        prev = t.points[-2].value
+        if prev == 0:
+            continue
+        if latest > prev * 1.1:
+            alerts.append(schemas.LabAlert(
+                metric=t.metric,
+                message=f"{t.metric} is up vs last reading ({prev:g} → {latest:g})",
+                latest=latest,
+                previous=prev,
+                unit=t.unit,
+            ))
+        elif latest < prev * 0.9 and t.metric in {"hdl"}:
+            alerts.append(schemas.LabAlert(
+                metric=t.metric,
+                message=f"{t.metric} dropped vs last reading ({prev:g} → {latest:g})",
+                latest=latest,
+                previous=prev,
+                unit=t.unit,
+            ))
+    return alerts

@@ -128,17 +128,17 @@ fun EditDocumentScreen(
             )
             Spacer(Modifier.height(10.dp))
 
-            OutlinedTextField(
+            com.rklab.healthvault.ui.components.DatePickerField(
+                label = "Date (optional)",
                 value = docDate,
                 onValueChange = { docDate = it },
-                label = { Text("Date (optional)") },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
+            com.rklab.healthvault.ui.components.DatePickerField(
+                label = "Expiry date (optional)",
                 value = expiryDate,
                 onValueChange = { expiryDate = it },
-                label = { Text("Expiry date (optional, YYYY-MM-DD)") },
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(10.dp))

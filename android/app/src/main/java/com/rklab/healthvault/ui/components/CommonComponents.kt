@@ -124,40 +124,52 @@ fun LedgerRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(CardSurface)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 13.dp),
+            .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(docCategoryColor(category)),
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(docCategoryColor(category).copy(alpha = 0.22f)),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 docCategoryShortLabel(category),
                 style = MaterialTheme.typography.labelSmall,
-                color = White,
-                fontWeight = FontWeight.SemiBold
+                color = docCategoryColor(category),
+                fontWeight = FontWeight.Bold
             )
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, color = Ink, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(2.dp))
-            Text(metaLine, style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextWhite,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                metaLine,
+                style = MaterialTheme.typography.labelMedium,
+                color = TextGray,
+                maxLines = 1
+            )
         }
         Box(
             modifier = Modifier
-                .clip(RoundedCornerShape(5.dp))
-                .background(tagBg)
-                .padding(horizontal = 7.dp, vertical = 3.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(SageBg)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            Text(tagLabel, style = MaterialTheme.typography.labelSmall, color = tagColor, fontWeight = FontWeight.Medium)
+            Text(tagLabel, style = MaterialTheme.typography.labelSmall, color = Sage, fontWeight = FontWeight.SemiBold)
         }
         if (trailingAction != null) {
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(2.dp))
             trailingAction()
         }
     }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,6 +43,7 @@ fun HomeScreen(
     onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenModules: () -> Unit = {},
     isViewer: Boolean = false
 ) {
     val viewModel: HomeViewModel = viewModel(factory = ViewModelFactory(repository))
@@ -83,6 +85,7 @@ fun HomeScreen(
                 onOpenDocument = onOpenDocument,
                 onAddCard = onAddCard,
                 onOpenSettings = onOpenSettings,
+                onOpenModules = onOpenModules,
                 isViewer = isViewer
             )
 
@@ -115,6 +118,7 @@ private fun LazyColumnContent(
     onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenModules: () -> Unit = {},
     isViewer: Boolean = false
 ) {
     androidx.compose.foundation.lazy.LazyColumn(
@@ -128,12 +132,22 @@ private fun LazyColumnContent(
                     style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
                     color = TextWhite
                 )
-                Box(
-                    modifier = Modifier.size(48.dp).clip(CircleShape).background(CardSurface).border(1.dp, CardOutline, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = TextGray)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier.size(48.dp).clip(CircleShape).background(CardSurface).border(1.dp, CardOutline, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(onClick = onOpenModules) {
+                            Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = TextGray)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier.size(48.dp).clip(CircleShape).background(CardSurface).border(1.dp, CardOutline, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(Icons.Filled.Settings, contentDescription = "Settings", tint = TextGray)
+                        }
                     }
                 }
             }

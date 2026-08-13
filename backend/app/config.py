@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -34,6 +35,11 @@ class Settings:
     # Optional FCM server key so /reminders/dispatch can push to Android.
     # Leave empty to rely on on-device AlarmManager notifications only.
     FCM_SERVER_KEY: str = os.getenv("FCM_SERVER_KEY", "")
+
+    # Folder Syncthing / a USB disk can watch. Empty = no on-disk snapshot.
+    BACKUP_DIR: Path | None = Path(p).resolve() if (p := os.getenv("BACKUP_DIR", "").strip()) else None
+    SHARE_IDLE_DAYS: int = int(os.getenv("SHARE_IDLE_DAYS", "14"))
+    OCR_LANGS: str = os.getenv("OCR_LANGS", "eng+mal+tam+hin")
 
 settings = Settings()
 settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)

@@ -48,6 +48,28 @@ def get_current_user(
     return user
 
 
+def visible_person_ids(db: Session, user: models.User):
+    """None = no restriction. A set means the viewer may only see those people."""
+    if not is_viewer(user):
+        return None
+    rows = (
+        db.query(models.ViewerAccess.person_id)
+        .filter(models.ViewerAccess.viewer_user_id == user.id)
+        .all()
+    )
+    if not rows:
+        return None
+    return {r[0] for r in rows}
+
+
+def apply_person_visibility(query, db: Session, user: models.User, person_column=None):
+    ids = visible_person_ids(db, user)
+    if ids is None:
+        return query
+    col = person_column if person_column is not None else models.Person.id
+    return query.filter(col.in_(ids))
+
+
 def get_owned_person(
     person_id: str,
     db: Session,
@@ -59,5 +81,8 @@ def get_owned_person(
         models.Person.user_id == vault_id(current_user),
     ).first()
     if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    allowed = visible_person_ids(db, current_user)
+    if allowed is not None and person.id not in allowed:
         raise HTTPException(status_code=404, detail="Person not found")
     return person

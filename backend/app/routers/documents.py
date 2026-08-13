@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas, crypto
 from app.config import settings
-from app.deps import get_current_user, get_owned_person, require_owner, vault_id
-from app.extract import extract_text, parse_lab_readings
+from app.deps import get_current_user, get_owned_person, require_owner, vault_id, apply_person_visibility
+from app.extract import extract_text, parse_lab_readings, enhance_scan, file_sha256
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -43,7 +43,7 @@ def _to_file_out(f: models.DocumentFile) -> schemas.DocumentFileOut:
     )
 
 
-def _to_out(doc: models.Document, include_text: bool = False) -> schemas.DocumentOut:
+def _to_out(doc: models.Document, include_text: bool = False, favorite: bool = False) -> schemas.DocumentOut:
     # Determine effective file_type / file_size:
     # Prefer the first DocumentFile row; fall back to legacy columns.
     first_file = doc.files[0] if doc.files else None
@@ -63,6 +63,9 @@ def _to_out(doc: models.Document, include_text: bool = False) -> schemas.Documen
         file_count=len(doc.files) if doc.files else (1 if doc.file_path else 0),
         notes=crypto.decrypt_text(doc.notes_enc),
         extracted_text=doc.extracted_text if include_text else None,
+        amount=doc.amount,
+        pinned=bool(doc.pinned),
+        favorite=favorite,
         created_at=doc.created_at,
     )
 
@@ -72,17 +75,38 @@ def list_documents(
     person_id: Optional[str] = None,
     category: Optional[models.DocCategory] = None,
     tag: Optional[str] = None,
+    year: Optional[str] = None,
+    hospital: Optional[str] = None,
+    expiring: bool = False,
+    favorite: bool = False,
+    pinned: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.Document).join(models.Person).filter(models.Person.user_id == vault_id(current_user))
+    q = apply_person_visibility(q, db, current_user)
     if person_id:
         q = q.filter(models.Document.person_id == person_id)
     if category:
         q = q.filter(models.Document.category == category)
     if tag:
         q = q.filter(models.Document.tags.ilike(f"%{tag}%"))
-    return [_to_out(d) for d in q.order_by(models.Document.created_at.desc()).all()]
+    if year:
+        q = q.filter(models.Document.doc_date.ilike(f"{year}%"))
+    if hospital:
+        q = q.filter(models.Document.hospital_name.ilike(f"%{hospital}%"))
+    if pinned:
+        q = q.filter(models.Document.pinned.is_(True))
+    if expiring:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        soon = (datetime.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+        q = q.filter(models.Document.expiry_date.isnot(None), models.Document.expiry_date >= today, models.Document.expiry_date <= soon)
+    fav_ids = {
+        r.document_id for r in db.query(models.Favorite).filter(models.Favorite.user_id == current_user.id).all()
+    }
+    if favorite:
+        q = q.filter(models.Document.id.in_(fav_ids or ["__none__"]))
+    return [_to_out(d, favorite=d.id in fav_ids) for d in q.order_by(models.Document.created_at.desc()).all()]
 
 
 @router.post("", response_model=schemas.DocumentOut, status_code=201)
@@ -96,6 +120,7 @@ async def upload_document(
     notes: Optional[str] = Form(None),
     expiry_date: Optional[str] = Form(None),
     tags: Optional[str] = Form(None),
+    amount: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -119,6 +144,7 @@ async def upload_document(
         doc_date=doc_date,
         expiry_date=expiry_date,
         tags=tags,
+        amount=amount,
         notes_enc=crypto.encrypt_text(notes),
         file_path="",  # legacy — no longer used for new uploads
     )
@@ -131,6 +157,8 @@ async def upload_document(
     ocr_chunks: list[str] = []
     for idx, upload in enumerate(files):
         raw = await upload.read()
+        if (upload.content_type or "").startswith("image/"):
+            raw = enhance_scan(raw, upload.content_type)
         size_mb = len(raw) / (1024 * 1024)
         if size_mb > settings.MAX_UPLOAD_MB:
             db.rollback()
@@ -150,6 +178,7 @@ async def upload_document(
             file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
             file_type=upload.content_type,
             file_size=len(raw),
+            content_hash=file_sha256(raw),
         )
         db.add(doc_file)
 
@@ -193,6 +222,96 @@ def _get_owned_document(document_id: str, db: Session, current_user: models.User
     return doc
 
 
+@router.get("/duplicates", response_model=list[schemas.DuplicateGroup])
+def list_duplicates(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    files = (
+        db.query(models.DocumentFile)
+        .join(models.Document).join(models.Person)
+        .filter(models.Person.user_id == vault_id(current_user), models.DocumentFile.content_hash.isnot(None))
+        .all()
+    )
+    grouped: dict[str, list[models.DocumentFile]] = {}
+    for f in files:
+        grouped.setdefault(f.content_hash, []).append(f)
+    return [
+        schemas.DuplicateGroup(
+            content_hash=h,
+            document_ids=list({f.document_id for f in rows}),
+            filenames=[f.original_filename for f in rows],
+        )
+        for h, rows in grouped.items() if len(rows) > 1
+    ]
+
+
+@router.get("/recent", response_model=list[schemas.DocumentOut])
+def recent_documents(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    rows = (
+        db.query(models.RecentOpen)
+        .filter(models.RecentOpen.user_id == current_user.id)
+        .order_by(models.RecentOpen.opened_at.desc())
+        .limit(20)
+        .all()
+    )
+    out = []
+    seen = set()
+    for r in rows:
+        if r.document_id in seen:
+            continue
+        seen.add(r.document_id)
+        try:
+            doc = _get_owned_document(r.document_id, db, current_user)
+        except HTTPException:
+            continue
+        out.append(_to_out(doc))
+    return out
+
+
+@router.post("/bulk/delete", status_code=204)
+def bulk_delete(body: schemas.BulkIds, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    require_owner(current_user)
+    for doc_id in body.ids:
+        try:
+            delete_document(doc_id, db, current_user)
+        except HTTPException:
+            continue
+
+
+@router.post("/bulk/tag", response_model=list[schemas.DocumentOut])
+def bulk_tag(body: schemas.BulkIds, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    require_owner(current_user)
+    tagged = []
+    extra = (body.tags or "").strip()
+    for doc_id in body.ids:
+        try:
+            doc = _get_owned_document(doc_id, db, current_user)
+        except HTTPException:
+            continue
+        existing = [t.strip() for t in (doc.tags or "").split(",") if t.strip()]
+        for t in extra.split(","):
+            t = t.strip()
+            if t and t not in existing:
+                existing.append(t)
+        doc.tags = ", ".join(existing) if existing else None
+        tagged.append(doc)
+    db.commit()
+    return [_to_out(d) for d in tagged]
+
+
+@router.post("/{document_id}/favorite", status_code=204)
+def favorite_document(document_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    _get_owned_document(document_id, db, current_user)
+    existing = db.query(models.Favorite).filter(models.Favorite.user_id == current_user.id, models.Favorite.document_id == document_id).first()
+    if not existing:
+        db.add(models.Favorite(user_id=current_user.id, document_id=document_id))
+        db.commit()
+
+
+@router.delete("/{document_id}/favorite", status_code=204)
+def unfavorite_document(document_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    db.query(models.Favorite).filter(models.Favorite.user_id == current_user.id, models.Favorite.document_id == document_id).delete()
+    db.commit()
+
+
 @router.get("/{document_id}", response_model=schemas.DocumentOut)
 def get_document(
     document_id: str,
@@ -201,8 +320,10 @@ def get_document(
 ):
     doc = _get_owned_document(document_id, db, current_user)
     _log(db, current_user, doc.id, models.AuditAction.view)
+    db.add(models.RecentOpen(user_id=current_user.id, document_id=doc.id))
     db.commit()
-    return _to_out(doc, include_text=True)
+    fav = db.query(models.Favorite).filter(models.Favorite.user_id == current_user.id, models.Favorite.document_id == doc.id).first()
+    return _to_out(doc, include_text=True, favorite=bool(fav))
 
 
 @router.put("/{document_id}", response_model=schemas.DocumentOut)
@@ -231,6 +352,10 @@ def update_document(
         doc.expiry_date = update_data.expiry_date if update_data.expiry_date != "" else None
     if update_data.tags is not None:
         doc.tags = update_data.tags if update_data.tags != "" else None
+    if update_data.amount is not None:
+        doc.amount = update_data.amount if update_data.amount != "" else None
+    if update_data.pinned is not None:
+        doc.pinned = update_data.pinned
 
     db.commit()
     db.refresh(doc)
@@ -476,8 +601,13 @@ def delete_document(
             if p.exists():
                 p.unlink()
         db.delete(v)
+    share_ids = [row.id for row in db.query(models.ShareLink).filter(models.ShareLink.document_id == doc.id).all()]
+    if share_ids:
+        db.query(models.ShareAccess).filter(models.ShareAccess.share_link_id.in_(share_ids)).delete(synchronize_session=False)
     db.query(models.ShareLink).filter(models.ShareLink.document_id == doc.id).delete()
     db.query(models.AuditLog).filter(models.AuditLog.document_id == doc.id).delete()
     db.query(models.LabReading).filter(models.LabReading.document_id == doc.id).delete()
+    db.query(models.Favorite).filter(models.Favorite.document_id == doc.id).delete()
+    db.query(models.RecentOpen).filter(models.RecentOpen.document_id == doc.id).delete()
     db.delete(doc)
     db.commit()

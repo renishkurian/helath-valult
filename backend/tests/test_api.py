@@ -154,7 +154,7 @@ def test_admin_ui_login_and_dashboard():
 
     r = client.get("/admin/login")
     assert r.status_code == 200
-    assert "Admin sign in" in r.text
+    assert "Welcome back" in r.text
 
     r = client.post(
         "/admin/login",
@@ -162,10 +162,12 @@ def test_admin_ui_login_and_dashboard():
         follow_redirects=True,
     )
     assert r.status_code == 200
-    assert "Hi, Admin" in r.text
+    assert "Choose a module" in r.text
+    assert "Password Vault" in r.text
 
     r = client.get("/admin", follow_redirects=False)
     assert r.status_code == 200  # already logged in this session
+    assert "Hi, Admin" in r.text
 
 
 def test_health_endpoint():
@@ -235,9 +237,38 @@ def test_share_link_public_view():
     assert r.status_code == 201
     token = r.json()["token"]
 
-    public = client.get(f"/share/public/{token}")
+    public = client.get(f"/share/public/{token}", headers={"User-Agent": "pytest-client/1.0"})
     assert public.status_code == 200
     assert public.json()["title"] == "Star Health"
+
+    page = client.get(f"/share/public/{token}/page")
+    assert page.status_code == 200
+    assert b"Star Health" in page.content
+
+    listed = client.get("/share/mine", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["view_count"] >= 2
+    link_id = listed.json()[0]["id"]
+
+    detail = client.get(f"/share/{link_id}", headers=headers)
+    assert detail.status_code == 200
+    accesses = detail.json()["accesses"]
+    assert len(accesses) >= 2
+    assert all(a["action"] == "view" for a in accesses)
+    assert any(a.get("ip") for a in accesses)
+    assert any("pytest" in (a.get("user_agent") or "") for a in accesses)
+
+    dl = client.get(f"/share/public/{token}/download")
+    assert dl.status_code == 200
+    assert dl.content == b"insurance card"
+
+    detail = client.get(f"/share/{link_id}", headers=headers)
+    assert any(a["action"] == "download" for a in detail.json()["accesses"])
+    assert detail.json()["download_count"] >= 1
+
+    revoke = client.delete(f"/share/{link_id}", headers=headers)
+    assert revoke.status_code == 204
+    assert client.get(f"/share/public/{token}").status_code == 404
 
 
 def test_encrypted_backup_roundtrip():
@@ -261,4 +292,138 @@ def test_encrypted_backup_roundtrip():
     )
     assert r.status_code == 200, r.text
     assert r.json()["ok"] is True
+
+
+def test_medicines_vaccines_visits_and_ice():
+    data = _register("care@example.com", "password123", "Care User")
+    headers = _auth_headers(data["access_token"])
+    person_id = client.get("/people", headers=headers).json()[0]["id"]
+    assert client.get("/people", headers=headers).json()[0]["ice_token"]
+
+    r = client.post("/medicines", json={"person_id": person_id, "name": "Metformin", "dose": "500mg", "remaining": 14}, headers=headers)
+    assert r.status_code == 201, r.text
+    assert client.get(f"/medicines?person_id={person_id}", headers=headers).json()[0]["name"] == "Metformin"
+
+    r = client.post("/vaccinations", json={"person_id": person_id, "vaccine_name": "Tetanus", "next_due": "2099-01-01"}, headers=headers)
+    assert r.status_code == 201
+    assert client.get(f"/vaccinations?person_id={person_id}", headers=headers).json()[0]["overdue"] is False
+
+    r = client.post("/visits", json={"person_id": person_id, "hospital_name": "Apollo", "reason": "Checkup"}, headers=headers)
+    assert r.status_code == 201
+    assert client.get(f"/timeline?person_id={person_id}", headers=headers).status_code == 200
+
+    token = client.get("/people", headers=headers).json()[0]["ice_token"]
+    ice = client.get(f"/ice/{token}")
+    assert ice.status_code == 200
+    assert b"Care User" in ice.content
+
+
+def test_share_pack_and_pin():
+    data = _register("pack@example.com", "password123", "Pack User")
+    headers = _auth_headers(data["access_token"])
+    person_id = client.get("/people", headers=headers).json()[0]["id"]
+    files = {"files": ("id.txt", b"uhid-1", "text/plain")}
+    form = {"person_id": person_id, "category": "hospital_card", "title": "ID"}
+    doc_id = client.post("/documents", data=form, files=files, headers=headers).json()["id"]
+
+    r = client.post("/share/packs", json={"title": "Front desk", "document_ids": [doc_id], "expires_in_hours": 4, "pin": "1234"}, headers=headers)
+    assert r.status_code == 201, r.text
+    token = r.json()["token"]
+    assert r.json()["has_pin"] is True
+
+    blocked = client.get(f"/share/public/pack/{token}/page")
+    assert blocked.status_code == 200
+    assert b"PIN" in blocked.content
+
+    opened = client.get(f"/share/public/pack/{token}/page", params={"pin": "1234"})
+    assert opened.status_code == 200
+    assert b"Front desk" in opened.content or b"ID" in opened.content
+
+
+def test_totp_setup_and_login_gate():
+    data = _register("totp@example.com", "password123", "Totp User")
+    headers = _auth_headers(data["access_token"])
+    setup = client.post("/auth/totp/setup", headers=headers)
+    assert setup.status_code == 200
+    secret = setup.json()["secret"]
+    from app.security import totp_code
+    code = totp_code(secret)
+    assert client.post("/auth/totp/enable", json={"code": code}, headers=headers).status_code == 204
+
+    login = client.post("/auth/login", data={"username": "totp@example.com", "password": "password123"})
+    assert login.status_code == 200
+    body = login.json()
+    assert body["totp_required"] is True
+    assert body["access_token"] == ""
+
+    verify = client.post("/auth/totp/verify", json={"totp_token": body["totp_token"], "code": totp_code(secret)})
+    assert verify.status_code == 200
+    assert verify.json()["access_token"]
+
+
+def test_password_vault_login_totp_trash_send_health():
+    data = _register("vault@example.com", "password123", "Vault User")
+    headers = _auth_headers(data["access_token"])
+
+    folder = client.post("/vault/folders", json={"name": "Banks"}, headers=headers)
+    assert folder.status_code == 201, folder.text
+    folder_id = folder.json()["id"]
+
+    r = client.post("/vault/items", json={
+        "name": "HDFC NetBanking",
+        "item_type": "login",
+        "folder_id": folder_id,
+        "username": "nicky",
+        "password": "password",
+        "uris": ["https://netbanking.hdfcbank.com"],
+        "totp_secret": None,
+    }, headers=headers)
+    assert r.status_code == 201, r.text
+    item_id = r.json()["id"]
+    assert r.json()["password"] == "password"
+
+    listed = client.get("/vault/items?q=hdfc", headers=headers)
+    assert listed.status_code == 200
+    assert len(listed.json()) == 1
+
+    gen = client.post("/vault/generate", json={"kind": "password", "length": 20}, headers=headers)
+    assert gen.status_code == 200
+    strong = gen.json()["value"]
+    assert len(strong) == 20
+
+    patched = client.patch(f"/vault/items/{item_id}", json={"password": strong, "totp_secret": "JBSWY3DPEHPK3PXP"}, headers=headers)
+    assert patched.status_code == 200
+    hist = client.get(f"/vault/items/{item_id}/history", headers=headers)
+    assert len(hist.json()) == 1
+    assert hist.json()[0]["password"] == "password"
+
+    totp = client.get(f"/vault/items/{item_id}/totp", headers=headers)
+    assert totp.status_code == 200
+    assert len(totp.json()["code"]) == 6
+
+    health = client.get("/vault/health", headers=headers)
+    assert health.status_code == 200
+    assert health.json()["total_logins"] == 1
+
+    send = client.post("/vault/sends", json={
+        "name": "Temp login", "send_type": "login", "item_id": item_id, "expires_in_hours": 2,
+    }, headers=headers)
+    assert send.status_code == 201, send.text
+    token = send.json()["token"]
+    page = client.get(f"/vault/public/{token}/page")
+    assert page.status_code == 200
+    assert b"HDFC" in page.content or b"nicky" in page.content
+    short = client.get(f"/v/{token}", follow_redirects=False)
+    assert short.status_code == 302
+
+    assert client.delete(f"/vault/items/{item_id}", headers=headers).status_code == 204
+    trash = client.get("/vault/trash", headers=headers)
+    assert len(trash.json()) == 1
+    assert client.post(f"/vault/items/{item_id}/restore", headers=headers).status_code == 200
+    assert client.get("/vault/items", headers=headers).json()[0]["id"] == item_id
+
+    other = _register("othervault@example.com", "password123", "Other")
+    other_h = _auth_headers(other["access_token"])
+    assert client.get(f"/vault/items/{item_id}", headers=other_h).status_code == 404
+    assert client.get("/vault/items", headers=other_h).json() == []
 

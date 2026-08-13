@@ -80,11 +80,36 @@ class TokenManager(private val context: Context) {
     val isBiometricEnabled: Flow<Boolean> =
         context.dataStore.data.map { it[BIOMETRIC_ENABLED] ?: false }
 
+    fun setAppPin(pin: String?) {
+        encryptedPrefs.edit().putString(KEY_PIN, pin).apply()
+    }
+
+    fun hasAppPin(): Boolean = !encryptedPrefs.getString(KEY_PIN, null).isNullOrBlank()
+
+    fun verifyAppPin(pin: String): Boolean = encryptedPrefs.getString(KEY_PIN, null) == pin
+
+    suspend fun setDarkTheme(enabled: Boolean) {
+        context.dataStore.edit { it[DARK_THEME] = enabled }
+    }
+
+    val isDarkTheme: Flow<Boolean> =
+        context.dataStore.data.map { it[DARK_THEME] ?: true }
+
+    suspend fun setLargeText(enabled: Boolean) {
+        context.dataStore.edit { it[LARGE_TEXT] = enabled }
+    }
+
+    val isLargeText: Flow<Boolean> =
+        context.dataStore.data.map { it[LARGE_TEXT] ?: false }
+
     companion object {
         private const val KEY_ACCESS = "access_token"
         private const val KEY_REFRESH = "refresh_token"
         private const val KEY_ROLE = "user_role"
+        private const val KEY_PIN = "app_pin"
         private val ACTIVE_PERSON = stringPreferencesKey("active_person_id")
         private val BIOMETRIC_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("biometric_enabled")
+        private val DARK_THEME = androidx.datastore.preferences.core.booleanPreferencesKey("dark_theme")
+        private val LARGE_TEXT = androidx.datastore.preferences.core.booleanPreferencesKey("large_text")
     }
 }

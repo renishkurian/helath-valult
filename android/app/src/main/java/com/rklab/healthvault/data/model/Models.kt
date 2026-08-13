@@ -4,18 +4,32 @@ import com.google.gson.annotations.SerializedName
 
 // ---------- Auth ----------
 data class RegisterRequest(val email: String, val password: String, val full_name: String)
-data class LoginResponse(val access_token: String, val refresh_token: String, val token_type: String)
+data class LoginResponse(
+    val access_token: String = "",
+    val refresh_token: String = "",
+    val token_type: String = "bearer",
+    val totp_required: Boolean = false,
+    val totp_token: String? = null
+)
 data class UserOut(
     val id: String,
     val email: String,
     val full_name: String,
     val role: String = "owner",
-    val vault_owner_id: String? = null
+    val vault_owner_id: String? = null,
+    val totp_enabled: Boolean = false
 ) {
     val isViewer: Boolean get() = role == "viewer"
 }
 
-data class InviteViewerRequest(val email: String, val password: String, val full_name: String)
+data class InviteViewerRequest(
+    val email: String,
+    val password: String,
+    val full_name: String,
+    val person_ids: List<String> = emptyList()
+)
+data class TotpSetupOut(val secret: String, val otpauth_url: String)
+data class TotpVerifyIn(val totp_token: String? = null, val code: String)
 data class DeviceTokenIn(val token: String, val platform: String = "android")
 
 // ---------- People ----------
@@ -33,7 +47,14 @@ data class PersonOut(
     val relation: Relation,
     val dob: String?,
     val blood_group: String?,
-    val avatar_initials: String?
+    val avatar_initials: String?,
+    val allergies: String? = null,
+    val conditions: String? = null,
+    val emergency_name: String? = null,
+    val emergency_phone: String? = null,
+    val abha_id: String? = null,
+    val ayushman_id: String? = null,
+    val ice_token: String? = null
 )
 
 data class PersonCreate(
@@ -96,6 +117,9 @@ data class DocumentOut(
     val file_count: Int = 1,
     val notes: String?,
     val extracted_text: String? = null,
+    val amount: String? = null,
+    val pinned: Boolean = false,
+    val favorite: Boolean = false,
     val created_at: String
 )
 
@@ -107,7 +131,9 @@ data class DocumentUpdate(
     val doc_date: String? = null,
     val notes: String? = null,
     val expiry_date: String? = null,
-    val tags: String? = null
+    val tags: String? = null,
+    val amount: String? = null,
+    val pinned: Boolean? = null
 )
 
 data class DocumentFileOut(
@@ -132,18 +158,69 @@ data class DocumentVersionOut(
 data class ShareLinkCreate(
     val document_id: String,
     val expires_in_hours: Int = 48,
-    val max_views: Int? = null
+    val max_views: Int? = null,
+    val pin: String? = null,
+    val idle_days: Int? = null
 )
+
+data class SharePackCreate(
+    val title: String = "Hospital pack",
+    val document_ids: List<String>,
+    val expires_in_hours: Int = 48,
+    val max_views: Int? = null,
+    val pin: String? = null
+)
+
+data class SharePackOut(
+    val id: String,
+    val token: String,
+    val title: String,
+    val document_ids: List<String> = emptyList(),
+    val expires_at: String,
+    val max_views: Int? = null,
+    val view_count: Int,
+    val revoked: Boolean,
+    val has_pin: Boolean = false,
+    val created_at: String
+)
+
+data class BulkIds(val ids: List<String>, val tags: String? = null)
 
 data class ShareLinkOut(
     val id: String,
     val token: String,
     val document_id: String,
+    val document_title: String? = null,
     val expires_at: String,
     val max_views: Int?,
     val view_count: Int,
+    val download_count: Int = 0,
+    val last_access_at: String? = null,
     val revoked: Boolean,
     val created_at: String
+)
+
+data class ShareAccessOut(
+    val id: String,
+    val action: String,
+    val ip: String?,
+    val user_agent: String?,
+    val created_at: String
+)
+
+data class ShareLinkDetailOut(
+    val id: String,
+    val token: String,
+    val document_id: String,
+    val document_title: String? = null,
+    val expires_at: String,
+    val max_views: Int?,
+    val view_count: Int,
+    val download_count: Int = 0,
+    val last_access_at: String? = null,
+    val revoked: Boolean,
+    val created_at: String,
+    val accesses: List<ShareAccessOut> = emptyList()
 )
 
 // ---------- Audit log ----------
@@ -208,4 +285,240 @@ data class LabTrend(
     val metric: String,
     val unit: String?,
     val points: List<LabReadingOut>
+)
+
+data class LabAlert(
+    val metric: String,
+    val message: String,
+    val latest: Double,
+    val previous: Double? = null,
+    val unit: String? = null
+)
+
+data class MedicineIn(
+    val person_id: String,
+    val name: String,
+    val dose: String? = null,
+    val timing: String? = null,
+    val remaining: Int? = null,
+    val refill_at: String? = null,
+    val notes: String? = null
+)
+data class MedicineOut(
+    val id: String, val person_id: String, val name: String,
+    val dose: String?, val timing: String?, val remaining: Int?,
+    val refill_at: String?, val notes: String?, val created_at: String
+)
+
+data class VaccinationIn(
+    val person_id: String, val vaccine_name: String, val dose_number: Int = 1,
+    val given_on: String? = null, val next_due: String? = null, val notes: String? = null
+)
+data class VaccinationOut(
+    val id: String, val person_id: String, val vaccine_name: String, val dose_number: Int,
+    val given_on: String?, val next_due: String?, val notes: String?,
+    val overdue: Boolean = false, val created_at: String
+)
+
+data class VisitIn(
+    val person_id: String, val hospital_name: String? = null, val doctor_name: String? = null,
+    val visit_date: String? = null, val reason: String? = null, val notes: String? = null
+)
+data class VisitOut(
+    val id: String, val person_id: String, val hospital_name: String?, val doctor_name: String?,
+    val visit_date: String?, val reason: String?, val notes: String?, val created_at: String
+)
+
+data class ClaimIn(
+    val person_id: String, val insurer: String? = null, val claim_number: String? = null,
+    val amount: String? = null, val status: String = "draft", val submitted_on: String? = null
+)
+data class ClaimOut(
+    val id: String, val person_id: String, val insurer: String?, val claim_number: String?,
+    val amount: String?, val status: String, val submitted_on: String?, val created_at: String
+)
+
+data class DoctorIn(
+    val name: String, val specialty: String? = null, val hospital_name: String? = null,
+    val phone: String? = null, val last_visit: String? = null
+)
+data class DoctorOut(
+    val id: String, val name: String, val specialty: String?, val hospital_name: String?,
+    val phone: String?, val last_visit: String?, val created_at: String
+)
+
+data class GrowthIn(
+    val person_id: String, val measured_at: String,
+    val height_cm: String? = null, val weight_kg: String? = null
+)
+data class GrowthOut(
+    val id: String, val person_id: String, val measured_at: String,
+    val height_cm: String?, val weight_kg: String?, val created_at: String
+)
+
+data class UhidIn(val person_id: String, val hospital_name: String, val uhid: String)
+data class UhidOut(val id: String, val person_id: String, val hospital_name: String, val uhid: String, val created_at: String)
+
+data class TimelineItem(val kind: String, val at: String, val title: String, val detail: String?, val ref_id: String?)
+data class StorageStats(val bytes_used: Long, val file_count: Int, val backup_dir: String?)
+data class SpendOut(val year: Int, val bills: Double, val claims: Double, val total: Double)
+// ---------- Password Vault ----------
+data class VaultFolderIn(val name: String)
+data class VaultFolderOut(
+    val id: String,
+    val name: String,
+    val item_count: Int = 0,
+    val created_at: String
+)
+data class VaultItemIn(
+    val folder_id: String? = null,
+    val item_type: String = "login",
+    val name: String,
+    val favorite: Boolean = false,
+    val username: String? = null,
+    val password: String? = null,
+    val totp_secret: String? = null,
+    val uris: List<String> = emptyList(),
+    val notes: String? = null,
+    val cardholder_name: String? = null,
+    val card_brand: String? = null,
+    val card_number: String? = null,
+    val card_exp_month: String? = null,
+    val card_exp_year: String? = null,
+    val card_cvv: String? = null,
+    val identity_title: String? = null,
+    val first_name: String? = null,
+    val middle_name: String? = null,
+    val last_name: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+    val address1: String? = null,
+    val address2: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val postal_code: String? = null,
+    val country: String? = null,
+    val ssn: String? = null,
+    val license_number: String? = null,
+    val passport_number: String? = null
+)
+data class VaultItemUpdate(
+    val folder_id: String? = null,
+    val name: String? = null,
+    val favorite: Boolean? = null,
+    val username: String? = null,
+    val password: String? = null,
+    val totp_secret: String? = null,
+    val uris: List<String>? = null,
+    val notes: String? = null,
+    val cardholder_name: String? = null,
+    val card_brand: String? = null,
+    val card_number: String? = null,
+    val card_exp_month: String? = null,
+    val card_exp_year: String? = null,
+    val card_cvv: String? = null,
+    val first_name: String? = null,
+    val last_name: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+    val ssn: String? = null,
+    val license_number: String? = null,
+    val passport_number: String? = null
+)
+data class VaultItemOut(
+    val id: String,
+    val folder_id: String? = null,
+    val item_type: String,
+    val name: String,
+    val favorite: Boolean = false,
+    val username: String? = null,
+    val password: String? = null,
+    val totp_secret: String? = null,
+    val has_totp: Boolean = false,
+    val uris: List<String> = emptyList(),
+    val notes: String? = null,
+    val cardholder_name: String? = null,
+    val card_brand: String? = null,
+    val card_number: String? = null,
+    val card_exp_month: String? = null,
+    val card_exp_year: String? = null,
+    val card_cvv: String? = null,
+    val identity_title: String? = null,
+    val first_name: String? = null,
+    val middle_name: String? = null,
+    val last_name: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+    val address1: String? = null,
+    val address2: String? = null,
+    val city: String? = null,
+    val state: String? = null,
+    val postal_code: String? = null,
+    val country: String? = null,
+    val ssn: String? = null,
+    val license_number: String? = null,
+    val passport_number: String? = null,
+    val password_changed_at: String? = null,
+    val deleted_at: String? = null,
+    val created_at: String,
+    val updated_at: String? = null
+)
+data class VaultTotpOut(val code: String, val period: Int = 30, val remaining: Int)
+data class VaultHistoryOut(val id: String, val password: String, val created_at: String)
+data class VaultGenerateIn(
+    val kind: String = "password",
+    val length: Int = 16,
+    val uppercase: Boolean = true,
+    val lowercase: Boolean = true,
+    val numbers: Boolean = true,
+    val symbols: Boolean = true,
+    val avoid_ambiguous: Boolean = true,
+    val word_count: Int = 4,
+    val separator: String = "-"
+)
+data class VaultGenerateOut(val value: String, val score: Int, val length: Int)
+data class VaultHealthIssue(
+    val item_id: String,
+    val name: String,
+    val username: String? = null,
+    val reason: String
+)
+data class VaultHealthOut(
+    val weak: List<VaultHealthIssue> = emptyList(),
+    val reused: List<VaultHealthIssue> = emptyList(),
+    val no_totp: List<VaultHealthIssue> = emptyList(),
+    val old: List<VaultHealthIssue> = emptyList(),
+    val total_logins: Int = 0
+)
+data class VaultSendCreate(
+    val name: String,
+    val send_type: String = "text",
+    val text: String? = null,
+    val item_id: String? = null,
+    val notes: String? = null,
+    val pin: String? = null,
+    val expires_in_hours: Int = 48,
+    val max_views: Int? = null
+)
+data class VaultSendOut(
+    val id: String,
+    val token: String,
+    val name: String,
+    val send_type: String,
+    val expires_at: String,
+    val max_views: Int? = null,
+    val view_count: Int = 0,
+    val revoked: Boolean = false,
+    val has_pin: Boolean = false,
+    val created_at: String
+)
+
+data class PersonUpdate(
+    val allergies: String? = null,
+    val conditions: String? = null,
+    val emergency_name: String? = null,
+    val emergency_phone: String? = null,
+    val abha_id: String? = null,
+    val ayushman_id: String? = null,
+    val blood_group: String? = null
 )

@@ -51,7 +51,7 @@ def doc_out(doc: models.Document) -> dict:
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/admin", status_code=302)
+        return RedirectResponse("/admin/modules", status_code=302)
     return templates.TemplateResponse("login.html", {"request": request, "error": None})
 
 
@@ -61,7 +61,7 @@ def login_submit(request: Request, email: str = Form(...), password: str = Form(
     if not user or not security.verify_password(password, user.hashed_password):
         return templates.TemplateResponse("login.html", {"request": request, "error": "Incorrect email or password"})
     request.session["user_id"] = user.id
-    return RedirectResponse("/admin", status_code=302)
+    return RedirectResponse("/admin/modules", status_code=302)
 
 
 @router.get("/logout")
@@ -71,6 +71,17 @@ def logout(request: Request):
 
 
 # ---------- Dashboard ----------
+@router.get("/modules", response_class=HTMLResponse)
+def modules_home(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return templates.TemplateResponse("modules.html", {
+        "request": request, "session_user": user, "active_nav": "modules", "active_module": "picker",
+        "people": [], "active_person_id": None,
+    })
+
+
 @router.get("", response_class=HTMLResponse)
 def dashboard(request: Request, person: Optional[str] = None, db: Session = Depends(get_db)):
     user = require_login(request, db)
@@ -370,6 +381,54 @@ def revoke_share_link_admin(request: Request, link_id: str, db: Session = Depend
     return RedirectResponse("/admin/activity", status_code=302)
 
 
+@router.get("/shares", response_class=HTMLResponse)
+def shares_page(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    links = (
+        db.query(models.ShareLink)
+        .join(models.Document)
+        .join(models.Person)
+        .filter(models.Person.user_id == vault_id(user))
+        .order_by(models.ShareLink.created_at.desc())
+        .all()
+    )
+    items = []
+    for link in links:
+        accesses = sorted(link.accesses, key=lambda a: a.created_at or datetime.min, reverse=True)
+        items.append({
+            "link": link,
+            "title": link.document.title if link.document else "—",
+            "accesses": accesses,
+            "downloads": sum(1 for a in accesses if a.action == "download"),
+        })
+    return templates.TemplateResponse("shares.html", {
+        "request": request, "session_user": user, "active_nav": "shares",
+        "people": people, "active_person": people[0] if people else None,
+        "active_person_id": people[0].id if people else None,
+        "items": items,
+    })
+
+
+@router.post("/shares/{link_id}/revoke")
+def shares_revoke(request: Request, link_id: str, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    link = (
+        db.query(models.ShareLink)
+        .join(models.Document).join(models.Person)
+        .filter(models.ShareLink.id == link_id, models.Person.user_id == vault_id(user))
+        .first()
+    )
+    if link:
+        link.revoked = True
+        db.commit()
+    return RedirectResponse("/admin/shares", status_code=302)
+
+
 @router.get("/reminders", response_class=HTMLResponse)
 def reminders_page(request: Request, person: Optional[str] = None, db: Session = Depends(get_db)):
     user = require_login(request, db)
@@ -428,3 +487,446 @@ def reminders_delete(request: Request, reminder_id: str, db: Session = Depends(g
         db.delete(r)
         db.commit()
     return RedirectResponse(f"/admin/reminders?person={person_id}" if person_id else "/admin/reminders", status_code=302)
+
+
+def _admin_person(request, db, person: Optional[str]):
+    user = require_login(request, db)
+    if not user:
+        return None, None, None, None
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    active = next((p for p in people if p.id == person), None) or (people[0] if people else None)
+    return user, people, active, (active.id if active else None)
+
+
+@router.get("/care", response_class=HTMLResponse)
+def care_page(request: Request, person: Optional[str] = None, db: Session = Depends(get_db)):
+    user, people, active, pid = _admin_person(request, db, person)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    meds = vax = visits = claims = growth = uhids = timeline = []
+    doctors = db.query(models.Doctor).filter(models.Doctor.user_id == vault_id(user)).all()
+    if active:
+        meds = db.query(models.Medicine).filter(models.Medicine.person_id == active.id).all()
+        vax = db.query(models.VaccinationRecord).filter(models.VaccinationRecord.person_id == active.id).all()
+        visits = db.query(models.Visit).filter(models.Visit.person_id == active.id).all()
+        claims = db.query(models.Claim).filter(models.Claim.person_id == active.id).all()
+        growth = db.query(models.GrowthReading).filter(models.GrowthReading.person_id == active.id).all()
+        uhids = db.query(models.HospitalUhid).filter(models.HospitalUhid.person_id == active.id).all()
+    ice_url = f"{request.base_url}ice/{active.ice_token}" if active and active.ice_token else None
+    return templates.TemplateResponse("care.html", {
+        "request": request, "session_user": user, "active_nav": "care",
+        "people": people, "active_person": active, "active_person_id": pid,
+        "meds": meds, "vax": vax, "visits": visits, "claims": claims, "growth": growth,
+        "uhids": uhids, "doctors": doctors, "ice_url": ice_url,
+    })
+
+
+@router.post("/care/person")
+def care_update_person(
+    request: Request, person_id: str = Form(...),
+    allergies: str = Form(""), conditions: str = Form(""),
+    emergency_name: str = Form(""), emergency_phone: str = Form(""),
+    abha_id: str = Form(""), ayushman_id: str = Form(""), blood_group: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    p = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
+    if p:
+        p.allergies = allergies or None
+        p.conditions = conditions or None
+        p.emergency_name = emergency_name or None
+        p.emergency_phone = emergency_phone or None
+        p.abha_id = abha_id or None
+        p.ayushman_id = ayushman_id or None
+        p.blood_group = blood_group or p.blood_group
+        if not p.ice_token:
+            import secrets
+            p.ice_token = secrets.token_urlsafe(18)
+        db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/medicine")
+def care_add_med(request: Request, person_id: str = Form(...), name: str = Form(...), dose: str = Form(""), timing: str = Form(""), remaining: str = Form(""), refill_at: str = Form(""), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.Medicine(person_id=person_id, name=name, dose=dose or None, timing=timing or None, remaining=int(remaining) if remaining.strip().isdigit() else None, refill_at=refill_at or None))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/vaccine")
+def care_add_vax(request: Request, person_id: str = Form(...), vaccine_name: str = Form(...), given_on: str = Form(""), next_due: str = Form(""), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.VaccinationRecord(person_id=person_id, vaccine_name=vaccine_name, given_on=given_on or None, next_due=next_due or None))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/visit")
+def care_add_visit(request: Request, person_id: str = Form(...), hospital_name: str = Form(""), doctor_name: str = Form(""), visit_date: str = Form(""), reason: str = Form(""), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.Visit(person_id=person_id, hospital_name=hospital_name or None, doctor_name=doctor_name or None, visit_date=visit_date or None, reason=reason or None))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/claim")
+def care_add_claim(request: Request, person_id: str = Form(...), insurer: str = Form(""), amount: str = Form(""), status: str = Form("draft"), claim_number: str = Form(""), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.Claim(person_id=person_id, insurer=insurer or None, amount=amount or None, status=status, claim_number=claim_number or None))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/growth")
+def care_add_growth(request: Request, person_id: str = Form(...), measured_at: str = Form(...), height_cm: str = Form(""), weight_kg: str = Form(""), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.GrowthReading(person_id=person_id, measured_at=measured_at, height_cm=height_cm or None, weight_kg=weight_kg or None))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/uhid")
+def care_add_uhid(request: Request, person_id: str = Form(...), hospital_name: str = Form(...), uhid: str = Form(...), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.HospitalUhid(person_id=person_id, hospital_name=hospital_name, uhid=uhid))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
+
+
+@router.post("/care/doctor")
+def care_add_doctor(request: Request, name: str = Form(...), specialty: str = Form(""), hospital_name: str = Form(""), phone: str = Form(""), person: str = Form(""), db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    db.add(models.Doctor(user_id=vault_id(user), name=name, specialty=specialty or None, hospital_name=hospital_name or None, phone=phone or None))
+    db.commit()
+    return RedirectResponse(f"/admin/care?person={person}" if person else "/admin/care", status_code=302)
+
+
+@router.get("/storage", response_class=HTMLResponse)
+def storage_page(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    root = settings.STORAGE_DIR / vault_id(user)
+    total = count = 0
+    if root.exists():
+        for p in root.rglob("*"):
+            if p.is_file():
+                total += p.stat().st_size
+                count += 1
+    return templates.TemplateResponse("storage.html", {
+        "request": request, "session_user": user, "active_nav": "storage",
+        "people": people, "active_person": people[0] if people else None,
+        "active_person_id": people[0].id if people else None,
+        "bytes_used": total, "file_count": count,
+        "backup_dir": str(settings.BACKUP_DIR) if settings.BACKUP_DIR else None,
+    })
+
+
+@router.post("/storage/snapshot")
+def storage_snapshot(request: Request, db: Session = Depends(get_db)):
+    from app.routers.backup import snapshot_to_disk
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if settings.BACKUP_DIR:
+        snapshot_to_disk(None, db, user)
+    return RedirectResponse("/admin/storage", status_code=302)
+
+
+# ---------- Password Vault ----------
+def _pw_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "passwords", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/passwords", response_class=HTMLResponse)
+def passwords_page(
+    request: Request,
+    q: Optional[str] = None,
+    item_type: Optional[str] = None,
+    folder_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers.vault import list_folders, list_items
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    folders = list_folders(db=db, current_user=user)
+    items = list_items(q=q, item_type=item_type, folder_id=folder_id, favorite=False, db=db, current_user=user)
+    return templates.TemplateResponse("passwords.html", _pw_ctx(
+        request, user, "pw_vault", folders=folders, items=items,
+        q=q or "", item_type=item_type or "", folder_id=folder_id or "",
+    ))
+
+
+@router.post("/passwords/folder")
+def passwords_add_folder(request: Request, name: str = Form(...), db: Session = Depends(get_db)):
+    from app.routers.vault import create_folder
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_folder(sc.VaultFolderIn(name=name), db=db, current_user=user)
+    return RedirectResponse("/admin/passwords", status_code=302)
+
+
+@router.post("/passwords/add")
+def passwords_add(
+    request: Request,
+    name: str = Form(...),
+    item_type: str = Form("login"),
+    username: str = Form(""),
+    password: str = Form(""),
+    uris: str = Form(""),
+    totp_secret: str = Form(""),
+    notes: str = Form(""),
+    folder_id: str = Form(""),
+    cardholder_name: str = Form(""),
+    card_number: str = Form(""),
+    card_brand: str = Form(""),
+    card_exp_month: str = Form(""),
+    card_exp_year: str = Form(""),
+    card_cvv: str = Form(""),
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    email: str = Form(""),
+    phone: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.vault import create_item
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uri_list = [u.strip() for u in uris.replace("\n", ",").split(",") if u.strip()]
+    create_item(sc.VaultItemIn(
+        name=name, item_type=item_type, username=username or None, password=password or None,
+        uris=uri_list, totp_secret=totp_secret or None, notes=notes or None,
+        folder_id=folder_id or None, cardholder_name=cardholder_name or None,
+        card_number=card_number or None, card_brand=card_brand or None,
+        card_exp_month=card_exp_month or None, card_exp_year=card_exp_year or None,
+        card_cvv=card_cvv or None, first_name=first_name or None, last_name=last_name or None,
+        email=email or None, phone=phone or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/passwords", status_code=302)
+
+
+@router.get("/passwords/generator", response_class=HTMLResponse)
+def passwords_generator(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return templates.TemplateResponse("password_generator.html", _pw_ctx(request, user, "pw_generator", result=None))
+
+
+@router.post("/passwords/generator", response_class=HTMLResponse)
+def passwords_generator_run(
+    request: Request,
+    kind: str = Form("password"),
+    length: int = Form(16),
+    word_count: int = Form(4),
+    uppercase: Optional[str] = Form(None),
+    lowercase: Optional[str] = Form(None),
+    numbers: Optional[str] = Form(None),
+    symbols: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    from app.routers.vault import generate_password
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    result = generate_password(sc.VaultGenerateIn(
+        kind=kind, length=length, word_count=word_count,
+        uppercase=uppercase is not None, lowercase=lowercase is not None,
+        numbers=numbers is not None, symbols=symbols is not None,
+    ), current_user=user)
+    return templates.TemplateResponse("password_generator.html", _pw_ctx(request, user, "pw_generator", result=result))
+
+
+@router.get("/passwords/health", response_class=HTMLResponse)
+def passwords_health_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import password_health
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    report = password_health(db=db, current_user=user)
+    return templates.TemplateResponse("password_health.html", _pw_ctx(request, user, "pw_health", report=report))
+
+
+@router.get("/passwords/sends", response_class=HTMLResponse)
+def passwords_sends_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import list_sends, list_items
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    sends = list_sends(db=db, current_user=user)
+    items = list_items(q=None, item_type="login", folder_id=None, favorite=False, db=db, current_user=user)
+    return templates.TemplateResponse("password_sends.html", _pw_ctx(
+        request, user, "pw_sends", sends=sends, items=items,
+        public_base=str(request.base_url).rstrip("/"),
+    ))
+
+
+@router.post("/passwords/sends")
+def passwords_send_create(
+    request: Request,
+    name: str = Form(...),
+    send_type: str = Form("text"),
+    text: str = Form(""),
+    item_id: str = Form(""),
+    pin: str = Form(""),
+    expires_in_hours: int = Form(48),
+    db: Session = Depends(get_db),
+):
+    from app.routers.vault import create_send
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_send(sc.VaultSendCreate(
+        name=name, send_type=send_type, text=text or None, item_id=item_id or None,
+        pin=pin or None, expires_in_hours=expires_in_hours,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/passwords/sends", status_code=302)
+
+
+@router.post("/passwords/sends/{send_id}/revoke")
+def passwords_send_revoke(send_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import revoke_send
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    revoke_send(send_id, db=db, current_user=user)
+    return RedirectResponse("/admin/passwords/sends", status_code=302)
+
+
+@router.get("/passwords/trash", response_class=HTMLResponse)
+def passwords_trash_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import list_trash
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = list_trash(db=db, current_user=user)
+    return templates.TemplateResponse("password_trash.html", _pw_ctx(request, user, "pw_trash", items=items))
+
+
+@router.post("/passwords/trash/empty")
+def passwords_trash_empty(request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import empty_trash
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    empty_trash(db=db, current_user=user)
+    return RedirectResponse("/admin/passwords/trash", status_code=302)
+
+
+@router.get("/passwords/{item_id}", response_class=HTMLResponse)
+def password_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import get_item, item_totp, item_history, list_folders
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    item = get_item(item_id, db=db, current_user=user)
+    totp = None
+    if item.has_totp:
+        totp = item_totp(item_id, db=db, current_user=user)
+    history = item_history(item_id, db=db, current_user=user)
+    folders = list_folders(db=db, current_user=user)
+    return templates.TemplateResponse("password_item.html", _pw_ctx(
+        request, user, "pw_vault", item=item, totp=totp, history=history, folders=folders,
+    ))
+
+
+@router.post("/passwords/{item_id}")
+def password_item_save(
+    item_id: str,
+    request: Request,
+    name: str = Form(...),
+    username: str = Form(""),
+    password: str = Form(""),
+    uris: str = Form(""),
+    totp_secret: str = Form(""),
+    notes: str = Form(""),
+    folder_id: str = Form(""),
+    favorite: Optional[str] = Form(None),
+    cardholder_name: str = Form(""),
+    card_number: str = Form(""),
+    card_brand: str = Form(""),
+    card_exp_month: str = Form(""),
+    card_exp_year: str = Form(""),
+    card_cvv: str = Form(""),
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    email: str = Form(""),
+    phone: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.vault import update_item
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uri_list = [u.strip() for u in uris.replace("\n", ",").split(",") if u.strip()]
+    update_item(item_id, sc.VaultItemUpdate(
+        name=name, username=username, password=password or None, uris=uri_list,
+        totp_secret=totp_secret or None, notes=notes or None, folder_id=folder_id or None,
+        favorite=favorite is not None, cardholder_name=cardholder_name or None,
+        card_number=card_number or None, card_brand=card_brand or None,
+        card_exp_month=card_exp_month or None, card_exp_year=card_exp_year or None,
+        card_cvv=card_cvv or None, first_name=first_name or None, last_name=last_name or None,
+        email=email or None, phone=phone or None,
+    ), db=db, current_user=user)
+    return RedirectResponse(f"/admin/passwords/{item_id}", status_code=302)
+
+
+@router.post("/passwords/{item_id}/delete")
+def password_item_delete(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import trash_item
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    trash_item(item_id, db=db, current_user=user)
+    return RedirectResponse("/admin/passwords", status_code=302)
+
+
+@router.post("/passwords/{item_id}/restore")
+def password_item_restore(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import restore_item
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    restore_item(item_id, db=db, current_user=user)
+    return RedirectResponse("/admin/passwords", status_code=302)
+
+
+@router.post("/passwords/{item_id}/permanent")
+def password_item_permanent(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import delete_item_forever
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_item_forever(item_id, db=db, current_user=user)
+    return RedirectResponse("/admin/passwords/trash", status_code=302)

@@ -88,8 +88,9 @@ fun UploadDocumentScreen(
             val newFiles = withContext(Dispatchers.IO) {
                 uris.mapNotNull { uri ->
                     val mime = FileUtil.mimeTypeOf(context, uri)
-                    val file = FileUtil.copyUriToCacheFile(context, uri, "doc_${System.currentTimeMillis()}_${uri.lastPathSegment}")
-                    file?.let { Pair(it, mime) }
+                    val copied = FileUtil.copyUriToCacheFile(context, uri, "doc_${System.currentTimeMillis()}_${uri.lastPathSegment}")
+                    val file = if (mime.startsWith("image/")) FileUtil.enhanceImageFile(copied) else copied
+                    Pair(file, if (mime.startsWith("image/")) "image/jpeg" else mime)
                 }
             }
             pickedFiles = pickedFiles + newFiles
@@ -102,7 +103,8 @@ fun UploadDocumentScreen(
         if (success) {
             captureFile?.let { file ->
                 if (file.exists() && file.length() > 0) {
-                    pickedFiles = pickedFiles + Pair(file, "image/jpeg")
+                    val enhanced = FileUtil.enhanceImageFile(file)
+                    pickedFiles = pickedFiles + Pair(enhanced, "image/jpeg")
                 }
             }
         }
@@ -192,6 +194,14 @@ fun UploadDocumentScreen(
                             onRemove = { pickedFiles = pickedFiles.toMutableList().also { it.removeAt(idx) } }
                         )
                     }
+                }
+                val imageFiles = pickedFiles.filter { it.second.startsWith("image/") }.map { it.first }
+                if (imageFiles.size >= 2) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(onClick = {
+                        val pdf = FileUtil.mergeImagesToPdf(context, imageFiles)
+                        pickedFiles = listOf(pdf to "application/pdf")
+                    }) { Text("Merge pages into one PDF", color = Navy) }
                 }
             }
 

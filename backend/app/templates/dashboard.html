@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-{% set cat_colors = {'hospital_card':'#2C4256','prescription':'#5E7C50','lab_report':'#3E5A70','insurance':'#8A6A9C','vaccination':'#6E8B5D','bill':'#B23B36','medicine':'#C68A2E','other':'#5B6152'} %}
+{% set cat_colors = {'hospital_card':'#5B8CFF','prescription':'#3DDC97','lab_report':'#7A6CFF','insurance':'#F5B942','vaccination':'#3DDC97','bill':'#FF6B7A','medicine':'#F5B942','other':'#8B95A8'} %}
 {% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
-{% set folder_bg = {'hospital_card':'#EFE3C4','prescription':'#E7EEDD','lab_report':'#EAE0EC','insurance':'#DDE8EC','vaccination':'#E3ECD9','bill':'#F1DEDA','medicine':'#F5E9D0','other':'#EAE2D0'} %}
+{% set folder_bg = {'hospital_card':'#1A2744','prescription':'#143028','lab_report':'#221A3A','insurance':'#2A2414','vaccination':'#143028','bill':'#2A161A','medicine':'#2A2414','other':'#1C2434'} %}
 {% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
 
-<div class="eyebrow">Health Vault</div>
+<div class="eyebrow"><a href="/admin/modules" style="color:var(--ink-soft);">All modules</a> · Health Vault</div>
 <div class="page-title">Hi, {{ session_user.full_name.split(' ')[0] }}</div>
 
 <div class="family-row">

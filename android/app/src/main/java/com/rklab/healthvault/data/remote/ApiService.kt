@@ -35,12 +35,27 @@ interface ApiService {
     @POST("auth/devices")
     suspend fun registerDevice(@Body body: DeviceTokenIn): Response<Unit>
 
+    @POST("auth/totp/setup")
+    suspend fun totpSetup(): TotpSetupOut
+
+    @POST("auth/totp/enable")
+    suspend fun totpEnable(@Body body: TotpVerifyIn): Response<Unit>
+
+    @POST("auth/totp/verify")
+    suspend fun totpVerify(@Body body: TotpVerifyIn): LoginResponse
+
     // ---------- People ----------
     @GET("people")
     suspend fun listPeople(): List<PersonOut>
 
     @POST("people")
     suspend fun addPerson(@Body body: PersonCreate): PersonOut
+
+    @PATCH("people/{id}")
+    suspend fun updatePerson(@Path("id") id: String, @Body body: PersonUpdate): PersonOut
+
+    @POST("people/{id}/ice")
+    suspend fun enableIce(@Path("id") id: String): PersonOut
 
     @DELETE("people/{id}")
     suspend fun deletePerson(@Path("id") id: String): Response<Unit>
@@ -59,7 +74,12 @@ interface ApiService {
     @GET("documents")
     suspend fun listDocuments(
         @Query("person_id") personId: String? = null,
-        @Query("category") category: String? = null
+        @Query("category") category: String? = null,
+        @Query("tag") tag: String? = null,
+        @Query("year") year: String? = null,
+        @Query("hospital") hospital: String? = null,
+        @Query("expiring") expiring: Boolean = false,
+        @Query("favorite") favorite: Boolean = false
     ): List<DocumentOut>
 
     @Multipart
@@ -123,6 +143,21 @@ interface ApiService {
     @DELETE("documents/{id}")
     suspend fun deleteDocument(@Path("id") id: String): Response<Unit>
 
+    @POST("documents/{id}/favorite")
+    suspend fun favoriteDocument(@Path("id") id: String): Response<Unit>
+
+    @DELETE("documents/{id}/favorite")
+    suspend fun unfavoriteDocument(@Path("id") id: String): Response<Unit>
+
+    @POST("documents/bulk/delete")
+    suspend fun bulkDeleteDocuments(@Body body: BulkIds): Response<Unit>
+
+    @POST("documents/bulk/tag")
+    suspend fun bulkTagDocuments(@Body body: BulkIds): List<DocumentOut>
+
+    @GET("documents/recent")
+    suspend fun recentDocuments(): List<DocumentOut>
+
     // ---------- Reminders ----------
     @GET("reminders")
     suspend fun listReminders(
@@ -148,7 +183,10 @@ interface ApiService {
     suspend fun createShareLink(@Body body: ShareLinkCreate): ShareLinkOut
 
     @GET("share/mine")
-    suspend fun listMyShareLinks(): List<ShareLinkOut>
+    suspend fun listMyShareLinks(@Query("document_id") documentId: String? = null): List<ShareLinkOut>
+
+    @GET("share/{id}")
+    suspend fun getShareLink(@Path("id") id: String): ShareLinkDetailOut
 
     @DELETE("share/{id}")
     suspend fun revokeShareLink(@Path("id") id: String): Response<Unit>
@@ -180,4 +218,139 @@ interface ApiService {
         @Query("person_id") personId: String,
         @Query("metric") metric: String? = null
     ): List<LabTrend>
+
+    @GET("labs/alerts")
+    suspend fun labAlerts(@Query("person_id") personId: String): List<LabAlert>
+
+    @POST("share/packs")
+    suspend fun createSharePack(@Body body: SharePackCreate): SharePackOut
+
+    @GET("share/packs")
+    suspend fun listSharePacks(): List<SharePackOut>
+
+    @DELETE("share/packs/{id}")
+    suspend fun revokeSharePack(@Path("id") id: String): Response<Unit>
+
+    @GET("medicines")
+    suspend fun listMedicines(@Query("person_id") personId: String): List<MedicineOut>
+    @POST("medicines")
+    suspend fun addMedicine(@Body body: MedicineIn): MedicineOut
+    @DELETE("medicines/{id}")
+    suspend fun deleteMedicine(@Path("id") id: String): Response<Unit>
+
+    @GET("vaccinations")
+    suspend fun listVaccinations(@Query("person_id") personId: String): List<VaccinationOut>
+    @POST("vaccinations")
+    suspend fun addVaccination(@Body body: VaccinationIn): VaccinationOut
+    @DELETE("vaccinations/{id}")
+    suspend fun deleteVaccination(@Path("id") id: String): Response<Unit>
+
+    @GET("visits")
+    suspend fun listVisits(@Query("person_id") personId: String): List<VisitOut>
+    @POST("visits")
+    suspend fun addVisit(@Body body: VisitIn): VisitOut
+    @DELETE("visits/{id}")
+    suspend fun deleteVisit(@Path("id") id: String): Response<Unit>
+
+    @GET("claims")
+    suspend fun listClaims(@Query("person_id") personId: String): List<ClaimOut>
+    @POST("claims")
+    suspend fun addClaim(@Body body: ClaimIn): ClaimOut
+    @GET("claims/spend")
+    suspend fun yearlySpend(@Query("person_id") personId: String, @Query("year") year: Int? = null): SpendOut
+
+    @GET("doctors")
+    suspend fun listDoctors(): List<DoctorOut>
+    @POST("doctors")
+    suspend fun addDoctor(@Body body: DoctorIn): DoctorOut
+    @DELETE("doctors/{id}")
+    suspend fun deleteDoctor(@Path("id") id: String): Response<Unit>
+
+    @GET("growth")
+    suspend fun listGrowth(@Query("person_id") personId: String): List<GrowthOut>
+    @POST("growth")
+    suspend fun addGrowth(@Body body: GrowthIn): GrowthOut
+
+    @GET("uhids")
+    suspend fun listUhids(@Query("person_id") personId: String): List<UhidOut>
+    @POST("uhids")
+    suspend fun addUhid(@Body body: UhidIn): UhidOut
+
+    @GET("timeline")
+    suspend fun timeline(@Query("person_id") personId: String): List<TimelineItem>
+
+    @GET("storage/stats")
+    suspend fun storageStats(): StorageStats
+
+    // ---------- Password Vault ----------
+    @GET("vault/folders")
+    suspend fun listVaultFolders(): List<VaultFolderOut>
+
+    @POST("vault/folders")
+    suspend fun createVaultFolder(@Body body: VaultFolderIn): VaultFolderOut
+
+    @PATCH("vault/folders/{id}")
+    suspend fun renameVaultFolder(@Path("id") id: String, @Body body: VaultFolderIn): VaultFolderOut
+
+    @DELETE("vault/folders/{id}")
+    suspend fun deleteVaultFolder(@Path("id") id: String): Response<Unit>
+
+    @GET("vault/items")
+    suspend fun listVaultItems(
+        @Query("q") q: String? = null,
+        @Query("item_type") itemType: String? = null,
+        @Query("folder_id") folderId: String? = null,
+        @Query("favorite") favorite: Boolean = false
+    ): List<VaultItemOut>
+
+    @POST("vault/items")
+    suspend fun createVaultItem(@Body body: VaultItemIn): VaultItemOut
+
+    @GET("vault/items/{id}")
+    suspend fun getVaultItem(@Path("id") id: String): VaultItemOut
+
+    @PATCH("vault/items/{id}")
+    suspend fun updateVaultItem(@Path("id") id: String, @Body body: VaultItemUpdate): VaultItemOut
+
+    @DELETE("vault/items/{id}")
+    suspend fun trashVaultItem(@Path("id") id: String): Response<Unit>
+
+    @POST("vault/items/{id}/restore")
+    suspend fun restoreVaultItem(@Path("id") id: String): VaultItemOut
+
+    @DELETE("vault/items/{id}/permanent")
+    suspend fun deleteVaultItemForever(@Path("id") id: String): Response<Unit>
+
+    @POST("vault/items/{id}/favorite")
+    suspend fun favoriteVaultItem(@Path("id") id: String): VaultItemOut
+
+    @DELETE("vault/items/{id}/favorite")
+    suspend fun unfavoriteVaultItem(@Path("id") id: String): VaultItemOut
+
+    @GET("vault/items/{id}/totp")
+    suspend fun vaultItemTotp(@Path("id") id: String): VaultTotpOut
+
+    @GET("vault/items/{id}/history")
+    suspend fun vaultItemHistory(@Path("id") id: String): List<VaultHistoryOut>
+
+    @POST("vault/generate")
+    suspend fun generatePassword(@Body body: VaultGenerateIn): VaultGenerateOut
+
+    @GET("vault/health")
+    suspend fun vaultHealth(): VaultHealthOut
+
+    @GET("vault/trash")
+    suspend fun listVaultTrash(): List<VaultItemOut>
+
+    @POST("vault/trash/empty")
+    suspend fun emptyVaultTrash(): Response<Unit>
+
+    @GET("vault/sends")
+    suspend fun listVaultSends(): List<VaultSendOut>
+
+    @POST("vault/sends")
+    suspend fun createVaultSend(@Body body: VaultSendCreate): VaultSendOut
+
+    @DELETE("vault/sends/{id}")
+    suspend fun revokeVaultSend(@Path("id") id: String): Response<Unit>
 }
