@@ -1798,3 +1798,268 @@ def locker_delete(item_id: str, request: Request, db: Session = Depends(get_db))
         return RedirectResponse("/admin/login", status_code=302)
     lk.delete_item(item_id, db=db, current_user=user)
     return RedirectResponse("/admin/locker", status_code=302)
+
+
+# ---------- URL Vault ----------
+def _url_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "urls", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _url_user(request, db):
+    return require_login(request, db)
+
+
+@router.get("/urls", response_class=HTMLResponse)
+def urls_home(
+    request: Request,
+    q: str = "",
+    category_id: str = "",
+    tag_id: str = "",
+    favorite: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = uv.urls_summary(db=db, current_user=user)
+    items = uv.list_items(
+        q=q or None, category_id=category_id or None, tag_id=tag_id or None,
+        favorite=bool(favorite), db=db, current_user=user,
+    )
+    nav = "url_fav" if favorite else "url_home"
+    return templates.TemplateResponse("urls.html", _url_ctx(
+        request, user, nav, summary=summary, items=items,
+        q=q, category_id=category_id, tag_id=tag_id, favorite=bool(favorite),
+    ))
+
+
+@router.get("/urls/add", response_class=HTMLResponse)
+def urls_add_page(
+    request: Request,
+    category_id: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = uv.urls_summary(db=db, current_user=user)
+    return templates.TemplateResponse("url_add.html", _url_ctx(
+        request, user, "url_add",
+        categories=summary.categories, tags=summary.tags,
+        prefill_category=category_id,
+    ))
+
+
+@router.post("/urls/add")
+async def urls_add(request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    tag_ids = [t for t in form.getlist("tag_ids") if t]
+    uv.create_item(sc.UrlItemIn(
+        url=str(form.get("url") or ""),
+        title=str(form.get("title") or "") or None,
+        category_id=str(form.get("category_id") or "") or None,
+        tag_ids=tag_ids,
+        notes=str(form.get("notes") or "") or None,
+        favorite=bool(form.get("favorite")),
+        fetch_preview=True,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/urls", status_code=302)
+
+
+@router.get("/urls/manage", response_class=HTMLResponse)
+def urls_manage_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = uv.urls_summary(db=db, current_user=user)
+    return templates.TemplateResponse("urls_manage.html", _url_ctx(
+        request, user, "url_manage",
+        categories=summary.categories, tags=summary.tags,
+    ))
+
+
+@router.post("/urls/categories")
+async def urls_category_add(request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    uv.create_category(sc.UrlCategoryIn(
+        name=str(form.get("name") or ""),
+        color=str(form.get("color") or "") or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/urls/manage", status_code=302)
+
+
+@router.post("/urls/categories/{category_id}")
+async def urls_category_update(category_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    uv.update_category(category_id, sc.UrlCategoryIn(
+        name=str(form.get("name") or ""),
+        color=str(form.get("color") or "") or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/urls/manage", status_code=302)
+
+
+@router.post("/urls/categories/{category_id}/delete")
+def urls_category_delete(category_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.delete_category(category_id, db=db, current_user=user)
+    return RedirectResponse("/admin/urls/manage", status_code=302)
+
+
+@router.post("/urls/tags")
+async def urls_tag_add(request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    uv.create_tag(sc.UrlTagIn(
+        name=str(form.get("name") or ""),
+        color=str(form.get("color") or "") or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/urls/manage", status_code=302)
+
+
+@router.post("/urls/tags/{tag_id}")
+async def urls_tag_update(tag_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    uv.update_tag(tag_id, sc.UrlTagIn(
+        name=str(form.get("name") or ""),
+        color=str(form.get("color") or "") or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/urls/manage", status_code=302)
+
+
+@router.post("/urls/tags/{tag_id}/delete")
+def urls_tag_delete(tag_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.delete_tag(tag_id, db=db, current_user=user)
+    return RedirectResponse("/admin/urls/manage", status_code=302)
+
+
+@router.get("/urls/{item_id}", response_class=HTMLResponse)
+def urls_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    item = uv.get_item(item_id, db=db, current_user=user)
+    summary = uv.urls_summary(db=db, current_user=user)
+    shares = uv.list_shares(item_id=item_id, db=db, current_user=user)
+    return templates.TemplateResponse("url_item.html", _url_ctx(
+        request, user, "url_home", item=item,
+        categories=summary.categories, tags=summary.tags, shares=shares,
+        selected_tag_ids={t.id for t in item.tags},
+    ))
+
+
+@router.post("/urls/{item_id}")
+async def urls_item_update(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    tag_ids = [t for t in form.getlist("tag_ids") if t]
+    uv.update_item(item_id, sc.UrlItemUpdate(
+        url=str(form.get("url") or "") or None,
+        title=str(form.get("title") or "") or None,
+        category_id=str(form.get("category_id") or "") or None,
+        tag_ids=tag_ids,
+        notes=str(form.get("notes") or "") or None,
+        favorite=bool(form.get("favorite")),
+        fetch_preview=bool(form.get("fetch_preview")),
+    ), db=db, current_user=user)
+    return RedirectResponse(f"/admin/urls/{item_id}", status_code=302)
+
+
+@router.post("/urls/{item_id}/preview")
+def urls_item_preview(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.refresh_preview(item_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/urls/{item_id}", status_code=302)
+
+
+@router.post("/urls/{item_id}/favorite")
+def urls_item_favorite(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.toggle_favorite(item_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/urls/{item_id}", status_code=302)
+
+
+@router.post("/urls/{item_id}/share")
+def urls_item_share(
+    item_id: str,
+    request: Request,
+    expires_in_hours: int = Form(168),
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    from app import schemas as sc
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.create_share(item_id, sc.UrlShareCreate(expires_in_hours=expires_in_hours), db=db, current_user=user)
+    return RedirectResponse(f"/admin/urls/{item_id}", status_code=302)
+
+
+@router.post("/urls/shares/{share_id}/revoke")
+def urls_share_revoke(share_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.revoke_share(share_id, db=db, current_user=user)
+    referer = request.headers.get("referer") or "/admin/urls"
+    return RedirectResponse(referer, status_code=302)
+
+
+@router.post("/urls/{item_id}/delete")
+def urls_item_delete(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uv.delete_item(item_id, db=db, current_user=user)
+    return RedirectResponse("/admin/urls", status_code=302)

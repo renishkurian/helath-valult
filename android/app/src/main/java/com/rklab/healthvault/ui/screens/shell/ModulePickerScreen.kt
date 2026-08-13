@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Settings
@@ -78,6 +79,7 @@ import com.rklab.healthvault.ui.theme.HubDock
 import com.rklab.healthvault.ui.theme.HubGlass
 import com.rklab.healthvault.ui.theme.HubGlassHi
 import com.rklab.healthvault.ui.theme.HubRose
+import com.rklab.healthvault.ui.theme.HubSky
 import com.rklab.healthvault.ui.theme.HubStroke
 import com.rklab.healthvault.ui.theme.HubTeal
 import com.rklab.healthvault.ui.theme.HubText
@@ -102,6 +104,7 @@ fun ModulePickerScreen(
     onPasswords: () -> Unit,
     onFinance: () -> Unit,
     onLocker: () -> Unit,
+    onUrls: () -> Unit,
     onSettings: () -> Unit,
     onVaultHealth: () -> Unit = {}
 ) {
@@ -244,43 +247,52 @@ fun ModulePickerScreen(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            HubTile(
-                glow = HubAmber,
-                onClick = onLocker,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp),
-                contentDescription = "Open Document Vault, ${state.lockerCount} documents"
-            ) {
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Top
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HubTile(
+                    glow = HubAmber,
+                    onClick = onLocker,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(156.dp),
+                    contentDescription = "Open Document Vault, ${state.lockerCount} documents"
                 ) {
                     TileIcon(Icons.Outlined.Description, HubAmber)
-                    Text(
-                        "${state.lockerCount} docs",
-                        color = HubAmber,
-                        fontFamily = MonoFont,
-                        fontSize = 9.sp,
-                        modifier = Modifier
-                            .clip(ChipShape)
-                            .background(HubAmber.copy(alpha = 0.12f))
-                            .border(1.dp, HubAmber.copy(alpha = 0.25f), ChipShape)
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                    Column {
+                        Text("Document\nVault", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            if (state.lockerExpiring > 0) "${state.lockerExpiring} expiring soon"
+                            else "${state.lockerCount} docs",
+                            color = HubTextDim,
+                            fontSize = 11.5.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    TileFooter(stat = "IDs & papers")
                 }
-                Column {
-                    Text("Document Vault", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.height(3.dp))
-                    Text(
-                        if (state.lockerExpiring > 0) "${state.lockerExpiring} expiring soon"
-                        else "Aadhaar, PAN, RC, warranties",
-                        color = HubTextDim,
-                        fontSize = 11.5.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                HubTile(
+                    glow = HubSky,
+                    onClick = onUrls,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(156.dp),
+                    contentDescription = "Open URL Vault, ${state.urlCount} links"
+                ) {
+                    TileIcon(Icons.Outlined.Link, HubSky)
+                    Column {
+                        Text("URL\nVault", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, lineHeight = 20.sp)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            if (state.urlCount == 0) "Save links & previews"
+                            else "${state.urlCount} links",
+                            color = HubTextDim,
+                            fontSize = 11.5.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    TileFooter(stat = if (state.urlFavorites > 0) "${state.urlFavorites} favorites" else "Categories & tags")
                 }
             }
         }

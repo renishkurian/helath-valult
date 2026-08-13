@@ -389,6 +389,24 @@
     width:42px; height:42px; border-radius:12px; display:grid; place-items:center;
     background:var(--accent-soft); color:var(--navy); font-weight:700; flex-shrink:0;
   }
+  .secret-wrap{ position:relative; }
+  .secret-wrap input{ padding-right:84px; font-family:'JetBrains Mono', ui-monospace, monospace; }
+  .secret-wrap.copy-only input{ padding-right:48px; }
+  .secret-actions{ position:absolute; right:4px; top:50%; transform:translateY(-50%); display:flex; gap:0; }
+  .secret-btn{
+    width:36px; height:36px; border:0; border-radius:9px; background:transparent;
+    color:var(--ink-soft); cursor:pointer; display:grid; place-items:center; padding:0;
+  }
+  .secret-btn:hover{ background:rgba(255,255,255,0.06); color:var(--ink); }
+  .secret-btn svg{ width:16px; height:16px; }
+  .secret-plain{ font-family:'JetBrains Mono', ui-monospace, monospace; letter-spacing:0.08em; }
+  .secret-cell{ display:inline-flex; align-items:center; gap:2px; }
+  .item-meta{
+    display:flex; gap:32px; flex-wrap:wrap; padding-top:16px; margin-top:18px;
+    border-top:1px solid var(--line);
+  }
+  .item-meta .lbl{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+  .item-meta .val{ font-size:13px; margin-top:4px; color:var(--ink); }
 
   @media (max-width: 980px){
     .ice-wrap{ grid-template-columns:1fr; }
@@ -420,7 +438,7 @@
       <div class="brand-mark">V</div>
       <div class="brand">Vault</div>
     </div>
-    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='locker' %}Document Vault{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
+    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='locker' %}Document Vault{% elif active_module=='urls' %}URL Vault{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
     {% if session_user %}
     <nav class="nav-list">
     <a class="nav-item {% if active_nav=='modules' %}active{% endif %}" href="/admin/modules">
@@ -456,6 +474,23 @@
     <a class="nav-item {% if active_nav=='lk_expiring' %}active{% endif %}" href="/admin/locker?expiring=1">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
       Expiring
+    </a>
+    {% elif active_module=='urls' %}
+    <a class="nav-item {% if active_nav=='url_home' %}active{% endif %}" href="/admin/urls">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l1.41-1.41a5 5 0 0 0-7.07-7.07L10 5.93"/><path d="M14 11a5 5 0 0 0-7.07 0L5.52 12.4a5 5 0 0 0 7.07 7.07L14 18.07"/></svg>
+      Links
+    </a>
+    <a class="nav-item {% if active_nav=='url_add' %}active{% endif %}" href="/admin/urls/add">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a class="nav-item {% if active_nav=='url_fav' %}active{% endif %}" href="/admin/urls?favorite=1">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.8 6.7 19.1l1-5.8-4.2-4.1 5.9-.9z"/></svg>
+      Favorites
+    </a>
+    <a class="nav-item {% if active_nav=='url_manage' %}active{% endif %}" href="/admin/urls/manage">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      Manage
     </a>
     {% elif active_module=='passwords' %}
     <a class="nav-item {% if active_nav=='pw_vault' %}active{% endif %}" href="/admin/passwords">
@@ -539,6 +574,88 @@
   box.addEventListener("click", function(e){ if(e.target === box) hide(); });
   document.getElementById("photo-lightbox-close").addEventListener("click", hide);
   document.addEventListener("keydown", function(e){ if(e.key === "Escape" && !box.hidden) hide(); });
+})();
+(function(){
+  var ICO_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var ICO_EYE_OFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-4.4"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.2 3.9"/><path d="M6.1 6.1C3.7 7.8 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8"/></svg>';
+  var ICO_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  var ICO_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5L20 7"/></svg>';
+
+  function copyText(value, btn){
+    var text = value == null ? "" : String(value);
+    function ok(){
+      if(!btn) return;
+      var prev = btn.innerHTML;
+      btn.innerHTML = ICO_CHECK;
+      btn.setAttribute("aria-label", "Copied");
+      setTimeout(function(){ btn.innerHTML = prev; btn.setAttribute("aria-label", "Copy"); }, 1200);
+    }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(ok).catch(function(){ fallback(text, ok); });
+    } else {
+      fallback(text, ok);
+    }
+  }
+  function fallback(text, ok){
+    var ta = document.createElement("textarea");
+    ta.value = text; ta.setAttribute("readonly", "");
+    ta.style.position = "fixed"; ta.style.left = "-9999px";
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand("copy"); ok(); } catch(e){}
+    document.body.removeChild(ta);
+  }
+  function btn(label, html){
+    var el = document.createElement("button");
+    el.type = "button";
+    el.className = "secret-btn";
+    el.setAttribute("aria-label", label);
+    el.setAttribute("title", label);
+    el.innerHTML = html;
+    return el;
+  }
+  function wrapInput(input, withToggle){
+    if(input.closest(".secret-wrap")) return;
+    var wrap = document.createElement("div");
+    wrap.className = withToggle ? "secret-wrap" : "secret-wrap copy-only";
+    input.parentNode.insertBefore(wrap, input);
+    wrap.appendChild(input);
+    var actions = document.createElement("div");
+    actions.className = "secret-actions";
+    if(withToggle){
+      var toggle = btn("Show", ICO_EYE);
+      toggle.addEventListener("click", function(){
+        var hidden = input.type === "password";
+        input.type = hidden ? "text" : "password";
+        toggle.innerHTML = hidden ? ICO_EYE_OFF : ICO_EYE;
+        toggle.setAttribute("aria-label", hidden ? "Hide" : "Show");
+        toggle.setAttribute("title", hidden ? "Hide" : "Show");
+      });
+      actions.appendChild(toggle);
+    }
+    var copy = btn("Copy", ICO_COPY);
+    copy.addEventListener("click", function(){ copyText(input.value, copy); });
+    actions.appendChild(copy);
+    wrap.appendChild(actions);
+  }
+  document.querySelectorAll("input.js-secret").forEach(function(el){ wrapInput(el, true); });
+  document.querySelectorAll("input.js-copyable").forEach(function(el){ wrapInput(el, false); });
+  document.querySelectorAll(".js-secret-text").forEach(function(el){
+    var secret = el.getAttribute("data-secret") || "";
+    el.textContent = "••••••••";
+    var toggle = btn("Show", ICO_EYE);
+    var copy = btn("Copy", ICO_COPY);
+    toggle.addEventListener("click", function(){
+      var shown = el.getAttribute("data-shown") === "1";
+      el.setAttribute("data-shown", shown ? "0" : "1");
+      el.textContent = shown ? "••••••••" : secret;
+      el.style.letterSpacing = shown ? "0.08em" : "0";
+      toggle.innerHTML = shown ? ICO_EYE : ICO_EYE_OFF;
+      toggle.setAttribute("aria-label", shown ? "Show" : "Hide");
+    });
+    copy.addEventListener("click", function(){ copyText(secret, copy); });
+    el.after(copy);
+    el.after(toggle);
+  });
 })();
 </script>
 </body>

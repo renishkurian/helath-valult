@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }}{% endblock %}
+{% block content %}
+<div class="eyebrow"><a href="/admin/urls" style="color:var(--ink-soft);">← URL Vault</a>{% if item.category_name %} · {{ item.category_name }}{% endif %}</div>
+<div class="page-head">
+  <div class="page-title">{{ item.title }}</div>
+  <a class="btn" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">Open</a>
+</div>
+
+{% if item.og_image or item.og_description %}
+<div class="uv-preview surface" style="max-width:640px; margin-bottom:16px; padding:0; overflow:hidden;">
+  {% if item.og_image %}
+  <div class="uv-thumb" style="height:180px; background-image:url('{{ item.og_image }}'); background-size:cover; background-position:center;"></div>
+  {% endif %}
+  <div style="padding:16px 18px;">
+    <div style="font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:600;">{{ item.og_site_name or '' }}</div>
+    {% if item.og_title and item.og_title != item.title %}<div style="font-weight:700; margin-top:4px;">{{ item.og_title }}</div>{% endif %}
+    {% if item.og_description %}<p style="color:var(--ink-soft); font-size:14px; margin-top:6px; line-height:1.5;">{{ item.og_description }}</p>{% endif %}
+    <div style="font-size:12px; color:var(--ink-soft); margin-top:8px;">Added {{ item.created_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
+  </div>
+</div>
+{% endif %}
+
+<div class="surface" style="max-width:640px; margin-bottom:16px;">
+  <form method="post" action="/admin/urls/{{ item.id }}">
+    <div class="form-grid">
+      <div class="field" style="grid-column:1/-1;"><label>URL</label><input name="url" value="{{ item.url }}" required></div>
+      <div class="field"><label>Title</label><input name="title" value="{{ item.title }}" required></div>
+      <div class="field">
+        <label>Category</label>
+        <select name="category_id">
+          <option value="">None</option>
+          {% for c in categories %}
+          <option value="{{ c.id }}" {% if item.category_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% if tags %}
+    <div class="field" style="margin-top:12px;">
+      <label>Tags</label>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+        {% for t in tags %}
+        <label class="chip {% if t.id in selected_tag_ids %}active{% endif %}" style="cursor:pointer;">
+          <input type="checkbox" name="tag_ids" value="{{ t.id }}" {% if t.id in selected_tag_ids %}checked{% endif %} style="accent-color:var(--navy);">
+          {{ t.name }}
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    <div class="field" style="margin-top:12px;"><label>Notes</label><textarea name="notes" rows="3">{{ item.notes or '' }}</textarea></div>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:14px;">
+      <label class="chip"><input type="checkbox" name="favorite" value="1" {% if item.favorite %}checked{% endif %}> Favorite</label>
+      <label class="chip"><input type="checkbox" name="fetch_preview" value="1"> Refresh preview on save</label>
+    </div>
+    <button class="btn" type="submit" style="margin-top:16px;">Save changes</button>
+  </form>
+</div>
+
+<div class="surface" style="max-width:640px; margin-bottom:16px;">
+  <div class="group-label">Share</div>
+  <p style="color:var(--ink-soft); font-size:13px; margin-bottom:12px;">Copy the original URL, or create an expiring public preview page.</p>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+    <button type="button" class="btn-outline uv-copy" data-url="{{ item.url }}">Copy URL</button>
+    <form method="post" action="/admin/urls/{{ item.id }}/share" style="display:flex; gap:8px; align-items:center;">
+      <select name="expires_in_hours">
+        <option value="24">1 day</option>
+        <option value="168" selected>1 week</option>
+        <option value="720">30 days</option>
+      </select>
+      <button class="btn" type="submit">Create share link</button>
+    </form>
+  </div>
+  {% for s in shares %}
+  <div class="mm-row" style="grid-template-columns:1fr auto;">
+    <div>
+      <div class="payee mono" style="font-size:13px; word-break:break-all;">/u/{{ s.token }}</div>
+      <div class="acct">
+        {% if s.revoked %}Revoked{% else %}Expires {{ s.expires_at.strftime('%d %b %Y') }} · {{ s.view_count }} view{{ 's' if s.view_count != 1 else '' }}{% endif %}
+      </div>
+    </div>
+    {% if not s.revoked %}
+    <form method="post" action="/admin/urls/shares/{{ s.id }}/revoke">
+      <button class="tag tag-mustard" type="submit">Revoke</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<div style="display:flex; gap:10px; flex-wrap:wrap; max-width:640px;">
+  <form method="post" action="/admin/urls/{{ item.id }}/preview">
+    <button class="btn-outline" type="submit">Refresh preview</button>
+  </form>
+  <form method="post" action="/admin/urls/{{ item.id }}/delete" onsubmit="return confirm('Delete this link?');">
+    <button class="btn-outline" type="submit" style="color:var(--stamp); border-color:rgba(255,107,122,0.35);">Delete link</button>
+  </form>
+</div>
+<script>
+document.querySelectorAll(".uv-copy").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const url = btn.getAttribute("data-url");
+    try { await navigator.clipboard.writeText(url); btn.textContent = "Copied"; setTimeout(() => btn.textContent = "Copy URL", 1400); }
+    catch { prompt("Copy URL", url); }
+  });
+});
+</script>
+{% endblock %}

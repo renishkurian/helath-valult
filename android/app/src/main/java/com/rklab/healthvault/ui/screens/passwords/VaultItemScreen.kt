@@ -7,6 +7,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +17,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import com.rklab.healthvault.data.model.VaultHistoryOut
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.model.VaultTotpOut
@@ -37,7 +41,6 @@ fun VaultItemScreen(
     var item by remember { mutableStateOf<VaultItemOut?>(null) }
     var totp by remember { mutableStateOf<VaultTotpOut?>(null) }
     var history by remember { mutableStateOf<List<VaultHistoryOut>>(emptyList()) }
-    var showPassword by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
     fun load() {
@@ -98,7 +101,7 @@ fun VaultItemScreen(
             Spacer(Modifier.height(12.dp))
         }
         CopyRow("Username", current.username)
-        CopyRow("Password", current.password, secret = !showPassword, onToggle = { showPassword = !showPassword })
+        CopyRow("Password", current.password, secret = true)
         current.uris.forEach { CopyRow("URI", it) }
         CopyRow("Notes", current.notes)
         CopyRow("Card number", current.card_number, secret = true)
@@ -124,21 +127,30 @@ fun VaultItemScreen(
                 onBack()
             }
         }, modifier = Modifier.fillMaxWidth()) { Text("Move to trash", color = StampRed) }
+        Spacer(Modifier.height(24.dp))
+        Text("ITEM HISTORY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Spacer(Modifier.height(8.dp))
+        MetaRow("Last edited", formatVaultDate(current.updated_at ?: current.created_at))
+        MetaRow("Created", formatVaultDate(current.created_at))
+        current.password_changed_at?.takeIf { it.isNotBlank() }?.let {
+            MetaRow("Password changed", formatVaultDate(it))
+        }
         if (history.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
             Text("PASSWORD HISTORY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
             Spacer(Modifier.height(8.dp))
             history.forEach { h ->
-                CopyRow(h.created_at.take(16).replace('T', ' '), h.password, secret = true)
+                CopyRow(formatVaultDate(h.created_at), h.password, secret = true)
             }
         }
     }
 }
 
 @Composable
-private fun CopyRow(label: String, value: String?, secret: Boolean = false, onToggle: (() -> Unit)? = null) {
+private fun CopyRow(label: String, value: String?, secret: Boolean = false) {
     if (value.isNullOrBlank()) return
     val context = LocalContext.current
+    var hidden by remember { mutableStateOf(secret) }
     Row(
         Modifier.fillMaxWidth().padding(vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -146,13 +158,42 @@ private fun CopyRow(label: String, value: String?, secret: Boolean = false, onTo
     ) {
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelSmall, color = InkSoft)
-            Text(if (secret) "••••••••" else value, color = Ink, fontFamily = if (secret) FontFamily.Monospace else FontFamily.Default)
-            if (onToggle != null) {
-                TextButton(onClick = onToggle) { Text(if (secret) "Show" else "Hide", color = Navy) }
+            Text(
+                if (hidden) "••••••••" else value,
+                color = Ink,
+                fontFamily = if (secret) FontFamily.Monospace else FontFamily.Default
+            )
+        }
+        if (secret) {
+            IconButton(onClick = { hidden = !hidden }) {
+                Icon(
+                    if (hidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
+                    contentDescription = if (hidden) "Show $label" else "Hide $label",
+                    tint = Navy
+                )
             }
         }
         IconButton(onClick = { ClipboardUtil.copy(context, label, value) }) {
             Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $label", tint = Navy)
         }
     }
+}
+
+@Composable
+private fun MetaRow(label: String, value: String) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = InkSoft)
+        Text(value, color = Ink, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private fun formatVaultDate(iso: String): String = try {
+    val text = iso.trim().removeSuffix("Z").replace(" ", "T")
+    LocalDateTime.parse(text.take(19), DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        .format(DateTimeFormatter.ofPattern("dd MMM yyyy, h:mm:ss a"))
+} catch (_: Exception) {
+    iso.replace("T", " ").take(19)
 }

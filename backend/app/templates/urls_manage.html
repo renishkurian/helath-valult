@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Categories & tags{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">URL Vault</div>
+    <div class="page-title">Categories & tags</div>
+  </div>
+  <a class="btn-outline" href="/admin/urls">← Links</a>
+</div>
+<p style="color:var(--ink-soft); margin-bottom:22px; max-width:560px;">Rename, recode, or add your own — Adult, Instagram, News, Songs are just a starting set.</p>
+
+<div class="grid grid-2" style="align-items:start; gap:22px;">
+  <section class="surface">
+    <div class="group-label">Categories</div>
+    {% for c in categories %}
+    <form method="post" action="/admin/urls/categories/{{ c.id }}" class="uv-manage-row">
+      <input type="color" name="color" value="{{ c.color or '#8B95A8' }}" aria-label="Color for {{ c.name }}">
+      <input name="name" value="{{ c.name }}" required aria-label="Category name">
+      <span class="fcount">{{ c.count }}</span>
+      <button class="tag tag-sage" type="submit">Save</button>
+      <button class="tag tag-mustard" form="del-cat-{{ c.id }}" type="submit" onclick="return confirm('Delete category {{ c.name }}? Links stay, uncategorized.');">Delete</button>
+    </form>
+    <form id="del-cat-{{ c.id }}" method="post" action="/admin/urls/categories/{{ c.id }}/delete"></form>
+    {% endfor %}
+    <form method="post" action="/admin/urls/categories" class="uv-manage-row" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line);">
+      <input type="color" name="color" value="#5B8CFF" aria-label="New category color">
+      <input name="name" placeholder="New category" required>
+      <button class="btn" type="submit">Add</button>
+    </form>
+  </section>
+
+  <section class="surface">
+    <div class="group-label">Tags</div>
+    {% for t in tags %}
+    <form method="post" action="/admin/urls/tags/{{ t.id }}" class="uv-manage-row">
+      <input type="color" name="color" value="{{ t.color or '#8B95A8' }}" aria-label="Color for {{ t.name }}">
+      <input name="name" value="{{ t.name }}" required aria-label="Tag name">
+      <span class="fcount">{{ t.count }}</span>
+      <button class="tag tag-sage" type="submit">Save</button>
+      <button class="tag tag-mustard" form="del-tag-{{ t.id }}" type="submit" onclick="return confirm('Delete tag {{ t.name }}?');">Delete</button>
+    </form>
+    <form id="del-tag-{{ t.id }}" method="post" action="/admin/urls/tags/{{ t.id }}/delete"></form>
+    {% endfor %}
+    <form method="post" action="/admin/urls/tags" class="uv-manage-row" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line);">
+      <input type="color" name="color" value="#A89BFF" aria-label="New tag color">
+      <input name="name" placeholder="New tag" required>
+      <button class="btn" type="submit">Add</button>
+    </form>
+  </section>
+</div>
+<style>
+  .uv-manage-row{ display:grid; grid-template-columns:36px 1fr auto auto auto; gap:8px; align-items:center; margin-bottom:8px; }
+  .uv-manage-row input[type=color]{ width:36px; height:36px; padding:0; border:none; background:transparent; cursor:pointer; }
+  .uv-manage-row .fcount{ font-size:12px; color:var(--ink-soft); min-width:1.6em; text-align:right; }
+  @media (max-width:720px){
+    .grid-2{ grid-template-columns:1fr; }
+    .uv-manage-row{ grid-template-columns:36px 1fr auto; }
+    .uv-manage-row .fcount{ display:none; }
+  }
+</style>
+{% endblock %}

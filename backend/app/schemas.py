@@ -1069,3 +1069,108 @@ class LockerSummaryOut(BaseModel):
     total: int = 0
     expiring: int = 0
     types: List[LockerTypeOut] = []
+
+
+# ---------- URL Vault ----------
+class UrlCategoryIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    color: Optional[str] = Field(default=None, max_length=16)
+    sort_order: Optional[int] = None
+
+
+class UrlCategoryOut(BaseModel):
+    id: str
+    name: str
+    color: Optional[str] = None
+    sort_order: int = 0
+    is_default: bool = False
+    count: int = 0
+
+
+class UrlTagIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    color: Optional[str] = Field(default=None, max_length=16)
+
+
+class UrlTagOut(BaseModel):
+    id: str
+    name: str
+    color: Optional[str] = None
+    count: int = 0
+
+
+class UrlItemIn(BaseModel):
+    url: str = Field(min_length=3, max_length=2000)
+    title: Optional[str] = Field(default=None, max_length=255)
+    category_id: Optional[str] = None
+    tag_ids: List[str] = []
+    notes: Optional[str] = None
+    favorite: bool = False
+    fetch_preview: bool = True
+
+
+class UrlItemUpdate(BaseModel):
+    url: Optional[str] = Field(default=None, max_length=2000)
+    title: Optional[str] = Field(default=None, max_length=255)
+    category_id: Optional[str] = None
+    tag_ids: Optional[List[str]] = None
+    notes: Optional[str] = None
+    favorite: Optional[bool] = None
+    fetch_preview: Optional[bool] = None
+
+
+class UrlItemOut(BaseModel):
+    id: str
+    title: str
+    url: str
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    category_color: Optional[str] = None
+    tags: List[UrlTagOut] = []
+    notes: Optional[str] = None
+    favorite: bool = False
+    og_title: Optional[str] = None
+    og_description: Optional[str] = None
+    og_image: Optional[str] = None
+    og_site_name: Optional[str] = None
+    favicon_url: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class UrlPreviewOut(BaseModel):
+    url: str
+    title: Optional[str] = None
+    description: Optional[str] = None
+    image: Optional[str] = None
+    site_name: Optional[str] = None
+    favicon_url: Optional[str] = None
+
+
+class UrlPreviewIn(BaseModel):
+    url: str = Field(min_length=3, max_length=2000)
+
+
+class UrlShareCreate(BaseModel):
+    expires_in_hours: int = Field(default=168, ge=1, le=24 * 90)
+    max_views: Optional[int] = Field(default=None, ge=1)
+
+
+class UrlShareOut(BaseModel):
+    id: str
+    token: str
+    item_id: str
+    item_title: Optional[str] = None
+    item_url: Optional[str] = None
+    expires_at: datetime
+    max_views: Optional[int] = None
+    view_count: int = 0
+    revoked: bool = False
+    created_at: datetime
+
+
+class UrlSummaryOut(BaseModel):
+    total: int = 0
+    favorites: int = 0
+    categories: List[UrlCategoryOut] = []
+    tags: List[UrlTagOut] = []

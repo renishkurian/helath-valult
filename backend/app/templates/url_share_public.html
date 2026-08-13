@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ item.title }} — URL Vault</title>
+<meta name="theme-color" content="#0B0F17">
+{% if item.og_description %}<meta name="description" content="{{ item.og_description[:200] }}">{% endif %}
+{% if item.og_image %}<meta property="og:image" content="{{ item.og_image }}">{% endif %}
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
+  body{ font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:#0B0F17; color:#F4F6FA; margin:0; padding:24px; min-height:100vh; display:flex; align-items:center; }
+  .card{ max-width:520px; margin:0 auto; background:#151B28; border:1px solid rgba(255,255,255,0.08); border-radius:22px; overflow:hidden; width:100%; }
+  .thumb{ height:180px; background:#121826 center/cover no-repeat; }
+  .body{ padding:24px 28px 28px; }
+  .eyebrow{ font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8B95A8; font-weight:600; }
+  h1{ font-size:24px; margin:8px 0 8px; letter-spacing:-0.03em; }
+  .meta{ color:#8B95A8; font-size:14px; margin-bottom:16px; line-height:1.5; }
+  .btn{ display:inline-block; background:linear-gradient(180deg,#6B98FF,#4E7FFF); color:#fff; text-decoration:none; padding:12px 18px; border-radius:12px; font-weight:600; }
+  .note{ margin-top:18px; font-size:12px; color:#8B95A8; }
+  .chip{ display:inline-block; font-size:11px; font-weight:600; padding:4px 8px; border-radius:999px; background:rgba(91,140,255,0.14); color:#9BB8FF; margin-right:6px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    {% if item.og_image %}<div class="thumb" style="background-image:url('{{ item.og_image }}');"></div>{% endif %}
+    <div class="body">
+      <div class="eyebrow">Shared link{% if item.og_site_name %} · {{ item.og_site_name }}{% endif %}</div>
+      <h1>{{ item.title }}</h1>
+      <div class="meta">
+        {% if item.og_description %}{{ item.og_description }}<br><br>{% endif %}
+        {% if item.category_name %}<span class="chip">{{ item.category_name }}</span>{% endif %}
+        {% for t in item.tags %}<span class="chip">{{ t.name }}</span>{% endfor %}
+        <div style="margin-top:10px;">Link expires {{ share.expires_at.strftime('%d %b %Y, %H:%M') }} UTC</div>
+      </div>
+      <a class="btn" href="{{ item.url }}" rel="noopener noreferrer">Open original</a>
+      <p class="note">Read-only share from URL Vault. Views are counted for the owner.</p>
+    </div>
+  </div>
+</body>
+</html>

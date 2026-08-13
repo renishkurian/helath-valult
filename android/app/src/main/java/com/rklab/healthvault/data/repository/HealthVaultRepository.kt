@@ -232,6 +232,31 @@ class HealthVaultRepository(
         return destination
     }
 
+    suspend fun urlSummary() = api.urlSummary()
+    suspend fun listUrlItems(
+        q: String? = null,
+        categoryId: String? = null,
+        tagId: String? = null,
+        favorite: Boolean = false
+    ) = api.listUrlItems(q, categoryId, tagId, favorite)
+    suspend fun createUrlItem(body: UrlItemIn) = api.createUrlItem(body)
+    suspend fun getUrlItem(id: String) = api.getUrlItem(id)
+    suspend fun updateUrlItem(id: String, body: UrlItemUpdate) = api.updateUrlItem(id, body)
+    suspend fun deleteUrlItem(id: String) { api.deleteUrlItem(id) }
+    suspend fun refreshUrlPreview(id: String) = api.refreshUrlPreview(id)
+    suspend fun toggleUrlFavorite(id: String) = api.toggleUrlFavorite(id)
+    suspend fun createUrlShare(id: String, body: UrlShareCreate) = api.createUrlShare(id, body)
+    suspend fun listUrlShares(itemId: String? = null) = api.listUrlShares(itemId)
+    suspend fun revokeUrlShare(id: String) { api.revokeUrlShare(id) }
+    suspend fun listUrlCategories() = api.listUrlCategories()
+    suspend fun createUrlCategory(body: UrlCategoryIn) = api.createUrlCategory(body)
+    suspend fun updateUrlCategory(id: String, body: UrlCategoryIn) = api.updateUrlCategory(id, body)
+    suspend fun deleteUrlCategory(id: String) { api.deleteUrlCategory(id) }
+    suspend fun listUrlTags() = api.listUrlTags()
+    suspend fun createUrlTag(body: UrlTagIn) = api.createUrlTag(body)
+    suspend fun updateUrlTag(id: String, body: UrlTagIn) = api.updateUrlTag(id, body)
+    suspend fun deleteUrlTag(id: String) { api.deleteUrlTag(id) }
+
     suspend fun financeSummary(yearMonth: String? = null) = api.financeSummary(yearMonth)
     suspend fun listFinanceAccounts() = api.listFinanceAccounts()
     suspend fun createFinanceAccount(body: FinanceAccountIn) = api.createFinanceAccount(body)

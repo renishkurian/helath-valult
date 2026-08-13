@@ -34,7 +34,9 @@ data class HubUiState(
     val monthSpendLabel: String = "No spend this month",
     val financeFooter: String = "SMS auto-tag",
     val lockerCount: Int = 0,
-    val lockerExpiring: Int = 0
+    val lockerExpiring: Int = 0,
+    val urlCount: Int = 0,
+    val urlFavorites: Int = 0
 )
 
 class ModulePickerViewModel(private val repository: HealthVaultRepository) : ViewModel() {
@@ -52,6 +54,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                     val healthDef = async { runCatching { repository.vaultHealth() }.getOrNull() }
                     val financeDef = async { runCatching { repository.financeSummary() }.getOrNull() }
                     val lockerDef = async { runCatching { repository.lockerSummary() }.getOrNull() }
+                    val urlsDef = async { runCatching { repository.urlSummary() }.getOrNull() }
                     val remindersDef = async {
                         runCatching { repository.listReminders(upcomingOnly = true) }.getOrDefault(emptyList())
                     }
@@ -61,6 +64,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                     val health = healthDef.await()
                     val finance = financeDef.await()
                     val locker = lockerDef.await()
+                    val urls = urlsDef.await()
                     val reminders = remindersDef.await().sortedBy { it.remind_at }
 
                     val firstName = user?.full_name?.trim()?.substringBefore(" ")?.takeIf { it.isNotBlank() }
@@ -87,7 +91,9 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                         monthSpendLabel = monthSpendLabel(finance?.expense ?: 0.0),
                         financeFooter = if (pendingSms > 0) "$pendingSms SMS to review" else "SMS auto-tag",
                         lockerCount = locker?.total ?: 0,
-                        lockerExpiring = locker?.expiring ?: 0
+                        lockerExpiring = locker?.expiring ?: 0,
+                        urlCount = urls?.total ?: 0,
+                        urlFavorites = urls?.favorites ?: 0
                     )
                 }
             } catch (_: Exception) {

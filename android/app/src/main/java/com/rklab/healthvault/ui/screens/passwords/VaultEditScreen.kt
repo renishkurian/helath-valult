@@ -4,9 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.VaultFolderOut
 import com.rklab.healthvault.data.model.VaultGenerateIn
@@ -107,23 +112,23 @@ fun VaultEditScreen(
         }
         if (type == "login" || type == "note") {
             OutlinedTextField(username, { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(password, { password = it }, label = { Text("Password") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            SecretField(password, { password = it }, "Password", Modifier.fillMaxWidth())
             TextButton(onClick = {
                 scope.launch {
                     runCatching { password = repository.generatePassword(VaultGenerateIn(length = 16)).value }
                 }
             }) { Text("Generate password", color = Navy) }
             OutlinedTextField(uris, { uris = it }, label = { Text("Website / URI (one per line)") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(totp, { totp = it }, label = { Text("Authenticator key") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            SecretField(totp, { totp = it }, "Authenticator key", Modifier.fillMaxWidth())
         }
         if (type == "card") {
             OutlinedTextField(cardholder, { cardholder = it }, label = { Text("Cardholder") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(cardBrand, { cardBrand = it }, label = { Text("Brand") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(cardNumber, { cardNumber = it }, label = { Text("Number") }, modifier = Modifier.fillMaxWidth())
+            SecretField(cardNumber, { cardNumber = it }, "Number", Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(expMonth, { expMonth = it }, label = { Text("MM") }, modifier = Modifier.weight(1f))
                 OutlinedTextField(expYear, { expYear = it }, label = { Text("YYYY") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(cvv, { cvv = it }, label = { Text("CVV") }, modifier = Modifier.weight(1f))
+                SecretField(cvv, { cvv = it }, "CVV", Modifier.weight(1f))
             }
         }
         if (type == "identity") {
@@ -179,4 +184,30 @@ fun VaultEditScreen(
             colors = ButtonDefaults.buttonColors(containerColor = Navy)
         ) { Text(if (saving) "Saving…" else "Save", color = TextWhite) }
     }
+}
+
+@Composable
+private fun SecretField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    var visible by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) },
+        modifier = modifier,
+        singleLine = true,
+        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            IconButton(onClick = { visible = !visible }) {
+                Icon(
+                    if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                    contentDescription = if (visible) "Hide $label" else "Show $label"
+                )
+            }
+        }
+    )
 }

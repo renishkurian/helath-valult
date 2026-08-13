@@ -15,6 +15,9 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -31,6 +34,8 @@ enum class PasswordTab { VAULT, GENERATOR, SEND, HEALTH }
 enum class FinanceTab { TRANS, STATS, ACCOUNTS, MORE }
 
 enum class LockerTab { LOCKER, EXPIRING }
+
+enum class UrlTab { LINKS, FAVORITES, MANAGE }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
@@ -124,6 +129,33 @@ fun LockerBottomNav(current: LockerTab, onSelect: (LockerTab) -> Unit) {
             onClick = { onSelect(LockerTab.EXPIRING) },
             icon = { Icon(Icons.Filled.Warning, contentDescription = "Expiring") },
             label = { Text("Expiring") },
+            colors = navColors
+        )
+    }
+}
+
+@Composable
+fun UrlBottomNav(current: UrlTab, onSelect: (UrlTab) -> Unit) {
+    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+        NavigationBarItem(
+            selected = current == UrlTab.LINKS,
+            onClick = { onSelect(UrlTab.LINKS) },
+            icon = { Icon(Icons.Filled.Link, contentDescription = "Links") },
+            label = { Text("Links") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == UrlTab.FAVORITES,
+            onClick = { onSelect(UrlTab.FAVORITES) },
+            icon = { Icon(Icons.Filled.Star, contentDescription = "Favorites") },
+            label = { Text("Favorites") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == UrlTab.MANAGE,
+            onClick = { onSelect(UrlTab.MANAGE) },
+            icon = { Icon(Icons.Filled.Label, contentDescription = "Manage") },
+            label = { Text("Manage") },
             colors = navColors
         )
     }

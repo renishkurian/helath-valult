@@ -20,8 +20,11 @@ import com.rklab.healthvault.ui.components.FinanceTab
 import com.rklab.healthvault.ui.components.FinanceBottomNav
 import com.rklab.healthvault.ui.components.LockerTab
 import com.rklab.healthvault.ui.components.LockerBottomNav
+import com.rklab.healthvault.ui.components.UrlTab
+import com.rklab.healthvault.ui.components.UrlBottomNav
 import com.rklab.healthvault.ui.screens.finance.*
 import com.rklab.healthvault.ui.screens.locker.*
+import com.rklab.healthvault.ui.screens.urls.*
 import com.rklab.healthvault.ui.screens.passwords.*
 import com.rklab.healthvault.ui.screens.shell.ModulePickerScreen
 import com.rklab.healthvault.ui.screens.cards.CardListScreen
@@ -60,9 +63,16 @@ private object Routes {
     const val LOCKER_EXPIRING = "locker_expiring"
     const val LOCKER_ADD = "locker_add?type={type}"
     const val LOCKER_ITEM = "locker_item/{itemId}"
+    const val URLS = "urls"
+    const val URLS_FAVORITES = "urls_favorites"
+    const val URLS_MANAGE = "urls_manage"
+    const val URLS_ADD = "urls_add?categoryId={categoryId}"
+    const val URLS_ITEM = "urls_item/{itemId}"
 
     fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
     fun lockerItem(itemId: String) = "locker_item/$itemId"
+    fun urlsAdd(categoryId: String? = null) = "urls_add?categoryId=${categoryId ?: ""}"
+    fun urlsItem(itemId: String) = "urls_item/$itemId"
 
     fun financeAdd(accountId: String? = null) = "finance_add?accountId=${accountId ?: ""}"
     fun financeAccount(accountId: String) = "finance_account/$accountId"
@@ -120,9 +130,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
     val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
+    val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
     val onLockerItem = currentRoute?.startsWith("locker_item/") == true
     val onLockerAdd = currentRoute?.startsWith("locker_add") == true
+    val onUrlItem = currentRoute?.startsWith("urls_item/") == true
+    val onUrlAdd = currentRoute?.startsWith("urls_add") == true
 
     Scaffold(
         containerColor = if (currentRoute == Routes.MODULES) HubBg else MaterialTheme.colorScheme.background,
@@ -133,6 +146,24 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     val route = if (tab == LockerTab.EXPIRING) Routes.LOCKER_EXPIRING else Routes.LOCKER
                     navController.navigate(route) {
                         popUpTo(Routes.LOCKER) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in urlTabs || onUrlItem || onUrlAdd) {
+                val current = when (currentRoute) {
+                    Routes.URLS_FAVORITES -> UrlTab.FAVORITES
+                    Routes.URLS_MANAGE -> UrlTab.MANAGE
+                    else -> UrlTab.LINKS
+                }
+                UrlBottomNav(current = current) { tab ->
+                    val route = when (tab) {
+                        UrlTab.LINKS -> Routes.URLS
+                        UrlTab.FAVORITES -> Routes.URLS_FAVORITES
+                        UrlTab.MANAGE -> Routes.URLS_MANAGE
+                    }
+                    navController.navigate(route) {
+                        popUpTo(Routes.URLS) { inclusive = false; saveState = true }
                         launchSingleTop = true
                         restoreState = true
                     }
@@ -267,6 +298,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onUrls = {
+                        navController.navigate(Routes.URLS) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onSettings = { navController.navigate(Routes.SETTINGS) },
                     onVaultHealth = {
                         navController.navigate(Routes.VAULT_HEALTH) {
@@ -311,6 +348,51 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 arguments = listOf(navArgument("itemId") { type = NavType.StringType })
             ) { entry ->
                 LockerItemScreen(
+                    repository = repository,
+                    itemId = entry.arguments?.getString("itemId").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(Routes.URLS) {
+                UrlListScreen(
+                    repository = repository,
+                    onOpenItem = { navController.navigate(Routes.urlsItem(it)) },
+                    onAdd = { navController.navigate(Routes.urlsAdd(it)) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.URLS_FAVORITES) {
+                UrlListScreen(
+                    repository = repository,
+                    onOpenItem = { navController.navigate(Routes.urlsItem(it)) },
+                    onAdd = { navController.navigate(Routes.urlsAdd(it)) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    favoritesOnly = true
+                )
+            }
+            composable(Routes.URLS_MANAGE) {
+                UrlManageScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(
+                Routes.URLS_ADD,
+                arguments = listOf(navArgument("categoryId") { type = NavType.StringType; defaultValue = "" })
+            ) { entry ->
+                val categoryId = entry.arguments?.getString("categoryId").orEmpty().ifBlank { null }
+                UrlAddScreen(
+                    repository = repository,
+                    defaultCategoryId = categoryId,
+                    onDone = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                Routes.URLS_ITEM,
+                arguments = listOf(navArgument("itemId") { type = NavType.StringType })
+            ) { entry ->
+                UrlItemScreen(
                     repository = repository,
                     itemId = entry.arguments?.getString("itemId").orEmpty(),
                     onBack = { navController.popBackStack() }

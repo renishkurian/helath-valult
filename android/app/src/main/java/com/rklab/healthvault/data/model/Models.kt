@@ -778,3 +778,95 @@ data class LockerSummaryOut(
     val expiring: Int = 0,
     val types: List<LockerTypeOut> = emptyList()
 )
+
+// ---------- URL Vault ----------
+data class UrlCategoryOut(
+    val id: String,
+    val name: String,
+    val color: String? = null,
+    val sort_order: Int = 0,
+    val is_default: Boolean = false,
+    val count: Int = 0
+)
+
+data class UrlCategoryIn(
+    val name: String,
+    val color: String? = null,
+    val sort_order: Int? = null
+)
+
+data class UrlTagOut(
+    val id: String,
+    val name: String,
+    val color: String? = null,
+    val count: Int = 0
+)
+
+data class UrlTagIn(
+    val name: String,
+    val color: String? = null
+)
+
+data class UrlItemOut(
+    val id: String,
+    val title: String,
+    val url: String,
+    val category_id: String? = null,
+    val category_name: String? = null,
+    val category_color: String? = null,
+    val tags: List<UrlTagOut> = emptyList(),
+    val notes: String? = null,
+    val favorite: Boolean = false,
+    val og_title: String? = null,
+    val og_description: String? = null,
+    val og_image: String? = null,
+    val og_site_name: String? = null,
+    val favicon_url: String? = null,
+    val created_at: String = "",
+    val updated_at: String? = null
+)
+
+data class UrlItemIn(
+    val url: String,
+    val title: String? = null,
+    val category_id: String? = null,
+    val tag_ids: List<String> = emptyList(),
+    val notes: String? = null,
+    val favorite: Boolean = false,
+    val fetch_preview: Boolean = true
+)
+
+data class UrlItemUpdate(
+    val url: String? = null,
+    val title: String? = null,
+    val category_id: String? = null,
+    val tag_ids: List<String>? = null,
+    val notes: String? = null,
+    val favorite: Boolean? = null,
+    val fetch_preview: Boolean? = null
+)
+
+data class UrlShareCreate(
+    val expires_in_hours: Int = 168,
+    val max_views: Int? = null
+)
+
+data class UrlShareOut(
+    val id: String,
+    val token: String,
+    val item_id: String,
+    val item_title: String? = null,
+    val item_url: String? = null,
+    val expires_at: String = "",
+    val max_views: Int? = null,
+    val view_count: Int = 0,
+    val revoked: Boolean = false,
+    val created_at: String = ""
+)
+
+data class UrlSummaryOut(
+    val total: Int = 0,
+    val favorites: Int = 0,
+    val categories: List<UrlCategoryOut> = emptyList(),
+    val tags: List<UrlTagOut> = emptyList()
+)

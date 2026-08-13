@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, ForeignKey, Enum, Boolean, Integer, Text, Numeric
+    Column, String, DateTime, ForeignKey, Enum, Boolean, Integer, Text, Numeric, Table
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -740,3 +740,76 @@ class LockerFile(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     item = relationship("LockerItem", back_populates="files")
+
+
+url_item_tags = Table(
+    "url_item_tags",
+    Base.metadata,
+    Column("item_id", String(32), ForeignKey("url_items.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", String(32), ForeignKey("url_tags.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
+class UrlCategory(Base):
+    """User-managed URL Vault category (Adult, Instagram, News, Songs, …)."""
+    __tablename__ = "url_categories"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    color = Column(String(16), nullable=True)
+    sort_order = Column(Integer, default=0, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("UrlItem", back_populates="category")
+
+
+class UrlTag(Base):
+    """User-managed URL Vault tag."""
+    __tablename__ = "url_tags"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    color = Column(String(16), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("UrlItem", secondary=url_item_tags, back_populates="tags")
+
+
+class UrlItem(Base):
+    """A saved bookmark: URL + title, optional category/tags, Open Graph preview."""
+    __tablename__ = "url_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False, index=True)
+    url = Column(String(2000), nullable=False)
+    category_id = Column(String(32), ForeignKey("url_categories.id"), nullable=True, index=True)
+    notes_enc = Column(Text, nullable=True)
+    favorite = Column(Boolean, default=False, nullable=False, index=True)
+    og_title = Column(String(500), nullable=True)
+    og_description = Column(Text, nullable=True)
+    og_image = Column(String(2000), nullable=True)
+    og_site_name = Column(String(255), nullable=True)
+    favicon_url = Column(String(2000), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("UrlCategory", back_populates="items")
+    tags = relationship("UrlTag", secondary=url_item_tags, back_populates="items")
+    shares = relationship("UrlShare", back_populates="item", cascade="all, delete-orphan")
+
+
+class UrlShare(Base):
+    """Expiring public page for a saved URL (read-only, no login)."""
+    __tablename__ = "url_shares"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    token = Column(String(64), unique=True, index=True, nullable=False)
+    item_id = Column(String(32), ForeignKey("url_items.id"), nullable=False, index=True)
+    created_by = Column(String(32), ForeignKey("users.id"), nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    max_views = Column(Integer, nullable=True)
+    view_count = Column(Integer, default=0, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    item = relationship("UrlItem", back_populates="shares")

@@ -492,4 +492,67 @@ interface ApiService {
 
     @POST("finance/messages/{id}/accept")
     suspend fun acceptFinanceMessage(@Path("id") id: String, @Query("account_id") accountId: String? = null): FinanceTxnOut
+
+    // ---------- URL Vault ----------
+    @GET("urls/summary")
+    suspend fun urlSummary(): UrlSummaryOut
+
+    @GET("urls")
+    suspend fun listUrlItems(
+        @Query("q") q: String? = null,
+        @Query("category_id") categoryId: String? = null,
+        @Query("tag_id") tagId: String? = null,
+        @Query("favorite") favorite: Boolean = false
+    ): List<UrlItemOut>
+
+    @POST("urls")
+    suspend fun createUrlItem(@Body body: UrlItemIn): UrlItemOut
+
+    @GET("urls/{id}")
+    suspend fun getUrlItem(@Path("id") id: String): UrlItemOut
+
+    @PATCH("urls/{id}")
+    suspend fun updateUrlItem(@Path("id") id: String, @Body body: UrlItemUpdate): UrlItemOut
+
+    @DELETE("urls/{id}")
+    suspend fun deleteUrlItem(@Path("id") id: String): Response<Unit>
+
+    @POST("urls/{id}/preview")
+    suspend fun refreshUrlPreview(@Path("id") id: String): UrlItemOut
+
+    @POST("urls/{id}/favorite")
+    suspend fun toggleUrlFavorite(@Path("id") id: String): UrlItemOut
+
+    @POST("urls/{id}/share")
+    suspend fun createUrlShare(@Path("id") id: String, @Body body: UrlShareCreate): UrlShareOut
+
+    @GET("urls/shares")
+    suspend fun listUrlShares(@Query("item_id") itemId: String? = null): List<UrlShareOut>
+
+    @POST("urls/shares/{id}/revoke")
+    suspend fun revokeUrlShare(@Path("id") id: String): Response<Unit>
+
+    @GET("urls/categories")
+    suspend fun listUrlCategories(): List<UrlCategoryOut>
+
+    @POST("urls/categories")
+    suspend fun createUrlCategory(@Body body: UrlCategoryIn): UrlCategoryOut
+
+    @PATCH("urls/categories/{id}")
+    suspend fun updateUrlCategory(@Path("id") id: String, @Body body: UrlCategoryIn): UrlCategoryOut
+
+    @DELETE("urls/categories/{id}")
+    suspend fun deleteUrlCategory(@Path("id") id: String): Response<Unit>
+
+    @GET("urls/tags")
+    suspend fun listUrlTags(): List<UrlTagOut>
+
+    @POST("urls/tags")
+    suspend fun createUrlTag(@Body body: UrlTagIn): UrlTagOut
+
+    @PATCH("urls/tags/{id}")
+    suspend fun updateUrlTag(@Path("id") id: String, @Body body: UrlTagIn): UrlTagOut
+
+    @DELETE("urls/tags/{id}")
+    suspend fun deleteUrlTag(@Path("id") id: String): Response<Unit>
 }

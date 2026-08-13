@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import engine, SessionLocal
 from app.config import settings
 from app.schema import ensure_schema
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls
 from app.scheduler import lifespan
 from app import admin, models
 
@@ -19,7 +19,7 @@ ensure_schema(engine)
 
 app = FastAPI(
     title="Vault API",
-    description="Self-hosted vault: Health, Passwords, Money Manager, and Documents.",
+    description="Self-hosted vault: Health, Passwords, Money Manager, Documents, and URLs.",
     version="1.1.0",
     lifespan=lifespan,
 )
@@ -52,6 +52,7 @@ app.include_router(storage.router)
 app.include_router(vault.router)
 app.include_router(finance.router)
 app.include_router(locker.router)
+app.include_router(urls.router)
 app.include_router(admin.router)
 
 _static = Path(__file__).resolve().parent / "static"
@@ -85,6 +86,11 @@ def short_pack(token: str):
 @app.get("/v/{token}")
 def short_vault_send(token: str):
     return RedirectResponse(f"/vault/public/{token}/page", status_code=302)
+
+
+@app.get("/u/{token}")
+def short_url_share(token: str):
+    return RedirectResponse(f"/urls/public/{token}/page", status_code=302)
 
 
 @app.get("/ice/{token}", response_class=HTMLResponse)

@@ -22,6 +22,14 @@
   .row{ margin:12px 0; }
   .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:#8B95A8; font-weight:600; }
   .value{ font-size:16px; margin-top:4px; word-break:break-all; }
+  .secret-row{ display:flex; align-items:center; gap:6px; }
+  .secret-row .value{ flex:1; letter-spacing:0.08em; }
+  .secret-btn{
+    width:36px; height:36px; border:0; border-radius:9px; background:transparent;
+    color:#8B95A8; cursor:pointer; display:grid; place-items:center; flex-shrink:0;
+  }
+  .secret-btn:hover{ background:rgba(255,255,255,0.06); color:#F4F6FA; }
+  .secret-btn svg{ width:16px; height:16px; }
   input{ width:100%; padding:12px; border:1px solid rgba(255,255,255,0.08); border-radius:12px; margin:8px 0 14px; background:#0F1522; color:#F4F6FA; font-size:15px; }
   .btn{ background:linear-gradient(180deg,#6B98FF,#4E7FFF); color:#fff; border:none; padding:12px 16px; border-radius:12px; font-weight:600; cursor:pointer; width:100%; }
   .error{ color:#FF6B7A; font-size:13px; margin-bottom:8px; }
@@ -47,7 +55,18 @@
       <div class="row"><div class="label">Username</div><div class="value mono">{{ payload.username }}</div></div>
       {% endif %}
       {% if payload.password %}
-      <div class="row"><div class="label">Password</div><div class="value mono">{{ payload.password }}</div></div>
+      <div class="row">
+        <div class="label">Password</div>
+        <div class="secret-row">
+          <div class="value mono js-secret-text" data-secret="{{ payload.password }}" data-shown="0">••••••••</div>
+          <button type="button" class="secret-btn" id="send-toggle" aria-label="Show password" title="Show">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button type="button" class="secret-btn" id="send-copy" aria-label="Copy password" title="Copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          </button>
+        </div>
+      </div>
       {% endif %}
       {% if payload.uris %}
       <div class="row"><div class="label">Website</div><div class="value mono">{{ payload.uris|join(', ') }}</div></div>
@@ -58,5 +77,33 @@
       <p class="note">This link expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC. Opening is logged for the owner.</p>
     {% endif %}
   </div>
+  {% if not pin_required and payload and payload.password %}
+  <script>
+  (function(){
+    var el = document.querySelector(".js-secret-text");
+    var toggle = document.getElementById("send-toggle");
+    var copy = document.getElementById("send-copy");
+    if(!el || !toggle) return;
+    var secret = el.getAttribute("data-secret") || "";
+    var eye = toggle.innerHTML;
+    var eyeOff = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6A3 3 0 0 0 12 15a3 3 0 0 0 2.4-4.4"/><path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.2 3.9"/><path d="M6.1 6.1C3.7 7.8 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4.1-.8"/></svg>';
+    toggle.addEventListener("click", function(){
+      var shown = el.getAttribute("data-shown") === "1";
+      el.setAttribute("data-shown", shown ? "0" : "1");
+      el.textContent = shown ? "••••••••" : secret;
+      el.style.letterSpacing = shown ? "0.08em" : "0";
+      toggle.innerHTML = shown ? eye : eyeOff;
+      toggle.setAttribute("aria-label", shown ? "Show password" : "Hide password");
+    });
+    if(copy){
+      copy.addEventListener("click", function(){
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(secret);
+        }
+      });
+    }
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>
