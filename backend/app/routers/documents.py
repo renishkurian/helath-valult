@@ -1,3 +1,5 @@
+import json
+from datetime import datetime, timedelta
 from typing import Optional, List
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -10,6 +12,23 @@ from app.config import settings
 from app.deps import get_current_user, get_owned_person
 
 router = APIRouter(prefix="/documents", tags=["documents"])
+
+
+def _log(db: Session, current_user: models.User, doc_id: Optional[str], action: models.AuditAction, detail: Optional[str] = None):
+    db.add(models.AuditLog(user_id=current_user.id, document_id=doc_id, action=action, detail=detail))
+
+
+def _expiry_reminder_datetime(expiry_date: str) -> datetime:
+    """Reminder fires 7 days before expiry (same time of day, 9am), or immediately
+    if the expiry is already within that window / in the past."""
+    try:
+        expiry = datetime.strptime(expiry_date, "%Y-%m-%d")
+    except ValueError:
+        return datetime.utcnow() + timedelta(days=1)
+    remind = expiry - timedelta(days=7)
+    remind = remind.replace(hour=9, minute=0, second=0, microsecond=0)
+    now = datetime.utcnow()
+    return remind if remind > now else now + timedelta(minutes=5)
 
 
 def _to_file_out(f: models.DocumentFile) -> schemas.DocumentFileOut:
@@ -35,6 +54,9 @@ def _to_out(doc: models.Document) -> schemas.DocumentOut:
         title=doc.title,
         hospital_name=doc.hospital_name,
         doc_date=doc.doc_date,
+        expiry_date=doc.expiry_date,
+        tags=doc.tags,
+        version=doc.version,
         file_type=first_file.file_type if first_file else doc.file_type,
         file_size=first_file.file_size if first_file else doc.file_size,
         file_count=len(doc.files) if doc.files else (1 if doc.file_path else 0),
@@ -67,6 +89,8 @@ async def upload_document(
     hospital_name: Optional[str] = Form(None),
     doc_date: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
@@ -87,6 +111,8 @@ async def upload_document(
         title=title,
         hospital_name=hospital_name,
         doc_date=doc_date,
+        expiry_date=expiry_date,
+        tags=tags,
         notes_enc=crypto.encrypt_text(notes),
         file_path="",  # legacy — no longer used for new uploads
     )
@@ -118,6 +144,16 @@ async def upload_document(
         )
         db.add(doc_file)
 
+    if expiry_date:
+        db.add(models.Reminder(
+            person_id=person_id,
+            document_id=doc.id,
+            title=f"{title} expires",
+            description=f"Renew/replace before {expiry_date}",
+            remind_at=_expiry_reminder_datetime(expiry_date),
+            repeat_rule=models.RepeatRule.none,
+        ))
+
     db.commit()
     db.refresh(doc)
     return _to_out(doc)
@@ -142,6 +178,8 @@ def get_document(
     current_user: models.User = Depends(get_current_user),
 ):
     doc = _get_owned_document(document_id, db, current_user)
+    _log(db, current_user, doc.id, models.AuditAction.view)
+    db.commit()
     return _to_out(doc)
 
 
@@ -166,6 +204,10 @@ def update_document(
         doc.doc_date = update_data.doc_date if update_data.doc_date != "" else None
     if update_data.notes is not None:
         doc.notes_enc = crypto.encrypt_text(update_data.notes if update_data.notes != "" else None)
+    if update_data.expiry_date is not None:
+        doc.expiry_date = update_data.expiry_date if update_data.expiry_date != "" else None
+    if update_data.tags is not None:
+        doc.tags = update_data.tags if update_data.tags != "" else None
 
     db.commit()
     db.refresh(doc)
@@ -209,6 +251,8 @@ def download_document(
         raise HTTPException(status_code=404, detail="File missing on disk")
 
     plain = crypto.decrypt_bytes(enc_path.read_bytes())
+    _log(db, current_user, doc.id, models.AuditAction.download, detail=fname)
+    db.commit()
     return Response(
         content=plain,
         media_type=mime,
@@ -241,6 +285,131 @@ def download_document_file(
     )
 
 
+@router.post("/{document_id}/versions", response_model=schemas.DocumentOut, status_code=201)
+async def replace_document_version(
+    document_id: str,
+    title: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Re-upload a document: archives the current files as a version snapshot, then
+    replaces them with the new ones. Old versions stay retrievable via
+    GET /{document_id}/versions and /versions/{version_id}/download."""
+    doc = _get_owned_document(document_id, db, current_user)
+    if not files:
+        raise HTTPException(status_code=422, detail="At least one file is required")
+
+    # Archive current files as a version snapshot.
+    snapshot = [
+        {
+            "original_filename": f.original_filename,
+            "file_path": f.file_path,
+            "file_type": f.file_type,
+            "file_size": f.file_size,
+        }
+        for f in doc.files
+    ]
+    if snapshot:
+        db.add(models.DocumentVersion(
+            document_id=doc.id,
+            version=doc.version,
+            title=doc.title,
+            notes_enc=doc.notes_enc,
+            files_json=json.dumps(snapshot),
+        ))
+
+    # Remove old DocumentFile rows (their files on disk stay — the version snapshot
+    # above still points at those paths, so we do NOT delete the underlying bytes).
+    for f in list(doc.files):
+        db.delete(f)
+
+    doc.version += 1
+    if title:
+        doc.title = title
+    if notes is not None:
+        doc.notes_enc = crypto.encrypt_text(notes if notes != "" else None)
+
+    person_dir: Path = settings.STORAGE_DIR / current_user.id / doc.person_id
+    person_dir.mkdir(parents=True, exist_ok=True)
+
+    for idx, upload in enumerate(files):
+        raw = await upload.read()
+        size_mb = len(raw) / (1024 * 1024)
+        if size_mb > settings.MAX_UPLOAD_MB:
+            db.rollback()
+            raise HTTPException(status_code=413, detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit")
+
+        enc_path = person_dir / f"{doc.id}_v{doc.version}_{idx}.enc"
+        enc_path.write_bytes(crypto.encrypt_bytes(raw))
+
+        db.add(models.DocumentFile(
+            document_id=doc.id,
+            original_filename=upload.filename or f"file_{idx}",
+            file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
+            file_type=upload.content_type,
+            file_size=len(raw),
+        ))
+
+    db.commit()
+    db.refresh(doc)
+    return _to_out(doc)
+
+
+@router.get("/{document_id}/versions", response_model=List[schemas.DocumentVersionOut])
+def list_document_versions(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    doc = _get_owned_document(document_id, db, current_user)
+    versions = (
+        db.query(models.DocumentVersion)
+        .filter(models.DocumentVersion.document_id == doc.id)
+        .order_by(models.DocumentVersion.version.desc())
+        .all()
+    )
+    return [
+        schemas.DocumentVersionOut(
+            id=v.id, document_id=v.document_id, version=v.version, title=v.title,
+            notes=crypto.decrypt_text(v.notes_enc), created_at=v.created_at,
+        )
+        for v in versions
+    ]
+
+
+@router.get("/{document_id}/versions/{version_id}/files/{index}/download")
+def download_version_file(
+    document_id: str,
+    version_id: str,
+    index: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    doc = _get_owned_document(document_id, db, current_user)
+    version = db.query(models.DocumentVersion).filter(
+        models.DocumentVersion.id == version_id, models.DocumentVersion.document_id == doc.id
+    ).first()
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    snapshot = json.loads(version.files_json)
+    if index < 0 or index >= len(snapshot):
+        raise HTTPException(status_code=404, detail="File not found in this version")
+    entry = snapshot[index]
+    enc_path = settings.STORAGE_DIR / entry["file_path"]
+    if not enc_path.exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+    plain = crypto.decrypt_bytes(enc_path.read_bytes())
+    _log(db, current_user, doc.id, models.AuditAction.download, detail=f"v{version.version}:{entry['original_filename']}")
+    db.commit()
+    return Response(
+        content=plain,
+        media_type=entry.get("file_type") or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{entry["original_filename"]}"'},
+    )
+
+
 @router.delete("/{document_id}", status_code=204)
 def delete_document(
     document_id: str,
@@ -258,5 +427,15 @@ def delete_document(
         enc_path = settings.STORAGE_DIR / doc.file_path
         if enc_path.exists():
             enc_path.unlink()
+    # Delete archived version files + rows, and any share links / audit rows pointing at this doc
+    versions = db.query(models.DocumentVersion).filter(models.DocumentVersion.document_id == doc.id).all()
+    for v in versions:
+        for entry in json.loads(v.files_json):
+            p = settings.STORAGE_DIR / entry["file_path"]
+            if p.exists():
+                p.unlink()
+        db.delete(v)
+    db.query(models.ShareLink).filter(models.ShareLink.document_id == doc.id).delete()
+    db.query(models.AuditLog).filter(models.AuditLog.document_id == doc.id).delete()
     db.delete(doc)
     db.commit()

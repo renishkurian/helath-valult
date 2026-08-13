@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
-from app.models import Relation, DocCategory, RepeatRule
+from app.models import Relation, DocCategory, RepeatRule, AuditAction
 
 
 # ---------- Auth ----------
@@ -111,6 +111,8 @@ class DocumentUpdate(BaseModel):
     hospital_name: Optional[str] = None
     doc_date: Optional[str] = None
     notes: Optional[str] = None
+    expiry_date: Optional[str] = None
+    tags: Optional[str] = None  # comma-separated
 
 
 class DocumentOut(BaseModel):
@@ -121,10 +123,58 @@ class DocumentOut(BaseModel):
     title: str
     hospital_name: Optional[str]
     doc_date: Optional[str]
+    expiry_date: Optional[str] = None
+    tags: Optional[str] = None
+    version: int = 1
     file_type: Optional[str]   # legacy, first file's type for backward compat
     file_size: Optional[int]   # legacy, first file's size
     file_count: int = 1        # total number of attached files
     notes: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentVersionOut(BaseModel):
+    id: str
+    document_id: str
+    version: int
+    title: str
+    notes: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Share links ----------
+class ShareLinkCreate(BaseModel):
+    document_id: str
+    expires_in_hours: int = Field(default=48, ge=1, le=24 * 30)
+    max_views: Optional[int] = Field(default=None, ge=1)
+
+
+class ShareLinkOut(BaseModel):
+    id: str
+    token: str
+    document_id: str
+    expires_at: datetime
+    max_views: Optional[int]
+    view_count: int
+    revoked: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Audit log ----------
+class AuditLogOut(BaseModel):
+    id: str
+    document_id: Optional[str]
+    action: AuditAction
+    detail: Optional[str]
     created_at: datetime
 
     class Config:

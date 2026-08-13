@@ -36,6 +36,14 @@ class RepeatRule(str, enum.Enum):
     daily = "daily"
     weekly = "weekly"
     monthly = "monthly"
+    yearly = "yearly"
+
+
+class AuditAction(str, enum.Enum):
+    view = "view"
+    download = "download"
+    share_create = "share_create"
+    share_view = "share_view"
 
 
 class User(Base):
@@ -99,6 +107,9 @@ class Document(Base):
     title = Column(String(255), nullable=False)
     hospital_name = Column(String(255), nullable=True, index=True)
     doc_date = Column(String(20), nullable=True)
+    expiry_date = Column(String(20), nullable=True, index=True)  # ISO date; e.g. insurance/prescription validity
+    tags = Column(String(500), nullable=True)  # comma-separated free-text tags, e.g. "diabetes,annual-checkup"
+    version = Column(Integer, default=1, nullable=False)  # bumped on each re-upload via /versions
 
     # Legacy single-file columns — kept for backward compatibility.
     # New uploads use the DocumentFile child table instead.
@@ -130,6 +141,55 @@ class DocumentFile(Base):
     document = relationship("Document", back_populates="files")
 
 
+
+
+class DocumentVersion(Base):
+    """A superseded snapshot of a Document's files, kept when a document is re-uploaded."""
+    __tablename__ = "document_versions"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=False, index=True)
+    version = Column(Integer, nullable=False)
+
+    title = Column(String(255), nullable=False)
+    notes_enc = Column(Text, nullable=True)
+    # JSON-encoded list of {original_filename, file_path, file_type, file_size} for the files
+    # that were current in this version, so they can still be retrieved/downloaded.
+    files_json = Column(Text, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    document = relationship("Document")
+
+
+class ShareLink(Base):
+    """A revocable, expiring, read-only token for sharing a single document with a third party
+    (e.g. a hospital front desk) without giving them an account."""
+    __tablename__ = "share_links"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    token = Column(String(64), unique=True, index=True, nullable=False)
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=False, index=True)
+    created_by = Column(String(32), ForeignKey("users.id"), nullable=False)
+
+    expires_at = Column(DateTime, nullable=False)
+    max_views = Column(Integer, nullable=True)  # None = unlimited until expiry
+    view_count = Column(Integer, default=0, nullable=False)
+    revoked = Column(Boolean, default=False, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    document = relationship("Document")
+
+
+class AuditLog(Base):
+    """Records who viewed/downloaded/shared what — useful once more than one person
+    (e.g. a spouse with viewer access) can touch the same vault."""
+    __tablename__ = "audit_logs"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)  # null for anonymous share views
+    document_id = Column(String(32), ForeignKey("documents.id"), nullable=True, index=True)
+    action = Column(Enum(AuditAction), nullable=False)
+    detail = Column(String(255), nullable=True)  # e.g. share token suffix, IP, filename
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class Reminder(Base):

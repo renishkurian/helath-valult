@@ -1,3 +1,4 @@
+from datetime import timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -7,6 +8,19 @@ from app import models, schemas
 from app.deps import get_current_user, get_owned_person
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
+
+
+def _next_occurrence(remind_at, rule: models.RepeatRule):
+    if rule == models.RepeatRule.daily:
+        return remind_at + timedelta(days=1)
+    if rule == models.RepeatRule.weekly:
+        return remind_at + timedelta(weeks=1)
+    if rule == models.RepeatRule.monthly:
+        # naive but dependency-free 30-day step; fine for med refill reminders
+        return remind_at + timedelta(days=30)
+    if rule == models.RepeatRule.yearly:
+        return remind_at + timedelta(days=365)
+    return None
 
 
 @router.get("", response_model=list[schemas.ReminderOut])
@@ -60,6 +74,26 @@ def update_reminder(
     r = _get_owned_reminder(reminder_id, db, current_user)
     for field, value in body.dict(exclude_unset=True).items():
         setattr(r, field, value)
+    db.commit()
+    db.refresh(r)
+    return r
+
+
+@router.post("/{reminder_id}/complete", response_model=schemas.ReminderOut)
+def complete_reminder(
+    reminder_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Mark a reminder done. If it repeats, advances remind_at to the next occurrence
+    and keeps it active; one-shot reminders get deactivated."""
+    r = _get_owned_reminder(reminder_id, db, current_user)
+    nxt = _next_occurrence(r.remind_at, r.repeat_rule)
+    if nxt is not None:
+        r.remind_at = nxt
+        r.is_active = True
+    else:
+        r.is_active = False
     db.commit()
     db.refresh(r)
     return r
