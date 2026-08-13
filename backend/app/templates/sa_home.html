@@ -40,11 +40,11 @@
     </a>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="stat">
+    <a class="stat card-link text-decoration-none" href="/admin/sa/settings">
       <div class="lbl"><i class="bi bi-robot"></i> reCAPTCHA</div>
       <div class="val" style="font-size:1.15rem;">{{ 'On' if recaptcha_on else 'Off' }}</div>
-      <div class="sub">{{ 'Google widget on the login form' if recaptcha_on else 'Set RECAPTCHA_SITE_KEY to enable' }}</div>
-    </div>
+      <div class="sub">{{ 'Google widget on the login form' if recaptcha_on else 'Configure in Server settings' }}</div>
+    </a>
   </div>
 </div>
 

@@ -85,7 +85,7 @@ class LoginAttempt(Base):
 
 
 class ServerSetting(Base):
-    """Server-wide keys managed in Super Admin (Google app, later flags)."""
+    """Server-wide keys managed in Super Admin (Google, FCM, reCAPTCHA, lockout)."""
     __tablename__ = "server_settings"
     key = Column(String(64), primary_key=True)
     value = Column(Text, nullable=True)

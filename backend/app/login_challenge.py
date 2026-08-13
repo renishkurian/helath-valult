@@ -131,10 +131,10 @@ def consume(db: Session, challenge_id: str | None) -> None:
 
 
 def notify_devices(db: Session, user: models.User, challenge: models.LoginChallenge) -> int:
-    from app.server_settings import fcm_server_key
-    key = fcm_server_key(db)
+    from app.server_settings import fcm_service_account
+    account = fcm_service_account(db)
     tokens = db.query(models.DeviceToken).filter(models.DeviceToken.user_id == user.id).all()
-    if not tokens or not key:
+    if not tokens or not account:
         return 0
     title = "Approve web login"
     where = challenge.ip or "a browser"
@@ -144,7 +144,7 @@ def notify_devices(db: Session, user: models.User, challenge: models.LoginChalle
         if send_fcm(
             tok.token, title, body,
             data={"type": "login_challenge", "id": challenge.id},
-            server_key=key,
+            account=account,
         ):
             sent += 1
     return sent

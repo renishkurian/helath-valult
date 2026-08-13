@@ -73,14 +73,14 @@ def sa_home(request: Request, db: Session = Depends(get_db)):
         .all()
     )
     recent_users = db.query(models.User).order_by(models.User.created_at.desc()).limit(6).all()
+    from app.server_settings import login_max_attempts, recaptcha_ready
     return templates.TemplateResponse("sa_home.html", _sa_ctx(
         request, user, "sa_home",
         stats=_stats(db),
         recent_fails=recent_fails,
         recent_users=recent_users,
-        lockout_minutes=settings.LOGIN_LOCKOUT_MINUTES,
-        max_attempts=settings.LOGIN_MAX_ATTEMPTS,
-        recaptcha_on=bool(settings.RECAPTCHA_SITE_KEY and settings.RECAPTCHA_SECRET),
+        max_attempts=login_max_attempts(db),
+        recaptcha_on=recaptcha_ready(db),
         online_window=settings.ONLINE_WINDOW_MINUTES,
     ))
 
@@ -265,16 +265,20 @@ async def sa_signup_submit(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""):
+def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = "", err: str = ""):
     from app.drive_backup import oauth_ready
     from app.server_settings import (
-        FCM_SERVER_KEY, GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY,
-        fcm_server_key, get_plain, get_secret,
+        FCM_SERVICE_ACCOUNT_KEY, GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY,
+        LOGIN_LOCKOUT_MINUTES_KEY, LOGIN_MAX_ATTEMPTS_KEY,
+        fcm_service_account, get_plain, get_secret,
+        login_lockout_minutes, login_max_attempts, rate_limit_enabled,
+        recaptcha_ready, recaptcha_secret, recaptcha_site_key, recaptcha_wanted,
     )
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
     redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
+    fcm = fcm_service_account(db)
     return templates.TemplateResponse("sa_settings.html", _sa_ctx(
         request, user, "sa_settings",
         google_client_id=get_plain(db, GOOGLE_CLIENT_ID_KEY),
@@ -282,10 +286,22 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
         google_ready=oauth_ready(db),
         redirect_uri=redirect_uri,
         saved=saved or None,
+        err=err or None,
         env_fallback=bool((settings.GOOGLE_CLIENT_ID or "").strip() and (settings.GOOGLE_CLIENT_SECRET or "").strip()),
-        fcm_ready=bool(fcm_server_key(db)),
-        fcm_has_secret=bool(get_secret(db, FCM_SERVER_KEY) or (settings.FCM_SERVER_KEY or "").strip()),
-        fcm_env_fallback=bool((settings.FCM_SERVER_KEY or "").strip()) and not get_secret(db, FCM_SERVER_KEY),
+        fcm_ready=bool(fcm),
+        fcm_has_secret=bool(get_secret(db, FCM_SERVICE_ACCOUNT_KEY) or fcm),
+        fcm_project=(fcm or {}).get("project_id") or "",
+        fcm_email=(fcm or {}).get("client_email") or "",
+        fcm_env_fallback=bool((settings.FCM_SERVICE_ACCOUNT_JSON or "").strip()) and not get_secret(db, FCM_SERVICE_ACCOUNT_KEY),
+        recaptcha_site_key=recaptcha_site_key(db),
+        recaptcha_has_secret=bool(recaptcha_secret(db)),
+        recaptcha_wanted=recaptcha_wanted(db),
+        recaptcha_ready=recaptcha_ready(db),
+        recaptcha_env_fallback=bool((settings.RECAPTCHA_SITE_KEY or "").strip() and (settings.RECAPTCHA_SECRET or "").strip()),
+        rate_limit_on=rate_limit_enabled(db),
+        login_max_attempts=login_max_attempts(db),
+        login_lockout_minutes=login_lockout_minutes(db),
+        rate_limit_env_fallback=not get_plain(db, LOGIN_MAX_ATTEMPTS_KEY) and not get_plain(db, LOGIN_LOCKOUT_MINUTES_KEY),
     ))
 
 
@@ -304,11 +320,65 @@ async def sa_settings_google(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/settings/fcm")
 async def sa_settings_fcm(request: Request, db: Session = Depends(get_db)):
-    from app.server_settings import FCM_SERVER_KEY, put_secret
+    from app.server_settings import FCM_SERVICE_ACCOUNT_KEY, parse_service_account, put_secret
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
     form = await request.form()
-    put_secret(db, FCM_SERVER_KEY, str(form.get("server_key") or ""))
+    raw = str(form.get("service_account") or "").strip()
+    upload = form.get("service_account_file")
+    filename = getattr(upload, "filename", None) or ""
+    if filename and hasattr(upload, "read"):
+        content = await upload.read()
+        if content:
+            raw = content.decode("utf-8", errors="replace").strip()
+    if not raw:
+        return RedirectResponse("/admin/sa/settings", status_code=302)
+    if not parse_service_account(raw):
+        return RedirectResponse("/admin/sa/settings?err=fcm", status_code=302)
+    put_secret(db, FCM_SERVICE_ACCOUNT_KEY, raw)
     db.commit()
     return RedirectResponse("/admin/sa/settings?saved=fcm", status_code=302)
+
+
+@router.post("/settings/recaptcha")
+async def sa_settings_recaptcha(request: Request, db: Session = Depends(get_db)):
+    from app.server_settings import (
+        RECAPTCHA_ENABLED_KEY, RECAPTCHA_SECRET_KEY, RECAPTCHA_SITE_KEY_KEY,
+        put_plain, put_secret, recaptcha_ready,
+    )
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    form = await request.form()
+    put_plain(db, RECAPTCHA_SITE_KEY_KEY, str(form.get("site_key") or ""))
+    put_secret(db, RECAPTCHA_SECRET_KEY, str(form.get("secret") or ""))
+    put_plain(db, RECAPTCHA_ENABLED_KEY, "1" if form.get("enabled") else "0")
+    db.commit()
+    if form.get("enabled") and not recaptcha_ready(db):
+        return RedirectResponse("/admin/sa/settings?saved=recaptcha&err=recaptcha", status_code=302)
+    return RedirectResponse("/admin/sa/settings?saved=recaptcha", status_code=302)
+
+
+@router.post("/settings/lockout")
+async def sa_settings_lockout(request: Request, db: Session = Depends(get_db)):
+    from app.server_settings import (
+        LOGIN_ATTEMPTS_MAX, LOGIN_ATTEMPTS_MIN, LOGIN_LOCKOUT_MAX, LOGIN_LOCKOUT_MIN,
+        LOGIN_LOCKOUT_MINUTES_KEY, LOGIN_MAX_ATTEMPTS_KEY, LOGIN_RATE_LIMIT_ENABLED_KEY,
+        clamp_int, put_plain,
+    )
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    form = await request.form()
+    put_plain(db, LOGIN_RATE_LIMIT_ENABLED_KEY, "1" if form.get("enabled") else "0")
+    put_plain(db, LOGIN_MAX_ATTEMPTS_KEY, str(clamp_int(
+        form.get("max_attempts"), settings.LOGIN_MAX_ATTEMPTS,
+        LOGIN_ATTEMPTS_MIN, LOGIN_ATTEMPTS_MAX,
+    )))
+    put_plain(db, LOGIN_LOCKOUT_MINUTES_KEY, str(clamp_int(
+        form.get("lockout_minutes"), settings.LOGIN_LOCKOUT_MINUTES,
+        LOGIN_LOCKOUT_MIN, LOGIN_LOCKOUT_MAX,
+    )))
+    db.commit()
+    return RedirectResponse("/admin/sa/settings?saved=lockout", status_code=302)

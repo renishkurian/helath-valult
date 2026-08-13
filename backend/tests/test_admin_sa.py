@@ -83,6 +83,8 @@ def test_superadmin_pages_render():
     settings_page = sa.get("/admin/sa/settings")
     assert settings_page.status_code == 200
     assert "Google Drive app" in settings_page.text
+    assert "Google reCAPTCHA" in settings_page.text
+    assert "Login rate limit" in settings_page.text
     modules = sa.get("/admin/modules")
     assert "Super Admin" in modules.text
 
@@ -539,26 +541,169 @@ def test_superadmin_saves_google_app():
     assert "Ready" in page.text
 
 
-def test_superadmin_saves_fcm_key():
-    from app.server_settings import fcm_server_key
+_FAKE_SA = (
+    '{"type":"service_account","project_id":"raspberrypi-valut",'
+    '"private_key":"-----BEGIN PRIVATE KEY-----\\nfake\\n-----END PRIVATE KEY-----\\n",'
+    '"client_email":"firebase-adminsdk@raspberrypi-valut.iam.gserviceaccount.com"}'
+)
+
+
+def test_superadmin_saves_fcm_service_account():
+    from app.server_settings import fcm_service_account
 
     sa = _sa_client()
     saved = sa.post(
         "/admin/sa/settings/fcm",
-        data={"server_key": "AAAA-dashboard-fcm-key"},
+        data={"service_account": _FAKE_SA},
         follow_redirects=False,
     )
     assert saved.status_code in (302, 303)
+    assert "saved=fcm" in (saved.headers.get("location") or "")
     db = SessionLocal()
     try:
-        assert fcm_server_key(db) == "AAAA-dashboard-fcm-key"
+        account = fcm_service_account(db)
+        assert account is not None
+        assert account["project_id"] == "raspberrypi-valut"
+        assert account["client_email"].startswith("firebase-adminsdk@")
     finally:
         db.close()
     page = sa.get("/admin/sa/settings")
     assert page.status_code == 200
-    assert "AAAA-dashboard-fcm-key" not in page.text
+    assert "BEGIN PRIVATE KEY" not in page.text
+    assert "raspberrypi-valut" in page.text
     assert "Firebase Cloud Messaging" in page.text
     assert "Ready" in page.text
+
+
+def test_superadmin_rejects_invalid_fcm_json():
+    sa = _sa_client()
+    bad = sa.post(
+        "/admin/sa/settings/fcm",
+        data={"service_account": "AAAA-not-a-service-account"},
+        follow_redirects=False,
+    )
+    assert bad.status_code in (302, 303)
+    assert "err=fcm" in (bad.headers.get("location") or "")
+
+
+_HARDENING_KEYS = (
+    "recaptcha_site_key", "recaptcha_secret", "recaptcha_enabled",
+    "login_max_attempts", "login_lockout_minutes", "login_rate_limit_enabled",
+)
+
+
+def _clear_hardening():
+    db = SessionLocal()
+    try:
+        db.query(models.ServerSetting).filter(
+            models.ServerSetting.key.in_(_HARDENING_KEYS),
+        ).delete(synchronize_session=False)
+        db.query(models.LoginAttempt).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_superadmin_saves_recaptcha():
+    sa = _sa_client()
+    try:
+        saved = sa.post(
+            "/admin/sa/settings/recaptcha",
+            data={"enabled": "1", "site_key": "sa-site-key", "secret": "sa-secret-key"},
+            follow_redirects=False,
+        )
+        assert saved.status_code in (302, 303)
+        assert "saved=recaptcha" in (saved.headers.get("location") or "")
+        assert "err=recaptcha" not in (saved.headers.get("location") or "")
+        page = sa.get("/admin/sa/settings")
+        assert page.status_code == 200
+        assert "sa-site-key" in page.text
+        assert "sa-secret-key" not in page.text
+        login = TestClient(app).get("/admin/login")
+        assert "g-recaptcha" in login.text
+        assert "sa-site-key" in login.text
+        blocked = TestClient(app).post(
+            "/admin/login",
+            data={"email": "root@example.com", "password": "password123"},
+        )
+        assert blocked.status_code == 401
+        assert "not a robot" in blocked.text
+        api = client.post("/auth/login", data={"username": "root@example.com", "password": "password123"})
+        assert api.status_code == 200
+    finally:
+        _clear_hardening()
+
+
+def test_superadmin_recaptcha_needs_both_keys():
+    sa = _sa_client()
+    try:
+        saved = sa.post(
+            "/admin/sa/settings/recaptcha",
+            data={"enabled": "1", "site_key": "only-site", "secret": ""},
+            follow_redirects=False,
+        )
+        assert saved.status_code in (302, 303)
+        assert "err=recaptcha" in (saved.headers.get("location") or "")
+        login = TestClient(app).get("/admin/login")
+        assert "g-recaptcha" not in login.text
+    finally:
+        _clear_hardening()
+
+
+def test_superadmin_saves_login_rate_limit():
+    sa = _sa_client()
+    email = "ratelimit-sa@example.com"
+    created = client.post(
+        "/auth/register",
+        json={"email": email, "password": "password123", "full_name": "Rate Limit SA"},
+    )
+    assert created.status_code == 201, created.text
+    try:
+        saved = sa.post(
+            "/admin/sa/settings/lockout",
+            data={"enabled": "1", "max_attempts": "2", "lockout_minutes": "20"},
+            follow_redirects=False,
+        )
+        assert saved.status_code in (302, 303)
+        assert "saved=lockout" in (saved.headers.get("location") or "")
+        page = sa.get("/admin/sa/settings")
+        assert page.status_code == 200
+        assert 'value="2"' in page.text
+        assert 'value="20"' in page.text
+        web = TestClient(app)
+        web.post("/admin/login", data={"email": email, "password": "nope"})
+        web.post("/admin/login", data={"email": email, "password": "nope"})
+        locked = web.post("/admin/login", data={"email": email, "password": "password123"})
+        assert locked.status_code == 401
+        assert "Too many failed attempts" in locked.text
+        api = client.post("/auth/login", data={"username": email, "password": "password123"})
+        assert api.status_code == 429
+    finally:
+        _clear_hardening()
+
+
+def test_superadmin_can_turn_off_rate_limit():
+    sa = _sa_client()
+    email = "nolock@example.com"
+    created = client.post(
+        "/auth/register",
+        json={"email": email, "password": "password123", "full_name": "No Lock"},
+    )
+    assert created.status_code == 201, created.text
+    try:
+        sa.post(
+            "/admin/sa/settings/lockout",
+            data={"max_attempts": "2", "lockout_minutes": "15"},
+            follow_redirects=False,
+        )
+        web = TestClient(app)
+        web.post("/admin/login", data={"email": email, "password": "nope"})
+        web.post("/admin/login", data={"email": email, "password": "nope"})
+        ok = web.post("/admin/login", data={"email": email, "password": "password123"}, follow_redirects=False)
+        assert ok.status_code in (302, 303)
+        assert ok.headers["location"].endswith("/admin/modules")
+    finally:
+        _clear_hardening()
 
 
 def test_owner_cannot_open_server_settings():
@@ -572,3 +717,10 @@ def test_owner_cannot_open_server_settings():
     denied = owner.get("/admin/sa/settings", follow_redirects=False)
     assert denied.status_code in (302, 303)
     assert "/admin/sa/settings" not in (denied.headers.get("location") or "")
+    posted = owner.post(
+        "/admin/sa/settings/recaptcha",
+        data={"enabled": "1", "site_key": "x", "secret": "y"},
+        follow_redirects=False,
+    )
+    assert posted.status_code in (302, 303)
+    assert "/admin/sa/settings" not in (posted.headers.get("location") or "")

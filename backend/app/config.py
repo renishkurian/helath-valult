@@ -20,6 +20,7 @@ class Settings:
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
     REFRESH_TOKEN_EXPIRE_DAYS: int = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "30"))
+    # Fallbacks when Super Admin → Server settings has not saved these yet.
     LOGIN_MAX_ATTEMPTS: int = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
     LOGIN_LOCKOUT_MINUTES: int = int(os.getenv("LOGIN_LOCKOUT_MINUTES", "15"))
     ONLINE_WINDOW_MINUTES: int = int(os.getenv("ONLINE_WINDOW_MINUTES", "5"))
@@ -42,9 +43,9 @@ class Settings:
     # --- CORS ---
     CORS_ORIGINS: list = os.getenv("CORS_ORIGINS", "*").split(",")
 
-    # Optional FCM server key so /reminders/dispatch can push to Android.
-    # Leave empty to rely on on-device AlarmManager notifications only.
-    FCM_SERVER_KEY: str = os.getenv("FCM_SERVER_KEY", "")
+    # Optional Firebase service-account JSON (HTTP v1). Prefer Super Admin.
+    # Leave empty to rely on on-device AlarmManager / in-app poll only.
+    FCM_SERVICE_ACCOUNT_JSON: str = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
 
     # One OAuth Web client for the whole server. Users only click Connect.
     # Create in Google Cloud → APIs & Services → Credentials (Drive API on).

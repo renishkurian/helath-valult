@@ -27,17 +27,49 @@ def client_ua(request: Request) -> str:
     return (request.headers.get("user-agent") or "")[:400]
 
 
-def recaptcha_enabled() -> bool:
-    return bool(settings.RECAPTCHA_SITE_KEY and settings.RECAPTCHA_SECRET)
+def _settings_session(db: Session | None):
+    if db is not None:
+        return db, False
+    own = SessionLocal()
+    return own, True
 
 
-def verify_recaptcha(token: str, ip: str | None) -> bool:
-    if not recaptcha_enabled():
-        return True
+def recaptcha_enabled(db: Session | None = None) -> bool:
+    from app.server_settings import recaptcha_ready
+    session, owned = _settings_session(db)
+    try:
+        return recaptcha_ready(session)
+    finally:
+        if owned:
+            session.close()
+
+
+def recaptcha_public_key(db: Session | None = None) -> str:
+    from app.server_settings import recaptcha_ready, recaptcha_site_key
+    session, owned = _settings_session(db)
+    try:
+        if not recaptcha_ready(session):
+            return ""
+        return recaptcha_site_key(session)
+    finally:
+        if owned:
+            session.close()
+
+
+def verify_recaptcha(token: str, ip: str | None, db: Session | None = None) -> bool:
+    from app.server_settings import recaptcha_ready, recaptcha_secret
+    session, owned = _settings_session(db)
+    try:
+        if not recaptcha_ready(session):
+            return True
+        secret = recaptcha_secret(session)
+    finally:
+        if owned:
+            session.close()
     if not (token or "").strip():
         return False
     body = urllib.parse.urlencode({
-        "secret": settings.RECAPTCHA_SECRET,
+        "secret": secret,
         "response": token.strip(),
         "remoteip": ip or "",
     }).encode()
@@ -79,14 +111,15 @@ def log_attempt(
         own.close()
 
 
-def _window_start() -> datetime:
-    return datetime.utcnow() - timedelta(minutes=max(1, settings.LOGIN_LOCKOUT_MINUTES))
+def _window_start(db: Session) -> datetime:
+    from app.server_settings import login_lockout_minutes
+    return datetime.utcnow() - timedelta(minutes=max(1, login_lockout_minutes(db)))
 
 
 def failed_count(db: Session, *, email: str | None = None, ip: str | None = None) -> int:
     q = db.query(models.LoginAttempt).filter(
         models.LoginAttempt.success.is_(False),
-        models.LoginAttempt.created_at >= _window_start(),
+        models.LoginAttempt.created_at >= _window_start(db),
         models.LoginAttempt.reason.in_(("bad_credentials", "totp_bad", "recaptcha")),
     )
     if email:
@@ -100,8 +133,11 @@ def failed_count(db: Session, *, email: str | None = None, ip: str | None = None
 
 def rate_limited(db: Session, email: str, ip: str | None) -> tuple[bool, int]:
     """Return (blocked, minutes remaining)."""
-    limit = max(1, settings.LOGIN_MAX_ATTEMPTS)
-    window = max(1, settings.LOGIN_LOCKOUT_MINUTES)
+    from app.server_settings import login_lockout_minutes, login_max_attempts, rate_limit_enabled
+    if not rate_limit_enabled(db):
+        return False, 0
+    limit = max(1, login_max_attempts(db))
+    window = max(1, login_lockout_minutes(db))
     email_hits = failed_count(db, email=email) if email else 0
     ip_hits = failed_count(db, ip=ip) if ip else 0
     if email_hits < limit and ip_hits < limit:
@@ -151,7 +187,7 @@ def authenticate(
         log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="rate_limited")
         return None, f"Too many failed attempts. Try again in {retry} minute(s)."
 
-    if check_recaptcha and not verify_recaptcha(recaptcha_token, ip):
+    if check_recaptcha and not verify_recaptcha(recaptcha_token, ip, db):
         log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="recaptcha")
         return None, "Please confirm you are not a robot."
 
@@ -179,15 +215,16 @@ def authenticate(
 
 def qr_start_limited(db: Session, ip: str | None) -> tuple[bool, int]:
     """Cap how often one IP can mint QR wait pages."""
-    if not ip:
+    from app.server_settings import login_lockout_minutes, login_max_attempts, rate_limit_enabled
+    if not ip or not rate_limit_enabled(db):
         return False, 0
-    limit = max(1, settings.LOGIN_MAX_ATTEMPTS)
-    window = max(1, settings.LOGIN_LOCKOUT_MINUTES)
+    limit = max(1, login_max_attempts(db))
+    window = max(1, login_lockout_minutes(db))
     hits = (
         db.query(models.LoginAttempt)
         .filter(
             models.LoginAttempt.ip == ip,
-            models.LoginAttempt.created_at >= _window_start(),
+            models.LoginAttempt.created_at >= _window_start(db),
             models.LoginAttempt.reason.in_(("qr_pending", "qr_unknown")),
         )
         .count()
@@ -221,7 +258,7 @@ def begin_qr_login(
         log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="rate_limited")
         return None, f"Too many QR sign-in tries. Try again in {retry} minute(s)."
 
-    if not verify_recaptcha(recaptcha_token, ip):
+    if not verify_recaptcha(recaptcha_token, ip, db):
         log_attempt(db, email=email_norm, ip=ip, user_agent=ua, success=False, reason="recaptcha")
         return None, "Please confirm you are not a robot."
 

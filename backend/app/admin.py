@@ -59,11 +59,11 @@ def doc_out(doc: models.Document) -> dict:
 
 # ---------- Login / logout ----------
 def _login_ctx(request: Request, error=None):
-    from app.login_guard import recaptcha_enabled
+    from app.login_guard import recaptcha_public_key
     return {
         "request": request,
         "error": error,
-        "recaptcha_site_key": settings.RECAPTCHA_SITE_KEY if recaptcha_enabled() else "",
+        "recaptcha_site_key": recaptcha_public_key(),
     }
 
 
@@ -116,14 +116,14 @@ def _clear_qr_session(request: Request) -> None:
 
 
 def _qr_ctx(request: Request, error=None, **extra):
-    from app.login_guard import recaptcha_enabled
+    from app.login_guard import recaptcha_public_key
     ctx = {
         "request": request,
         "error": error,
         "email": request.session.get("qr_email") or extra.get("email") or "",
         "waiting": bool(request.session.get("qr_payload")),
         "qr_image": extra.pop("qr_image", None),
-        "recaptcha_site_key": settings.RECAPTCHA_SITE_KEY if recaptcha_enabled() else "",
+        "recaptcha_site_key": recaptcha_public_key(),
     }
     ctx.update(extra)
     return ctx

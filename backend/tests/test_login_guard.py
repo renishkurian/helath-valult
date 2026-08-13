@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -9,6 +10,21 @@ from app import models
 from app.login_guard import failed_count, rate_limited
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_login_attempts():
+    db = SessionLocal()
+    try:
+        db.query(models.LoginAttempt).delete(synchronize_session=False)
+        db.query(models.ServerSetting).filter(models.ServerSetting.key.in_((
+            "recaptcha_site_key", "recaptcha_secret", "recaptcha_enabled",
+            "login_max_attempts", "login_lockout_minutes", "login_rate_limit_enabled",
+        ))).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+    yield
 
 
 def _register(email="lock@example.com"):

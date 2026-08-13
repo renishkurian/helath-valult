@@ -120,13 +120,13 @@ def dispatch_due_reminders(
     current_user: models.User = Depends(get_current_user),
 ):
     """Push due reminders to registered Android devices (FCM). Call from a Pi cron,
-    e.g. every 5 minutes. If FCM_SERVER_KEY is unset this still returns the due
-    list so a local scheduler can fire notifications without polling the API from
-    the phone every few seconds."""
+    e.g. every 5 minutes. If no Firebase service account is saved this still
+    returns the due list so a local scheduler can fire notifications without
+    polling the API from the phone every few seconds."""
     from datetime import datetime
     from app.push import send_fcm
-    from app.server_settings import fcm_server_key
-    key = fcm_server_key(db)
+    from app.server_settings import fcm_service_account
+    account = fcm_service_account(db)
 
     now = datetime.utcnow()
     due = (
@@ -153,6 +153,6 @@ def dispatch_due_reminders(
             "repeat_rule": rem.repeat_rule.value,
         })
         for tok in tokens:
-            if send_fcm(tok.token, rem.title, rem.description or "", server_key=key):
+            if send_fcm(tok.token, rem.title, rem.description or "", account=account):
                 sent += 1
     return {"due": payload, "pushed": sent}
