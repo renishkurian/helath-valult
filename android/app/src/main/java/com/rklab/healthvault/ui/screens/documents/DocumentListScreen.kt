@@ -220,8 +220,7 @@ fun DocumentListScreen(
                                                 }
                                                 DropdownMenu(
                                                     expanded = menuOpen,
-                                                    onDismissRequest = { menuOpen = false },
-                                                    containerColor = CardSurface
+                                                    onDismissRequest = { menuOpen = false }
                                                 ) {
                                                     DropdownMenuItem(
                                                         text = { Text(if (doc.id in selectedIds) "Unselect" else "Select for pack", color = TextWhite) },

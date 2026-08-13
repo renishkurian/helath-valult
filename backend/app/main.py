@@ -57,6 +57,12 @@ app.mount("/static", StaticFiles(directory=str(_static)), name="static")
 _templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
 
 
+@app.get("/")
+def root():
+    """Browser visits to the server root should open the web app, not 404."""
+    return RedirectResponse("/admin", status_code=302)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
