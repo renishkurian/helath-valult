@@ -267,7 +267,10 @@ async def sa_signup_submit(request: Request, db: Session = Depends(get_db)):
 @router.get("/settings", response_class=HTMLResponse)
 def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""):
     from app.drive_backup import oauth_ready
-    from app.server_settings import GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY, get_plain, get_secret
+    from app.server_settings import (
+        FCM_SERVER_KEY, GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY,
+        fcm_server_key, get_plain, get_secret,
+    )
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
@@ -280,6 +283,9 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
         redirect_uri=redirect_uri,
         saved=saved or None,
         env_fallback=bool((settings.GOOGLE_CLIENT_ID or "").strip() and (settings.GOOGLE_CLIENT_SECRET or "").strip()),
+        fcm_ready=bool(fcm_server_key(db)),
+        fcm_has_secret=bool(get_secret(db, FCM_SERVER_KEY) or (settings.FCM_SERVER_KEY or "").strip()),
+        fcm_env_fallback=bool((settings.FCM_SERVER_KEY or "").strip()) and not get_secret(db, FCM_SERVER_KEY),
     ))
 
 
@@ -294,3 +300,15 @@ async def sa_settings_google(request: Request, db: Session = Depends(get_db)):
     put_secret(db, GOOGLE_CLIENT_SECRET_KEY, str(form.get("client_secret") or ""))
     db.commit()
     return RedirectResponse("/admin/sa/settings?saved=google", status_code=302)
+
+
+@router.post("/settings/fcm")
+async def sa_settings_fcm(request: Request, db: Session = Depends(get_db)):
+    from app.server_settings import FCM_SERVER_KEY, put_secret
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    form = await request.form()
+    put_secret(db, FCM_SERVER_KEY, str(form.get("server_key") or ""))
+    db.commit()
+    return RedirectResponse("/admin/sa/settings?saved=fcm", status_code=302)

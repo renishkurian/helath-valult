@@ -7,7 +7,6 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app import models
-from app.config import settings
 from app.push import send_fcm
 
 
@@ -132,8 +131,10 @@ def consume(db: Session, challenge_id: str | None) -> None:
 
 
 def notify_devices(db: Session, user: models.User, challenge: models.LoginChallenge) -> int:
+    from app.server_settings import fcm_server_key
+    key = fcm_server_key(db)
     tokens = db.query(models.DeviceToken).filter(models.DeviceToken.user_id == user.id).all()
-    if not tokens or not (getattr(settings, "FCM_SERVER_KEY", "") or ""):
+    if not tokens or not key:
         return 0
     title = "Approve web login"
     where = challenge.ip or "a browser"
@@ -143,6 +144,7 @@ def notify_devices(db: Session, user: models.User, challenge: models.LoginChalle
         if send_fcm(
             tok.token, title, body,
             data={"type": "login_challenge", "id": challenge.id},
+            server_key=key,
         ):
             sent += 1
     return sent

@@ -5,7 +5,7 @@
   <div>
     <div class="eyebrow">Super Admin</div>
     <h1 class="page-title">Server settings</h1>
-    <p class="page-lead">One Google app for this Pi. Vault owners only click Connect on Storage.</p>
+    <p class="page-lead">Google Drive and Firebase keys for this Pi. Vault owners never see these fields.</p>
   </div>
 </div>
 
@@ -13,6 +13,11 @@
 <div class="alert alert-success" role="alert">
   <i class="bi bi-check2-circle"></i>
   <span>Google Drive app saved. Users can connect from Storage.</span>
+</div>
+{% elif saved == 'fcm' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Firebase Cloud Messaging key saved. Login Allow can ping the phone.</span>
 </div>
 {% endif %}
 
@@ -55,6 +60,33 @@
         {% endif %}
       </div>
     </div>
+
+    <div class="card mt-3">
+      <div class="card-header">
+        <span class="card-ico {% if fcm_ready %}good{% else %}gold{% endif %}"><i class="bi bi-phone"></i></span>
+        <div>
+          <h2>Firebase Cloud Messaging</h2>
+          <div class="card-sub">Wake the phone for web login Allow — optional</div>
+        </div>
+        <span class="badge {% if fcm_ready %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if fcm_ready %}Ready{% else %}Off{% endif %}</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">Firebase Console → Project settings → Cloud Messaging → <strong>Server key</strong>. Cloud Messaging only — not Realtime DB or Firestore.</p>
+        <form method="post" action="/admin/sa/settings/fcm" class="stack">
+          <div>
+            <label class="form-label" for="server_key">FCM server key</label>
+            <input class="form-control" id="server_key" type="password" name="server_key"
+                   autocomplete="new-password"
+                   placeholder="{{ 'unchanged' if fcm_has_secret else 'AAAA… or the Cloud Messaging key' }}">
+            <div class="form-text">Stored encrypted with MASTER_KEY. Leave blank to keep the current key.</div>
+          </div>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save FCM key</button>
+        </form>
+        {% if fcm_env_fallback %}
+        <p class="text-faint small mt-3 mb-0">A key is also set in the Pi <code>.env</code>. Saving here takes priority.</p>
+        {% endif %}
+      </div>
+    </div>
   </div>
   <div class="col-lg-5">
     <div class="card">
@@ -63,7 +95,8 @@
         <div><h2>What users do</h2></div>
       </div>
       <div class="card-body text-muted" style="font-size:.875rem;">
-        <p>After you save, each vault owner opens <strong>Storage</strong> and taps <strong>Connect Google Drive</strong>. Backups land in their own Drive, encrypted with their backup password.</p>
+        <p>After you save Google, each vault owner opens <strong>Storage</strong> and taps <strong>Connect Google Drive</strong>. Backups land in their own Drive, encrypted with their backup password.</p>
+        <p>FCM is optional. The app still polls while it is open. The key only wakes the phone when a web login needs Allow.</p>
         <p class="mb-0">While the Google app is in Testing, add each family Gmail as a test user or Google will block them.</p>
       </div>
     </div>

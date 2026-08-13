@@ -17,7 +17,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import com.rklab.healthvault.data.model.GoogleDriveSettingsIn
 import com.rklab.healthvault.data.model.GoogleDriveStatus
+import com.rklab.healthvault.data.model.LoginChallengeOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.screens.login.LoginChallengeDialog
 import com.rklab.healthvault.ui.screens.server.ServerSetupState
 import com.rklab.healthvault.ui.screens.server.ServerSetupViewModel
 import com.rklab.healthvault.ui.theme.*
@@ -103,6 +105,40 @@ fun SettingsScreen(
         ) {
             OutlinedButton(onClick = onScanQr, modifier = Modifier.fillMaxWidth()) {
                 Text("Scan web login QR", color = Navy)
+            }
+            Spacer(Modifier.height(8.dp))
+            var pendingChallenge by remember { mutableStateOf<LoginChallengeOut?>(null) }
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        runCatching { repository.pendingLoginChallenges() }
+                            .onSuccess { rows ->
+                                val next = rows.firstOrNull()
+                                pendingChallenge = next
+                                Toast.makeText(
+                                    context,
+                                    if (next == null) "No website login is waiting. Keep the app open, then sign in on the site."
+                                    else "Website login found. Allow or Deny.",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            .onFailure {
+                                Toast.makeText(
+                                    context,
+                                    "Could not check: ${it.message ?: "server error"}",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Check web login request", color = Navy) }
+            pendingChallenge?.let { challenge ->
+                LoginChallengeDialog(
+                    repository = repository,
+                    challenge = challenge,
+                    onDone = { pendingChallenge = null }
+                )
             }
             Spacer(Modifier.height(12.dp))
             Row(

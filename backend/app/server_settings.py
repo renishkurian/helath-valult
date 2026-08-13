@@ -9,6 +9,7 @@ from app import crypto, models
 
 GOOGLE_CLIENT_ID_KEY = "google_client_id"
 GOOGLE_CLIENT_SECRET_KEY = "google_client_secret"
+FCM_SERVER_KEY = "fcm_server_key"
 
 
 def _row(db: Session, key: str) -> models.ServerSetting | None:
@@ -56,3 +57,13 @@ def google_app(db: Session) -> tuple[str, str]:
 def google_app_saved(db: Session) -> bool:
     cid, secret = google_app(db)
     return bool(cid and secret)
+
+
+def fcm_server_key(db: Session | None = None) -> str:
+    """Dashboard secret first, then FCM_SERVER_KEY in .env."""
+    if db is not None:
+        saved = get_secret(db, FCM_SERVER_KEY)
+        if saved:
+            return saved
+    from app.config import settings
+    return (getattr(settings, "FCM_SERVER_KEY", "") or "").strip()

@@ -11,8 +11,15 @@ import urllib.request
 from app.config import settings
 
 
-def send_fcm(token: str, title: str, body: str, data: dict | None = None) -> bool:
-    key = getattr(settings, "FCM_SERVER_KEY", "") or ""
+def send_fcm(
+    token: str,
+    title: str,
+    body: str,
+    data: dict | None = None,
+    *,
+    server_key: str = "",
+) -> bool:
+    key = (server_key or getattr(settings, "FCM_SERVER_KEY", "") or "").strip()
     if not key:
         return False
     message = {

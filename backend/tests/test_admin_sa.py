@@ -539,6 +539,28 @@ def test_superadmin_saves_google_app():
     assert "Ready" in page.text
 
 
+def test_superadmin_saves_fcm_key():
+    from app.server_settings import fcm_server_key
+
+    sa = _sa_client()
+    saved = sa.post(
+        "/admin/sa/settings/fcm",
+        data={"server_key": "AAAA-dashboard-fcm-key"},
+        follow_redirects=False,
+    )
+    assert saved.status_code in (302, 303)
+    db = SessionLocal()
+    try:
+        assert fcm_server_key(db) == "AAAA-dashboard-fcm-key"
+    finally:
+        db.close()
+    page = sa.get("/admin/sa/settings")
+    assert page.status_code == 200
+    assert "AAAA-dashboard-fcm-key" not in page.text
+    assert "Firebase Cloud Messaging" in page.text
+    assert "Ready" in page.text
+
+
 def test_owner_cannot_open_server_settings():
     owner = TestClient(app)
     r = owner.post(

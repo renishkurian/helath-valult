@@ -7,6 +7,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.rklab.healthvault.ui.theme.HubBg
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -131,18 +134,21 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val start = startDestination ?: return
 
     var pendingWebLogin by remember { mutableStateOf<LoginChallengeOut?>(null) }
-    LaunchedEffect(repository.isLoggedIn, start) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(repository.isLoggedIn, start, lifecycleOwner) {
         if (!repository.isLoggedIn || start == Routes.LOGIN || start == Routes.SERVER_SETUP) {
             pendingWebLogin = null
             return@LaunchedEffect
         }
-        while (true) {
-            runCatching {
-                val next = repository.pendingLoginChallenges().firstOrNull()
-                pendingWebLogin = next
-                if (next != null) LoginChallengeNotifier.show(context, next)
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                runCatching {
+                    val next = repository.pendingLoginChallenges().firstOrNull()
+                    pendingWebLogin = next
+                    if (next != null) LoginChallengeNotifier.show(context, next)
+                }
+                delay(2_000)
             }
-            delay(3_000)
         }
     }
 

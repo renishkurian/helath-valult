@@ -125,6 +125,8 @@ def dispatch_due_reminders(
     the phone every few seconds."""
     from datetime import datetime
     from app.push import send_fcm
+    from app.server_settings import fcm_server_key
+    key = fcm_server_key(db)
 
     now = datetime.utcnow()
     due = (
@@ -151,6 +153,6 @@ def dispatch_due_reminders(
             "repeat_rule": rem.repeat_rule.value,
         })
         for tok in tokens:
-            if send_fcm(tok.token, rem.title, rem.description or ""):
+            if send_fcm(tok.token, rem.title, rem.description or "", server_key=key):
                 sent += 1
     return {"due": payload, "pushed": sent}
