@@ -1,0 +1,11 @@
+{
+  "name": "Vault",
+  "short_name": "Vault",
+  "start_url": "/admin/modules",
+  "display": "standalone",
+  "background_color": "#0B0F17",
+  "theme_color": "#0B0F17",
+  "icons": [
+    { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

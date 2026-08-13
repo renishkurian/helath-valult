@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enter PIN — Vault</title>
+<meta name="theme-color" content="#0B0F17">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
+  body{ font-family:'Plus Jakarta Sans', system-ui, sans-serif; background:#0B0F17; color:#F4F6FA; margin:0; padding:24px; min-height:100vh; display:flex; align-items:center; }
+  .card{ max-width:400px; margin:0 auto; background:#151B28; border:1px solid rgba(255,255,255,0.08); border-radius:22px; padding:28px; width:100%; }
+  h1{ font-size:24px; letter-spacing:-0.03em; margin-bottom:8px; }
+  p{ color:#8B95A8; font-size:14px; margin-bottom:16px; }
+  input{ width:100%; padding:12px; border:1px solid rgba(255,255,255,0.08); border-radius:12px; font-size:18px; letter-spacing:4px; text-align:center; background:#0F1522; color:#F4F6FA; }
+  button{ margin-top:14px; width:100%; background:linear-gradient(180deg,#6B98FF,#4E7FFF); color:#fff; border:none; padding:12px; border-radius:12px; font-weight:600; }
+  .err{ color:#FF6B7A; font-size:13px; margin-bottom:10px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>PIN required</h1>
+    <p>This shared link is locked. Ask the owner for the PIN.</p>
+    {% if error %}<p class="err">{{ error }}</p>{% endif %}
+    <form method="get" action="{% if kind=='pack' %}/share/public/pack/{{ token }}/page{% else %}/share/public/{{ token }}/page{% endif %}">
+      <input name="pin" type="password" inputmode="numeric" autocomplete="one-time-code" autofocus>
+      <button type="submit">Open</button>
+    </form>
+  </div>
+</body>
+</html>

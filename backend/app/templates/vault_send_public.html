@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ send.name }} — Send</title>
+<meta name="theme-color" content="#0B0F17">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  body{
+    font-family:'Plus Jakarta Sans', system-ui, sans-serif; min-height:100vh;
+    background:#0B0F17; color:#F4F6FA; display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  .card{
+    width:min(480px, 100%); background:#151B28; border:1px solid rgba(255,255,255,0.08);
+    border-radius:22px; padding:28px; box-shadow:0 24px 60px rgba(0,0,0,0.4);
+  }
+  .eyebrow{ font-size:11px; letter-spacing:0.14em; text-transform:uppercase; color:#8B95A8; font-weight:600; }
+  h1{ font-size:24px; letter-spacing:-0.03em; margin:8px 0 16px; }
+  .mono{ font-family:'JetBrains Mono', monospace; }
+  .row{ margin:12px 0; }
+  .label{ font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:#8B95A8; font-weight:600; }
+  .value{ font-size:16px; margin-top:4px; word-break:break-all; }
+  input{ width:100%; padding:12px; border:1px solid rgba(255,255,255,0.08); border-radius:12px; margin:8px 0 14px; background:#0F1522; color:#F4F6FA; font-size:15px; }
+  .btn{ background:linear-gradient(180deg,#6B98FF,#4E7FFF); color:#fff; border:none; padding:12px 16px; border-radius:12px; font-weight:600; cursor:pointer; width:100%; }
+  .error{ color:#FF6B7A; font-size:13px; margin-bottom:8px; }
+  .note{ margin-top:18px; font-size:12px; color:#8B95A8; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="eyebrow">Password Vault · Send</div>
+    <h1>{{ send.name }}</h1>
+    {% if pin_required %}
+      {% if error %}<div class="error">Incorrect PIN</div>{% endif %}
+      <form method="get" action="/vault/public/{{ token }}/page">
+        <label class="label" for="pin">PIN</label>
+        <input id="pin" type="password" name="pin" autofocus required>
+        <button class="btn" type="submit">Open</button>
+      </form>
+    {% else %}
+      {% if payload.text %}
+      <div class="row"><div class="label">Text</div><div class="value">{{ payload.text }}</div></div>
+      {% endif %}
+      {% if payload.username %}
+      <div class="row"><div class="label">Username</div><div class="value mono">{{ payload.username }}</div></div>
+      {% endif %}
+      {% if payload.password %}
+      <div class="row"><div class="label">Password</div><div class="value mono">{{ payload.password }}</div></div>
+      {% endif %}
+      {% if payload.uris %}
+      <div class="row"><div class="label">Website</div><div class="value mono">{{ payload.uris|join(', ') }}</div></div>
+      {% endif %}
+      {% if notes %}
+      <div class="row"><div class="label">Notes</div><div class="value">{{ notes }}</div></div>
+      {% endif %}
+      <p class="note">This link expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC. Opening is logged for the owner.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

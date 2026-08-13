@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Care{% endblock %}
+{% block content %}
+<div class="eyebrow">Health Vault</div>
+<div class="page-title">Care — {{ active_person.name if active_person else 'Family' }}</div>
+<div class="family-row">
+  {% for p in people %}
+  <a class="chip {% if active_person and p.id==active_person.id %}active{% endif %}" href="/admin/care?person={{ p.id }}">
+    <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name }}
+  </a>
+  {% endfor %}
+</div>
+
+{% if active_person %}
+<div class="surface" style="margin-bottom:18px;">
+  <div class="section-head"><h2>ICE / IDs</h2></div>
+  {% if ice_url %}<p style="margin-bottom:10px; font-size:13px;">Public emergency card: <a href="{{ ice_url }}" style="color:var(--navy); word-break:break-all;">{{ ice_url }}</a></p>{% endif %}
+  <form method="post" action="/admin/care/person">
+    <input type="hidden" name="person_id" value="{{ active_person.id }}">
+    <div class="form-grid">
+      <div class="field"><label>Blood group</label><input name="blood_group" value="{{ active_person.blood_group or '' }}"></div>
+      <div class="field"><label>Emergency name</label><input name="emergency_name" value="{{ active_person.emergency_name or '' }}"></div>
+      <div class="field"><label>Emergency phone</label><input name="emergency_phone" value="{{ active_person.emergency_phone or '' }}"></div>
+      <div class="field"><label>ABHA ID</label><input name="abha_id" value="{{ active_person.abha_id or '' }}"></div>
+      <div class="field"><label>Ayushman ID</label><input name="ayushman_id" value="{{ active_person.ayushman_id or '' }}"></div>
+    </div>
+    <div class="field"><label>Allergies</label><input name="allergies" value="{{ active_person.allergies or '' }}"></div>
+    <div class="field"><label>Conditions</label><input name="conditions" value="{{ active_person.conditions or '' }}"></div>
+    <button class="btn" type="submit">Save ICE card</button>
+  </form>
+</div>
+
+<div class="grid" style="grid-template-columns:1fr 1fr; margin-bottom:18px;">
+  <div class="surface">
+    <div class="section-head"><h2>Medicines</h2></div>
+    {% for m in meds %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ m.name }} · {{ m.dose or '' }} · left {{ m.remaining if m.remaining is not none else '—' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+    <form method="post" action="/admin/care/medicine" style="margin-top:12px;">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="field"><input name="name" placeholder="Name*" required></div>
+      <div class="form-grid">
+        <input name="dose" placeholder="Dose">
+        <input name="timing" placeholder="Timing">
+        <input name="remaining" placeholder="Remaining">
+        <input type="date" name="refill_at">
+      </div>
+      <button class="btn" type="submit">Add medicine</button>
+    </form>
+  </div>
+  <div class="surface">
+    <div class="section-head"><h2>Vaccinations</h2></div>
+    {% for v in vax %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ v.vaccine_name }} · {{ v.given_on or '' }} · next {{ v.next_due or '—' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+    <form method="post" action="/admin/care/vaccine" style="margin-top:12px;">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="field"><input name="vaccine_name" placeholder="Vaccine*" required></div>
+      <div class="form-grid">
+        <input type="date" name="given_on">
+        <input type="date" name="next_due">
+      </div>
+      <button class="btn" type="submit">Add vaccination</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns:1fr 1fr; margin-bottom:18px;">
+  <div class="surface">
+    <div class="section-head"><h2>Visits</h2></div>
+    {% for v in visits %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ v.visit_date or '' }} · {{ v.hospital_name or '' }} · {{ v.reason or '' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+    <form method="post" action="/admin/care/visit" style="margin-top:12px;">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="form-grid">
+        <input name="hospital_name" placeholder="Hospital">
+        <input name="doctor_name" placeholder="Doctor">
+        <input type="date" name="visit_date">
+        <input name="reason" placeholder="Reason">
+      </div>
+      <button class="btn" type="submit">Add visit</button>
+    </form>
+  </div>
+  <div class="surface">
+    <div class="section-head"><h2>Insurance claims</h2></div>
+    {% for c in claims %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ c.insurer or '—' }} · {{ c.amount or '' }} · {{ c.status }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+    <form method="post" action="/admin/care/claim" style="margin-top:12px;">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="form-grid">
+        <input name="insurer" placeholder="Insurer">
+        <input name="amount" placeholder="Amount">
+        <input name="claim_number" placeholder="Claim no.">
+        <select name="status"><option>draft</option><option>submitted</option><option>approved</option><option>rejected</option><option>paid</option></select>
+      </div>
+      <button class="btn" type="submit">Add claim</button>
+    </form>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns:1fr 1fr; margin-bottom:18px;">
+  <div class="surface">
+    <div class="section-head"><h2>Growth</h2></div>
+    {% for g in growth %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ g.measured_at }} · {{ g.height_cm or '—' }} cm · {{ g.weight_kg or '—' }} kg</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+    <form method="post" action="/admin/care/growth" style="margin-top:12px;">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="form-grid">
+        <input type="date" name="measured_at" required>
+        <input name="height_cm" placeholder="Height cm">
+        <input name="weight_kg" placeholder="Weight kg">
+      </div>
+      <button class="btn" type="submit">Add reading</button>
+    </form>
+  </div>
+  <div class="surface">
+    <div class="section-head"><h2>Hospital UHID</h2></div>
+    {% for u in uhids %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ u.hospital_name }} · {{ u.uhid }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+    <form method="post" action="/admin/care/uhid" style="margin-top:12px;">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="form-grid">
+        <input name="hospital_name" placeholder="Hospital*" required>
+        <input name="uhid" placeholder="UHID*" required>
+      </div>
+      <button class="btn" type="submit">Add UHID</button>
+    </form>
+  </div>
+</div>
+
+<div class="surface">
+  <div class="section-head"><h2>Doctors</h2></div>
+  {% for d in doctors %}<div style="padding:8px 0; border-bottom:1px solid var(--paper-deep);">{{ d.name }} · {{ d.specialty or '' }} · {{ d.phone or '' }}</div>{% else %}<div class="empty">None yet</div>{% endfor %}
+  <form method="post" action="/admin/care/doctor" style="margin-top:12px;">
+    <input type="hidden" name="person" value="{{ active_person.id }}">
+    <div class="form-grid">
+      <input name="name" placeholder="Name*" required>
+      <input name="specialty" placeholder="Specialty">
+      <input name="hospital_name" placeholder="Hospital">
+      <input name="phone" placeholder="Phone">
+    </div>
+    <button class="btn" type="submit">Add doctor</button>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

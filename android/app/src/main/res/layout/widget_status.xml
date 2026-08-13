@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_status_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#1E313F"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Health Vault"
+        android:textAllCaps="true"
+        android:textColor="#8FA2B0"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/widget_status_line"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Open ICE card &amp; reminders"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+</LinearLayout>

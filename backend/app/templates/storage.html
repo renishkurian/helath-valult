@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Storage{% endblock %}
+{% block content %}
+<div class="eyebrow">Health Vault</div>
+<div class="page-title">Storage & backup</div>
+<div class="surface" style="max-width:520px;">
+  <p><strong>{{ file_count }}</strong> files · <strong>{{ '%.1f'|format(bytes_used / 1048576) if bytes_used else '0' }}</strong> MB used</p>
+  <p style="color:var(--ink-soft); font-size:13px; margin:12px 0;">
+    Point Syncthing or a USB disk at <code class="mono">BACKUP_DIR</code> on the Pi, then snapshot here.
+  </p>
+  {% if backup_dir %}
+    <p class="mono" style="font-size:12px;">{{ backup_dir }}</p>
+    <form method="post" action="/admin/storage/snapshot"><button class="btn" type="submit">Write backup snapshot</button></form>
+  {% else %}
+    <p>Set <code>BACKUP_DIR</code> in the server <code>.env</code> to enable on-disk snapshots.</p>
+  {% endif %}
+</div>
+{% endblock %}

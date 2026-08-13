@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Modules{% endblock %}
+{% block content %}
+<div class="eyebrow">Your workspace</div>
+<div class="page-title">Choose a module</div>
+<p style="color:var(--ink-soft); margin-bottom:28px; max-width:560px; font-size:15px;">
+  One account, two vaults. Switch anytime — more modules can join later.
+</p>
+<div class="grid grid-cards">
+  <a class="module-card" href="/admin">
+    <div class="icon-well" style="background:rgba(61,220,151,0.14); color:#3DDC97;">+</div>
+    <div class="eyebrow">Medical records</div>
+    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">Health Vault</h2>
+    <p style="color:var(--ink-soft); font-size:14px;">Cards, documents, care, reminders, and family profiles.</p>
+  </a>
+  <a class="module-card" href="/admin/passwords">
+    <div class="icon-well" style="background:var(--accent-soft); color:var(--navy);">#</div>
+    <div class="eyebrow">Secrets</div>
+    <h2 class="slab" style="font-size:24px; margin:6px 0 8px; letter-spacing:-0.03em;">Password Vault</h2>
+    <p style="color:var(--ink-soft); font-size:14px;">Logins, notes, cards, identities, generator, authenticator, and Send.</p>
+  </a>
+</div>
+{% endblock %}

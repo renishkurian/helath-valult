@@ -1,0 +1,122 @@
+"""Create tables on first run, and add any missing columns on upgrade.
+
+SQLAlchemy create_all() only creates *new* tables. An existing SQLite file from
+an older Health Vault install would keep the old users/documents shape and then
+crash on the new viewer/OCR/version fields. This module is idempotent: safe on
+a brand-new empty DB and on a Pi that has been running for months.
+"""
+from __future__ import annotations
+
+from sqlalchemy import inspect, text
+from sqlalchemy.engine import Engine
+
+from app.database import Base
+from app import models  # noqa: F401 — register every table on Base.metadata
+
+# column name -> SQL type fragment used by ALTER TABLE ... ADD COLUMN
+_EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
+    "users": [
+        ("role", "VARCHAR(20) NOT NULL DEFAULT 'owner'"),
+        ("vault_owner_id", "VARCHAR(32)"),
+        ("totp_secret_enc", "TEXT"),
+        ("totp_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+    ],
+    "people": [
+        ("allergies", "TEXT"),
+        ("conditions", "TEXT"),
+        ("emergency_name", "VARCHAR(255)"),
+        ("emergency_phone", "VARCHAR(40)"),
+        ("abha_id", "VARCHAR(64)"),
+        ("ayushman_id", "VARCHAR(64)"),
+        ("ice_token", "VARCHAR(64)"),
+    ],
+    "documents": [
+        ("custom_category", "VARCHAR(255)"),
+        ("expiry_date", "VARCHAR(20)"),
+        ("tags", "VARCHAR(500)"),
+        ("version", "INTEGER NOT NULL DEFAULT 1"),
+        ("extracted_text", "TEXT"),
+        ("amount", "VARCHAR(20)"),
+        ("pinned", "BOOLEAN NOT NULL DEFAULT 0"),
+    ],
+    "document_files": [
+        ("content_hash", "VARCHAR(64)"),
+    ],
+    "share_links": [
+        ("pin_hash", "VARCHAR(255)"),
+        ("idle_days", "INTEGER NOT NULL DEFAULT 14"),
+    ],
+}
+
+_INDEXES: list[tuple[str, str, str]] = [
+    ("ix_users_vault_owner_id", "users", "vault_owner_id"),
+    ("ix_documents_expiry_date", "documents", "expiry_date"),
+    ("ix_documents_custom_category", "documents", "custom_category"),
+    ("ix_documents_tags", "documents", "tags"),
+    ("ix_people_ice_token", "people", "ice_token"),
+    ("ix_document_files_content_hash", "document_files", "content_hash"),
+    ("ix_vault_items_user_id", "vault_items", "user_id"),
+    ("ix_vault_items_folder_id", "vault_items", "folder_id"),
+    ("ix_vault_items_item_type", "vault_items", "item_type"),
+    ("ix_vault_folders_user_id", "vault_folders", "user_id"),
+    ("ix_vault_sends_user_id", "vault_sends", "user_id"),
+    ("ix_vault_sends_token", "vault_sends", "token"),
+]
+
+
+def _table_columns(engine: Engine, table: str) -> set[str]:
+    return {c["name"] for c in inspect(engine).get_columns(table)}
+
+
+def ensure_schema(engine: Engine) -> None:
+    """Create missing tables, then patch missing columns/indexes, then backfill."""
+    Base.metadata.create_all(bind=engine)
+
+    dialect = engine.dialect.name
+    tables = set(inspect(engine).get_table_names())
+
+    with engine.begin() as conn:
+        for table, columns in _EXTRA_COLUMNS.items():
+            if table not in tables:
+                continue
+            have = _table_columns(engine, table)
+            for name, ddl in columns:
+                if name in have:
+                    continue
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+        if "users" in tables:
+            conn.execute(text(
+                "UPDATE users SET vault_owner_id = id "
+                "WHERE vault_owner_id IS NULL OR vault_owner_id = ''"
+            ))
+            conn.execute(text(
+                "UPDATE users SET role = 'owner' "
+                "WHERE role IS NULL OR role = ''"
+            ))
+
+        if dialect == "mysql" and "reminders" in tables:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE reminders MODIFY COLUMN repeat_rule "
+                    "ENUM('none','daily','weekly','monthly','yearly') "
+                    "NOT NULL DEFAULT 'none'"
+                ))
+            except Exception:
+                pass
+
+    tables = set(inspect(engine).get_table_names())
+    with engine.begin() as conn:
+        for index_name, table, column in _INDEXES:
+            if table not in tables:
+                continue
+            have_cols = _table_columns(engine, table)
+            if column not in have_cols:
+                continue
+            existing_idx = {i["name"] for i in inspect(engine).get_indexes(table)}
+            if index_name in existing_idx:
+                continue
+            try:
+                conn.execute(text(f"CREATE INDEX {index_name} ON {table} ({column})"))
+            except Exception:
+                pass
