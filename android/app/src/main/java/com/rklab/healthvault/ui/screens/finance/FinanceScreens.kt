@@ -1,8 +1,11 @@
 package com.rklab.healthvault.ui.screens.finance
 
 import android.Manifest
+import android.content.Intent
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -253,12 +256,45 @@ fun FinanceMoreScreen(
     }
 }
 
+private fun openAppDetails(context: android.content.Context) {
+    context.startActivity(
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", context.packageName, null)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    )
+}
+
+@Composable
+private fun SmsRestrictedHelp(onDismiss: () -> Unit, onOpenSettings: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("SMS was blocked") },
+        text = {
+            Text(
+                "Sideloaded apps cannot turn SMS on from the toggle. On the next screen:\n\n" +
+                    "1. Tap the ⋮ menu (top right)\n" +
+                    "2. Tap Allow restricted settings\n" +
+                    "3. Open Permissions → SMS → Allow\n" +
+                    "4. Come back here and turn Incoming SMS on again."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onOpenSettings) { Text("Open app settings") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
 @Composable
 private fun IncomingSmsToggle() {
     val context = LocalContext.current
     var enabled by remember {
         mutableStateOf(FinanceSmsPrefs.isEnabled(context) && FinanceSmsPrefs.hasSmsPermission(context))
     }
+    var showHelp by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -266,12 +302,21 @@ private fun IncomingSmsToggle() {
             grants[Manifest.permission.RECEIVE_SMS] == true
         FinanceSmsPrefs.setEnabled(context, ok)
         enabled = ok
-        if (ok) FinanceSmsIngestor.scanInbox(context)
+        if (ok) FinanceSmsIngestor.scanInbox(context) else showHelp = true
     }
     val perms = buildList {
         add(Manifest.permission.READ_SMS)
         add(Manifest.permission.RECEIVE_SMS)
         if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    if (showHelp) {
+        SmsRestrictedHelp(
+            onDismiss = { showHelp = false },
+            onOpenSettings = {
+                showHelp = false
+                openAppDetails(context)
+            }
+        )
     }
     Row(
         Modifier.fillMaxWidth().padding(vertical = 10.dp),
@@ -280,7 +325,7 @@ private fun IncomingSmsToggle() {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text("Incoming SMS", color = Ink, fontWeight = FontWeight.SemiBold)
             Text(
-                "Bank and UPI alerts are tagged as they arrive. Keep the app unrestricted in battery settings.",
+                "Bank and UPI alerts are tagged as they arrive. Sideloaded builds need Allow restricted settings first.",
                 color = InkSoft,
                 style = MaterialTheme.typography.bodySmall
             )
@@ -312,6 +357,7 @@ private fun IncomingSmsBanner(onChanged: () -> Unit) {
         mutableStateOf(FinanceSmsPrefs.isEnabled(context) && FinanceSmsPrefs.hasSmsPermission(context))
     }
     if (enabled) return
+    var showHelp by remember { mutableStateOf(false) }
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
@@ -322,12 +368,23 @@ private fun IncomingSmsBanner(onChanged: () -> Unit) {
         if (ok) {
             FinanceSmsIngestor.scanInbox(context)
             onChanged()
+        } else {
+            showHelp = true
         }
     }
     val perms = buildList {
         add(Manifest.permission.READ_SMS)
         add(Manifest.permission.RECEIVE_SMS)
         if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    if (showHelp) {
+        SmsRestrictedHelp(
+            onDismiss = { showHelp = false },
+            onOpenSettings = {
+                showHelp = false
+                openAppDetails(context)
+            }
+        )
     }
     Row(
         Modifier
