@@ -23,8 +23,8 @@ def _json_default(o):
     return str(o)
 
 
-def _build_zip(people) -> bytes:
-    manifest = {"exported_at": datetime.utcnow().isoformat(), "people": []}
+def _build_zip(people, locker_items=None) -> bytes:
+    manifest = {"exported_at": datetime.utcnow().isoformat(), "people": [], "locker": []}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for person in people:
@@ -62,6 +62,24 @@ def _build_zip(people) -> bytes:
                     "remind_at": rem.remind_at, "repeat_rule": rem.repeat_rule.value, "is_active": rem.is_active,
                 })
             manifest["people"].append(person_entry)
+        for item in locker_items or []:
+            folder = f"locker/{item.doc_type}/{item.id}"
+            file_names = []
+            for f in item.files:
+                enc_path = settings.STORAGE_DIR / f.file_path
+                if enc_path.exists():
+                    plain = crypto.decrypt_bytes(enc_path.read_bytes())
+                    arcname = f"{folder}/{f.original_filename}"
+                    zf.writestr(arcname, plain)
+                    file_names.append(arcname)
+            manifest["locker"].append({
+                "title": item.title, "doc_type": item.doc_type, "custom_type": item.custom_type,
+                "holder_name": item.holder_name, "issuer": item.issuer,
+                "id_number": crypto.decrypt_text(item.id_number_enc),
+                "issued_on": item.issued_on, "expiry_date": item.expiry_date,
+                "tags": item.tags, "notes": crypto.decrypt_text(item.notes_enc),
+                "files": file_names,
+            })
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, default=_json_default))
     return buf.getvalue()
 
@@ -81,7 +99,14 @@ def export_backup(
     if person_id and not people:
         raise HTTPException(status_code=404, detail="Person not found")
 
-    zip_bytes = _build_zip(people)
+    locker_items = []
+    if not person_id:
+        locker_items = (
+            db.query(models.LockerItem)
+            .filter(models.LockerItem.user_id == vault_id(current_user))
+            .all()
+        )
+    zip_bytes = _build_zip(people, locker_items)
     if password:
         zip_bytes = crypto.encrypt_backup(zip_bytes, password)
         fname = f"healthvault-backup-{datetime.utcnow().strftime('%Y%m%d')}.hvbak"
@@ -108,7 +133,12 @@ def snapshot_to_disk(
         raise HTTPException(status_code=400, detail="BACKUP_DIR is not set on the server")
     settings.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(current_user)).all()
-    blob = _build_zip(people)
+    locker_items = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.user_id == vault_id(current_user))
+        .all()
+    )
+    blob = _build_zip(people, locker_items)
     if password:
         blob = crypto.encrypt_backup(blob, password)
         name = f"healthvault-{datetime.utcnow().strftime('%Y%m%d-%H%M')}.hvbak"

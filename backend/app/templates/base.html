@@ -402,7 +402,7 @@
       <div class="brand-mark">V</div>
       <div class="brand">Vault</div>
     </div>
-    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
+    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='locker' %}Document Vault{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
     {% if session_user %}
     <nav class="nav-list">
     <a class="nav-item {% if active_nav=='modules' %}active{% endif %}" href="/admin/modules">
@@ -425,6 +425,19 @@
     <a class="nav-item {% if active_nav=='fn_more' %}active{% endif %}" href="/admin/finance/more">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
       More
+    </a>
+    {% elif active_module=='locker' %}
+    <a class="nav-item {% if active_nav=='lk_home' %}active{% endif %}" href="/admin/locker">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
+      Locker
+    </a>
+    <a class="nav-item {% if active_nav=='lk_add' %}active{% endif %}" href="/admin/locker/add">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      Add
+    </a>
+    <a class="nav-item {% if active_nav=='lk_expiring' %}active{% endif %}" href="/admin/locker?expiring=1">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      Expiring
     </a>
     {% elif active_module=='passwords' %}
     <a class="nav-item {% if active_nav=='pw_vault' %}active{% endif %}" href="/admin/passwords">

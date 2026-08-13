@@ -2,6 +2,7 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <cache-path name="captures" path="captures/" />
     <cache-path name="downloads" path="downloads/" />
+    <cache-path name="locker" path="locker/" />
     <files-path name="documents" path="documents/" />
     <external-files-path name="backups" path="." />
 </paths>

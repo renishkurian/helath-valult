@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Add document{% endblock %}
+{% block content %}
+<div class="entry-page" style="max-width:560px;">
+  <a class="entry-back" href="/admin/locker" style="display:inline-flex; align-items:center; gap:4px; color:var(--ink-soft); font-size:13px; font-weight:600; margin-bottom:10px;">← Locker</a>
+  <h1 style="font-size:34px; letter-spacing:-0.05em; font-weight:800; margin-bottom:18px;">Add document</h1>
+
+  <form method="post" action="/admin/locker/add" enctype="multipart/form-data" class="surface" style="border-radius:22px; padding:22px;">
+    <div class="field" style="margin-bottom:14px;">
+      <label>Type</label>
+      <select name="doc_type" id="doc_type">
+        {% for id, label in types %}
+        <option value="{{ id }}" {% if prefill_type==id %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="field" id="custom-wrap" style="margin-bottom:14px; {% if prefill_type!='other' %}display:none;{% endif %}">
+      <label>Custom type</label>
+      <input name="custom_type" placeholder="School ID, gas book…">
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Title*</label><input name="title" required placeholder="Aadhaar — Renish"></div>
+      <div class="field"><label>Holder</label><input name="holder_name" placeholder="Whose document"></div>
+      <div class="field"><label>Issuer</label><input name="issuer" placeholder="UIDAI, RTO, insurer…"></div>
+      <div class="field"><label>ID / number</label><input name="id_number" placeholder="Encrypted at rest" autocomplete="off"></div>
+      <div class="field"><label>Issued on</label><input type="date" name="issued_on"></div>
+      <div class="field"><label>Expiry</label><input type="date" name="expiry_date"></div>
+      <div class="field"><label>Tags</label><input name="tags" placeholder="home, car, 2024"></div>
+    </div>
+    <div class="field" style="margin-top:12px;"><label>Notes</label><textarea name="notes" rows="2" placeholder="Optional details"></textarea></div>
+    <div class="field" style="margin-top:12px;">
+      <label>Files*</label>
+      <input type="file" name="files" accept="image/*,.pdf" multiple required>
+    </div>
+    <button class="btn" type="submit" style="width:100%; margin-top:18px;">Save to locker</button>
+  </form>
+</div>
+<script>
+document.getElementById("doc_type").addEventListener("change", (e) => {
+  document.getElementById("custom-wrap").style.display = e.target.value === "other" ? "" : "none";
+});
+</script>
+{% endblock %}

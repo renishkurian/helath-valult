@@ -1013,3 +1013,59 @@ class FinanceSummaryOut(BaseModel):
     liabilities: float
     net: float
     pending_messages: int = 0
+
+
+# ---------- Document Vault / Locker ----------
+class LockerFileOut(BaseModel):
+    id: str
+    item_id: str
+    original_filename: str
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+    created_at: datetime
+
+
+class LockerItemUpdate(BaseModel):
+    title: Optional[str] = None
+    doc_type: Optional[str] = None
+    custom_type: Optional[str] = None
+    holder_name: Optional[str] = None
+    issuer: Optional[str] = None
+    id_number: Optional[str] = None
+    issued_on: Optional[str] = None
+    expiry_date: Optional[str] = None
+    tags: Optional[str] = None
+    notes: Optional[str] = None
+    pinned: Optional[bool] = None
+
+
+class LockerItemOut(BaseModel):
+    id: str
+    doc_type: str
+    type_label: str
+    custom_type: Optional[str] = None
+    title: str
+    holder_name: Optional[str] = None
+    issuer: Optional[str] = None
+    id_number: Optional[str] = None
+    issued_on: Optional[str] = None
+    expiry_date: Optional[str] = None
+    tags: Optional[str] = None
+    notes: Optional[str] = None
+    pinned: bool = False
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+    file_count: int = 0
+    created_at: datetime
+
+
+class LockerTypeOut(BaseModel):
+    id: str
+    label: str
+    count: int = 0
+
+
+class LockerSummaryOut(BaseModel):
+    total: int = 0
+    expiring: int = 0
+    types: List[LockerTypeOut] = []

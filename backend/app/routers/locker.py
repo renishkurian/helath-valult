@@ -1,0 +1,338 @@
+"""Document Vault — encrypted IDs, certificates, RC, insurance, warranties."""
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import Response
+from sqlalchemy import or_
+from sqlalchemy.orm import Session
+
+from app.config import settings
+from app.database import get_db
+from app import models, schemas, crypto
+from app.deps import get_current_user, require_owner, vault_id
+from app.extract import enhance_scan, file_sha256
+
+router = APIRouter(prefix="/locker", tags=["locker"])
+
+LOCKER_TYPES = [
+    ("aadhaar", "Aadhaar"),
+    ("pan", "PAN"),
+    ("passport", "Passport"),
+    ("driving_license", "Driving licence"),
+    ("voter_id", "Voter ID"),
+    ("certificate", "Certificate"),
+    ("rc", "Vehicle RC"),
+    ("insurance", "Insurance"),
+    ("warranty", "Warranty"),
+    ("property", "Property"),
+    ("other", "Other"),
+]
+TYPE_LABELS = {k: v for k, v in LOCKER_TYPES}
+TYPE_IDS = {k for k, _ in LOCKER_TYPES}
+
+
+def type_label(doc_type: str, custom_type: Optional[str] = None) -> str:
+    if doc_type == "other" and custom_type:
+        return custom_type
+    return TYPE_LABELS.get(doc_type, custom_type or doc_type.replace("_", " ").title())
+
+
+def _to_file_out(f: models.LockerFile) -> schemas.LockerFileOut:
+    return schemas.LockerFileOut(
+        id=f.id, item_id=f.item_id, original_filename=f.original_filename,
+        file_type=f.file_type, file_size=f.file_size, created_at=f.created_at,
+    )
+
+
+def _to_out(item: models.LockerItem) -> schemas.LockerItemOut:
+    first = item.files[0] if item.files else None
+    return schemas.LockerItemOut(
+        id=item.id,
+        doc_type=item.doc_type,
+        type_label=type_label(item.doc_type, item.custom_type),
+        custom_type=item.custom_type,
+        title=item.title,
+        holder_name=item.holder_name,
+        issuer=item.issuer,
+        id_number=crypto.decrypt_text(item.id_number_enc),
+        issued_on=item.issued_on,
+        expiry_date=item.expiry_date,
+        tags=item.tags,
+        notes=crypto.decrypt_text(item.notes_enc),
+        pinned=bool(item.pinned),
+        file_type=first.file_type if first else None,
+        file_size=first.file_size if first else None,
+        file_count=len(item.files) if item.files else 0,
+        created_at=item.created_at,
+    )
+
+
+def _owned(item_id: str, db: Session, user: models.User) -> models.LockerItem:
+    item = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == vault_id(user))
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return item
+
+
+def _norm_type(doc_type: Optional[str], custom_type: Optional[str]) -> tuple[str, Optional[str]]:
+    raw = (doc_type or "other").strip().lower().replace(" ", "_")
+    custom = (custom_type or "").strip() or None
+    if custom:
+        return "other", custom
+    if raw not in TYPE_IDS:
+        return "other", custom
+    return raw, None
+
+
+@router.get("/types", response_model=list[schemas.LockerTypeOut])
+def list_types(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user)).all()
+    counts: dict[str, int] = {k: 0 for k, _ in LOCKER_TYPES}
+    for item in items:
+        counts[item.doc_type] = counts.get(item.doc_type, 0) + 1
+    return [schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES]
+
+
+@router.get("/summary", response_model=schemas.LockerSummaryOut)
+def locker_summary(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user)).all()
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    soon = (datetime.utcnow() + timedelta(days=60)).strftime("%Y-%m-%d")
+    expiring = sum(
+        1 for i in items
+        if i.expiry_date and today <= i.expiry_date <= soon
+    )
+    counts: dict[str, int] = {k: 0 for k, _ in LOCKER_TYPES}
+    for item in items:
+        counts[item.doc_type] = counts.get(item.doc_type, 0) + 1
+    return schemas.LockerSummaryOut(
+        total=len(items),
+        expiring=expiring,
+        types=[schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES],
+    )
+
+
+@router.get("", response_model=list[schemas.LockerItemOut])
+def list_items(
+    doc_type: Optional[str] = None,
+    q: Optional[str] = None,
+    expiring: bool = False,
+    pinned: bool = False,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    query = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user))
+    if doc_type:
+        query = query.filter(models.LockerItem.doc_type == doc_type)
+    if pinned:
+        query = query.filter(models.LockerItem.pinned.is_(True))
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.filter(or_(
+            models.LockerItem.title.ilike(like),
+            models.LockerItem.holder_name.ilike(like),
+            models.LockerItem.issuer.ilike(like),
+            models.LockerItem.tags.ilike(like),
+            models.LockerItem.custom_type.ilike(like),
+        ))
+    if expiring:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        soon = (datetime.utcnow() + timedelta(days=60)).strftime("%Y-%m-%d")
+        query = query.filter(
+            models.LockerItem.expiry_date.isnot(None),
+            models.LockerItem.expiry_date >= today,
+            models.LockerItem.expiry_date <= soon,
+        )
+    return [_to_out(i) for i in query.order_by(models.LockerItem.created_at.desc()).all()]
+
+
+@router.post("", response_model=schemas.LockerItemOut, status_code=201)
+async def create_item(
+    title: str = Form(...),
+    doc_type: str = Form("other"),
+    custom_type: Optional[str] = Form(None),
+    holder_name: Optional[str] = Form(None),
+    issuer: Optional[str] = Form(None),
+    id_number: Optional[str] = Form(None),
+    issued_on: Optional[str] = Form(None),
+    expiry_date: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    notes: Optional[str] = Form(None),
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    if not files:
+        raise HTTPException(status_code=422, detail="At least one file is required")
+    kind, custom = _norm_type(doc_type, custom_type)
+    item = models.LockerItem(
+        user_id=vault_id(current_user),
+        doc_type=kind,
+        custom_type=custom,
+        title=title.strip(),
+        holder_name=(holder_name or "").strip() or None,
+        issuer=(issuer or "").strip() or None,
+        id_number_enc=crypto.encrypt_text(id_number),
+        issued_on=issued_on or None,
+        expiry_date=expiry_date or None,
+        tags=(tags or "").strip() or None,
+        notes_enc=crypto.encrypt_text(notes),
+    )
+    db.add(item)
+    db.flush()
+    await _save_files(item, files, current_user, db)
+    db.commit()
+    db.refresh(item)
+    return _to_out(item)
+
+
+async def _save_files(
+    item: models.LockerItem,
+    files: List[UploadFile],
+    current_user: models.User,
+    db: Session,
+):
+    dest = settings.STORAGE_DIR / vault_id(current_user) / "locker"
+    dest.mkdir(parents=True, exist_ok=True)
+    existing = len(item.files or [])
+    for idx, upload in enumerate(files):
+        raw = await upload.read()
+        if (upload.content_type or "").startswith("image/"):
+            raw = enhance_scan(raw, upload.content_type)
+        if len(raw) / (1024 * 1024) > settings.MAX_UPLOAD_MB:
+            db.rollback()
+            raise HTTPException(
+                status_code=413,
+                detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit",
+            )
+        n = existing + idx
+        enc_path = dest / f"{item.id}_{n}.enc"
+        enc_path.write_bytes(crypto.encrypt_bytes(raw))
+        db.add(models.LockerFile(
+            item_id=item.id,
+            original_filename=upload.filename or f"file_{n}",
+            file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
+            file_type=upload.content_type,
+            file_size=len(raw),
+            content_hash=file_sha256(raw),
+        ))
+
+
+@router.get("/{item_id}", response_model=schemas.LockerItemOut)
+def get_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return _to_out(_owned(item_id, db, current_user))
+
+
+@router.patch("/{item_id}", response_model=schemas.LockerItemOut)
+def update_item(
+    item_id: str,
+    body: schemas.LockerItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned(item_id, db, current_user)
+    data = body.model_dump(exclude_unset=True)
+    if "doc_type" in data or "custom_type" in data:
+        kind, custom = _norm_type(
+            data.get("doc_type", item.doc_type),
+            data.get("custom_type", item.custom_type),
+        )
+        item.doc_type = kind
+        item.custom_type = custom
+        data.pop("doc_type", None)
+        data.pop("custom_type", None)
+    if "id_number" in data:
+        item.id_number_enc = crypto.encrypt_text(data.pop("id_number"))
+    if "notes" in data:
+        item.notes_enc = crypto.encrypt_text(data.pop("notes"))
+    for key, val in data.items():
+        setattr(item, key, val if val != "" else None)
+    item.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    return _to_out(item)
+
+
+@router.delete("/{item_id}", status_code=204)
+def delete_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned(item_id, db, current_user)
+    for f in list(item.files or []):
+        path = settings.STORAGE_DIR / f.file_path
+        if path.exists():
+            path.unlink()
+    db.delete(item)
+    db.commit()
+
+
+@router.get("/{item_id}/files", response_model=list[schemas.LockerFileOut])
+def list_files(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    item = _owned(item_id, db, current_user)
+    return [_to_file_out(f) for f in item.files]
+
+
+@router.get("/{item_id}/download")
+def download_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    item = _owned(item_id, db, current_user)
+    if not item.files:
+        raise HTTPException(status_code=404, detail="No file attached")
+    return _file_response(item.files[0])
+
+
+@router.get("/{item_id}/files/{file_id}/download")
+def download_file(
+    item_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    item = _owned(item_id, db, current_user)
+    doc_file = next((f for f in item.files if f.id == file_id), None)
+    if not doc_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    return _file_response(doc_file)
+
+
+def _file_response(doc_file: models.LockerFile) -> Response:
+    enc_path = settings.STORAGE_DIR / doc_file.file_path
+    if not enc_path.exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+    plain = crypto.decrypt_bytes(enc_path.read_bytes())
+    fname = doc_file.original_filename.replace('"', "")
+    return Response(
+        content=plain,
+        media_type=doc_file.file_type or "application/octet-stream",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )

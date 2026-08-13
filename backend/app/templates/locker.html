@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Document Vault{% endblock %}
+{% block content %}
+{% set type_colors = {
+  'aadhaar':'#5B8CFF','pan':'#F5B942','passport':'#A89BFF','driving_license':'#3DDC97',
+  'voter_id':'#22D3EE','certificate':'#FB7185','rc':'#F97316','insurance':'#F5B942',
+  'warranty':'#84CC16','property':'#38BDF8','other':'#8B95A8'
+} %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Document Vault</div>
+    <div class="page-title">Locker</div>
+  </div>
+  <a class="btn" href="/admin/locker/add{% if doc_type %}?doc_type={{ doc_type }}{% endif %}">+ Add</a>
+</div>
+
+<div class="mm-summary">
+  <div class="cell"><div class="lbl">Documents</div><div class="val">{{ summary.total }}</div></div>
+  <div class="cell"><div class="lbl">Expiring (60d)</div><div class="val {% if summary.expiring %}mm-expense{% endif %}">{{ summary.expiring }}</div></div>
+</div>
+
+<div class="folders" style="margin-top:4px;">
+  <a class="folder {% if not doc_type and not expiring %}on{% endif %}" href="/admin/locker">
+    All
+    <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
+  </a>
+  <a class="folder {% if expiring %}on{% endif %}" href="/admin/locker?expiring=1" style="border-color:rgba(255,107,122,0.35);">
+    Expiring
+    <span class="fcount">{{ '%02d'|format(summary.expiring) }}</span>
+  </a>
+  {% for t in summary.types %}
+  <a class="folder {% if doc_type==t.id %}on{% endif %}" href="/admin/locker?doc_type={{ t.id }}" style="border-color:{{ type_colors.get(t.id, '#8B95A8') }}33;">
+    {{ t.label }}
+    <span class="fcount">{{ '%02d'|format(t.count) }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<form method="get" action="/admin/locker" class="lk-search">
+  {% if doc_type %}<input type="hidden" name="doc_type" value="{{ doc_type }}">{% endif %}
+  <input type="search" name="q" value="{{ q }}" placeholder="Search title, holder, issuer…">
+  <button class="btn-outline" type="submit">Search</button>
+</form>
+
+<div class="surface" style="padding:0;">
+  <table class="ledger">
+    <thead><tr><th>Document</th><th>Holder</th><th>Expiry</th><th>Files</th><th></th></tr></thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td>
+          <a href="/admin/locker/{{ item.id }}" style="display:flex; align-items:center; gap:10px; color:inherit;">
+            <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
+            <span>
+              <strong>{{ item.title }}</strong>
+              <div style="font-size:12px; color:var(--ink-soft);">{{ item.type_label }}{% if item.issuer %} · {{ item.issuer }}{% endif %}</div>
+            </span>
+          </a>
+        </td>
+        <td>{{ item.holder_name or '—' }}</td>
+        <td class="mono">{{ item.expiry_date or '—' }}</td>
+        <td class="mono">{{ item.file_count }}</td>
+        <td><a class="tag tag-sage" href="/admin/locker/{{ item.id }}/download">Open</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No documents yet. Add Aadhaar, PAN, RC, warranties…</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<style>
+  .folder.on{ border-color:var(--navy); background:rgba(91,140,255,0.12); }
+  .lk-search{ display:flex; gap:8px; margin:0 0 18px; }
+  .lk-search input{ flex:1; }
+  .mm-summary{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+</style>
+{% endblock %}

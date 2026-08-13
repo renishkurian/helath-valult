@@ -687,3 +687,56 @@ class GoogleDriveBackup(Base):
     last_error = Column(Text, nullable=True)
     last_file_name = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class LockerDocType(str, enum.Enum):
+    aadhaar = "aadhaar"
+    pan = "pan"
+    passport = "passport"
+    driving_license = "driving_license"
+    voter_id = "voter_id"
+    certificate = "certificate"
+    rc = "rc"
+    insurance = "insurance"
+    warranty = "warranty"
+    property = "property"
+    other = "other"
+
+
+class LockerItem(Base):
+    """Encrypted household document (Aadhaar, PAN, RC, warranty, etc.)."""
+    __tablename__ = "locker_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    doc_type = Column(String(40), default=LockerDocType.other.value, nullable=False, index=True)
+    custom_type = Column(String(120), nullable=True)
+    title = Column(String(255), nullable=False, index=True)
+    holder_name = Column(String(255), nullable=True)
+    issuer = Column(String(255), nullable=True)
+    id_number_enc = Column(Text, nullable=True)
+    issued_on = Column(String(20), nullable=True)
+    expiry_date = Column(String(20), nullable=True, index=True)
+    tags = Column(String(500), nullable=True)
+    notes_enc = Column(Text, nullable=True)
+    pinned = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    files = relationship(
+        "LockerFile", back_populates="item", cascade="all, delete-orphan",
+        order_by="LockerFile.created_at",
+    )
+
+
+class LockerFile(Base):
+    __tablename__ = "locker_files"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    item_id = Column(String(32), ForeignKey("locker_items.id"), nullable=False, index=True)
+    original_filename = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_type = Column(String(100), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    item = relationship("LockerItem", back_populates="files")

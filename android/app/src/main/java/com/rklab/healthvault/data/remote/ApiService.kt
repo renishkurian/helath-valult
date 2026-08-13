@@ -363,6 +363,59 @@ interface ApiService {
     @DELETE("vault/sends/{id}")
     suspend fun revokeVaultSend(@Path("id") id: String): Response<Unit>
 
+    // ---------- Document Vault ----------
+    @GET("locker/summary")
+    suspend fun lockerSummary(): LockerSummaryOut
+
+    @GET("locker/types")
+    suspend fun listLockerTypes(): List<LockerTypeOut>
+
+    @GET("locker")
+    suspend fun listLockerItems(
+        @Query("doc_type") docType: String? = null,
+        @Query("q") q: String? = null,
+        @Query("expiring") expiring: Boolean = false
+    ): List<LockerItemOut>
+
+    @Multipart
+    @POST("locker")
+    suspend fun createLockerItem(
+        @Part("title") title: RequestBody,
+        @Part("doc_type") docType: RequestBody,
+        @Part("custom_type") customType: RequestBody?,
+        @Part("holder_name") holderName: RequestBody?,
+        @Part("issuer") issuer: RequestBody?,
+        @Part("id_number") idNumber: RequestBody?,
+        @Part("issued_on") issuedOn: RequestBody?,
+        @Part("expiry_date") expiryDate: RequestBody?,
+        @Part("tags") tags: RequestBody?,
+        @Part("notes") notes: RequestBody?,
+        @Part files: List<MultipartBody.Part>
+    ): LockerItemOut
+
+    @GET("locker/{id}")
+    suspend fun getLockerItem(@Path("id") id: String): LockerItemOut
+
+    @PATCH("locker/{id}")
+    suspend fun updateLockerItem(@Path("id") id: String, @Body body: LockerItemUpdate): LockerItemOut
+
+    @DELETE("locker/{id}")
+    suspend fun deleteLockerItem(@Path("id") id: String): Response<Unit>
+
+    @GET("locker/{id}/files")
+    suspend fun listLockerFiles(@Path("id") id: String): List<LockerFileOut>
+
+    @Streaming
+    @GET("locker/{id}/download")
+    suspend fun downloadLockerItem(@Path("id") id: String): ResponseBody
+
+    @Streaming
+    @GET("locker/{id}/files/{fileId}/download")
+    suspend fun downloadLockerFile(
+        @Path("id") id: String,
+        @Path("fileId") fileId: String
+    ): ResponseBody
+
     // ---------- Money Manager ----------
     @GET("finance/summary")
     suspend fun financeSummary(@Query("year_month") yearMonth: String? = null): FinanceSummaryOut

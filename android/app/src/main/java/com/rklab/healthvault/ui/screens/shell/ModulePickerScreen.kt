@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
@@ -100,6 +101,7 @@ fun ModulePickerScreen(
     onHealth: () -> Unit,
     onPasswords: () -> Unit,
     onFinance: () -> Unit,
+    onLocker: () -> Unit,
     onSettings: () -> Unit,
     onVaultHealth: () -> Unit = {}
 ) {
@@ -239,6 +241,46 @@ fun ModulePickerScreen(
                         )
                     }
                     TileFooter(stat = state.financeFooter)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            HubTile(
+                glow = HubAmber,
+                onClick = onLocker,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentDescription = "Open Document Vault, ${state.lockerCount} documents"
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    TileIcon(Icons.Outlined.Description, HubAmber)
+                    Text(
+                        "${state.lockerCount} docs",
+                        color = HubAmber,
+                        fontFamily = MonoFont,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(ChipShape)
+                            .background(HubAmber.copy(alpha = 0.12f))
+                            .border(1.dp, HubAmber.copy(alpha = 0.25f), ChipShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Column {
+                    Text("Document Vault", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        if (state.lockerExpiring > 0) "${state.lockerExpiring} expiring soon"
+                        else "Aadhaar, PAN, RC, warranties",
+                        color = HubTextDim,
+                        fontSize = 11.5.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

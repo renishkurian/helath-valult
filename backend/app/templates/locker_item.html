@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }}{% endblock %}
+{% block content %}
+<div class="eyebrow"><a href="/admin/locker" style="color:var(--ink-soft);">← Locker</a> · {{ item.type_label }}</div>
+<div class="page-head">
+  <div class="page-title">{{ item.title }}</div>
+  <a class="btn" href="/admin/locker/{{ item.id }}/download">Download</a>
+</div>
+
+<div class="surface" style="max-width:640px; margin-bottom:16px;">
+  <form method="post" action="/admin/locker/{{ item.id }}">
+    <div class="form-grid">
+      <div class="field">
+        <label>Type</label>
+        <select name="doc_type">
+          {% for id, label in types %}
+          <option value="{{ id }}" {% if item.doc_type==id %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field"><label>Custom type</label><input name="custom_type" value="{{ item.custom_type or '' }}"></div>
+      <div class="field"><label>Title</label><input name="title" value="{{ item.title }}" required></div>
+      <div class="field"><label>Holder</label><input name="holder_name" value="{{ item.holder_name or '' }}"></div>
+      <div class="field"><label>Issuer</label><input name="issuer" value="{{ item.issuer or '' }}"></div>
+      <div class="field"><label>ID / number</label><input name="id_number" value="{{ item.id_number or '' }}" autocomplete="off"></div>
+      <div class="field"><label>Issued on</label><input type="date" name="issued_on" value="{{ item.issued_on or '' }}"></div>
+      <div class="field"><label>Expiry</label><input type="date" name="expiry_date" value="{{ item.expiry_date or '' }}"></div>
+      <div class="field"><label>Tags</label><input name="tags" value="{{ item.tags or '' }}"></div>
+    </div>
+    <div class="field" style="margin-top:12px;"><label>Notes</label><textarea name="notes" rows="3">{{ item.notes or '' }}</textarea></div>
+    <button class="btn" type="submit" style="margin-top:16px;">Save changes</button>
+  </form>
+</div>
+
+<div class="surface" style="max-width:640px; margin-bottom:16px;">
+  <div class="group-label">Files</div>
+  {% for f in files %}
+  <div class="mm-row" style="grid-template-columns:1fr auto;">
+    <div>
+      <div class="payee">{{ f.original_filename }}</div>
+      <div class="acct">{{ f.file_type or 'file' }}{% if f.file_size %} · {{ (f.file_size / 1024)|round(0)|int }} KB{% endif %}</div>
+    </div>
+    <a class="tag tag-sage" href="/admin/locker/{{ item.id }}/files/{{ f.id }}/download">Download</a>
+  </div>
+  {% else %}
+  <p class="empty">No files.</p>
+  {% endfor %}
+</div>
+
+<form method="post" action="/admin/locker/{{ item.id }}/delete" onsubmit="return confirm('Delete this document and its files?');">
+  <button class="btn-outline" type="submit" style="color:var(--stamp); border-color:rgba(255,107,122,0.35);">Delete document</button>
+</form>
+{% endblock %}

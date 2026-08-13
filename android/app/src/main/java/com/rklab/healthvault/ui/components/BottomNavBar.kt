@@ -14,6 +14,8 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -27,6 +29,8 @@ enum class MainTab { HOME, SEARCH, CARE, REMINDERS, FAMILY }
 enum class PasswordTab { VAULT, GENERATOR, SEND, HEALTH }
 
 enum class FinanceTab { TRANS, STATS, ACCOUNTS, MORE }
+
+enum class LockerTab { LOCKER, EXPIRING }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
@@ -100,6 +104,26 @@ fun FinanceBottomNav(current: FinanceTab, onSelect: (FinanceTab) -> Unit) {
             onClick = { onSelect(FinanceTab.MORE) },
             icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More") },
             label = { Text("More") },
+            colors = navColors
+        )
+    }
+}
+
+@Composable
+fun LockerBottomNav(current: LockerTab, onSelect: (LockerTab) -> Unit) {
+    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+        NavigationBarItem(
+            selected = current == LockerTab.LOCKER,
+            onClick = { onSelect(LockerTab.LOCKER) },
+            icon = { Icon(Icons.Filled.Folder, contentDescription = "Locker") },
+            label = { Text("Locker") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == LockerTab.EXPIRING,
+            onClick = { onSelect(LockerTab.EXPIRING) },
+            icon = { Icon(Icons.Filled.Warning, contentDescription = "Expiring") },
+            label = { Text("Expiring") },
             colors = navColors
         )
     }

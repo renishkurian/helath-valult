@@ -722,3 +722,59 @@ data class FinanceMessageOut(
     val transaction_id: String? = null,
     val created_at: String = ""
 )
+
+// ---------- Document Vault / Locker ----------
+data class LockerFileOut(
+    val id: String,
+    val item_id: String,
+    val original_filename: String,
+    val file_type: String? = null,
+    val file_size: Long? = null,
+    val created_at: String = ""
+)
+
+data class LockerItemOut(
+    val id: String,
+    val doc_type: String,
+    val type_label: String,
+    val custom_type: String? = null,
+    val title: String,
+    val holder_name: String? = null,
+    val issuer: String? = null,
+    val id_number: String? = null,
+    val issued_on: String? = null,
+    val expiry_date: String? = null,
+    val tags: String? = null,
+    val notes: String? = null,
+    val pinned: Boolean = false,
+    val file_type: String? = null,
+    val file_size: Long? = null,
+    val file_count: Int = 0,
+    val created_at: String = ""
+)
+
+data class LockerItemUpdate(
+    val title: String? = null,
+    val doc_type: String? = null,
+    val custom_type: String? = null,
+    val holder_name: String? = null,
+    val issuer: String? = null,
+    val id_number: String? = null,
+    val issued_on: String? = null,
+    val expiry_date: String? = null,
+    val tags: String? = null,
+    val notes: String? = null,
+    val pinned: Boolean? = null
+)
+
+data class LockerTypeOut(
+    val id: String,
+    val label: String,
+    val count: Int = 0
+)
+
+data class LockerSummaryOut(
+    val total: Int = 0,
+    val expiring: Int = 0,
+    val types: List<LockerTypeOut> = emptyList()
+)

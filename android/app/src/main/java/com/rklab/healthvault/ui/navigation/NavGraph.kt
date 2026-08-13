@@ -18,7 +18,10 @@ import com.rklab.healthvault.ui.components.PasswordTab
 import com.rklab.healthvault.ui.components.PasswordVaultBottomNav
 import com.rklab.healthvault.ui.components.FinanceTab
 import com.rklab.healthvault.ui.components.FinanceBottomNav
+import com.rklab.healthvault.ui.components.LockerTab
+import com.rklab.healthvault.ui.components.LockerBottomNav
 import com.rklab.healthvault.ui.screens.finance.*
+import com.rklab.healthvault.ui.screens.locker.*
 import com.rklab.healthvault.ui.screens.passwords.*
 import com.rklab.healthvault.ui.screens.shell.ModulePickerScreen
 import com.rklab.healthvault.ui.screens.cards.CardListScreen
@@ -53,6 +56,13 @@ private object Routes {
     const val FINANCE_ACCOUNT = "finance_account/{accountId}"
     const val FINANCE_INBOX = "finance_inbox"
     const val FINANCE_EMI = "finance_emi"
+    const val LOCKER = "locker"
+    const val LOCKER_EXPIRING = "locker_expiring"
+    const val LOCKER_ADD = "locker_add?type={type}"
+    const val LOCKER_ITEM = "locker_item/{itemId}"
+
+    fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
+    fun lockerItem(itemId: String) = "locker_item/$itemId"
 
     fun financeAdd(accountId: String? = null) = "finance_add?accountId=${accountId ?: ""}"
     fun financeAccount(accountId: String) = "finance_account/$accountId"
@@ -109,12 +119,25 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val mainTabs = setOf(Routes.HOME, Routes.SEARCH, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
     val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
+    val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
+    val onLockerItem = currentRoute?.startsWith("locker_item/") == true
+    val onLockerAdd = currentRoute?.startsWith("locker_add") == true
 
     Scaffold(
         containerColor = if (currentRoute == Routes.MODULES) HubBg else MaterialTheme.colorScheme.background,
         bottomBar = {
-            if (currentRoute in financeTabs || onFinanceAccount) {
+            if (currentRoute in lockerTabs || onLockerItem || onLockerAdd) {
+                val current = if (currentRoute == Routes.LOCKER_EXPIRING) LockerTab.EXPIRING else LockerTab.LOCKER
+                LockerBottomNav(current = current) { tab ->
+                    val route = if (tab == LockerTab.EXPIRING) Routes.LOCKER_EXPIRING else Routes.LOCKER
+                    navController.navigate(route) {
+                        popUpTo(Routes.LOCKER) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in financeTabs || onFinanceAccount) {
                 val current = when {
                     currentRoute == Routes.FINANCE_STATS -> FinanceTab.STATS
                     currentRoute == Routes.FINANCE_ACCOUNTS || onFinanceAccount -> FinanceTab.ACCOUNTS
@@ -238,6 +261,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onLocker = {
+                        navController.navigate(Routes.LOCKER) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onSettings = { navController.navigate(Routes.SETTINGS) },
                     onVaultHealth = {
                         navController.navigate(Routes.VAULT_HEALTH) {
@@ -245,6 +274,46 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     }
+                )
+            }
+
+            composable(Routes.LOCKER) {
+                LockerListScreen(
+                    repository = repository,
+                    onOpenItem = { navController.navigate(Routes.lockerItem(it)) },
+                    onAdd = { navController.navigate(Routes.lockerAdd(it)) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.LOCKER_EXPIRING) {
+                LockerListScreen(
+                    repository = repository,
+                    onOpenItem = { navController.navigate(Routes.lockerItem(it)) },
+                    onAdd = { navController.navigate(Routes.lockerAdd(it)) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    expiringOnly = true
+                )
+            }
+            composable(
+                Routes.LOCKER_ADD,
+                arguments = listOf(navArgument("type") { type = NavType.StringType; defaultValue = "" })
+            ) { entry ->
+                val type = entry.arguments?.getString("type").orEmpty().ifBlank { null }
+                LockerAddScreen(
+                    repository = repository,
+                    defaultType = type,
+                    onDone = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                Routes.LOCKER_ITEM,
+                arguments = listOf(navArgument("itemId") { type = NavType.StringType })
+            ) { entry ->
+                LockerItemScreen(
+                    repository = repository,
+                    itemId = entry.arguments?.getString("itemId").orEmpty(),
+                    onBack = { navController.popBackStack() }
                 )
             }
 

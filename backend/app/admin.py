@@ -1644,3 +1644,157 @@ def finance_recurring_delete(emi_id: str, request: Request, db: Session = Depend
         return RedirectResponse("/admin/login", status_code=302)
     delete_emi(emi_id, db=db, current_user=user)
     return RedirectResponse("/admin/finance/recurring", status_code=302)
+
+
+# ---------- Document Vault ----------
+def _lk_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "locker", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _lk_user(request, db):
+    return require_login(request, db)
+
+
+@router.get("/locker", response_class=HTMLResponse)
+def locker_home(
+    request: Request,
+    doc_type: str = "",
+    q: str = "",
+    expiring: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = lk.locker_summary(db=db, current_user=user)
+    items = lk.list_items(
+        doc_type=doc_type or None, q=q or None, expiring=bool(expiring),
+        db=db, current_user=user,
+    )
+    return templates.TemplateResponse("locker.html", _lk_ctx(
+        request, user, "lk_expiring" if expiring else "lk_home",
+        summary=summary, items=items,
+        doc_type=doc_type, q=q, expiring=bool(expiring), types=lk.LOCKER_TYPES,
+    ))
+
+
+@router.get("/locker/add", response_class=HTMLResponse)
+def locker_add_page(
+    request: Request,
+    doc_type: str = "other",
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return templates.TemplateResponse("locker_add.html", _lk_ctx(
+        request, user, "lk_add", types=lk.LOCKER_TYPES, prefill_type=doc_type or "other",
+    ))
+
+
+@router.post("/locker/add")
+async def locker_add(
+    request: Request,
+    title: str = Form(...),
+    doc_type: str = Form("other"),
+    custom_type: str = Form(""),
+    holder_name: str = Form(""),
+    issuer: str = Form(""),
+    id_number: str = Form(""),
+    issued_on: str = Form(""),
+    expiry_date: str = Form(""),
+    tags: str = Form(""),
+    notes: str = Form(""),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    await lk.create_item(
+        title=title, doc_type=doc_type, custom_type=custom_type or None,
+        holder_name=holder_name or None, issuer=issuer or None,
+        id_number=id_number or None, issued_on=issued_on or None,
+        expiry_date=expiry_date or None, tags=tags or None, notes=notes or None,
+        files=files, db=db, current_user=user,
+    )
+    return RedirectResponse("/admin/locker", status_code=302)
+
+
+@router.get("/locker/{item_id}", response_class=HTMLResponse)
+def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    item = lk.get_item(item_id, db=db, current_user=user)
+    files = lk.list_files(item_id, db=db, current_user=user)
+    return templates.TemplateResponse("locker_item.html", _lk_ctx(
+        request, user, "lk_home", item=item, files=files, types=lk.LOCKER_TYPES,
+    ))
+
+
+@router.post("/locker/{item_id}")
+def locker_item_update(
+    item_id: str,
+    request: Request,
+    title: str = Form(...),
+    doc_type: str = Form("other"),
+    custom_type: str = Form(""),
+    holder_name: str = Form(""),
+    issuer: str = Form(""),
+    id_number: str = Form(""),
+    issued_on: str = Form(""),
+    expiry_date: str = Form(""),
+    tags: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    from app import schemas as sc
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    lk.update_item(item_id, sc.LockerItemUpdate(
+        title=title, doc_type=doc_type, custom_type=custom_type or None,
+        holder_name=holder_name or None, issuer=issuer or None,
+        id_number=id_number or None, issued_on=issued_on or None,
+        expiry_date=expiry_date or None, tags=tags or None, notes=notes or None,
+    ), db=db, current_user=user)
+    return RedirectResponse(f"/admin/locker/{item_id}", status_code=302)
+
+
+@router.get("/locker/{item_id}/download")
+def locker_download(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return lk.download_item(item_id, db=db, current_user=user)
+
+
+@router.get("/locker/{item_id}/files/{file_id}/download")
+def locker_file_download(item_id: str, file_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return lk.download_file(item_id, file_id, db=db, current_user=user)
+
+
+@router.post("/locker/{item_id}/delete")
+def locker_delete(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    lk.delete_item(item_id, db=db, current_user=user)
+    return RedirectResponse("/admin/locker", status_code=302)

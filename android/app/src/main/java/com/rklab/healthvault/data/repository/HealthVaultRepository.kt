@@ -173,6 +173,65 @@ class HealthVaultRepository(
     suspend fun listVaultSends() = api.listVaultSends()
     suspend fun createVaultSend(body: VaultSendCreate) = api.createVaultSend(body)
     suspend fun revokeVaultSend(id: String) = api.revokeVaultSend(id)
+    suspend fun lockerSummary() = api.lockerSummary()
+    suspend fun listLockerTypes() = api.listLockerTypes()
+    suspend fun listLockerItems(
+        docType: String? = null,
+        q: String? = null,
+        expiring: Boolean = false
+    ) = api.listLockerItems(docType, q, expiring)
+    suspend fun getLockerItem(id: String) = api.getLockerItem(id)
+    suspend fun listLockerFiles(id: String) = api.listLockerFiles(id)
+    suspend fun updateLockerItem(id: String, body: LockerItemUpdate) = api.updateLockerItem(id, body)
+    suspend fun deleteLockerItem(id: String) { api.deleteLockerItem(id) }
+    suspend fun createLockerItem(
+        title: String,
+        docType: String,
+        customType: String?,
+        holderName: String?,
+        issuer: String?,
+        idNumber: String?,
+        issuedOn: String?,
+        expiryDate: String?,
+        tags: String?,
+        notes: String?,
+        files: List<File>,
+        mimeTypes: List<String>
+    ): LockerItemOut {
+        fun text(v: String) = v.toRequestBody("text/plain".toMediaTypeOrNull())
+        val fileParts = files.mapIndexed { idx, file ->
+            val mime = mimeTypes.getOrElse(idx) { "application/octet-stream" }
+            MultipartBody.Part.createFormData("files", file.name, file.asRequestBody(mime.toMediaTypeOrNull()))
+        }
+        return api.createLockerItem(
+            title = text(title),
+            docType = text(docType),
+            customType = customType?.let { text(it) },
+            holderName = holderName?.let { text(it) },
+            issuer = issuer?.let { text(it) },
+            idNumber = idNumber?.let { text(it) },
+            issuedOn = issuedOn?.let { text(it) },
+            expiryDate = expiryDate?.let { text(it) },
+            tags = tags?.let { text(it) },
+            notes = notes?.let { text(it) },
+            files = fileParts
+        )
+    }
+    suspend fun downloadLockerItem(id: String, destination: File): File {
+        val body = api.downloadLockerItem(id)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
+    suspend fun downloadLockerFile(itemId: String, fileId: String, destination: File): File {
+        val body = api.downloadLockerFile(itemId, fileId)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
+
     suspend fun financeSummary(yearMonth: String? = null) = api.financeSummary(yearMonth)
     suspend fun listFinanceAccounts() = api.listFinanceAccounts()
     suspend fun createFinanceAccount(body: FinanceAccountIn) = api.createFinanceAccount(body)
