@@ -46,6 +46,10 @@ class HealthVaultApp : Application() {
         }
 
         createReminderNotificationChannel()
+        com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.ensureChannel(this)
+        if (tokenManager.getAccessToken() != null) {
+            com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.scanInbox(this)
+        }
     }
 
     private fun createReminderNotificationChannel() {

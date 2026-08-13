@@ -1,5 +1,9 @@
 package com.rklab.healthvault.ui.screens.finance
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.*
@@ -56,6 +61,7 @@ fun FinanceTransScreen(
     onAdd: () -> Unit,
     onOpenModules: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val month = remember { LocalDate.now().format(monthFmt) }
     var summary by remember { mutableStateOf<FinanceSummaryOut?>(null) }
@@ -70,7 +76,10 @@ fun FinanceTransScreen(
             }.onFailure { error = it.message }
         }
     }
-    LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(Unit) {
+        reload()
+        FinanceSmsIngestor.scanInbox(context)
+    }
 
     Box(Modifier.fillMaxSize().background(Paper)) {
         Column(Modifier.fillMaxSize()) {
@@ -87,6 +96,7 @@ fun FinanceTransScreen(
                     Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
                 }
             }
+            IncomingSmsBanner(onChanged = { reload() })
             summary?.let { s ->
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SummaryChip("Income", inr(s.income), IncomeBlue, Modifier.weight(1f))
@@ -232,8 +242,104 @@ fun FinanceMoreScreen(
     Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(20.dp))
-        MoreRow("AI & SMS", "Paste bank messages and auto-tag") { onOpenInbox() }
+        IncomingSmsToggle()
+        Spacer(Modifier.height(8.dp))
+        MoreRow("AI & SMS inbox", "Review pending tags or paste a message") { onOpenInbox() }
         MoreRow("Switch module", "Health / Passwords / Money") { onOpenModules() }
+    }
+}
+
+@Composable
+private fun IncomingSmsToggle() {
+    val context = LocalContext.current
+    var enabled by remember {
+        mutableStateOf(FinanceSmsPrefs.isEnabled(context) && FinanceSmsPrefs.hasSmsPermission(context))
+    }
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val ok = grants[Manifest.permission.READ_SMS] == true &&
+            grants[Manifest.permission.RECEIVE_SMS] == true
+        FinanceSmsPrefs.setEnabled(context, ok)
+        enabled = ok
+        if (ok) FinanceSmsIngestor.scanInbox(context)
+    }
+    val perms = buildList {
+        add(Manifest.permission.READ_SMS)
+        add(Manifest.permission.RECEIVE_SMS)
+        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            Text("Incoming SMS", color = Ink, fontWeight = FontWeight.SemiBold)
+            Text(
+                "Bank and UPI alerts are tagged as they arrive. Keep the app unrestricted in battery settings.",
+                color = InkSoft,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = { on ->
+                if (on) {
+                    if (FinanceSmsPrefs.hasSmsPermission(context)) {
+                        FinanceSmsPrefs.setEnabled(context, true)
+                        enabled = true
+                        FinanceSmsIngestor.scanInbox(context)
+                    } else {
+                        launcher.launch(perms.toTypedArray())
+                    }
+                } else {
+                    FinanceSmsPrefs.setEnabled(context, false)
+                    enabled = false
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun IncomingSmsBanner(onChanged: () -> Unit) {
+    val context = LocalContext.current
+    var enabled by remember {
+        mutableStateOf(FinanceSmsPrefs.isEnabled(context) && FinanceSmsPrefs.hasSmsPermission(context))
+    }
+    if (enabled) return
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val ok = grants[Manifest.permission.READ_SMS] == true &&
+            grants[Manifest.permission.RECEIVE_SMS] == true
+        FinanceSmsPrefs.setEnabled(context, ok)
+        enabled = ok
+        if (ok) {
+            FinanceSmsIngestor.scanInbox(context)
+            onChanged()
+        }
+    }
+    val perms = buildList {
+        add(Manifest.permission.READ_SMS)
+        add(Manifest.permission.RECEIVE_SMS)
+        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(White)
+            .clickable { launcher.launch(perms.toTypedArray()) }
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Read incoming SMS", color = Ink, fontWeight = FontWeight.SemiBold)
+            Text("Allow SMS so bank alerts tag themselves", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+        }
+        Text("Allow", color = IncomeBlue, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -337,6 +443,13 @@ fun FinanceInboxScreen(repository: HealthVaultRepository, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← More", color = InkSoft) }
         Text("AI & SMS", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+        Text(
+            "Incoming bank SMS is tagged automatically when SMS is allowed. Paste here only if a message was missed.",
+            color = InkSoft,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+        IncomingSmsToggle()
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(value = text, onValueChange = { text = it }, label = { Text("Paste bank / UPI message") }, modifier = Modifier.fillMaxWidth(), minLines = 4)
         Spacer(Modifier.height(8.dp))

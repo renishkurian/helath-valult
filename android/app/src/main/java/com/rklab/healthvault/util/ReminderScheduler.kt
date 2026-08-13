@@ -135,6 +135,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
             ReminderScheduler.rescheduleAll(context)
+            com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.scanInbox(context)
         }
     }
 }
