@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import engine, SessionLocal
 from app.config import settings
 from app.schema import ensure_schema
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance
 from app import admin, models
 
 # First run: create every table. Existing Pi DB: add any columns the old file is missing.
@@ -18,8 +18,7 @@ ensure_schema(engine)
 
 app = FastAPI(
     title="Vault API",
-    description="Self-hosted vault: Health Vault (medical records) and Password Vault "
-                "(logins, notes, cards, identities). Runs on the Pi.",
+    description="Self-hosted vault: Health, Passwords, and Money Manager.",
     version="1.1.0",
 )
 
@@ -49,6 +48,7 @@ app.include_router(labs.router)
 app.include_router(health.router)
 app.include_router(storage.router)
 app.include_router(vault.router)
+app.include_router(finance.router)
 app.include_router(admin.router)
 
 _static = Path(__file__).resolve().parent / "static"

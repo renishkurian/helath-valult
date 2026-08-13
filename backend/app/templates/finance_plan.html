@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Budgets{% endblock %}
+{% block content %}
+<div class="eyebrow"><a href="/admin/finance/more" style="color:var(--ink-soft);">← More</a></div>
+<div class="page-title">Budgets & repeats</div>
+
+<div class="grid grid-split">
+  <div class="panel">
+    <div class="panel-head"><h2>Monthly budgets · {{ year_month }}</h2></div>
+    {% for b in budgets %}
+    <div class="record">
+      <span class="record-dot"></span>
+      <div>
+        <div class="record-title">{{ b.category_name }}</div>
+        <div class="record-meta">spent {{ inr(b.spent) }} of {{ inr(b.amount) }}</div>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No budgets this month.</p></div>
+    {% endfor %}
+    <form class="panel-form" method="post" action="/admin/finance/plan/budget">
+      <input type="hidden" name="year_month" value="{{ year_month }}">
+      <div class="form-grid">
+        <div class="field">
+          <label>Category</label>
+          <select name="category_id">{% for c in categories if c.kind=='expense' %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+        </div>
+        <div class="field"><label>Limit</label><input name="amount" required inputmode="decimal"></div>
+      </div>
+      <button class="btn" type="submit">Add budget</button>
+    </form>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h2>Repeat / installment</h2></div>
+    {% for r in recurring %}
+    <div class="record">
+      <span class="record-dot" style="background:var(--mm-transfer);"></span>
+      <div>
+        <div class="record-title">{{ r.payee or r.category_name or r.frequency }} · {{ inr(r.amount) }}</div>
+        <div class="record-meta">{{ r.frequency }} · next {{ r.next_due }} · {{ r.account_name }}</div>
+      </div>
+      <form method="post" action="/admin/finance/plan/recurring/{{ r.id }}/pay"><button class="btn-outline" type="submit">Post due</button></form>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No repeating items. Set Repeat on a new expense to create one.</p></div>
+    {% endfor %}
+    <form class="panel-form" method="post" action="/admin/finance/plan/recurring">
+      <div class="form-grid">
+        <div class="field"><label>Payee</label><input name="payee" placeholder="Rent, EMI…"></div>
+        <div class="field"><label>Amount</label><input name="amount" required inputmode="decimal"></div>
+        <div class="field">
+          <label>Account</label>
+          <select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select>
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select name="category_id"><option value="">—</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <select name="txn_type"><option value="expense">Expense</option><option value="income">Income</option></select>
+        </div>
+        <div class="field">
+          <label>Frequency</label>
+          <select name="frequency"><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="yearly">Yearly</option></select>
+        </div>
+        <div class="field"><label>Next due</label><input type="date" name="next_due" required></div>
+      </div>
+      <button class="btn" type="submit">Add repeat</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

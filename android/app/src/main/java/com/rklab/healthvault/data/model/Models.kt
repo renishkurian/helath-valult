@@ -522,3 +522,121 @@ data class PersonUpdate(
     val ayushman_id: String? = null,
     val blood_group: String? = null
 )
+
+// ---------- Money Manager ----------
+data class FinanceAccountOut(
+    val id: String,
+    val name: String,
+    val account_type: String,
+    val currency: String = "INR",
+    val opening_balance: Double = 0.0,
+    val credit_limit: Double? = null,
+    val institution: String? = null,
+    val last4: String? = null,
+    val archived: Boolean = false,
+    val balance: Double = 0.0,
+    val is_liability: Boolean = false,
+    val created_at: String = ""
+)
+data class FinanceAccountIn(
+    val name: String,
+    val account_type: String = "cash",
+    val opening_balance: Double = 0.0,
+    val credit_limit: Double? = null
+)
+data class FinanceCategoryOut(
+    val id: String,
+    val name: String,
+    val kind: String,
+    val color: String? = null,
+    val is_system: Boolean = false
+)
+data class FinanceTxnOut(
+    val id: String,
+    val account_id: String,
+    val account_name: String = "",
+    val to_account_id: String? = null,
+    val to_account_name: String? = null,
+    val category_id: String? = null,
+    val category_name: String? = null,
+    val category_color: String? = null,
+    val txn_type: String,
+    val amount: Double,
+    val currency: String = "INR",
+    val txn_date: String,
+    val txn_time: String? = null,
+    val payee: String? = null,
+    val notes: String? = null,
+    val description: String? = null,
+    val tags: String? = null,
+    val source: String = "manual",
+    val created_at: String = ""
+)
+data class FinanceTxnIn(
+    val account_id: String,
+    val to_account_id: String? = null,
+    val category_id: String? = null,
+    val txn_type: String = "expense",
+    val amount: Double,
+    val txn_date: String,
+    val txn_time: String? = null,
+    val payee: String? = null,
+    val notes: String? = null,
+    val description: String? = null,
+    val frequency: String? = null
+)
+data class FinanceSummaryOut(
+    val year_month: String,
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val total: Double = 0.0,
+    val assets: Double = 0.0,
+    val liabilities: Double = 0.0,
+    val net: Double = 0.0,
+    val pending_messages: Int = 0
+)
+data class FinanceReportRow(val name: String, val amount: Double, val pct: Double, val color: String? = null)
+data class FinanceReportOut(
+    val year_month: String,
+    val kind: String,
+    val total: Double = 0.0,
+    val rows: List<FinanceReportRow> = emptyList()
+)
+data class FinanceAiKeyIn(
+    val name: String,
+    val kind: String,
+    val api_key: String? = null,
+    val base_url: String? = null,
+    val model: String? = null,
+    val is_default: Boolean = false
+)
+data class FinanceAiKeyOut(
+    val id: String,
+    val name: String,
+    val kind: String,
+    val base_url: String? = null,
+    val model: String? = null,
+    val is_default: Boolean = false,
+    val enabled: Boolean = true,
+    val has_key: Boolean = false
+)
+data class FinanceMessageIn(
+    val text: String,
+    val account_id: String? = null,
+    val auto_accept: Boolean = false
+)
+data class FinanceMessageOut(
+    val id: String,
+    val raw_text: String,
+    val direction: String,
+    val amount: Double? = null,
+    val payee: String? = null,
+    val txn_date: String? = null,
+    val category_id: String? = null,
+    val suggested_category: String? = null,
+    val confidence: Double? = null,
+    val provider_used: String? = null,
+    val status: String,
+    val transaction_id: String? = null,
+    val created_at: String = ""
+)

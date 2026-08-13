@@ -930,3 +930,405 @@ def password_item_permanent(item_id: str, request: Request, db: Session = Depend
         return RedirectResponse("/admin/login", status_code=302)
     delete_item_forever(item_id, db=db, current_user=user)
     return RedirectResponse("/admin/passwords/trash", status_code=302)
+
+
+# ---------- Money Manager ----------
+def _fn_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "finance", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _fn_user(request, db):
+    user = require_login(request, db)
+    if not user:
+        return None
+    from app.routers.finance import ensure_defaults
+    ensure_defaults(db, user)
+    return user
+
+
+@router.get("/finance", response_class=HTMLResponse)
+def finance_trans(
+    request: Request,
+    month: Optional[str] = None,
+    view: str = "daily",
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import month_ledger, inr
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    ledger = month_ledger(db, user, ym, q=q, notes_only=(view == "note"))
+    return templates.TemplateResponse("finance_trans.html", _fn_ctx(
+        request, user, "fn_trans", ledger=ledger, view=view, q=q or "", inr=inr,
+    ))
+
+
+@router.get("/finance/add", response_class=HTMLResponse)
+def finance_add_page(
+    request: Request,
+    txn_type: str = "expense",
+    db: Session = Depends(get_db),
+):
+    from app.routers import finance as fn
+    from app.routers.finance import inr
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    categories = fn.list_categories(db=db, current_user=user)
+    if txn_type not in ("income", "expense", "transfer"):
+        txn_type = "expense"
+    return templates.TemplateResponse("finance_add.html", _fn_ctx(
+        request, user, "fn_trans", accounts=accounts, categories=categories,
+        txn_type=txn_type, today=datetime.utcnow().strftime("%Y-%m-%d"),
+        now=datetime.utcnow().strftime("%H:%M"), inr=inr,
+    ))
+
+
+@router.post("/finance/add")
+def finance_add(
+    request: Request,
+    txn_type: str = Form("expense"),
+    account_id: str = Form(...),
+    to_account_id: str = Form(""),
+    category_id: str = Form(""),
+    amount: str = Form(...),
+    txn_date: str = Form(...),
+    txn_time: str = Form(""),
+    payee: str = Form(""),
+    notes: str = Form(""),
+    description: str = Form(""),
+    frequency: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_transaction
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_transaction(sc.FinanceTxnIn(
+        account_id=account_id, to_account_id=to_account_id or None,
+        category_id=category_id or None, txn_type=txn_type, amount=float(amount or 0),
+        txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
+        notes=notes or None, description=description or None,
+        frequency=frequency or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance", status_code=302)
+
+
+@router.post("/finance/transactions/{txn_id}/delete")
+def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_transaction
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_transaction(txn_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance", status_code=302)
+
+
+@router.get("/finance/stats", response_class=HTMLResponse)
+def finance_stats(
+    request: Request,
+    month: Optional[str] = None,
+    kind: str = "expense",
+    db: Session = Depends(get_db),
+):
+    from app.routers import finance as fn
+    from app.routers.finance import inr, _shift_month
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    report = fn.reports(year_month=ym, kind=kind, db=db, current_user=user)
+    circ = 2 * 3.14159265 * 40
+    offset = 0.0
+    slices = []
+    for row in report["rows"]:
+        length = circ * (row["pct"] / 100)
+        slices.append({**row, "dash": f"{length:.2f} {circ:.2f}", "offset": f"{-offset:.2f}"})
+        offset += length
+    label = datetime.strptime(ym + "-01", "%Y-%m-%d").strftime("%b %Y")
+    return templates.TemplateResponse("finance_stats.html", _fn_ctx(
+        request, user, "fn_stats", report=report, slices=slices, inr=inr,
+        year_month=ym, kind=kind, label=label, prev=_shift_month(ym, -1), next=_shift_month(ym, 1),
+    ))
+
+
+@router.get("/finance/accounts", response_class=HTMLResponse)
+def finance_accounts(request: Request, db: Session = Depends(get_db)):
+    from app.routers import finance as fn
+    from app.routers.finance import inr
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    summary = fn.summary(db=db, current_user=user)
+    groups = {}
+    labels = {"cash": "Cash", "bank": "Accounts", "credit_card": "Card", "loan": "Loan", "wallet": "Wallet", "investment": "Investment", "other": "Other"}
+    for a in accounts:
+        groups.setdefault(a.account_type, []).append(a)
+    return templates.TemplateResponse("finance_accounts.html", _fn_ctx(
+        request, user, "fn_accounts", accounts=accounts, groups=groups, labels=labels,
+        summary=summary, inr=inr,
+    ))
+
+
+@router.post("/finance/accounts/add")
+def finance_account_add(
+    request: Request,
+    name: str = Form(...),
+    account_type: str = Form("cash"),
+    opening_balance: str = Form("0"),
+    credit_limit: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_account
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_account(sc.FinanceAccountIn(
+        name=name, account_type=account_type,
+        opening_balance=float(opening_balance or 0),
+        credit_limit=float(credit_limit) if credit_limit.strip() else None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/accounts", status_code=302)
+
+
+@router.post("/finance/accounts/{account_id}/delete")
+def finance_account_delete(account_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_account
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_account(account_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/accounts", status_code=302)
+
+
+@router.get("/finance/more", response_class=HTMLResponse)
+def finance_more(request: Request, db: Session = Depends(get_db)):
+    from app.routers import finance as fn
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = fn.summary(db=db, current_user=user)
+    return templates.TemplateResponse("finance_more.html", _fn_ctx(request, user, "fn_more", summary=summary))
+
+
+@router.get("/finance/ai", response_class=HTMLResponse)
+def finance_ai_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers import finance as fn
+    from app.routers.finance import inr
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return templates.TemplateResponse("finance_ai.html", _fn_ctx(
+        request, user, "fn_more",
+        keys=fn.list_ai_keys(db=db, current_user=user),
+        messages=fn.list_messages(status="pending", db=db, current_user=user),
+        rules=fn.list_rules(db=db, current_user=user),
+        categories=fn.list_categories(db=db, current_user=user),
+        accounts=fn.list_accounts(db=db, current_user=user),
+        inr=inr,
+    ))
+
+
+@router.post("/finance/ai/keys")
+def finance_ai_add(
+    request: Request,
+    name: str = Form(...),
+    kind: str = Form(...),
+    api_key: str = Form(""),
+    model: str = Form(""),
+    base_url: str = Form(""),
+    is_default: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_ai_key
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_ai_key(sc.FinanceAiKeyIn(
+        name=name, kind=kind, api_key=api_key or None, model=model or None,
+        base_url=base_url or None, is_default=bool(is_default),
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.post("/finance/ai/keys/{key_id}/delete")
+def finance_ai_delete(key_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_ai_key
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_ai_key(key_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.post("/finance/ai/ingest")
+def finance_ai_ingest(
+    request: Request,
+    text: str = Form(...),
+    account_id: str = Form(""),
+    auto_accept: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import ingest_messages
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ingest_messages(sc.FinanceMessageIn(
+        text=text, account_id=account_id or None, auto_accept=bool(auto_accept),
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.post("/finance/ai/messages/{message_id}/accept")
+def finance_msg_accept(message_id: str, request: Request, account_id: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers.finance import accept_message
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    accept_message(message_id, account_id=account_id or None, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.post("/finance/ai/messages/{message_id}/ignore")
+def finance_msg_ignore(message_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import ignore_message
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ignore_message(message_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.post("/finance/ai/rules")
+def finance_rule_add(
+    request: Request,
+    match_text: str = Form(...),
+    category_id: str = Form(""),
+    txn_type: str = Form(""),
+    payee: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_rule
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_rule(sc.FinanceRuleIn(
+        match_text=match_text, category_id=category_id or None,
+        txn_type=txn_type or None, payee=payee or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.post("/finance/ai/rules/{rule_id}/delete")
+def finance_rule_delete(rule_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_rule
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_rule(rule_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+@router.get("/finance/categories", response_class=HTMLResponse)
+def finance_categories(request: Request, db: Session = Depends(get_db)):
+    from app.routers import finance as fn
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return templates.TemplateResponse("finance_categories.html", _fn_ctx(
+        request, user, "fn_more", categories=fn.list_categories(db=db, current_user=user),
+    ))
+
+
+@router.post("/finance/categories")
+def finance_category_add(request: Request, name: str = Form(...), kind: str = Form("expense"), db: Session = Depends(get_db)):
+    from app.routers.finance import create_category
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_category(sc.FinanceCategoryIn(name=name, kind=kind), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/categories", status_code=302)
+
+
+@router.post("/finance/categories/{category_id}/delete")
+def finance_category_delete(category_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_category
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    delete_category(category_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/categories", status_code=302)
+
+
+@router.get("/finance/plan", response_class=HTMLResponse)
+def finance_plan(request: Request, month: Optional[str] = None, db: Session = Depends(get_db)):
+    from app.routers import finance as fn
+    from app.routers.finance import inr
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    return templates.TemplateResponse("finance_plan.html", _fn_ctx(
+        request, user, "fn_more", year_month=ym, inr=inr,
+        budgets=fn.list_budgets(year_month=ym, db=db, current_user=user),
+        recurring=fn.list_recurring(db=db, current_user=user),
+        categories=fn.list_categories(db=db, current_user=user),
+        accounts=fn.list_accounts(db=db, current_user=user),
+    ))
+
+
+@router.post("/finance/plan/budget")
+def finance_budget_add(
+    request: Request, category_id: str = Form(...), year_month: str = Form(...), amount: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_budget
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_budget(sc.FinanceBudgetIn(category_id=category_id, year_month=year_month, amount=float(amount or 0)), db=db, current_user=user)
+    return RedirectResponse(f"/admin/finance/plan?month={year_month}", status_code=302)
+
+
+@router.post("/finance/plan/recurring")
+def finance_recurring_add(
+    request: Request, account_id: str = Form(...), category_id: str = Form(""), txn_type: str = Form("expense"),
+    amount: str = Form(...), payee: str = Form(""), frequency: str = Form("monthly"), next_due: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import create_recurring
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    create_recurring(sc.FinanceRecurringIn(
+        account_id=account_id, category_id=category_id or None, txn_type=txn_type,
+        amount=float(amount or 0), payee=payee or None, frequency=frequency, next_due=next_due,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/finance/plan", status_code=302)
+
+
+@router.post("/finance/plan/recurring/{rid}/pay")
+def finance_recurring_pay(rid: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import pay_recurring
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    pay_recurring(rid, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/plan", status_code=302)

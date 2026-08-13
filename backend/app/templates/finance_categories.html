@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Categories{% endblock %}
+{% block content %}
+<div class="eyebrow"><a href="/admin/finance/more" style="color:var(--ink-soft);">← More</a></div>
+<div class="page-title">Categories</div>
+
+<div class="grid grid-2">
+  <div class="panel">
+    <div class="group-label">Expense</div>
+    {% for c in categories if c.kind=='expense' %}
+    <div class="record">
+      <span class="record-dot" style="background:{{ c.color or 'var(--mm-expense)' }};"></span>
+      <div class="record-title">{{ c.name }}</div>
+      {% if not c.is_system %}
+      <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="panel">
+    <div class="group-label">Income</div>
+    {% for c in categories if c.kind=='income' %}
+    <div class="record">
+      <span class="record-dot" style="background:{{ c.color or 'var(--mm-income)' }};"></span>
+      <div class="record-title">{{ c.name }}</div>
+      {% if not c.is_system %}
+      <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"><button class="btn-outline" type="submit">Remove</button></form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="surface" style="max-width:480px; margin-top:18px;">
+  <div class="group-label">Add category</div>
+  <form method="post" action="/admin/finance/categories">
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input name="name" required placeholder="grocessory, charity…"></div>
+      <div class="field">
+        <label>Kind</label>
+        <select name="kind"><option value="expense">Expense</option><option value="income">Income</option></select>
+      </div>
+    </div>
+    <button class="btn" type="submit">Save category</button>
+  </form>
+</div>
+{% endblock %}

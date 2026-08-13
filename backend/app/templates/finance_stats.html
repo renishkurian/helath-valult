@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Stats{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Money Manager</div>
+    <div class="page-title">
+      <a href="/admin/finance/stats?month={{ prev }}&kind={{ kind }}" style="color:var(--ink-soft);">‹</a>
+      {{ label }}
+      <a href="/admin/finance/stats?month={{ next }}&kind={{ kind }}" style="color:var(--ink-soft);">›</a>
+    </div>
+  </div>
+  <span class="pill">Monthly</span>
+</div>
+
+<div class="mm-tabs">
+  <a class="{% if kind=='income' %}active{% endif %}" href="/admin/finance/stats?month={{ year_month }}&kind=income">Income</a>
+  <a class="{% if kind=='expense' %}active{% endif %}" href="/admin/finance/stats?month={{ year_month }}&kind=expense">Expenses</a>
+</div>
+
+<div class="mm-summary" style="grid-template-columns:1fr; max-width:320px;">
+  <div class="cell">
+    <div class="lbl">{{ kind|capitalize }}</div>
+    <div class="val {% if kind=='income' %}mm-income{% else %}mm-expense{% endif %}">{{ inr(report.total) }}</div>
+  </div>
+</div>
+
+<div class="grid grid-split">
+  <div class="panel" style="align-items:center;">
+    {% if slices %}
+    <svg viewBox="0 0 120 120" width="240" height="240" aria-label="Category split">
+      <circle r="40" cx="60" cy="60" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="20"></circle>
+      {% for s in slices %}
+      <circle r="40" cx="60" cy="60" fill="none" stroke="{{ s.color }}" stroke-width="20"
+        stroke-dasharray="{{ s.dash }}" stroke-dashoffset="{{ s.offset }}" transform="rotate(-90 60 60)"></circle>
+      {% endfor %}
+    </svg>
+    {% else %}
+    <div class="empty-state"><p>No {{ kind }} this month.</p></div>
+    {% endif %}
+  </div>
+  <div class="panel">
+    {% for row in report.rows %}
+    <div class="mm-row" style="grid-template-columns:48px 1fr auto;">
+      <div class="pill" style="background:{{ row.color }}22; color:{{ row.color }};">{{ '%d'|format(row.pct|round(0)) }}%</div>
+      <div class="payee">{{ row.name }}</div>
+      <div class="amt">{{ inr(row.amount) }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

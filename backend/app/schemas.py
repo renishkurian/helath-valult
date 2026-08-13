@@ -747,3 +747,190 @@ class VaultSendPublicOut(BaseModel):
     expires_at: datetime
     has_pin: bool = False
     pin_required: bool = False
+
+
+# ---------- Finance / Money Manager ----------
+class FinanceAccountIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    account_type: str = "cash"  # cash | bank | credit_card | loan | wallet | other
+    currency: str = "INR"
+    opening_balance: float = 0
+    credit_limit: Optional[float] = None
+    institution: Optional[str] = None
+    last4: Optional[str] = None
+
+
+class FinanceAccountOut(BaseModel):
+    id: str
+    name: str
+    account_type: str
+    currency: str
+    opening_balance: float
+    credit_limit: Optional[float] = None
+    institution: Optional[str] = None
+    last4: Optional[str] = None
+    archived: bool = False
+    balance: float = 0
+    is_liability: bool = False
+    created_at: datetime
+
+
+class FinanceCategoryIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    kind: str = "expense"
+    color: Optional[str] = None
+
+
+class FinanceCategoryOut(BaseModel):
+    id: str
+    name: str
+    kind: str
+    color: Optional[str] = None
+    is_system: bool = False
+
+
+class FinanceTxnIn(BaseModel):
+    account_id: str
+    to_account_id: Optional[str] = None
+    category_id: Optional[str] = None
+    txn_type: str = "expense"
+    amount: float
+    txn_date: str
+    txn_time: Optional[str] = None
+    payee: Optional[str] = None
+    notes: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+    frequency: Optional[str] = None  # if set, also create recurring
+
+
+class FinanceTxnOut(BaseModel):
+    id: str
+    account_id: str
+    account_name: str = ""
+    to_account_id: Optional[str] = None
+    to_account_name: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    category_color: Optional[str] = None
+    txn_type: str
+    amount: float
+    currency: str = "INR"
+    txn_date: str
+    txn_time: Optional[str] = None
+    payee: Optional[str] = None
+    notes: Optional[str] = None
+    description: Optional[str] = None
+    tags: Optional[str] = None
+    source: str = "manual"
+    created_at: datetime
+
+
+class FinanceBudgetIn(BaseModel):
+    category_id: str
+    year_month: str
+    amount: float
+
+
+class FinanceBudgetOut(BaseModel):
+    id: str
+    category_id: str
+    category_name: str = ""
+    year_month: str
+    amount: float
+    spent: float = 0
+
+
+class FinanceRecurringIn(BaseModel):
+    account_id: str
+    category_id: Optional[str] = None
+    txn_type: str = "expense"
+    amount: float
+    payee: Optional[str] = None
+    notes: Optional[str] = None
+    frequency: str = "monthly"
+    next_due: str
+
+
+class FinanceRecurringOut(BaseModel):
+    id: str
+    account_id: str
+    account_name: str = ""
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    txn_type: str
+    amount: float
+    payee: Optional[str] = None
+    notes: Optional[str] = None
+    frequency: str
+    next_due: str
+    active: bool = True
+
+
+class FinanceAiKeyIn(BaseModel):
+    name: str
+    kind: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    is_default: bool = False
+
+
+class FinanceAiKeyOut(BaseModel):
+    id: str
+    name: str
+    kind: str
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    is_default: bool = False
+    enabled: bool = True
+    has_key: bool = False
+
+
+class FinanceRuleIn(BaseModel):
+    match_text: str
+    category_id: Optional[str] = None
+    txn_type: Optional[str] = None
+    payee: Optional[str] = None
+
+
+class FinanceRuleOut(BaseModel):
+    id: str
+    match_text: str
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    txn_type: Optional[str] = None
+    payee: Optional[str] = None
+
+
+class FinanceMessageIn(BaseModel):
+    text: str
+    account_id: Optional[str] = None
+    auto_accept: bool = False
+
+
+class FinanceMessageOut(BaseModel):
+    id: str
+    raw_text: str
+    direction: str
+    amount: Optional[float] = None
+    payee: Optional[str] = None
+    txn_date: Optional[str] = None
+    category_id: Optional[str] = None
+    suggested_category: Optional[str] = None
+    confidence: Optional[float] = None
+    provider_used: Optional[str] = None
+    status: str
+    transaction_id: Optional[str] = None
+    created_at: datetime
+
+
+class FinanceSummaryOut(BaseModel):
+    year_month: str
+    income: float
+    expense: float
+    total: float
+    assets: float
+    liabilities: float
+    net: float
+    pending_messages: int = 0

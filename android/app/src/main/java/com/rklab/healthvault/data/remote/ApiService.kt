@@ -353,4 +353,51 @@ interface ApiService {
 
     @DELETE("vault/sends/{id}")
     suspend fun revokeVaultSend(@Path("id") id: String): Response<Unit>
+
+    // ---------- Money Manager ----------
+    @GET("finance/summary")
+    suspend fun financeSummary(@Query("year_month") yearMonth: String? = null): FinanceSummaryOut
+
+    @GET("finance/accounts")
+    suspend fun listFinanceAccounts(): List<FinanceAccountOut>
+
+    @POST("finance/accounts")
+    suspend fun createFinanceAccount(@Body body: FinanceAccountIn): FinanceAccountOut
+
+    @GET("finance/categories")
+    suspend fun listFinanceCategories(): List<FinanceCategoryOut>
+
+    @GET("finance/transactions")
+    suspend fun listFinanceTransactions(
+        @Query("year_month") yearMonth: String? = null,
+        @Query("txn_type") txnType: String? = null,
+        @Query("q") q: String? = null
+    ): List<FinanceTxnOut>
+
+    @POST("finance/transactions")
+    suspend fun createFinanceTransaction(@Body body: FinanceTxnIn): FinanceTxnOut
+
+    @DELETE("finance/transactions/{id}")
+    suspend fun deleteFinanceTransaction(@Path("id") id: String): Response<Unit>
+
+    @GET("finance/reports")
+    suspend fun financeReports(
+        @Query("year_month") yearMonth: String? = null,
+        @Query("kind") kind: String = "expense"
+    ): FinanceReportOut
+
+    @GET("finance/ai-keys")
+    suspend fun listFinanceAiKeys(): List<FinanceAiKeyOut>
+
+    @POST("finance/ai-keys")
+    suspend fun createFinanceAiKey(@Body body: FinanceAiKeyIn): FinanceAiKeyOut
+
+    @GET("finance/messages")
+    suspend fun listFinanceMessages(@Query("status") status: String? = "pending"): List<FinanceMessageOut>
+
+    @POST("finance/messages/ingest")
+    suspend fun ingestFinanceMessages(@Body body: FinanceMessageIn): List<FinanceMessageOut>
+
+    @POST("finance/messages/{id}/accept")
+    suspend fun acceptFinanceMessage(@Path("id") id: String, @Query("account_id") accountId: String? = null): FinanceTxnOut
 }

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Accounts{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Money Manager</div>
+    <div class="page-title">Accounts</div>
+  </div>
+  <a class="btn" href="#new-account">+ Account</a>
+</div>
+
+<div class="mm-summary">
+  <div class="cell"><div class="lbl">Assets</div><div class="val mm-income">{{ inr(summary.assets) }}</div></div>
+  <div class="cell"><div class="lbl">Liabilities</div><div class="val mm-expense">{{ inr(summary.liabilities) }}</div></div>
+  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(summary.net) }}</div></div>
+</div>
+
+{% for kind, rows in groups.items() %}
+<div class="panel" style="margin-bottom:16px;">
+  <div class="group-label">{{ labels.get(kind, kind) }}</div>
+  {% for a in rows %}
+  <div class="mm-row" style="grid-template-columns:1fr auto auto;">
+    <div>
+      <div class="payee">{{ a.name }}</div>
+      <div class="acct">{{ a.account_type.replace('_',' ') }}{% if a.institution %} · {{ a.institution }}{% endif %}</div>
+      {% if a.account_type=='credit_card' %}
+      <div class="acct">Outst. balance {{ inr(a.balance) }}{% if a.credit_limit %} · limit {{ inr(a.credit_limit) }}{% endif %}</div>
+      {% endif %}
+    </div>
+    <div class="amt {% if a.is_liability or a.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(a.balance) }}</div>
+    <form method="post" action="/admin/finance/accounts/{{ a.id }}/delete" onsubmit="return confirm('Archive {{ a.name }}?');">
+      <button class="btn-outline" type="submit" style="padding:6px 10px; font-size:12px;">Remove</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<div class="surface" id="new-account" style="max-width:520px;">
+  <div class="group-label">New account</div>
+  <form method="post" action="/admin/finance/accounts/add">
+    <div class="form-grid">
+      <div class="field"><label>Name</label><input name="name" required placeholder="Home, Card, Salary…"></div>
+      <div class="field">
+        <label>Type</label>
+        <select name="account_type">
+          <option value="cash">Cash</option>
+          <option value="bank">Accounts / bank</option>
+          <option value="credit_card">Card</option>
+          <option value="loan">Loan</option>
+          <option value="wallet">Wallet</option>
+          <option value="investment">Investment</option>
+        </select>
+      </div>
+      <div class="field"><label>Opening balance</label><input name="opening_balance" value="0" inputmode="decimal"></div>
+      <div class="field"><label>Credit limit (cards)</label><input name="credit_limit" placeholder="optional"></div>
+    </div>
+    <button class="btn" type="submit">Save account</button>
+  </form>
+</div>
+{% endblock %}

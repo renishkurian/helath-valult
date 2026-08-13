@@ -20,6 +20,7 @@
     --line:rgba(255,255,255,0.08); --white:#151B28; --accent-soft:rgba(91,140,255,0.14);
     --stamp-bg:rgba(255,107,122,0.14); --radius:16px; --shadow:0 18px 50px rgba(0,0,0,0.35);
     --ease:cubic-bezier(0.16,1,0.3,1);
+    --mm-income:#5B9CFF; --mm-expense:#FF6B7A; --mm-transfer:#A89BFF;
   }
   *{ box-sizing:border-box; margin:0; padding:0; }
   html,body{ min-height:100%; }
@@ -171,7 +172,7 @@
   .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
   .form-grid-3{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
   label{ font-size:12px; color:var(--ink-soft); display:block; margin-bottom:6px; font-weight:500; }
-  input[type=text], input[type=search], input[type=date], input[type=datetime-local], input[type=email], input[type=password], input[type=tel], input[type=number], input[type=url], input:not([type]), select, textarea, input[type=file]{
+  input[type=text], input[type=search], input[type=date], input[type=time], input[type=datetime-local], input[type=email], input[type=password], input[type=tel], input[type=number], input[type=url], input:not([type]), select, textarea, input[type=file]{
     width:100%; padding:11px 13px; border:1px solid var(--line); border-radius:12px; background:#0F1522;
     font-family:inherit; font-size:14px; color:var(--ink); outline:none;
     transition:border-color .18s var(--ease), box-shadow .18s var(--ease);
@@ -299,6 +300,55 @@
   .fact .sub{ font-size:12px; color:var(--ink-soft); margin-top:4px; }
   .group-label{ font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft); font-weight:700; margin:4px 0 12px; }
 
+  .mm-income{ color:var(--mm-income); }
+  .mm-expense{ color:var(--mm-expense); }
+  .mm-muted{ color:var(--ink-soft); }
+  .mm-tabs{ display:flex; gap:0; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .mm-tabs a{ padding:10px 16px; font-size:13px; font-weight:600; color:var(--ink-soft); border-bottom:2px solid transparent; }
+  .mm-tabs a.active{ color:var(--ink); border-bottom-color:var(--mm-expense); }
+  .mm-type{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:18px; }
+  .mm-type a, .mm-type button{
+    display:block; text-align:center; padding:10px; border-radius:10px; border:1px solid var(--line);
+    background:transparent; color:var(--ink-soft); font-weight:600; font-size:14px; cursor:pointer; font-family:inherit;
+  }
+  .mm-type .on-income{ color:var(--mm-income); border-color:var(--mm-income); }
+  .mm-type .on-expense{ color:var(--mm-expense); border-color:var(--mm-expense); }
+  .mm-type .on-transfer{ color:var(--mm-transfer); border-color:var(--mm-transfer); }
+  .mm-summary{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin-bottom:18px; }
+  .mm-summary .cell{ background:rgba(21,27,40,0.82); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
+  .mm-summary .lbl{ font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.08em; font-weight:600; }
+  .mm-summary .val{ font-size:18px; font-weight:700; margin-top:4px; font-variant-numeric:tabular-nums; }
+  .mm-day{ margin-bottom:18px; }
+  .mm-day-head{ display:flex; justify-content:space-between; gap:12px; align-items:baseline; padding:8px 2px; color:var(--ink-soft); font-size:13px; font-weight:600; }
+  .mm-row{ display:grid; grid-template-columns:110px 1fr auto; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); align-items:center; }
+  .mm-row .cat{ font-size:13px; color:var(--ink-soft); }
+  .mm-row .payee{ font-weight:600; }
+  .mm-row .acct{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
+  .mm-row .amt{ font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
+  .mm-fab{
+    position:fixed; right:28px; bottom:28px; width:56px; height:56px; border-radius:50%;
+    background:linear-gradient(180deg,#FF8A96,#FF6B7A); color:#fff; display:grid; place-items:center;
+    font-size:28px; font-weight:500; box-shadow:0 12px 28px rgba(255,107,122,0.35); z-index:20;
+  }
+  .mm-picker{ display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .mm-picker a, .mm-picker button{
+    background:#121826; border:1px solid var(--line); border-radius:12px; padding:16px 10px;
+    color:var(--ink); font-size:13px; font-weight:600; text-align:center; cursor:pointer; font-family:inherit;
+  }
+  .mm-picker .on{ border-color:var(--navy); background:var(--accent-soft); }
+  .mm-cal{ display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+  .mm-cal .hd{ font-size:11px; color:var(--ink-soft); text-align:center; padding:6px 0; font-weight:600; }
+  .mm-cal .cell{ min-height:64px; border-radius:10px; background:rgba(21,27,40,0.6); padding:6px; font-size:11px; }
+  .mm-cal .cell .d{ color:var(--ink-soft); font-weight:600; }
+  .more-grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; }
+  .more-tile{
+    display:flex; flex-direction:column; align-items:center; gap:10px; padding:22px 10px;
+    background:rgba(21,27,40,0.82); border:1px solid var(--line); border-radius:16px; text-align:center;
+  }
+  .more-tile .ico{ width:44px; height:44px; border-radius:14px; display:grid; place-items:center; background:rgba(255,255,255,0.04); }
+  .more-tile .ico svg{ width:22px; height:22px; }
+  .more-tile span{ font-size:12px; font-weight:600; }
+
   @media (prefers-reduced-motion: reduce){
     *, *::before, *::after{ transition-duration:0.01ms !important; animation-duration:0.01ms !important; }
   }
@@ -339,6 +389,9 @@
     .main{ padding:24px 18px 48px; }
     .form-grid, .grid-split, .form-grid-3, .grid-2, .ice-wrap{ grid-template-columns:1fr; }
     .filter-bar{ grid-template-columns:1fr; }
+    .more-grid, .mm-picker{ grid-template-columns:repeat(3, 1fr); }
+    .mm-row{ grid-template-columns:90px 1fr auto; }
+    .mm-fab{ right:18px; bottom:18px; }
   }
 </style>
 </head>
@@ -349,14 +402,31 @@
       <div class="brand-mark">V</div>
       <div class="brand">Vault</div>
     </div>
-    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
+    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
     {% if session_user %}
     <nav class="nav-list">
     <a class="nav-item {% if active_nav=='modules' %}active{% endif %}" href="/admin/modules">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       Modules
     </a>
-    {% if active_module=='passwords' %}
+    {% if active_module=='finance' %}
+    <a class="nav-item {% if active_nav=='fn_trans' %}active{% endif %}" href="/admin/finance">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12v16H6z"/><path d="M9 8h6M9 12h6M9 16h3"/></svg>
+      Trans.
+    </a>
+    <a class="nav-item {% if active_nav=='fn_stats' %}active{% endif %}" href="/admin/finance/stats">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+      Stats
+    </a>
+    <a class="nav-item {% if active_nav=='fn_accounts' %}active{% endif %}" href="/admin/finance/accounts">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="7" rx="8" ry="3"/><path d="M4 7v5c0 1.7 3.6 3 8 3s8-1.3 8-3V7M4 12v5c0 1.7 3.6 3 8 3s8-1.3 8-3v-5"/></svg>
+      Accounts
+    </a>
+    <a class="nav-item {% if active_nav=='fn_more' %}active{% endif %}" href="/admin/finance/more">
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="18" cy="12" r="1.6"/></svg>
+      More
+    </a>
+    {% elif active_module=='passwords' %}
     <a class="nav-item {% if active_nav=='pw_vault' %}active{% endif %}" href="/admin/passwords">
       <svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
       Vault

@@ -10,6 +10,10 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -21,6 +25,8 @@ import com.rklab.healthvault.ui.theme.White
 enum class MainTab { HOME, SEARCH, CARE, REMINDERS, FAMILY }
 
 enum class PasswordTab { VAULT, GENERATOR, SEND, HEALTH }
+
+enum class FinanceTab { TRANS, STATS, ACCOUNTS, MORE }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
@@ -60,6 +66,40 @@ fun PasswordVaultBottomNav(current: PasswordTab, onSelect: (PasswordTab) -> Unit
             onClick = { onSelect(PasswordTab.HEALTH) },
             icon = { Icon(Icons.Filled.Security, contentDescription = "Health") },
             label = { Text("Health") },
+            colors = navColors
+        )
+    }
+}
+
+@Composable
+fun FinanceBottomNav(current: FinanceTab, onSelect: (FinanceTab) -> Unit) {
+    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+        NavigationBarItem(
+            selected = current == FinanceTab.TRANS,
+            onClick = { onSelect(FinanceTab.TRANS) },
+            icon = { Icon(Icons.Filled.MenuBook, contentDescription = "Trans.") },
+            label = { Text("Trans.") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == FinanceTab.STATS,
+            onClick = { onSelect(FinanceTab.STATS) },
+            icon = { Icon(Icons.Filled.BarChart, contentDescription = "Stats") },
+            label = { Text("Stats") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == FinanceTab.ACCOUNTS,
+            onClick = { onSelect(FinanceTab.ACCOUNTS) },
+            icon = { Icon(Icons.Filled.AccountBalanceWallet, contentDescription = "Accounts") },
+            label = { Text("Accounts") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == FinanceTab.MORE,
+            onClick = { onSelect(FinanceTab.MORE) },
+            icon = { Icon(Icons.Filled.MoreHoriz, contentDescription = "More") },
+            label = { Text("More") },
             colors = navColors
         )
     }

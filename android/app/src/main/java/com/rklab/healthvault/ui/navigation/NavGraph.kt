@@ -14,6 +14,9 @@ import com.rklab.healthvault.ui.components.HealthVaultBottomNav
 import com.rklab.healthvault.ui.components.MainTab
 import com.rklab.healthvault.ui.components.PasswordTab
 import com.rklab.healthvault.ui.components.PasswordVaultBottomNav
+import com.rklab.healthvault.ui.components.FinanceTab
+import com.rklab.healthvault.ui.components.FinanceBottomNav
+import com.rklab.healthvault.ui.screens.finance.*
 import com.rklab.healthvault.ui.screens.passwords.*
 import com.rklab.healthvault.ui.screens.shell.ModulePickerScreen
 import com.rklab.healthvault.ui.screens.cards.CardListScreen
@@ -40,6 +43,12 @@ private object Routes {
     const val VAULT_TRASH = "vault_trash"
     const val VAULT_ITEM = "vault_item/{itemId}"
     const val VAULT_EDIT = "vault_edit?itemId={itemId}&type={type}"
+    const val FINANCE = "finance"
+    const val FINANCE_STATS = "finance_stats"
+    const val FINANCE_ACCOUNTS = "finance_accounts"
+    const val FINANCE_MORE = "finance_more"
+    const val FINANCE_ADD = "finance_add"
+    const val FINANCE_INBOX = "finance_inbox"
 
     fun vaultSends(itemId: String? = null) = "vault_sends?itemId=${itemId ?: ""}"
     fun vaultItem(itemId: String) = "vault_item/$itemId"
@@ -92,10 +101,31 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val currentRoute = backStackEntry?.destination?.route
     val mainTabs = setOf(Routes.HOME, Routes.SEARCH, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
+    val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
 
     Scaffold(
         bottomBar = {
-            if (currentRoute in passwordTabs || currentRoute?.startsWith("vault_sends") == true) {
+            if (currentRoute in financeTabs) {
+                val current = when (currentRoute) {
+                    Routes.FINANCE_STATS -> FinanceTab.STATS
+                    Routes.FINANCE_ACCOUNTS -> FinanceTab.ACCOUNTS
+                    Routes.FINANCE_MORE -> FinanceTab.MORE
+                    else -> FinanceTab.TRANS
+                }
+                FinanceBottomNav(current = current) { tab ->
+                    val route = when (tab) {
+                        FinanceTab.TRANS -> Routes.FINANCE
+                        FinanceTab.STATS -> Routes.FINANCE_STATS
+                        FinanceTab.ACCOUNTS -> Routes.FINANCE_ACCOUNTS
+                        FinanceTab.MORE -> Routes.FINANCE_MORE
+                    }
+                    navController.navigate(route) {
+                        popUpTo(Routes.FINANCE) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in passwordTabs || currentRoute?.startsWith("vault_sends") == true) {
                 val current = when {
                     currentRoute == Routes.VAULT_GENERATOR -> PasswordTab.GENERATOR
                     currentRoute == Routes.VAULT_HEALTH -> PasswordTab.HEALTH
@@ -191,10 +221,38 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onFinance = {
+                        navController.navigate(Routes.FINANCE) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onSettings = { navController.navigate(Routes.SETTINGS) }
                 )
             }
 
+            composable(Routes.FINANCE) {
+                FinanceTransScreen(
+                    repository = repository,
+                    onAdd = { navController.navigate(Routes.FINANCE_ADD) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.FINANCE_STATS) { FinanceStatsScreen(repository) }
+            composable(Routes.FINANCE_ACCOUNTS) { FinanceAccountsScreen(repository) }
+            composable(Routes.FINANCE_MORE) {
+                FinanceMoreScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    onOpenInbox = { navController.navigate(Routes.FINANCE_INBOX) }
+                )
+            }
+            composable(Routes.FINANCE_ADD) {
+                FinanceAddScreen(repository) { navController.popBackStack() }
+            }
+            composable(Routes.FINANCE_INBOX) {
+                FinanceInboxScreen(repository) { navController.popBackStack() }
+            }
             composable(Routes.VAULT) {
                 VaultListScreen(
                     repository = repository,

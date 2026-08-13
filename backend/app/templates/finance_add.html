@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ txn_type|capitalize }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow"><a href="/admin/finance" style="color:var(--ink-soft);">← Trans.</a></div>
+    <div class="page-title">{{ txn_type|capitalize }}</div>
+  </div>
+</div>
+
+<div class="mm-type">
+  <a class="{% if txn_type=='income' %}on-income{% endif %}" href="/admin/finance/add?txn_type=income">Income</a>
+  <a class="{% if txn_type=='expense' %}on-expense{% endif %}" href="/admin/finance/add?txn_type=expense">Expense</a>
+  <a class="{% if txn_type=='transfer' %}on-transfer{% endif %}" href="/admin/finance/add?txn_type=transfer">Transfer</a>
+</div>
+
+<form method="post" action="/admin/finance/add" class="surface" style="max-width:640px;">
+  <input type="hidden" name="txn_type" value="{{ txn_type }}">
+  <div class="form-grid">
+    <div class="field"><label>Date</label><input type="date" name="txn_date" value="{{ today }}" required></div>
+    <div class="field"><label>Time</label><input type="time" name="txn_time" value="{{ now }}"></div>
+  </div>
+
+  <div class="field">
+    <label>{% if txn_type=='transfer' %}From account{% else %}Account{% endif %}</label>
+    <div class="mm-picker">
+      {% for a in accounts %}
+      <label style="margin:0;">
+        <input type="radio" name="account_id" value="{{ a.id }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="document.querySelectorAll('.acct-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
+        <span class="acct-pick {% if loop.first %}on{% endif %}">{{ a.name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if txn_type=='transfer' %}
+  <div class="field">
+    <label>To account</label>
+    <select name="to_account_id" required>
+      {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+    </select>
+  </div>
+  {% else %}
+  <div class="field">
+    <label>Category</label>
+    <div class="mm-picker">
+      {% for c in categories if c.kind==txn_type %}
+      <label style="margin:0;">
+        <input type="radio" name="category_id" value="{{ c.id }}" {% if loop.first %}checked{% endif %} style="display:none;" onchange="this.form.querySelectorAll('.cat-pick').forEach(s=>s.classList.remove('on')); this.nextElementSibling.classList.add('on');">
+        <span class="cat-pick {% if loop.first %}on{% endif %}">{{ c.name }}</span>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="field"><label>Amount</label><input type="number" name="amount" step="0.01" min="0.01" required placeholder="0.00"></div>
+  <div class="field"><label>Note</label><input type="text" name="payee" placeholder="Swiggy, salary, Mixi…"></div>
+  <div class="field"><label>Description</label><textarea name="description" rows="2" placeholder="Optional details"></textarea></div>
+  <div class="field">
+    <label>Repeat / installment</label>
+    <select name="frequency">
+      <option value="">None</option>
+      <option value="weekly">Weekly</option>
+      <option value="monthly">Monthly</option>
+      <option value="yearly">Yearly</option>
+    </select>
+  </div>
+  <div class="field"><label>Internal notes</label><textarea name="notes" rows="2"></textarea></div>
+  <button class="btn" type="submit">Save {{ txn_type }}</button>
+</form>
+<style>
+  .mm-picker label span{ display:block; background:#121826; border:1px solid var(--line); border-radius:12px; padding:16px 10px; }
+  .mm-picker label span.on{ border-color:var(--navy); background:var(--accent-soft); }
+</style>
+{% endblock %}

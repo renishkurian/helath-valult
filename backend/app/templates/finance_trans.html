@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Transactions{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Money Manager</div>
+    <div class="page-title">
+      <a href="/admin/finance?month={{ ledger.prev }}&view={{ view }}" style="color:var(--ink-soft);">‹</a>
+      {{ ledger.label }}
+      <a href="/admin/finance?month={{ ledger.next }}&view={{ view }}" style="color:var(--ink-soft);">›</a>
+    </div>
+  </div>
+  <form method="get" action="/admin/finance" class="toolbar" style="margin:0;">
+    <input type="hidden" name="month" value="{{ ledger.year_month }}">
+    <input type="hidden" name="view" value="{{ view }}">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search payee or note">
+  </form>
+</div>
+
+<div class="mm-tabs">
+  <a class="{% if view=='daily' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=daily">Daily</a>
+  <a class="{% if view=='calendar' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=calendar">Calendar</a>
+  <a class="{% if view=='monthly' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=monthly">Monthly</a>
+  <a class="{% if view=='total' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=total">Total</a>
+  <a class="{% if view=='note' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=note">Note</a>
+</div>
+
+<div class="mm-summary">
+  <div class="cell"><div class="lbl">Income</div><div class="val mm-income">{{ inr(ledger.income) }}</div></div>
+  <div class="cell"><div class="lbl">Expenses</div><div class="val mm-expense">{{ inr(ledger.expense) }}</div></div>
+  <div class="cell"><div class="lbl">Total</div><div class="val">{{ inr(ledger.total) }}</div></div>
+</div>
+
+{% if view == 'calendar' %}
+<div class="mm-cal" style="margin-bottom:24px;">
+  {% for d in ['S','M','T','W','T','F','S'] %}<div class="hd">{{ d }}</div>{% endfor %}
+  {% for week in ledger.weeks %}
+    {% for cell in week %}
+      {% if cell %}
+      <div class="cell">
+        <div class="d">{{ cell.date[-2:] }}</div>
+        {% if cell.income %}<div class="mm-income">{{ inr(cell.income) }}</div>{% endif %}
+        {% if cell.expense %}<div class="mm-expense">{{ inr(cell.expense) }}</div>{% endif %}
+      </div>
+      {% else %}
+      <div class="cell" style="opacity:0.3;"></div>
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+</div>
+{% elif view == 'monthly' or view == 'total' %}
+<div class="surface">
+  {% for item in ledger.items %}
+  <div class="mm-row">
+    <div class="cat">{{ item.category_name or item.txn_type }}</div>
+    <div>
+      <div class="payee">{{ item.payee or item.description or '—' }}</div>
+      <div class="acct">{{ item.account_name }} · {{ item.txn_date }}</div>
+    </div>
+    <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">{{ inr(item.amount) }}</div>
+  </div>
+  {% else %}
+  <div class="empty-state"><p>No transactions this month.</p></div>
+  {% endfor %}
+</div>
+{% else %}
+  {% for day in ledger.days %}
+  <div class="mm-day">
+    <div class="mm-day-head">
+      <span>{{ day.label }}</span>
+      <span><span class="mm-income">{{ inr(day.income) }}</span> &nbsp; <span class="mm-expense">{{ inr(day.expense) }}</span></span>
+    </div>
+    {% for item in day.items %}
+    <div class="mm-row">
+      <div class="cat">{{ item.category_name or item.txn_type }}</div>
+      <div>
+        <div class="payee">{{ item.payee or item.description or '—' }}</div>
+        <div class="acct">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}</div>
+      </div>
+      <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">
+        {{ inr(item.amount) }}
+        <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete" onsubmit="return confirm('Delete this entry?');" style="margin-top:4px;">
+          <button class="btn-outline" type="submit" style="padding:4px 8px; font-size:11px;">Delete</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state surface">
+    <p>No transactions yet. Tap + to add income, expense, or a transfer.</p>
+  </div>
+  {% endfor %}
+{% endif %}
+
+<a class="mm-fab" href="/admin/finance/add" aria-label="Add transaction">+</a>
+{% endblock %}

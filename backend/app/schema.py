@@ -46,6 +46,13 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("pin_hash", "VARCHAR(255)"),
         ("idle_days", "INTEGER NOT NULL DEFAULT 14"),
     ],
+    "finance_accounts": [
+        ("credit_limit", "NUMERIC(14,2)"),
+    ],
+    "finance_transactions": [
+        ("txn_time", "VARCHAR(8)"),
+        ("description", "TEXT"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [

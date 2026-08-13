@@ -1,0 +1,333 @@
+"""Classify bank/UPI/SMS messages into debit vs credit and a money-manager category.
+
+Works offline with heuristics. If an AI provider key is configured, that result
+wins when confidence is higher than the heuristic.
+"""
+from __future__ import annotations
+
+import json
+import re
+import urllib.error
+import urllib.request
+from datetime import datetime
+from typing import Any
+
+DEFAULT_MODELS = {
+    "openai": "gpt-4o-mini",
+    "anthropic": "claude-3-5-haiku-latest",
+    "openrouter": "openai/gpt-4o-mini",
+    "kimi": "moonshot-v1-8k",
+    "groq": "llama-3.3-70b-versatile",
+    "ollama": "llama3.2",
+    "custom": "gpt-4o-mini",
+}
+
+DEFAULT_BASES = {
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "kimi": "https://api.moonshot.ai/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "ollama": "http://127.0.0.1:11434/v1",
+}
+
+EXPENSE_CATEGORIES = [
+    "Food & dining", "Groceries", "Transport", "Fuel", "Shopping",
+    "Bills & utilities", "Rent", "Health", "Education", "Entertainment",
+    "Travel", "Subscriptions", "UPI / transfers", "EMI / loans",
+    "Insurance", "Family", "Other",
+]
+INCOME_CATEGORIES = [
+    "Salary", "Freelance", "Business", "Interest", "Refund", "Gift", "Other income",
+]
+ALL_CATEGORIES = EXPENSE_CATEGORIES + INCOME_CATEGORIES
+
+_PAYEE_MAP: list[tuple[tuple[str, ...], str]] = [
+    (("swiggy", "zomato", "eatsure", "dominos", "mcdonald"), "Food & dining"),
+    (("blinkit", "zepto", "bigbasket", "jiomart", "dmart", "grocery"), "Groceries"),
+    (("uber", "ola", "rapido", "irctc", "metro", "redbus", "makemytrip"), "Transport"),
+    (("hpcl", "bpcl", "iocl", "indian oil", "petrol", "diesel"), "Fuel"),
+    (("amazon", "flipkart", "myntra", "ajio", "meesho", "nykaa"), "Shopping"),
+    (("jio", "airtel", "vi ", "bsnl", "electricity", "bescom", "water board", "gas"), "Bills & utilities"),
+    (("rent", "nobroker", "housing.com"), "Rent"),
+    (("apollo", "1mg", "pharmeasy", "pharmacy", "hospital", "clinic"), "Health"),
+    (("byju", "unacademy", "coursera", "udemy", "school", "college"), "Education"),
+    (("netflix", "spotify", "youtube premium", "hotstar", "prime video", "apple.com/bill", "google one", "icloud"), "Subscriptions"),
+    (("bookmyshow", "pvr", "inox"), "Entertainment"),
+    (("indigo", "airindia", "spicejet", "goibibo", "booking.com", "airbnb", "oyo"), "Travel"),
+    (("emi", "loan", "bajaj finserv", "hdfc bank emi"), "EMI / loans"),
+    (("lic", "policybazaar", "insurance"), "Insurance"),
+    (("salary", "payroll", "neft cr", "credited by"), "Salary"),
+    (("refund", "reversed", "cashback"), "Refund"),
+]
+
+_AMOUNT_RE = re.compile(
+    r"(?:rs\.?|inr|₹)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)",
+    re.I,
+)
+_AMOUNT_ALT_RE = re.compile(
+    r"\b([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]+\.[0-9]{2})\s*(?:rs|inr|debited|credited)",
+    re.I,
+)
+_DEBIT_RE = re.compile(r"\b(debited|debit|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to)\b", re.I)
+_CREDIT_RE = re.compile(r"\b(credited|credit|received|refund(?:ed)?|deposited|cr\b|added to)\b", re.I)
+_PAYEE_RE = re.compile(
+    r"(?:to|from|at|via u?pi(?:/.*?|id)?(?:\s+to)?)\s+([A-Z0-9][A-Za-z0-9 .&@_-]{2,40})",
+    re.I,
+)
+_DATE_RE = re.compile(r"\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b")
+
+
+def split_messages(raw: str) -> list[str]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    chunks = [c.strip() for c in re.split(r"\n\s*\n", text) if c.strip()]
+    if len(chunks) == 1 and text.count("\n") >= 3:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        if lines and all(len(ln) > 40 for ln in lines):
+            return lines
+    return chunks
+
+
+def _parse_amount(text: str) -> float | None:
+    m = _AMOUNT_RE.search(text) or _AMOUNT_ALT_RE.search(text)
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _parse_date(text: str) -> str | None:
+    m = _DATE_RE.search(text)
+    if not m:
+        return datetime.utcnow().strftime("%Y-%m-%d")
+    raw = m.group(1).replace("/", "-")
+    parts = raw.split("-")
+    if len(parts) != 3:
+        return datetime.utcnow().strftime("%Y-%m-%d")
+    d, mo, y = parts
+    if len(y) == 2:
+        y = "20" + y
+    try:
+        return datetime(int(y), int(mo), int(d)).strftime("%Y-%m-%d")
+    except ValueError:
+        try:
+            return datetime(int(y), int(d), int(mo)).strftime("%Y-%m-%d")
+        except ValueError:
+            return datetime.utcnow().strftime("%Y-%m-%d")
+
+
+def _guess_payee(text: str) -> str | None:
+    m = _PAYEE_RE.search(text)
+    if not m:
+        return None
+    payee = re.sub(r"\s+", " ", m.group(1)).strip(" .-")
+    if payee.lower() in {"your", "a/c", "account", "upi", "imps", "neft"}:
+        return None
+    return payee[:80]
+
+
+def _keyword_category(text: str, direction: str) -> tuple[str, float]:
+    lower = text.lower()
+    for keys, cat in _PAYEE_MAP:
+        if any(k in lower for k in keys):
+            if direction == "credit" and cat not in INCOME_CATEGORIES:
+                if cat == "Refund":
+                    return cat, 0.82
+                return "Other income", 0.55
+            if direction == "debit" and cat in INCOME_CATEGORIES and cat != "Refund":
+                return "Other", 0.5
+            return cat, 0.8
+    if direction == "credit":
+        return "Other income", 0.4
+    return "Other", 0.4
+
+
+def classify_heuristic(text: str) -> dict[str, Any]:
+    debit = bool(_DEBIT_RE.search(text))
+    credit = bool(_CREDIT_RE.search(text))
+    if credit and not debit:
+        direction = "credit"
+    elif debit and not credit:
+        direction = "debit"
+    elif credit and debit:
+        # "debited ... available balance credited" style — first verb wins
+        dpos = _DEBIT_RE.search(text)
+        cpos = _CREDIT_RE.search(text)
+        direction = "debit" if (dpos and cpos and dpos.start() <= cpos.start()) else "credit"
+    else:
+        direction = "unknown"
+    amount = _parse_amount(text)
+    payee = _guess_payee(text)
+    category, conf = _keyword_category(text, direction)
+    if direction == "unknown":
+        conf = min(conf, 0.35)
+    if amount is None:
+        conf = min(conf, 0.4)
+    return {
+        "direction": direction,
+        "amount": amount,
+        "payee": payee,
+        "date": _parse_date(text),
+        "category": category,
+        "confidence": round(conf, 3),
+        "notes": None,
+        "provider": "heuristic",
+    }
+
+
+def apply_rules(text: str, result: dict[str, Any], rules: list[dict[str, Any]]) -> dict[str, Any]:
+    lower = text.lower()
+    for rule in rules:
+        needle = (rule.get("match_text") or "").strip().lower()
+        if needle and needle in lower:
+            if rule.get("txn_type") == "income":
+                result["direction"] = "credit"
+            elif rule.get("txn_type") == "expense":
+                result["direction"] = "debit"
+            if rule.get("category"):
+                result["category"] = rule["category"]
+            if rule.get("payee"):
+                result["payee"] = rule["payee"]
+            result["confidence"] = max(float(result.get("confidence") or 0), 0.92)
+            result["provider"] = "rule"
+            break
+    return result
+
+
+def _openai_chat(base_url: str, api_key: str | None, model: str, system: str, user: str) -> str:
+    url = base_url.rstrip("/") + "/chat/completions"
+    body = json.dumps({
+        "model": model,
+        "temperature": 0.1,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }).encode()
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    req = urllib.request.Request(url, data=body, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        data = json.loads(resp.read().decode())
+    return data["choices"][0]["message"]["content"]
+
+
+def _anthropic_chat(api_key: str, model: str, system: str, user: str) -> str:
+    body = json.dumps({
+        "model": model,
+        "max_tokens": 400,
+        "temperature": 0.1,
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        data = json.loads(resp.read().decode())
+    return data["content"][0]["text"]
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?", "", text).removesuffix("```").strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start:end + 1]
+    return json.loads(text)
+
+
+def classify_with_ai(
+    text: str,
+    kind: str,
+    api_key: str | None,
+    model: str | None,
+    base_url: str | None,
+) -> dict[str, Any]:
+    model = model or DEFAULT_MODELS.get(kind, "gpt-4o-mini")
+    base = (base_url or DEFAULT_BASES.get(kind) or "https://api.openai.com/v1").rstrip("/")
+    system = (
+        "You classify bank SMS, UPI, wallet, and card alerts. "
+        "Return JSON only with keys: direction (debit|credit|unknown), "
+        "amount (number or null), payee (string or null), date (YYYY-MM-DD or null), "
+        f"category (one of {ALL_CATEGORIES}), confidence (0-1), notes (short). "
+        "debit = payment/expense, credit = money received."
+    )
+    user = f"Message:\n{text}"
+    if kind == "anthropic":
+        if not api_key:
+            raise ValueError("Anthropic needs an API key")
+        raw = _anthropic_chat(api_key, model, system, user)
+    else:
+        raw = _openai_chat(base, api_key, model, system, user)
+    data = _extract_json(raw)
+    direction = str(data.get("direction") or "unknown").lower()
+    if direction not in {"debit", "credit", "unknown"}:
+        direction = "unknown"
+    cat = data.get("category") or "Other"
+    if cat not in ALL_CATEGORIES:
+        cat = "Other income" if direction == "credit" else "Other"
+    amount = data.get("amount")
+    try:
+        amount = float(amount) if amount is not None and amount != "" else None
+    except (TypeError, ValueError):
+        amount = None
+    conf = data.get("confidence")
+    try:
+        conf = max(0.0, min(1.0, float(conf)))
+    except (TypeError, ValueError):
+        conf = 0.6
+    return {
+        "direction": direction,
+        "amount": amount,
+        "payee": (str(data["payee"])[:80] if data.get("payee") else None),
+        "date": data.get("date") or datetime.utcnow().strftime("%Y-%m-%d"),
+        "category": cat,
+        "confidence": round(conf, 3),
+        "notes": data.get("notes"),
+        "provider": kind,
+    }
+
+
+def classify_message(
+    text: str,
+    rules: list[dict[str, Any]] | None = None,
+    ai: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = classify_heuristic(text)
+    result = apply_rules(text, result, rules or [])
+    if result.get("provider") == "rule":
+        return result
+    if not ai:
+        return result
+    try:
+        ai_result = classify_with_ai(
+            text,
+            kind=ai.get("kind") or "openai",
+            api_key=ai.get("api_key"),
+            model=ai.get("model"),
+            base_url=ai.get("base_url"),
+        )
+        if float(ai_result.get("confidence") or 0) >= float(result.get("confidence") or 0):
+            return ai_result
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, KeyError, json.JSONDecodeError):
+        result["ai_error"] = True
+    return result
+
+
+def test_provider(kind: str, api_key: str | None, model: str | None, base_url: str | None) -> str:
+    sample = "Dear Customer, Rs.199.00 debited via UPI to NETFLIX on 13-08-2026."
+    out = classify_with_ai(sample, kind, api_key, model, base_url)
+    return f"{out.get('direction')} {out.get('amount')} {out.get('category')}"

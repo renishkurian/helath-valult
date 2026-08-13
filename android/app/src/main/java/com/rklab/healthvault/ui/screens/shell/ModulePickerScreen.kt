@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import com.rklab.healthvault.ui.theme.*
 fun ModulePickerScreen(
     onHealth: () -> Unit,
     onPasswords: () -> Unit,
+    onFinance: () -> Unit,
     onSettings: () -> Unit
 ) {
     Column(
@@ -64,6 +66,15 @@ fun ModulePickerScreen(
             iconTint = Navy,
             icon = { Icon(Icons.Filled.Lock, contentDescription = null, tint = Navy, modifier = Modifier.size(26.dp)) },
             onClick = onPasswords
+        )
+        Spacer(Modifier.height(14.dp))
+        ModuleTile(
+            title = "Money Manager",
+            subtitle = "Accounts, daily ledger, stats, and SMS auto-tag",
+            well = listOf(Color(0xFF2A161A), Color(0xFF1A1216)),
+            iconTint = StampRed,
+            icon = { Icon(Icons.Filled.AccountBalanceWallet, contentDescription = null, tint = StampRed, modifier = Modifier.size(26.dp)) },
+            onClick = onFinance
         )
     }
 }

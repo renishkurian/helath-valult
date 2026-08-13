@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, ForeignKey, Enum, Boolean, Integer, Text
+    Column, String, DateTime, ForeignKey, Enum, Boolean, Integer, Text, Numeric
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -522,3 +522,120 @@ class VaultSendAccess(Base):
     user_agent = Column(String(400), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     send = relationship("VaultSend", back_populates="accesses")
+
+
+# ---------- Finance / Money Manager ----------
+class FinanceAccount(Base):
+    __tablename__ = "finance_accounts"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    account_type = Column(String(30), default="bank", nullable=False)
+    currency = Column(String(8), default="INR", nullable=False)
+    opening_balance = Column(Numeric(14, 2), default=0, nullable=False)
+    credit_limit = Column(Numeric(14, 2), nullable=True)
+    institution = Column(String(255), nullable=True)
+    last4 = Column(String(8), nullable=True)
+    archived = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceCategory(Base):
+    __tablename__ = "finance_categories"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    kind = Column(String(20), default="expense", nullable=False)  # expense | income
+    color = Column(String(16), nullable=True)
+    is_system = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceTransaction(Base):
+    __tablename__ = "finance_transactions"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=False, index=True)
+    to_account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=True)
+    category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True, index=True)
+    txn_type = Column(String(20), default="expense", nullable=False)  # expense | income | transfer
+    amount = Column(Numeric(14, 2), nullable=False)
+    currency = Column(String(8), default="INR", nullable=False)
+    txn_date = Column(String(20), nullable=False, index=True)
+    txn_time = Column(String(8), nullable=True)
+    payee = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+    description = Column(Text, nullable=True)
+    tags = Column(String(500), nullable=True)
+    source = Column(String(20), default="manual", nullable=False)  # manual | message | recurring
+    message_id = Column(String(32), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceBudget(Base):
+    __tablename__ = "finance_budgets"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=False, index=True)
+    year_month = Column(String(7), nullable=False, index=True)  # 2026-08
+    amount = Column(Numeric(14, 2), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceRecurring(Base):
+    __tablename__ = "finance_recurring"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=False)
+    category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True)
+    txn_type = Column(String(20), default="expense", nullable=False)
+    amount = Column(Numeric(14, 2), nullable=False)
+    payee = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+    frequency = Column(String(20), default="monthly", nullable=False)
+    next_due = Column(String(20), nullable=False)
+    active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceAiProvider(Base):
+    __tablename__ = "finance_ai_providers"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    kind = Column(String(30), nullable=False)  # openai | anthropic | openrouter | kimi | groq | ollama | custom
+    api_key_enc = Column(Text, nullable=True)
+    base_url = Column(String(400), nullable=True)
+    model = Column(String(120), nullable=True)
+    is_default = Column(Boolean, default=False, nullable=False)
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceRule(Base):
+    __tablename__ = "finance_rules"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    match_text = Column(String(255), nullable=False)
+    category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True)
+    txn_type = Column(String(20), nullable=True)  # expense | income
+    payee = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceMessage(Base):
+    __tablename__ = "finance_messages"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    raw_text = Column(Text, nullable=False)
+    direction = Column(String(20), default="unknown", nullable=False)  # debit | credit | unknown
+    amount = Column(Numeric(14, 2), nullable=True)
+    payee = Column(String(255), nullable=True)
+    txn_date = Column(String(20), nullable=True)
+    category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True)
+    suggested_category = Column(String(120), nullable=True)
+    confidence = Column(Numeric(4, 3), nullable=True)
+    provider_used = Column(String(120), nullable=True)
+    status = Column(String(20), default="pending", nullable=False, index=True)  # pending | accepted | ignored
+    transaction_id = Column(String(32), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
