@@ -164,3 +164,51 @@ def test_account_scoped_categories():
         "amount": 20, "txn_date": "2026-08-13",
     })
     assert shared.status_code == 200, shared.text
+
+
+def test_admin_finance_monthly_view():
+    client.post("/auth/register", json={
+        "email": "monthly@example.com", "password": "password123", "full_name": "Monthly User",
+    })
+    r = client.post(
+        "/admin/login",
+        data={"email": "monthly@example.com", "password": "password123"},
+        follow_redirects=False,
+    )
+    assert r.status_code in (200, 302), r.text
+    r = client.get("/admin/finance?month=2026-08&view=monthly")
+    assert r.status_code == 200, r.text
+    assert "Internal Server Error" not in r.text
+    assert "Monthly" in r.text
+
+
+def test_transaction_optional_image():
+    r = client.post("/auth/register", json={
+        "email": "photo@example.com", "password": "password123", "full_name": "Photo User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    bank = next(a for a in accounts if a["account_type"] == "bank")
+    r = client.post("/finance/transactions", headers=headers, json={
+        "account_id": bank["id"], "txn_type": "expense",
+        "amount": 12, "txn_date": "2026-08-13", "payee": "Tea",
+    })
+    assert r.status_code == 200, r.text
+    txn = r.json()
+    assert txn["has_image"] is False
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"
+        b"\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    up = client.post(
+        f"/finance/transactions/{txn['id']}/image",
+        headers=headers,
+        files={"file": ("tea.png", png, "image/png")},
+    )
+    assert up.status_code == 200, up.text
+    assert up.json()["has_image"] is True
+    img = client.get(f"/finance/transactions/{txn['id']}/image", headers=headers)
+    assert img.status_code == 200
+    assert img.content

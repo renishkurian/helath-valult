@@ -1007,21 +1007,35 @@ def finance_add(
     description: str = Form(""),
     payment_method: str = Form(""),
     frequency: str = Form(""),
+    image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
-    from app.routers.finance import create_transaction
+    from app.routers.finance import create_transaction, save_txn_image
     from app import schemas as sc
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    create_transaction(sc.FinanceTxnIn(
+    txn = create_transaction(sc.FinanceTxnIn(
         account_id=account_id, to_account_id=to_account_id or None,
         category_id=category_id or None, txn_type=txn_type, amount=float(amount or 0),
         txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
         notes=notes or None, description=description or None,
         payment_method=payment_method or None, frequency=frequency or None,
     ), db=db, current_user=user)
+    if image and image.filename:
+        raw = image.file.read()
+        if raw:
+            save_txn_image(db, user, txn.id, raw, image.content_type)
     return RedirectResponse("/admin/finance", status_code=302)
+
+
+@router.get("/finance/transactions/{txn_id}/image")
+def finance_txn_image(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import get_transaction_image
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return get_transaction_image(txn_id, db=db, current_user=user)
 
 
 @router.post("/finance/transactions/{txn_id}/delete")

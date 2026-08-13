@@ -178,6 +178,21 @@ class HealthVaultRepository(
     suspend fun listFinanceTransactions(yearMonth: String? = null, q: String? = null) =
         api.listFinanceTransactions(yearMonth, q = q)
     suspend fun createFinanceTransaction(body: FinanceTxnIn) = api.createFinanceTransaction(body)
+    suspend fun uploadFinanceImage(id: String, file: File, mime: String = "image/jpeg"): FinanceTxnOut {
+        val part = MultipartBody.Part.createFormData(
+            "file",
+            file.name,
+            file.asRequestBody(mime.toMediaTypeOrNull())
+        )
+        return api.uploadFinanceImage(id, part)
+    }
+    suspend fun downloadFinanceImage(id: String, destination: File): File {
+        val body = api.downloadFinanceImage(id)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
     suspend fun deleteFinanceTransaction(id: String) = api.deleteFinanceTransaction(id)
     suspend fun financeReports(yearMonth: String? = null, kind: String = "expense") =
         api.financeReports(yearMonth, kind)

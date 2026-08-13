@@ -52,11 +52,11 @@
 </div>
 {% elif view == 'monthly' or view == 'total' %}
 <div class="surface">
-  {% for item in ledger.items %}
+  {% for item in ledger.txns %}
   <div class="mm-row">
     <div class="cat">{{ item.category_name or item.txn_type }}</div>
     <div>
-        <div class="payee">{{ item.payee or item.description or '—' }}</div>
+        <div class="payee">{{ item.payee or item.description or '—' }}{% if item.has_image %} · <a href="/admin/finance/transactions/{{ item.id }}/image" target="_blank">photo</a>{% endif %}</div>
         <div class="acct">{{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %} · {{ item.txn_date }}</div>
     </div>
     <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">{{ inr(item.amount) }}</div>
@@ -76,7 +76,7 @@
     <div class="mm-row">
       <div class="cat">{{ item.category_name or item.txn_type }}</div>
       <div>
-        <div class="payee">{{ item.payee or item.description or '—' }}</div>
+        <div class="payee">{{ item.payee or item.description or '—' }}{% if item.has_image %} · <a href="/admin/finance/transactions/{{ item.id }}/image" target="_blank">photo</a>{% endif %}</div>
         <div class="acct">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
       </div>
       <div class="amt {% if item.txn_type=='income' %}mm-income{% elif item.txn_type=='expense' %}mm-expense{% endif %}">

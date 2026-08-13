@@ -56,6 +56,8 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("txn_time", "VARCHAR(8)"),
         ("description", "TEXT"),
         ("payment_method", "VARCHAR(30)"),
+        ("image_path", "VARCHAR(500)"),
+        ("image_mime", "VARCHAR(80)"),
     ],
     "finance_messages": [
         ("payment_method", "VARCHAR(30)"),

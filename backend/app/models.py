@@ -571,6 +571,8 @@ class FinanceTransaction(Base):
     tags = Column(String(500), nullable=True)
     source = Column(String(20), default="manual", nullable=False)  # manual | message | recurring
     message_id = Column(String(32), nullable=True, index=True)
+    image_path = Column(String(500), nullable=True)
+    image_mime = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

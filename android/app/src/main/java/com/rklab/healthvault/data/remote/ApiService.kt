@@ -380,6 +380,17 @@ interface ApiService {
     @POST("finance/transactions")
     suspend fun createFinanceTransaction(@Body body: FinanceTxnIn): FinanceTxnOut
 
+    @Multipart
+    @POST("finance/transactions/{id}/image")
+    suspend fun uploadFinanceImage(
+        @Path("id") id: String,
+        @Part file: MultipartBody.Part
+    ): FinanceTxnOut
+
+    @Streaming
+    @GET("finance/transactions/{id}/image")
+    suspend fun downloadFinanceImage(@Path("id") id: String): ResponseBody
+
     @DELETE("finance/transactions/{id}")
     suspend fun deleteFinanceTransaction(@Path("id") id: String): Response<Unit>
 

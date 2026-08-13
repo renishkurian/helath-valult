@@ -14,7 +14,7 @@
   <a class="{% if txn_type=='transfer' %}on-transfer{% endif %}" href="/admin/finance/add?txn_type=transfer">Transfer</a>
 </div>
 
-<form method="post" action="/admin/finance/add" class="surface" style="max-width:640px;">
+<form method="post" action="/admin/finance/add" class="surface" style="max-width:640px;" enctype="multipart/form-data">
   <input type="hidden" name="txn_type" value="{{ txn_type }}">
   <div class="form-grid">
     <div class="field"><label>Date</label><input type="date" name="txn_date" value="{{ today }}" required></div>
@@ -78,6 +78,11 @@
     </select>
   </div>
   <div class="field"><label>Internal notes</label><textarea name="notes" rows="2"></textarea></div>
+  <div class="field">
+    <label>Photo / receipt</label>
+    <input type="file" name="image" accept="image/*">
+    <div class="field-hint">Optional. Bill, receipt, or screenshot.</div>
+  </div>
   <button class="btn" type="submit">Save {{ txn_type }}</button>
 </form>
 <style>

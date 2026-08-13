@@ -829,6 +829,7 @@ class FinanceTxnOut(BaseModel):
     payment_method: Optional[str] = None
     tags: Optional[str] = None
     source: str = "manual"
+    has_image: bool = False
     created_at: datetime
 
 

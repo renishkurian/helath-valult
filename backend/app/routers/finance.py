@@ -7,13 +7,16 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto
 from app.deps import get_current_user, require_owner, vault_id
+from app.extract import enhance_scan
 from app.finance_ai import (
     DEFAULT_BASES, DEFAULT_MODELS, EXPENSE_CATEGORIES,
     INCOME_CATEGORIES, PAYMENT_METHODS,
@@ -209,7 +212,7 @@ def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.Fina
         txn_type=t.txn_type, amount=_f(t.amount), currency=t.currency or "INR",
         txn_date=t.txn_date, txn_time=t.txn_time, payee=t.payee, notes=t.notes,
         description=t.description, payment_method=t.payment_method, tags=t.tags,
-        source=t.source or "manual", created_at=t.created_at,
+        source=t.source or "manual", has_image=bool(t.image_path), created_at=t.created_at,
     )
 
 
@@ -363,6 +366,61 @@ def _find_category(
 def _assert_category_for_account(cat: models.FinanceCategory | None, account_id: str) -> None:
     if cat and cat.account_id and cat.account_id != account_id:
         raise HTTPException(400, "That category belongs to another account")
+
+
+def _get_txn(db: Session, user: models.User, txn_id: str) -> models.FinanceTransaction:
+    row = db.query(models.FinanceTransaction).filter(
+        models.FinanceTransaction.id == txn_id,
+        models.FinanceTransaction.user_id == _owned(db, user),
+    ).first()
+    if not row:
+        raise HTTPException(404, "Transaction not found")
+    return row
+
+
+def _drop_txn_image(row: models.FinanceTransaction) -> None:
+    if not row.image_path:
+        return
+    path = settings.STORAGE_DIR / row.image_path
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+    row.image_path = None
+    row.image_mime = None
+
+
+def save_txn_image(
+    db: Session,
+    user: models.User,
+    txn_id: str,
+    raw: bytes,
+    mime: str | None,
+) -> models.FinanceTransaction:
+    row = _get_txn(db, user, txn_id)
+    mime = (mime or "image/jpeg").split(";")[0].strip().lower()
+    if not mime.startswith("image/"):
+        raise HTTPException(400, "Upload a photo (jpg, png, webp)")
+    if mime.startswith("image/"):
+        raw = enhance_scan(raw, mime)
+        mime = "image/jpeg"
+    size_mb = len(raw) / (1024 * 1024)
+    if size_mb > settings.MAX_UPLOAD_MB:
+        raise HTTPException(413, f"Photo exceeds {settings.MAX_UPLOAD_MB} MB")
+    if not raw:
+        raise HTTPException(400, "Empty photo")
+    uid = _owned(db, user)
+    dest_dir = settings.STORAGE_DIR / uid / "finance"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    _drop_txn_image(row)
+    rel = f"{uid}/finance/{row.id}.enc"
+    (settings.STORAGE_DIR / rel).write_bytes(crypto.encrypt_bytes(raw))
+    row.image_path = rel
+    row.image_mime = mime
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def _ai_bundle(db: Session, user: models.User) -> dict | None:
@@ -665,15 +723,41 @@ def delete_transaction(
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
-    row = db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.id == txn_id,
-        models.FinanceTransaction.user_id == _owned(db, current_user),
-    ).first()
-    if not row:
-        raise HTTPException(404, "Transaction not found")
+    row = _get_txn(db, current_user, txn_id)
+    _drop_txn_image(row)
     db.delete(row)
     db.commit()
     return {"ok": True}
+
+
+@router.post("/transactions/{txn_id}/image", response_model=schemas.FinanceTxnOut)
+async def upload_transaction_image(
+    txn_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    raw = await file.read()
+    row = save_txn_image(db, current_user, txn_id, raw, file.content_type)
+    uid = _owned(db, current_user)
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+
+
+@router.get("/transactions/{txn_id}/image")
+def get_transaction_image(
+    txn_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    row = _get_txn(db, current_user, txn_id)
+    if not row.image_path:
+        raise HTTPException(404, "No photo on this entry")
+    path = settings.STORAGE_DIR / row.image_path
+    if not path.exists():
+        raise HTTPException(404, "Photo missing on disk")
+    plain = crypto.decrypt_bytes(path.read_bytes())
+    return Response(content=plain, media_type=row.image_mime or "image/jpeg")
 
 
 # ---------- budgets / recurring ----------
@@ -1178,6 +1262,6 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
         "prev_total": _f(prev_income - prev_expense),
         "days": day_list,
         "weeks": weeks,
-        "items": items,
+        "txns": items,
         "inr": inr,
     }

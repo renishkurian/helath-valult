@@ -579,6 +579,7 @@ data class FinanceTxnOut(
     val payment_method: String? = null,
     val tags: String? = null,
     val source: String = "manual",
+    val has_image: Boolean = false,
     val created_at: String = ""
 )
 data class FinanceTxnIn(

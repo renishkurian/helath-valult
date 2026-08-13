@@ -1,9 +1,12 @@
 package com.rklab.healthvault.ui.screens.finance
 
 import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,21 +17,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -85,6 +97,7 @@ fun FinanceTransScreen(
     var summary by remember { mutableStateOf<FinanceSummaryOut?>(null) }
     var items by remember { mutableStateOf<List<FinanceTxnOut>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var photoTxn by remember { mutableStateOf<FinanceTxnOut?>(null) }
 
     fun reload() {
         scope.launch {
@@ -155,15 +168,28 @@ fun FinanceTransScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        Text(
-                            inr(t.amount),
-                            color = when (t.txn_type) { "income" -> IncomeBlue; "expense" -> ExpenseRed; else -> Ink },
-                            fontWeight = FontWeight.Bold
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                inr(t.amount),
+                                color = when (t.txn_type) { "income" -> IncomeBlue; "expense" -> ExpenseRed; else -> Ink },
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (t.has_image) {
+                                Text(
+                                    "Photo",
+                                    color = IncomeBlue,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.clickable { photoTxn = t }
+                                )
+                            }
+                        }
                     }
                     HorizontalDivider(color = LineColor)
                 }
             }
+        }
+        photoTxn?.let { txn ->
+            FinancePhotoDialog(repository, txn) { photoTxn = null }
         }
         FloatingActionButton(
             onClick = onAdd,
@@ -471,6 +497,7 @@ private fun MoreRow(title: String, subtitle: String, onClick: () -> Unit) {
 
 @Composable
 fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var accounts by remember { mutableStateOf<List<FinanceAccountOut>>(emptyList()) }
     var categories by remember { mutableStateOf<List<FinanceCategoryOut>>(emptyList()) }
@@ -482,6 +509,30 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
     var description by remember { mutableStateOf("") }
     var paymentMethod by remember { mutableStateOf("other") }
     var error by remember { mutableStateOf<String?>(null) }
+    var receiptFile by remember { mutableStateOf<File?>(null) }
+    var captureFile by remember { mutableStateOf<File?>(null) }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val copied = FileUtil.copyUriToCacheFile(context, uri, "fn_${System.currentTimeMillis()}")
+        receiptFile = FileUtil.enhanceImageFile(copied)
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) {
+            captureFile?.let { file ->
+                if (file.exists() && file.length() > 0) receiptFile = FileUtil.enhanceImageFile(file)
+            }
+        }
+        captureFile = null
+    }
+    fun launchCamera() {
+        val file = FileUtil.newCaptureFile(context)
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        captureFile = file
+        cameraLauncher.launch(uri)
+    }
+    val cameraPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) launchCamera()
+    }
     LaunchedEffect(Unit) {
         scope.launch {
             accounts = repository.listFinanceAccounts()
@@ -557,6 +608,30 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
         }
         OutlinedTextField(value = payee, onValueChange = { payee = it }, label = { Text("Note") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+        Spacer(Modifier.height(10.dp))
+        Text("Photo / receipt", color = InkSoft, style = MaterialTheme.typography.labelMedium)
+        Text(receiptFile?.name ?: "Optional bill, receipt, or screenshot", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            OutlinedButton(onClick = {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                    launchCamera()
+                } else {
+                    cameraPermLauncher.launch(Manifest.permission.CAMERA)
+                }
+            }) {
+                Icon(Icons.Filled.PhotoCamera, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Camera")
+            }
+            OutlinedButton(onClick = { galleryLauncher.launch("image/*") }) {
+                Icon(Icons.Filled.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Gallery")
+            }
+            if (receiptFile != null) {
+                TextButton(onClick = { receiptFile = null }) { Text("Remove") }
+            }
+        }
         error?.let { Text(it, color = StampRed, modifier = Modifier.padding(top = 8.dp)) }
         Spacer(Modifier.height(16.dp))
         Button(
@@ -566,7 +641,7 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
                 if (amt <= 0) { error = "Enter an amount"; return@Button }
                 scope.launch {
                     runCatching {
-                        repository.createFinanceTransaction(
+                        val created = repository.createFinanceTransaction(
                             FinanceTxnIn(
                                 account_id = acc,
                                 to_account_id = if (txnType == "transfer") accounts.firstOrNull { it.id != acc }?.id else null,
@@ -579,6 +654,7 @@ fun FinanceAddScreen(repository: HealthVaultRepository, onDone: () -> Unit) {
                                 payment_method = paymentMethod.takeIf { it != "other" }
                             )
                         )
+                        receiptFile?.let { repository.uploadFinanceImage(created.id, it) }
                     }.onSuccess { onDone() }.onFailure { error = it.message }
                 }
             },
@@ -630,4 +706,45 @@ fun FinanceInboxScreen(repository: HealthVaultRepository, onBack: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun FinancePhotoDialog(
+    repository: HealthVaultRepository,
+    txn: FinanceTxnOut,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(txn.id) {
+        runCatching {
+            val dest = File(context.cacheDir, "fn_${txn.id}.jpg")
+            repository.downloadFinanceImage(txn.id, dest)
+            BitmapFactory.decodeFile(dest.absolutePath)
+        }.onSuccess { bitmap = it }.onFailure { error = it.message }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Close")
+            }
+        },
+        title = { Text(txn.payee ?: txn.description ?: "Photo") },
+        text = {
+            when {
+                bitmap != null -> Image(
+                    bitmap = bitmap!!.asImageBitmap(),
+                    contentDescription = "Receipt",
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                    contentScale = ContentScale.Fit
+                )
+                error != null -> Text(error ?: "", color = StampRed)
+                else -> CircularProgressIndicator()
+            }
+        }
+    )
 }
