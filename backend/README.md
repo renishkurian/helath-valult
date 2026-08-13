@@ -48,6 +48,12 @@ If you'd rather build on-device instead of pulling from GHCR, swap the
 `image:` line in `docker-compose.yml` for `build: .` (commented out right
 above it).
 
+## Deploying on the Pi (systemd + nginx)
+
+The Pi runs uvicorn as a systemd service on `127.0.0.1:8076`, behind nginx
+and a Cloudflare Tunnel at `https://vault.rklab.online`. Copy-paste install
+is in **[deploy/README.md](deploy/README.md)**.
+
 ## Deploying on the Pi (Docker, matches your MarketMind setup)
 
 ```bash

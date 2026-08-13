@@ -1,0 +1,22 @@
+[Unit]
+Description=Health Vault API (uvicorn)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nicky
+Group=nicky
+WorkingDirectory=/var/www/python/helath-valult/backend
+Environment=PATH=/var/www/python/helath-valult/backend/.venv/bin
+EnvironmentFile=-/var/www/python/helath-valult/backend/.env
+ExecStart=/var/www/python/helath-valult/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8076
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+
+# If the Pi user cannot write the sqlite/storage dir, fix ownership:
+#   sudo chown -R nicky:nicky /var/www/python/helath-valult/backend
+
+[Install]
+WantedBy=multi-user.target
