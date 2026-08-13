@@ -2,11 +2,8 @@ from __future__ import annotations
 
 import secrets
 from datetime import datetime, timedelta
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -15,9 +12,10 @@ from app.config import settings
 from app.deps import get_current_user, require_owner, vault_id
 from app.extract import watermark_bytes
 from app.routers.documents import _get_owned_document, _to_out as doc_to_out
+from app.templating import setup_templates
 
 router = APIRouter(prefix="/share", tags=["share"])
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+templates = setup_templates()
 
 
 def _client_ip(request: Request) -> str | None:

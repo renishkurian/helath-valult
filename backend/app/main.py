@@ -4,7 +4,6 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import engine, SessionLocal
@@ -13,6 +12,7 @@ from app.schema import ensure_schema
 from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls
 from app.scheduler import lifespan
 from app import admin, models
+from app.templating import setup_templates
 
 # First run: create every table. Existing Pi DB: add any columns the old file is missing.
 ensure_schema(engine)
@@ -58,7 +58,7 @@ app.include_router(admin.router)
 _static = Path(__file__).resolve().parent / "static"
 _static.mkdir(exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(_static)), name="static")
-_templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+_templates = setup_templates()
 
 
 @app.get("/")

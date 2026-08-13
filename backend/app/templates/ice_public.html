@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>ICE — {{ person.name }}</title>
+<title>ICE — {{ person.name | nice }}</title>
 <meta name="theme-color" content="#0B0F17">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500&display=swap');
@@ -51,7 +51,7 @@
 <body>
   <div class="card">
     <div class="kicker">In case of emergency</div>
-    <h1>{{ person.name }}</h1>
+    <h1>{{ person.name | nice }}</h1>
     <div class="layout">
       <div class="blood">
         <div class="bg">{{ person.blood_group or '—' }}</div>
@@ -59,7 +59,7 @@
       </div>
       <div>
         <div class="lbl">Emergency contact</div>
-        <div class="val">{{ person.emergency_name or '—' }}</div>
+        <div class="val">{{ (person.emergency_name | nice) if person.emergency_name else '—' }}</div>
         {% if person.emergency_phone %}<div class="val" style="margin-top:-8px;"><a href="tel:{{ person.emergency_phone }}">{{ person.emergency_phone }}</a></div>{% endif %}
       </div>
     </div>

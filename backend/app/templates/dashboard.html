@@ -3,16 +3,15 @@
 {% block content %}
 {% set cat_colors = {'hospital_card':'#5B8CFF','prescription':'#3DDC97','lab_report':'#7A6CFF','insurance':'#F5B942','vaccination':'#3DDC97','bill':'#FF6B7A','medicine':'#F5B942','other':'#8B95A8'} %}
 {% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
-{% set folder_bg = {'hospital_card':'#1A2744','prescription':'#143028','lab_report':'#221A3A','insurance':'#2A2414','vaccination':'#143028','bill':'#2A161A','medicine':'#2A2414','other':'#1C2434'} %}
 {% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
 
 <div class="eyebrow"><a href="/admin/modules" style="color:var(--ink-soft);">All modules</a> · Health Vault</div>
-<div class="page-title">Hi, {{ session_user.full_name.split(' ')[0] }}</div>
+<div class="page-title">Hi, {{ session_user.full_name.split(' ')[0] | nice }}</div>
 
 <div class="family-row">
   {% for p in people %}
     <a class="chip {% if p.id == active_person.id %}active{% endif %}" href="/admin?person={{ p.id }}">
-      <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name }}
+      <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name | nice }}
     </a>
   {% endfor %}
   <a class="chip" href="/admin/family">+ Add family member</a>
@@ -23,22 +22,22 @@
 {% else %}
 
   {% for c in expiring_cards %}
-    <div class="alert"><span class="dot"></span> {{ c.hospital_name }} card expires {{ c.valid_till }}</div>
+    <div class="alert"><span class="dot"></span> {{ c.hospital_name | nice }} card expires {{ c.valid_till }}</div>
   {% endfor %}
 
-  <div class="section-head"><h2>Hospital Cards — {{ active_person.name }}</h2></div>
+  <div class="section-head"><h2>Hospital cards — {{ active_person.name | nice }}</h2></div>
   <div class="grid grid-cards" style="margin-bottom:28px;">
     {% for card in cards %}
       <div class="id-card">
-        <div class="stamp">VERIFIED<br>COPY</div>
-        <div class="hosp">{{ card.hospital_name.upper() }}</div>
-        <div class="label">Patient Health ID</div>
-        <div class="name">{{ active_person.name }}</div>
+        <div class="stamp">Verified<br>copy</div>
+        <div class="hosp">{{ card.hospital_name | nice }}</div>
+        <div class="label">Patient health ID</div>
+        <div class="name">{{ active_person.name | nice }}</div>
         <div class="pid">ID {{ card.patient_id or '—' }}</div>
         <div class="meta-row">
-          <div><div class="meta-label">BLOOD GROUP</div><div class="meta-value">{{ card.blood_group or '—' }}</div></div>
-          <div><div class="meta-label">VALID TILL</div><div class="meta-value">{{ card.valid_till or '—' }}</div></div>
-          <div><div class="meta-label">WARD</div><div class="meta-value">{{ card.ward or '—' }}</div></div>
+          <div><div class="meta-label">Blood group</div><div class="meta-value">{{ card.blood_group or '—' }}</div></div>
+          <div><div class="meta-label">Valid till</div><div class="meta-value">{{ card.valid_till or '—' }}</div></div>
+          <div><div class="meta-label">Ward</div><div class="meta-value">{{ card.ward or '—' }}</div></div>
         </div>
         <form method="post" action="/admin/cards/{{ card.id }}/delete" onsubmit="return confirm('Delete this card?');">
           <input type="hidden" name="person_id" value="{{ active_person.id }}">
@@ -46,7 +45,7 @@
         </form>
       </div>
     {% else %}
-      <div class="empty surface">No hospital cards yet for {{ active_person.name }}.</div>
+      <div class="empty surface">No hospital cards yet for {{ active_person.name | nice }}.</div>
     {% endfor %}
   </div>
 
@@ -72,9 +71,9 @@
   <div class="section-head"><h2>Folders</h2></div>
   <div class="folders">
     {% for cat, count in folder_counts.items() %}
-      <a class="folder" style="background:{{ folder_bg[cat] }}; color:#21281F;" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}">
-        {{ folder_label[cat] }}
-        <span class="fcount">{{ '%02d'|format(count) }}</span>
+      <a class="folder" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}">
+        <span class="folder-name"><span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span>{{ folder_label[cat] }}</span>
+        <span class="fcount">{{ count }}</span>
       </a>
     {% endfor %}
   </div>
@@ -104,21 +103,23 @@
   </details>
 
   <div class="section-head"><h2>Recently added</h2></div>
-  <table class="ledger surface">
-    <thead><tr><th>Document</th><th>Date</th><th>Hospital</th><th>Size</th><th></th></tr></thead>
-    <tbody>
-      {% for doc in recent_documents %}
-      <tr>
-        <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title }}</td>
-        <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
-        <td>{{ doc.hospital_name or '—' }}</td>
-        <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
-        <td><a href="/admin/documents/{{ doc.id }}/download" class="tag tag-sage">Download</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="5" class="empty">No documents yet.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <div class="table-wrap">
+    <table class="ledger">
+      <thead><tr><th>Document</th><th>Date</th><th>Hospital</th><th>Size</th><th></th></tr></thead>
+      <tbody>
+        {% for doc in recent_documents %}
+        <tr>
+          <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title | nice }}</td>
+          <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
+          <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
+          <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
+          <td><a href="/admin/documents/{{ doc.id }}/download" class="btn-compact save">Download</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No documents yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 {% endif %}
 {% endblock %}

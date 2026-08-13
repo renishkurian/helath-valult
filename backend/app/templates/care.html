@@ -5,11 +5,11 @@
 {% set condition_items = (active_person.conditions.split(',') if active_person and active_person.conditions else []) %}
 
 <div class="eyebrow">Health Vault</div>
-<div class="page-title">Care{% if active_person %} — {{ active_person.name }}{% endif %}</div>
+<div class="page-title">Care{% if active_person %} — {{ active_person.name | nice }}{% endif %}</div>
 <div class="family-row">
   {% for p in people %}
   <a class="chip {% if active_person and p.id==active_person.id %}active{% endif %}" href="/admin/care?person={{ p.id }}">
-    <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name }}
+    <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name | nice }}
   </a>
   {% endfor %}
 </div>
@@ -18,7 +18,7 @@
 <div class="ice-wrap">
   <div class="ice-card">
     <div class="ice-kicker">In case of emergency</div>
-    <div class="ice-name">{{ active_person.name }}</div>
+    <div class="ice-name">{{ active_person.name | nice }}</div>
     <div class="ice-layout">
       <div class="blood-badge {% if not active_person.blood_group %}missing{% endif %}">
         <div class="bg">{{ active_person.blood_group or '—' }}</div>
@@ -28,7 +28,7 @@
         <div class="ice-row">
           <div class="lbl">Emergency contact</div>
           <div class="val">
-            {{ active_person.emergency_name or 'Not set' }}
+            {{ (active_person.emergency_name | nice) if active_person.emergency_name else 'Not set' }}
             {% if active_person.emergency_phone %}
               · <a href="tel:{{ active_person.emergency_phone }}">{{ active_person.emergency_phone }}</a>
             {% endif %}

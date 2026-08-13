@@ -8,9 +8,9 @@
   </div>
   <a class="btn-outline" href="/admin/urls">← Links</a>
 </div>
-<p style="color:var(--ink-soft); margin-bottom:22px; max-width:560px;">Rename, recode, or add your own — Adult, Instagram, News, Songs are just a starting set.</p>
+<p class="uv-manage-lead">Rename, recode, or add your own — Adult, Instagram, News, Songs are just a starting set.</p>
 
-<div class="grid grid-2" style="align-items:start; gap:22px;">
+<div class="grid grid-2 uv-manage-grid">
   <section class="surface">
     <div class="group-label">Categories</div>
     {% for c in categories %}
@@ -18,12 +18,14 @@
       <input type="color" name="color" value="{{ c.color or '#8B95A8' }}" aria-label="Color for {{ c.name }}">
       <input name="name" value="{{ c.name }}" required aria-label="Category name">
       <span class="fcount">{{ c.count }}</span>
-      <button class="tag tag-sage" type="submit">Save</button>
-      <button class="tag tag-mustard" form="del-cat-{{ c.id }}" type="submit" onclick="return confirm('Delete category {{ c.name }}? Links stay, uncategorized.');">Delete</button>
+      <div class="uv-manage-actions">
+        <button class="btn-compact save" type="submit">Save</button>
+        <button class="btn-compact danger" form="del-cat-{{ c.id }}" type="submit" onclick="return confirm('Delete category {{ c.name }}? Links stay, uncategorized.');">Delete</button>
+      </div>
     </form>
     <form id="del-cat-{{ c.id }}" method="post" action="/admin/urls/categories/{{ c.id }}/delete"></form>
     {% endfor %}
-    <form method="post" action="/admin/urls/categories" class="uv-manage-row" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line);">
+    <form method="post" action="/admin/urls/categories" class="uv-manage-row uv-manage-add">
       <input type="color" name="color" value="#5B8CFF" aria-label="New category color">
       <input name="name" placeholder="New category" required>
       <button class="btn" type="submit">Add</button>
@@ -37,12 +39,14 @@
       <input type="color" name="color" value="{{ t.color or '#8B95A8' }}" aria-label="Color for {{ t.name }}">
       <input name="name" value="{{ t.name }}" required aria-label="Tag name">
       <span class="fcount">{{ t.count }}</span>
-      <button class="tag tag-sage" type="submit">Save</button>
-      <button class="tag tag-mustard" form="del-tag-{{ t.id }}" type="submit" onclick="return confirm('Delete tag {{ t.name }}?');">Delete</button>
+      <div class="uv-manage-actions">
+        <button class="btn-compact save" type="submit">Save</button>
+        <button class="btn-compact danger" form="del-tag-{{ t.id }}" type="submit" onclick="return confirm('Delete tag {{ t.name }}?');">Delete</button>
+      </div>
     </form>
     <form id="del-tag-{{ t.id }}" method="post" action="/admin/urls/tags/{{ t.id }}/delete"></form>
     {% endfor %}
-    <form method="post" action="/admin/urls/tags" class="uv-manage-row" style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line);">
+    <form method="post" action="/admin/urls/tags" class="uv-manage-row uv-manage-add">
       <input type="color" name="color" value="#A89BFF" aria-label="New tag color">
       <input name="name" placeholder="New tag" required>
       <button class="btn" type="submit">Add</button>
@@ -50,13 +54,41 @@
   </section>
 </div>
 <style>
-  .uv-manage-row{ display:grid; grid-template-columns:36px 1fr auto auto auto; gap:8px; align-items:center; margin-bottom:8px; }
-  .uv-manage-row input[type=color]{ width:36px; height:36px; padding:0; border:none; background:transparent; cursor:pointer; }
+  .uv-manage-lead{ color:var(--ink-soft); margin-bottom:22px; max-width:560px; }
+  .uv-manage-grid{ align-items:start; gap:22px; }
+  .uv-manage-row{
+    display:grid; grid-template-columns:40px minmax(0,1fr) auto auto;
+    gap:10px; align-items:center; margin:0; padding:10px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .uv-manage-row input{ min-width:0; }
+  .uv-manage-row input[type=color]{
+    width:40px; height:40px; padding:2px; border:1px solid var(--line);
+    border-radius:10px; background:#0F1522; cursor:pointer;
+  }
   .uv-manage-row .fcount{ font-size:12px; color:var(--ink-soft); min-width:1.6em; text-align:right; }
+  .uv-manage-actions{ display:flex; gap:8px; justify-content:flex-end; }
+  .uv-manage-add{
+    grid-template-columns:40px minmax(0,1fr) auto;
+    border-bottom:none; margin-top:4px; padding-top:14px;
+  }
+  .btn-compact{
+    appearance:none; -webkit-appearance:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    min-height:40px; padding:8px 14px; border-radius:10px;
+    font:inherit; font-size:13px; font-weight:600; cursor:pointer;
+    border:1px solid var(--line); background:transparent; color:var(--ink);
+  }
+  .btn-compact.save{ color:var(--sage); border-color:rgba(61,220,151,0.35); background:var(--sage-bg); }
+  .btn-compact.danger{ color:#F8E3A8; border-color:rgba(245,185,66,0.35); background:var(--mustard-bg); }
   @media (max-width:720px){
-    .grid-2{ grid-template-columns:1fr; }
-    .uv-manage-row{ grid-template-columns:36px 1fr auto; }
+    .uv-manage-grid{ grid-template-columns:1fr; gap:16px; }
+    .uv-manage-row{ grid-template-columns:40px minmax(0,1fr); }
     .uv-manage-row .fcount{ display:none; }
+    .uv-manage-actions{ grid-column:1 / -1; }
+    .uv-manage-actions .btn-compact{ flex:1; }
+    .uv-manage-add{ grid-template-columns:40px minmax(0,1fr); }
+    .uv-manage-add .btn{ grid-column:1 / -1; width:100%; }
   }
 </style>
 {% endblock %}

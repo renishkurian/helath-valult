@@ -77,6 +77,12 @@
   .sidebar-footer{ margin-top:auto; padding-top:20px; border-top:1px solid var(--line); }
   .sidebar-footer a{ font-size:13px; color:var(--ink-soft); }
   .sidebar-footer a:hover{ color:var(--navy); }
+  .sidebar-user{ font-size:13px; color:#D5DCE8; margin-bottom:8px; font-weight:600; }
+  button.tag, a.tag{
+    appearance:none; -webkit-appearance:none; border:1px solid transparent;
+    font:inherit; cursor:pointer; display:inline-flex; align-items:center; justify-content:center;
+    line-height:1; text-decoration:none;
+  }
 
   .main{ flex:1; padding:36px 44px 64px; max-width:1280px; width:100%; min-width:0; }
   .eyebrow{ font-size:12px; letter-spacing:0.12em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:8px; font-weight:600; }
@@ -142,11 +148,44 @@
 
   .folders{ display:flex; gap:10px; margin-bottom:28px; flex-wrap:wrap; }
   .folder{
-    min-width:118px; height:78px; padding:14px 16px; border-radius:16px;
+    min-width:132px; height:84px; padding:14px 16px; border-radius:16px;
     display:flex; flex-direction:column; justify-content:space-between; font-size:13px; font-weight:600;
-    border:1px solid var(--line);
+    border:1px solid var(--line); background:rgba(255,255,255,0.03); color:var(--ink);
+    transition:border-color .18s var(--ease), transform .18s var(--ease), background .18s var(--ease);
   }
+  .folder:hover{ border-color:rgba(91,140,255,0.4); transform:translateY(-2px); background:rgba(255,255,255,0.05); }
   .folder .fcount{ font-size:12px; font-weight:500; color:var(--ink-soft); }
+  .folder-name{ display:flex; align-items:center; gap:8px; line-height:1.25; }
+  .folder-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 0 3px rgba(255,255,255,0.06); }
+
+  .page-lead{ color:var(--ink-soft); margin:-8px 0 22px; max-width:560px; font-size:15px; }
+  .person-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; margin-bottom:28px; }
+  .person-card{
+    display:flex; align-items:center; gap:14px; padding:16px 18px;
+    background:rgba(21,27,40,0.82); border:1px solid var(--line);
+    border-radius:18px; box-shadow:var(--shadow);
+  }
+  .person-card .who{ flex:1; min-width:0; }
+  .person-card .who .name{ font-size:16px; font-weight:700; letter-spacing:-0.02em; }
+  .person-card .who .rel{ font-size:12px; color:var(--ink-soft); margin-top:3px; }
+  .person-card .actions{ display:flex; gap:8px; flex-shrink:0; align-items:center; }
+  .person-card .actions form{ margin:0; }
+  .btn-outline.danger{ color:#FF8A96; border-color:rgba(255,107,122,0.35); }
+  .btn-outline.danger:hover{ color:#fff; border-color:var(--stamp); }
+  .btn-compact{
+    appearance:none; -webkit-appearance:none;
+    display:inline-flex; align-items:center; justify-content:center;
+    min-height:36px; padding:8px 12px; border-radius:10px;
+    font:inherit; font-size:13px; font-weight:600; cursor:pointer;
+    border:1px solid var(--line); background:transparent; color:var(--ink); text-decoration:none;
+  }
+  .btn-compact.save{ color:var(--sage); border-color:rgba(61,220,151,0.35); background:var(--sage-bg); }
+  .btn-compact.danger{ color:#FF8A96; border-color:rgba(255,107,122,0.35); background:var(--stamp-bg); }
+  .table-wrap{
+    background:rgba(21,27,40,0.82); border:1px solid var(--line);
+    border-radius:var(--radius); box-shadow:var(--shadow); overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
 
   .ledger{ width:100%; border-collapse:collapse; }
   .ledger th{ text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-soft); padding:12px 14px; border-bottom:1px solid var(--line); font-weight:600; }
@@ -417,28 +456,74 @@
     .filter-bar .btn{ grid-column:1 / -1; }
   }
   @media (max-width: 820px){
+    html, body{ overflow-x:clip; }
     .shell{ flex-direction:column; }
-    .sidebar{ width:100%; border-right:none; border-bottom:1px solid var(--line); padding:16px; }
-    .brand-sub{ margin:0 0 12px 48px; }
-    .nav-list{ flex-direction:row; overflow-x:auto; padding-bottom:4px; -webkit-overflow-scrolling:touch; }
-    .nav-item{ flex:0 0 auto; }
-    .main{ padding:24px 18px 48px; }
+    .sidebar{
+      width:100%; max-width:100%; min-width:0;
+      border-right:none; border-bottom:1px solid var(--line);
+      padding:12px 14px 8px;
+      display:grid; grid-template-columns:minmax(0,1fr) auto;
+      grid-template-areas:"brand user" "nav nav";
+      gap:8px 12px; align-items:center;
+      position:sticky; top:0; z-index:40;
+      background:rgba(8,11,18,0.94); backdrop-filter:blur(18px);
+    }
+    .sidebar-brand{ grid-area:brand; min-width:0; }
+    .brand-row{ margin-bottom:0; }
+    .brand-sub{ margin:2px 0 0 48px; font-size:11px; }
+    .sidebar-footer{
+      grid-area:user; margin:0; padding:0; border:none;
+      display:flex; flex-direction:column; align-items:flex-end; gap:2px;
+      text-align:right;
+    }
+    .sidebar-user{ margin-bottom:0; font-size:12px; max-width:42vw; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .nav-list{
+      grid-area:nav; flex-direction:row; gap:4px; min-width:0; max-width:100%;
+      overflow-x:auto; overflow-y:hidden; padding:2px 2px 8px;
+      -webkit-overflow-scrolling:touch; scrollbar-width:none;
+    }
+    .nav-list::-webkit-scrollbar{ display:none; }
+    .nav-item{ flex:0 0 auto; min-height:40px; padding:8px 11px; font-size:13px; }
+    .main{ padding:18px 14px 56px; }
+    .page-title{ font-size:26px; margin-bottom:14px; }
+    .page-head{ align-items:flex-start; gap:10px; margin-bottom:16px; }
+    .surface, .panel{ padding:16px; }
+    .surface:has(> table.ledger){ overflow-x:auto; -webkit-overflow-scrolling:touch; padding:0; }
     .form-grid, .grid-split, .form-grid-3, .grid-2, .ice-wrap{ grid-template-columns:1fr; }
     .filter-bar{ grid-template-columns:1fr; }
-    .more-grid, .mm-picker{ grid-template-columns:repeat(3, 1fr); }
-    .mm-row{ grid-template-columns:90px 1fr auto; }
-    .mm-fab{ right:18px; bottom:18px; }
+    .more-grid{ grid-template-columns:1fr 1fr; }
+    .mm-picker{ grid-template-columns:repeat(3, 1fr); }
+    .mm-summary{ grid-template-columns:1fr 1fr; }
+    .mm-row{ grid-template-columns:72px 1fr auto; gap:8px; }
+    .mm-fab{ right:16px; bottom:16px; }
+    .btn, .btn-outline{ min-height:44px; }
+    button.tag, a.tag{ min-height:36px; padding:8px 12px; }
+    .lk-search{ display:flex; gap:8px; }
+    .lk-search input{ flex:1; min-width:0; }
+    input[type=color]{ min-height:40px; }
+    .person-card{ flex-wrap:wrap; }
+    .person-card .actions{ width:100%; }
+    .person-card .actions .btn,
+    .person-card .actions .btn-outline{ flex:1; }
+    .person-card .actions form{ flex:1; display:flex; }
+    .person-card .actions form .btn-outline{ width:100%; }
+    .folders{ gap:8px; }
+    .folder{ min-width:calc(50% - 8px); flex:1 1 calc(50% - 8px); }
+    .id-card .meta-row{ gap:12px; flex-wrap:wrap; }
+    .table-wrap .ledger th, .table-wrap .ledger td{ white-space:nowrap; }
   }
 </style>
 </head>
 <body>
 <div class="shell">
   <div class="sidebar">
-    <div class="brand-row">
-      <div class="brand-mark">V</div>
-      <div class="brand">Vault</div>
+    <div class="sidebar-brand">
+      <div class="brand-row">
+        <div class="brand-mark">V</div>
+        <div class="brand">Vault</div>
+      </div>
+      <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='locker' %}Document Vault{% elif active_module=='urls' %}URL Vault{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
     </div>
-    <div class="brand-sub">{% if active_module=='passwords' %}Password Vault{% elif active_module=='finance' %}Money Manager{% elif active_module=='locker' %}Document Vault{% elif active_module=='urls' %}URL Vault{% elif active_module=='picker' %}Modules{% else %}Health Vault{% endif %}</div>
     {% if session_user %}
     <nav class="nav-list">
     <a class="nav-item {% if active_nav=='modules' %}active{% endif %}" href="/admin/modules">
@@ -545,7 +630,7 @@
     {% endif %}
     </nav>
     <div class="sidebar-footer">
-      <div style="font-size:13px; color:#D5DCE8; margin-bottom:8px; font-weight:600;">{{ session_user.full_name }}</div>
+      <div class="sidebar-user">{{ session_user.full_name | nice }}</div>
       <a href="/admin/logout">Log out</a>
     </div>
     {% endif %}
@@ -574,6 +659,12 @@
   box.addEventListener("click", function(e){ if(e.target === box) hide(); });
   document.getElementById("photo-lightbox-close").addEventListener("click", hide);
   document.addEventListener("keydown", function(e){ if(e.key === "Escape" && !box.hidden) hide(); });
+})();
+(function(){
+  var active = document.querySelector(".nav-item.active");
+  var list = active && active.closest(".nav-list");
+  if(!list || !window.matchMedia("(max-width:820px)").matches) return;
+  list.scrollLeft = Math.max(0, active.offsetLeft - (list.clientWidth / 2) + (active.offsetWidth / 2));
 })();
 (function(){
   var ICO_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';

@@ -21,7 +21,6 @@ import com.rklab.healthvault.data.model.Relation
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
 import com.rklab.healthvault.util.ViewModelFactory
-import androidx.compose.foundation.rememberScrollState
 
 @Composable
 fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) -> Unit) {
@@ -117,9 +116,9 @@ private fun PersonRow(person: PersonOut, onClick: () -> Unit, onDelete: (() -> U
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(person.name, style = MaterialTheme.typography.titleMedium, color = Ink)
+            Text(titleName(person.name), style = MaterialTheme.typography.titleMedium, color = Ink)
             Text(
-                person.relation.name.lowercase().replaceFirstChar { it.uppercase() },
+                relationLabel(person.relation),
                 style = MaterialTheme.typography.bodySmall,
                 color = InkSoft
             )
@@ -158,7 +157,7 @@ private fun AddFamilyMemberDialog(
                 Spacer(Modifier.height(10.dp))
                 Box {
                     OutlinedTextField(
-                        value = relation.name.lowercase().replaceFirstChar { it.uppercase() },
+                        value = relationLabel(relation),
                         onValueChange = {}, readOnly = true,
                         label = { Text("Relation") },
                         modifier = Modifier.fillMaxWidth().clickableNoRipple { expanded = true }
@@ -166,7 +165,7 @@ private fun AddFamilyMemberDialog(
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         listOf(Relation.SPOUSE, Relation.CHILD, Relation.PARENT, Relation.OTHER).forEach { r ->
                             DropdownMenuItem(
-                                text = { Text(r.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                text = { Text(relationLabel(r)) },
                                 onClick = { relation = r; expanded = false }
                             )
                         }
@@ -237,3 +236,15 @@ private fun InviteViewerDialog(
 
 private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
     this.clickable(onClick = onClick)
+
+private fun titleName(name: String): String =
+    name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        .joinToString(" ") { part -> part.replaceFirstChar { ch -> ch.uppercase() } }
+
+private fun relationLabel(relation: Relation): String = when (relation) {
+    Relation.SELF -> "You"
+    Relation.SPOUSE -> "Spouse"
+    Relation.CHILD -> "Child"
+    Relation.PARENT -> "Parent"
+    Relation.OTHER -> "Other"
+}

@@ -5,7 +5,7 @@
 {% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
 {% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
 
-<div class="eyebrow"><a href="/admin?person={{ active_person.id }}">← {{ active_person.name }}</a></div>
+<div class="eyebrow"><a href="/admin?person={{ active_person.id }}">← {{ active_person.name | nice }}</a></div>
 <div class="page-title">{{ folder_label.get(category, 'All documents') if category else 'All documents' }}</div>
 
 <details style="margin-bottom:24px;">
@@ -37,24 +37,25 @@
   </div>
 </details>
 
-<table class="ledger surface">
+<div class="table-wrap">
+<table class="ledger">
   <thead><tr><th>Document</th><th>Date</th><th>Expiry</th><th>Tags</th><th>Hospital</th><th>Notes</th><th>Size</th><th></th><th></th></tr></thead>
   <tbody>
     {% for doc in documents %}
     <tr>
-      <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title }}</td>
+      <td><span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span> &nbsp;{{ doc.title | nice }}</td>
       <td class="mono">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
       <td class="mono">{{ doc.expiry_date or '—' }}</td>
       <td style="color:var(--ink-soft); font-size:12.5px;">{{ doc.tags or '—' }}</td>
-      <td>{{ doc.hospital_name or '—' }}</td>
+      <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
       <td style="max-width:180px; color:var(--ink-soft); font-size:12.5px;">{{ doc.notes or '—' }}</td>
       <td class="mono">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
-      <td><a href="/admin/documents/{{ doc.id }}/download" class="tag tag-sage">Download</a></td>
+      <td><a href="/admin/documents/{{ doc.id }}/download" class="btn-compact save">Download</a></td>
       <td>
         <form method="post" action="/admin/documents/{{ doc.id }}/delete" onsubmit="return confirm('Delete this document?');">
           <input type="hidden" name="person_id" value="{{ active_person.id }}">
           <input type="hidden" name="category" value="{{ category or '' }}">
-          <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Delete</button>
+          <button class="btn-compact danger" type="submit">Delete</button>
         </form>
       </td>
     </tr>
@@ -63,4 +64,5 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}

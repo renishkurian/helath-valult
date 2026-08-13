@@ -170,6 +170,32 @@ def test_admin_ui_login_and_dashboard():
     assert "Hi, Admin" in r.text
 
 
+def test_display_name_and_relation_labels():
+    from app.models import Relation
+    from app.templating import nice_name, relation_label
+
+    assert nice_name("renish") == "Renish"
+    assert nice_name("deepthi k") == "Deepthi K"
+    assert nice_name("capture_1786555722891.jpg") == "capture_1786555722891.jpg"
+    assert relation_label(Relation.self_) == "You"
+    assert relation_label(Relation.spouse) == "Spouse"
+    assert relation_label("Relation.self_") == "You"
+
+
+def test_admin_family_uses_human_labels():
+    _register("famui@example.com", "password123", "renish")
+    client.post(
+        "/admin/login",
+        data={"email": "famui@example.com", "password": "password123"},
+    )
+    r = client.get("/admin/family")
+    assert r.status_code == 200
+    assert "Renish" in r.text
+    assert "You" in r.text
+    assert "Relation.self" not in r.text
+    assert "Relation.Self" not in r.text
+
+
 def test_health_endpoint():
     r = client.get("/health")
     assert r.status_code == 200

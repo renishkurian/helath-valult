@@ -211,7 +211,7 @@ fun FamilyAvatarChip(
         }
         Spacer(Modifier.height(8.dp))
         Text(
-            name.split(" ").first(),
+            name.trim().split(" ").first().replaceFirstChar { it.uppercase() },
             style = MaterialTheme.typography.labelSmall,
             color = if (selected) TextWhite else TextGray,
             maxLines = 1

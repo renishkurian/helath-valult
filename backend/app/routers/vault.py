@@ -7,20 +7,19 @@ import secrets
 import string
 import time
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crypto, security
 from app.deps import get_current_user, require_owner, vault_id
+from app.templating import setup_templates
 
 router = APIRouter(prefix="/vault", tags=["vault"])
-templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+templates = setup_templates()
 
 _ALLOWED_TYPES = {t.value for t in models.VaultItemType}
 _COMMON = {

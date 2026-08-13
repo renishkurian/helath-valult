@@ -1,21 +1,20 @@
 import calendar
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, security, crypto
 from app.config import settings
 from app.deps import vault_id, is_viewer
+from app.templating import setup_templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+templates = setup_templates()
 
 
 # ---------- Session auth helpers ----------

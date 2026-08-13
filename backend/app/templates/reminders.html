@@ -26,18 +26,19 @@
   </div>
 </details>
 
-<table class="ledger surface">
+<div class="table-wrap">
+<table class="ledger">
   <thead><tr><th>Title</th><th>Person</th><th>When</th><th>Repeat</th><th></th></tr></thead>
   <tbody>
     {% for r in reminders %}
     <tr>
       <td>{{ r.title }}{% if r.description %}<div style="font-size:12px; color:var(--ink-soft);">{{ r.description }}</div>{% endif %}</td>
-      <td>{{ person_names.get(r.person_id, '—') }}</td>
+      <td>{{ person_names.get(r.person_id, '—') | nice }}</td>
       <td class="mono">{{ r.remind_at.strftime('%d %b, %I:%M %p') }}</td>
-      <td class="mono">{{ r.repeat_rule }}</td>
+      <td>{{ r.repeat_rule | nice }}</td>
       <td>
         <form method="post" action="/admin/reminders/{{ r.id }}/delete">
-          <button class="tag" style="background:#F1DEDA; color:#B23B36; border:none; cursor:pointer;" type="submit">Delete</button>
+          <button class="btn-compact danger" type="submit">Delete</button>
         </form>
       </td>
     </tr>
@@ -46,4 +47,5 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 {% endblock %}
