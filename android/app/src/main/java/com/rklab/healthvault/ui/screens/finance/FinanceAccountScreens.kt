@@ -259,7 +259,18 @@ fun FinanceAccountDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                                Text(t.payee ?: t.description ?: t.category_name ?: t.txn_type, color = Ink, fontWeight = FontWeight.Medium)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(t.payee ?: t.description ?: t.category_name ?: t.txn_type, color = Ink, fontWeight = FontWeight.Medium)
+                                    if (t.has_image) {
+                                        Text(" · ", color = InkSoft, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            "photo",
+                                            color = IncomeBlue,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.clickable { photoTxn = t }
+                                        )
+                                    }
+                                }
                                 Text(
                                     buildString {
                                         append(t.category_name ?: t.txn_type)
@@ -271,12 +282,7 @@ fun FinanceAccountDetailScreen(
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(inr(t.amount), color = if (depositRow) IncomeBlue else ExpenseRed, fontWeight = FontWeight.Bold)
-                                if (t.has_image) {
-                                    Text("Photo", color = IncomeBlue, style = MaterialTheme.typography.labelSmall, modifier = Modifier.clickable { photoTxn = t })
-                                }
-                            }
+                            Text(inr(t.amount), color = if (depositRow) IncomeBlue else ExpenseRed, fontWeight = FontWeight.Bold)
                         }
                         HorizontalDivider(color = LineColor)
                     }

@@ -323,7 +323,25 @@
   .mm-row{ display:grid; grid-template-columns:110px 1fr auto; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); align-items:center; }
   .mm-row .cat{ font-size:13px; color:var(--ink-soft); }
   .mm-row .payee{ font-weight:600; }
+  .mm-row .payee a.js-photo{ color:var(--mm-income); font-weight:650; }
+  .mm-row .payee a.js-photo:hover{ text-decoration:underline; }
   .mm-row .acct{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
+  .photo-lightbox{
+    position:fixed; inset:0; z-index:80; padding:28px;
+    background:rgba(0,0,0,0.82); backdrop-filter:blur(10px);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .photo-lightbox[hidden]{ display:none !important; }
+  .photo-lightbox img{
+    max-width:min(920px, 100%); max-height:86vh; border-radius:16px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.5); object-fit:contain; background:#0B0F17;
+  }
+  .photo-lightbox-x{
+    position:absolute; top:16px; right:16px; width:40px; height:40px;
+    border:0; border-radius:12px; background:rgba(255,255,255,0.12);
+    color:#fff; font-size:22px; line-height:1; cursor:pointer;
+  }
+  .photo-lightbox-x:hover{ background:rgba(255,255,255,0.2); }
   .mm-row .amt{ font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
   .mm-fab{
     position:fixed; right:28px; bottom:28px; width:56px; height:56px; border-radius:50%;
@@ -501,5 +519,27 @@
     {% block content %}{% endblock %}
   </div>
 </div>
+<div id="photo-lightbox" class="photo-lightbox" hidden role="dialog" aria-modal="true" aria-label="Receipt photo">
+  <button type="button" class="photo-lightbox-x" id="photo-lightbox-close" aria-label="Close">&times;</button>
+  <img id="photo-lightbox-img" alt="Receipt photo">
+</div>
+<script>
+(function(){
+  var box = document.getElementById("photo-lightbox");
+  var img = document.getElementById("photo-lightbox-img");
+  if(!box || !img) return;
+  function hide(){ box.hidden = true; img.removeAttribute("src"); }
+  function show(src){ img.src = src; box.hidden = false; }
+  document.addEventListener("click", function(e){
+    var a = e.target.closest("a.js-photo");
+    if(!a) return;
+    e.preventDefault();
+    show(a.getAttribute("href"));
+  });
+  box.addEventListener("click", function(e){ if(e.target === box) hide(); });
+  document.getElementById("photo-lightbox-close").addEventListener("click", hide);
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape" && !box.hidden) hide(); });
+})();
+</script>
 </body>
 </html>

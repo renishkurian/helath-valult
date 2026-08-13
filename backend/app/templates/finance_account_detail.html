@@ -34,7 +34,7 @@
   <div class="mm-row">
     <div class="cat">{{ item.txn.category_name or item.txn.txn_type }}</div>
     <div>
-      <div class="payee">{{ item.txn.payee or item.txn.description or '—' }}</div>
+      <div class="payee">{{ item.txn.payee or item.txn.description or '—' }}{% if item.txn.has_image %} · <a class="js-photo" href="/admin/finance/transactions/{{ item.txn.id }}/image">photo</a>{% endif %}</div>
       <div class="acct">{% if item.txn.description and item.txn.payee %}{{ item.txn.description }}{% endif %}</div>
     </div>
     <div class="amt {% if item.incoming %}mm-income{% else %}mm-expense{% endif %}">{{ inr(item.txn.amount) }}</div>

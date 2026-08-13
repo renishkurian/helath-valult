@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -31,6 +32,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
@@ -150,7 +153,18 @@ fun FinanceTransScreen(
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(t.category_name ?: t.txn_type, color = InkSoft, style = MaterialTheme.typography.labelMedium)
-                            Text(t.payee ?: t.description ?: "—", color = Ink, fontWeight = FontWeight.SemiBold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(t.payee ?: t.description ?: "—", color = Ink, fontWeight = FontWeight.SemiBold)
+                                if (t.has_image) {
+                                    Text(" · ", color = InkSoft, fontWeight = FontWeight.SemiBold)
+                                    Text(
+                                        "photo",
+                                        color = IncomeBlue,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.clickable { photoTxn = t }
+                                    )
+                                }
+                            }
                             Text(
                                 buildString {
                                     append(t.account_name)
@@ -163,21 +177,11 @@ fun FinanceTransScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                inr(t.amount),
-                                color = when (t.txn_type) { "income" -> IncomeBlue; "expense" -> ExpenseRed; else -> Ink },
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (t.has_image) {
-                                Text(
-                                    "Photo",
-                                    color = IncomeBlue,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.clickable { photoTxn = t }
-                                )
-                            }
-                        }
+                        Text(
+                            inr(t.amount),
+                            color = when (t.txn_type) { "income" -> IncomeBlue; "expense" -> ExpenseRed; else -> Ink },
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                     HorizontalDivider(color = LineColor)
                 }
@@ -473,27 +477,38 @@ internal fun FinancePhotoDialog(
             BitmapFactory.decodeFile(dest.absolutePath)
         }.onSuccess { bitmap = it }.onFailure { error = it.message }
     }
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Icon(Icons.Filled.Close, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Close")
-            }
-        },
-        title = { Text(txn.payee ?: txn.description ?: "Photo") },
-        text = {
-            when {
-                bitmap != null -> Image(
-                    bitmap = bitmap!!.asImageBitmap(),
-                    contentDescription = "Receipt",
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
-                    contentScale = ContentScale.Fit
+        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = true, dismissOnClickOutside = true)
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.88f))
+                .clickable(
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() },
+                    onClick = onDismiss
                 )
-                error != null -> Text(error ?: "", color = StampRed)
-                else -> CircularProgressIndicator()
+        ) {
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
+            ) {
+                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
+            }
+            Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
+                when {
+                    bitmap != null -> Image(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = "Receipt",
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Fit
+                    )
+                    error != null -> Text(error ?: "", color = StampRed)
+                    else -> CircularProgressIndicator(color = IncomeBlue)
+                }
             }
         }
-    )
+    }
 }
