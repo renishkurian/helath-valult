@@ -209,7 +209,8 @@ def grouped_quick_add() -> list[dict]:
         groups.append({
             "key": key,
             "label": GROUP_LABELS.get(key, key.title()),
-            "items": [{**it, "category": key} for it in items],
+            # Use "entries" — Jinja treats dict.items as dict.items(), which 500s the list page.
+            "entries": [{**it, "category": key} for it in items],
         })
     return groups
 

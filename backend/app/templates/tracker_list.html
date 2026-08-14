@@ -160,7 +160,7 @@
 <details class="surface mb-2">
   <summary class="shop-group">{{ g.label }}</summary>
   <div class="shop-chips">
-    {% for it in g.items %}
+    {% for it in g.entries %}
     <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items">
       <input type="hidden" name="name" value="{{ it.english }}">
       <input type="hidden" name="emoji" value="{{ it.emoji }}">

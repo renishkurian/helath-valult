@@ -73,7 +73,9 @@ def test_tracker_recognize_and_friends_send():
 
     groups = client.get("/tracker/quick-add", headers=owner)
     assert groups.status_code == 200
-    assert groups.json()["groups"]
+    payload = groups.json()["groups"]
+    assert payload
+    assert payload[0]["entries"]
 
     friend = client.post("/tracker/friends", headers=owner, json={
         "name": "Asha", "email": "friend-shop@example.com", "relation": "family",
@@ -115,3 +117,22 @@ def test_tracker_pdf_password_roundtrip():
     gone = client.delete(f"/tracker/passwords/{listed[0]['id']}", headers=headers)
     assert gone.status_code == 204
     assert client.get("/tracker/passwords", headers=headers).json() == []
+
+
+def test_admin_list_detail_renders_quick_add():
+    email = "shop-admin@example.com"
+    headers = _headers(email)
+    created = client.post("/tracker/lists", headers=headers, json={"name": "Market"}).json()
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    page = session.get(f"/admin/tracker/lists/{created['id']}")
+    assert page.status_code == 200, page.text[:500]
+    assert "Market" in page.text
+    assert "Quick add" in page.text
+    assert "Potato" in page.text
+    assert "Internal Server Error" not in page.text
