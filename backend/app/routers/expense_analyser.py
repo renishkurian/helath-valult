@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app import expense_analyser as ea
 from app import models, schemas
 from app.database import get_db
-from app.deps import get_current_user, require_owner
+from app.deps import get_current_user, require_owner, vault_id
 
 router = APIRouter(prefix="/expense-analyser", tags=["expense-analyser"])
 
@@ -156,7 +156,12 @@ def retag(
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
-    return ea.retag_pending_items(db, current_user, limit=120, use_ai=True)
+    started = ea.start_retag_background(
+        vault_id(current_user), limit=ea._RETAG_AI_LIMIT, use_ai=True,
+    )
+    if not started:
+        raise HTTPException(409, "Sync or re-tag already running")
+    return {"ok": True, "started": True, "limit": ea._RETAG_AI_LIMIT}
 
 
 @router.post("/clear")

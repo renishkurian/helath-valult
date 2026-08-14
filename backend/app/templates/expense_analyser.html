@@ -12,15 +12,17 @@
   <div class="d-flex gap-2 flex-wrap">
     {% if status.connected %}
     <form method="post" action="/admin/expense-analyser/sync">
-      <button class="btn btn-primary" type="submit" {% if status.syncing %}disabled{% endif %}>
+      <button class="btn btn-primary" type="submit" {% if status.syncing or status.retagging %}disabled{% endif %}>
         <i class="bi bi-arrow-repeat"></i> {% if status.syncing %}Syncing…{% else %}Sync Gmail{% endif %}
       </button>
     </form>
     <form method="post" action="/admin/expense-analyser/reconcile">
-      <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-shuffle"></i> Re-match ledger</button>
+      <button class="btn btn-outline-secondary" type="submit" {% if status.syncing or status.retagging %}disabled{% endif %}><i class="bi bi-shuffle"></i> Re-match ledger</button>
     </form>
     <form method="post" action="/admin/expense-analyser/retag">
-      <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-magic"></i> AI re-tag</button>
+      <button class="btn btn-outline-secondary" type="submit" {% if status.syncing or status.retagging %}disabled{% endif %}>
+        <i class="bi bi-magic"></i> {% if status.retagging %}Re-tagging…{% else %}AI re-tag{% endif %}
+      </button>
     </form>
     {% endif %}
     <a class="btn btn-outline-danger" href="/admin/expense-analyser/clear"><i class="bi bi-trash"></i> Clear inbox</a>
@@ -35,7 +37,11 @@
 {% elif request.query_params.get('ok') == 'sync_started' %}
 <div class="alert alert-success" role="alert">Gmail sync started in the background. This page will refresh until it finishes.</div>
 {% elif request.query_params.get('ok') == 'sync_busy' %}
-<div class="alert alert-warning" role="alert">A Gmail sync is already running. Wait a moment, then refresh.</div>
+<div class="alert alert-warning" role="alert">A Gmail sync or AI re-tag is already running. Wait a moment, then refresh.</div>
+{% elif request.query_params.get('ok') == 'retag_started' %}
+<div class="alert alert-success" role="alert">AI re-tag started in the background (up to 20 items). This page will refresh until it finishes.</div>
+{% elif request.query_params.get('ok') == 'retag_busy' %}
+<div class="alert alert-warning" role="alert">A sync or AI re-tag is already running. Wait a moment, then refresh.</div>
 {% elif request.query_params.get('ok') == 'retagged' %}
 <div class="alert alert-success" role="alert">Re-tagged {{ request.query_params.get('updated', '0') }} item(s) with AI / corrected rules.</div>
 {% elif request.query_params.get('ok') == 'cleared' %}
@@ -46,9 +52,13 @@
 <div class="alert alert-danger" role="alert">{{ request.query_params.get('err') }}</div>
 {% endif %}
 
-{% if status.syncing %}
+{% if status.syncing or status.retagging %}
 <div class="alert alert-info" role="alert">
+  {% if status.retagging %}
+  <i class="bi bi-magic"></i> AI re-tag is running on the server (small batch). The site stays up — this list refreshes automatically.
+  {% else %}
   <i class="bi bi-arrow-repeat"></i> Sync is running on the server. The site stays up — this list refreshes automatically.
+  {% endif %}
 </div>
 <script>setTimeout(function () { window.location.href = "/admin/expense-analyser"; }, 4000);</script>
 {% endif %}

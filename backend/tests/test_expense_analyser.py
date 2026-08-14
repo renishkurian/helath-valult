@@ -299,7 +299,10 @@ def test_paginate_helper():
 
 
 def test_known_gmail_ids_and_sync_busy_flag():
-    from app.expense_analyser import _known_gmail_ids, _is_syncing, _mark_syncing, start_sync_background
+    from app.expense_analyser import (
+        _known_gmail_ids, _is_syncing, _mark_syncing, start_sync_background,
+        _is_retagging, _mark_retagging, start_retag_background,
+    )
 
     headers, email = _headers()
     db = SessionLocal()
@@ -315,7 +318,22 @@ def test_known_gmail_ids_and_sync_busy_flag():
         _mark_syncing(uid, True)
         assert _is_syncing(uid) is True
         assert start_sync_background(uid) is False
+        assert start_retag_background(uid) is False
         _mark_syncing(uid, False)
         assert _is_syncing(uid) is False
+
+        _mark_retagging(uid, True)
+        assert _is_retagging(uid) is True
+        assert start_retag_background(uid) is False
+        assert start_sync_background(uid) is False
+        _mark_retagging(uid, False)
+        assert _is_retagging(uid) is False
     finally:
         db.close()
+
+
+def test_status_includes_retagging_flag():
+    headers, _ = _headers()
+    r = client.get("/expense-analyser/status", headers=headers)
+    assert r.status_code == 200
+    assert r.json().get("retagging") is False

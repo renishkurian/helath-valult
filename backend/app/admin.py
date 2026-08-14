@@ -2989,11 +2989,10 @@ def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
     user = _ea_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    result = ea.retag_pending_items(db, user, limit=120, use_ai=True)
-    return RedirectResponse(
-        f"/admin/expense-analyser?ok=retagged&updated={result.get('updated', 0)}",
-        status_code=302,
-    )
+    started = ea.start_retag_background(vault_id(user), limit=ea._RETAG_AI_LIMIT, use_ai=True)
+    if not started:
+        return RedirectResponse("/admin/expense-analyser?ok=retag_busy", status_code=303)
+    return RedirectResponse("/admin/expense-analyser?ok=retag_started", status_code=303)
 
 
 @router.get("/expense-analyser/clear", response_class=HTMLResponse)

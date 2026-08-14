@@ -27,6 +27,11 @@ _TEXT_LIMIT = 6000
 _SYNC_BUSY: dict[str, float] = {}
 _SYNC_LOCK = threading.Lock()
 _SYNC_STALE_SEC = 15 * 60
+_RETAG_BUSY: dict[str, float] = {}
+_RETAG_LOCK = threading.Lock()
+_RETAG_STALE_SEC = 15 * 60
+_RETAG_AI_LIMIT = 20
+_RETAG_AI_PAUSE_SEC = 0.5
 
 _BILL_LINE_RE = re.compile(
     r"(?P<date>\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})"
@@ -56,9 +61,31 @@ def _mark_syncing(uid: str, busy: bool) -> None:
             _SYNC_BUSY.pop(uid, None)
 
 
+def _is_retagging(uid: str) -> bool:
+    started = _RETAG_BUSY.get(uid)
+    if not started:
+        return False
+    if time.time() - started > _RETAG_STALE_SEC:
+        _RETAG_BUSY.pop(uid, None)
+        return False
+    return True
+
+
+def _mark_retagging(uid: str, busy: bool) -> None:
+    with _RETAG_LOCK:
+        if busy:
+            _RETAG_BUSY[uid] = time.time()
+        else:
+            _RETAG_BUSY.pop(uid, None)
+
+
+def _is_heavy_job(uid: str) -> bool:
+    return _is_syncing(uid) or _is_retagging(uid)
+
+
 def start_sync_background(user_id: str, *, trigger: str = "manual") -> bool:
     """Run Gmail sync on a worker thread so the Pi web process stays up."""
-    if _is_syncing(user_id):
+    if _is_heavy_job(user_id):
         return False
     _mark_syncing(user_id, True)
 
@@ -77,6 +104,36 @@ def start_sync_background(user_id: str, *, trigger: str = "manual") -> bool:
             db.close()
 
     threading.Thread(target=_run, name=f"ea-sync-{user_id[:8]}", daemon=True).start()
+    return True
+
+
+def start_retag_background(
+    user_id: str,
+    *,
+    limit: int = _RETAG_AI_LIMIT,
+    use_ai: bool = True,
+) -> bool:
+    """Re-tag open inbox rows on a worker thread (small AI batch for Pi safety)."""
+    if _is_heavy_job(user_id):
+        return False
+    _mark_retagging(user_id, True)
+    batch = max(1, min(_RETAG_AI_LIMIT, int(limit or _RETAG_AI_LIMIT)))
+
+    def _run() -> None:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if user:
+                retag_pending_items(db, user, limit=batch, use_ai=use_ai)
+        except Exception:
+            log.exception("background expense analyser retag failed")
+        finally:
+            _mark_retagging(user_id, False)
+            db.close()
+
+    threading.Thread(target=_run, name=f"ea-retag-{user_id[:8]}", daemon=True).start()
     return True
 
 
@@ -138,6 +195,7 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
         "last_ok": row.last_ok if row else None,
         "last_error": row.last_error if row else None,
         "syncing": _is_syncing(uid),
+        "retagging": _is_retagging(uid),
         **counts,
     }
 
@@ -532,7 +590,7 @@ def retag_pending_items(
     db: Session,
     user: models.User,
     *,
-    limit: int = 80,
+    limit: int = _RETAG_AI_LIMIT,
     use_ai: bool = True,
 ) -> dict[str, int]:
     """Re-run classify + hard_correct on open inbox rows (fixes bad ATM/credit tags)."""
@@ -541,6 +599,7 @@ def retag_pending_items(
 
     uid = vault_id(user)
     ai = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser") if use_ai else None
+    batch = max(1, min(_RETAG_AI_LIMIT if use_ai else 80, int(limit or _RETAG_AI_LIMIT)))
     rows = (
         db.query(models.ExpenseAnalyserItem)
         .filter(
@@ -549,14 +608,16 @@ def retag_pending_items(
             models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
         )
         .order_by(models.ExpenseAnalyserItem.created_at.desc())
-        .limit(max(1, min(200, limit)))
+        .limit(batch)
         .all()
     )
     updated = 0
-    for item in rows:
+    scanned = 0
+    for i, item in enumerate(rows):
         text = crypto.decrypt_text(item.raw_text_enc) or item.raw_snippet or item.subject or ""
         if not text.strip():
             continue
+        scanned += 1
         parsed = finance_ai.classify_message(text, ai=ai)
         before = (
             item.direction, _f(item.amount), item.payee, item.txn_date,
@@ -592,8 +653,13 @@ def retag_pending_items(
             if item.status in ("pending", "missed", "matched"):
                 item.status = "corrected"
             updated += 1
+        # Keep memory pressure low and let the Pi breathe between AI calls.
+        if use_ai and i + 1 < len(rows):
+            time.sleep(_RETAG_AI_PAUSE_SEC)
+        if (i + 1) % 5 == 0:
+            db.commit()
     db.commit()
-    return {"scanned": len(rows), "updated": updated}
+    return {"scanned": scanned, "updated": updated}
 
 def list_items(
     db: Session,
