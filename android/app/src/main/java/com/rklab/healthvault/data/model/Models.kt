@@ -889,3 +889,106 @@ data class UrlSummaryOut(
     val categories: List<UrlCategoryOut> = emptyList(),
     val tags: List<UrlTagOut> = emptyList()
 )
+
+// ---------- Shared AI ----------
+data class AiStatusOut(
+    val count: Int = 0,
+    val has_default: Boolean = false,
+    val default_name: String? = null,
+    val default_kind: String? = null,
+    val default_id: String? = null,
+    val default_model: String? = null
+)
+
+data class AiProviderIn(
+    val name: String,
+    val kind: String,
+    val api_key: String? = null,
+    val base_url: String? = null,
+    val model: String? = null,
+    val is_default: Boolean = false
+)
+
+data class AiProviderOut(
+    val id: String,
+    val name: String,
+    val kind: String,
+    val base_url: String? = null,
+    val model: String? = null,
+    val is_default: Boolean = false,
+    val enabled: Boolean = true,
+    val has_key: Boolean = false
+)
+
+data class AiConnectionTestOut(
+    val ok: Boolean = true,
+    val name: String? = null,
+    val kind: String? = null,
+    val model: String? = null,
+    val sample: String = "",
+    val prompt_tokens: Int? = null,
+    val completion_tokens: Int? = null,
+    val total_tokens: Int? = null
+)
+
+data class AiChatIn(
+    val message: String,
+    val thread_id: String? = null
+)
+
+data class AiChatMessageOut(
+    val id: String,
+    val role: String,
+    val content: String,
+    val created_at: String = ""
+)
+
+data class AiChatThreadOut(
+    val id: String,
+    val title: String,
+    val created_at: String = "",
+    val updated_at: String = "",
+    val preview: String? = null
+)
+
+data class AiChatThreadDetailOut(
+    val id: String,
+    val title: String,
+    val created_at: String = "",
+    val updated_at: String = "",
+    val messages: List<AiChatMessageOut> = emptyList()
+)
+
+data class AiChatReplyOut(
+    val thread_id: String,
+    val title: String,
+    val reply: String,
+    val messages: List<AiChatMessageOut> = emptyList()
+)
+
+data class AiUsageLogOut(
+    val id: String,
+    val client: String,
+    val client_label: String,
+    val provider_name: String? = null,
+    val provider_kind: String? = null,
+    val model: String? = null,
+    val prompt_tokens: Int? = null,
+    val completion_tokens: Int? = null,
+    val total_tokens: Int? = null,
+    val latency_ms: Int? = null,
+    val ok: Boolean = true,
+    val error: String? = null,
+    val created_at: String = ""
+)
+
+data class AiUsageSummaryOut(
+    val days: Int = 30,
+    val calls: Int = 0,
+    val ok: Int = 0,
+    val failed: Int = 0,
+    val prompt_tokens: Int = 0,
+    val completion_tokens: Int = 0,
+    val total_tokens: Int = 0,
+    val by_client: Map<String, Int> = emptyMap()
+)

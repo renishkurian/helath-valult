@@ -446,7 +446,9 @@ def apply_rules(text: str, result: dict[str, Any], rules: list[dict[str, Any]]) 
     return result
 
 
-def _openai_chat(base_url: str, api_key: str | None, model: str, system: str, user: str) -> str:
+def _openai_chat(base_url: str, api_key: str | None, model: str, system: str, user: str) -> tuple[str, dict]:
+    from app.ai_usage import parse_usage
+
     url = base_url.rstrip("/") + "/chat/completions"
     body = json.dumps({
         "model": model,
@@ -462,10 +464,15 @@ def _openai_chat(base_url: str, api_key: str | None, model: str, system: str, us
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     with urllib.request.urlopen(req, timeout=25) as resp:
         data = json.loads(resp.read().decode())
-    return data["choices"][0]["message"]["content"]
+    text = data["choices"][0]["message"]["content"]
+    usage = parse_usage(data)
+    usage["model"] = data.get("model") or model
+    return text, usage
 
 
-def _anthropic_chat(api_key: str, model: str, system: str, user: str) -> str:
+def _anthropic_chat(api_key: str, model: str, system: str, user: str) -> tuple[str, dict]:
+    from app.ai_usage import parse_usage
+
     body = json.dumps({
         "model": model,
         "max_tokens": 400,
@@ -485,7 +492,10 @@ def _anthropic_chat(api_key: str, model: str, system: str, user: str) -> str:
     )
     with urllib.request.urlopen(req, timeout=25) as resp:
         data = json.loads(resp.read().decode())
-    return data["content"][0]["text"]
+    text = data["content"][0]["text"]
+    usage = parse_usage(data)
+    usage["model"] = data.get("model") or model
+    return text, usage
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -521,12 +531,13 @@ def classify_with_ai(
         "Payee should be the merchant from Info:/at:, e.g. AMAZON PAY."
     )
     user = f"Message:\n{text}"
+    usage: dict[str, Any] = {}
     if kind == "anthropic":
         if not api_key:
             raise ValueError("Anthropic needs an API key")
-        raw = _anthropic_chat(api_key, model, system, user)
+        raw, usage = _anthropic_chat(api_key, model, system, user)
     else:
-        raw = _openai_chat(base, api_key, model, system, user)
+        raw, usage = _openai_chat(base, api_key, model, system, user)
     data = _extract_json(raw)
     direction = str(data.get("direction") or "unknown").lower()
     if direction not in {"debit", "credit", "unknown"}:
@@ -560,6 +571,7 @@ def classify_with_ai(
         "notes": notes,
         "description": build_description(method, data.get("payee"), cat, notes),
         "provider": kind,
+        "_usage": usage,
     }
 
 
@@ -568,12 +580,16 @@ def classify_message(
     rules: list[dict[str, Any]] | None = None,
     ai: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    import time
+    from app.ai_usage import maybe_log_from_ai_result
+
     result = classify_heuristic(text)
     result = apply_rules(text, result, rules or [])
     if result.get("provider") == "rule":
         return hard_correct(text, result)
     if not ai:
         return hard_correct(text, result)
+    started = time.monotonic()
     try:
         ai_result = classify_with_ai(
             text,
@@ -582,14 +598,19 @@ def classify_message(
             model=ai.get("model"),
             base_url=ai.get("base_url"),
         )
+        latency = int((time.monotonic() - started) * 1000)
+        maybe_log_from_ai_result(ai, ai_result, latency_ms=latency, ok=True)
         if float(ai_result.get("confidence") or 0) >= float(result.get("confidence") or 0):
             result = ai_result
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, KeyError, json.JSONDecodeError):
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as exc:
+        latency = int((time.monotonic() - started) * 1000)
+        maybe_log_from_ai_result(ai, {"_usage": {}, "provider": ai.get("kind")}, latency_ms=latency, ok=False, error=str(exc)[:200])
         result["ai_error"] = True
     return hard_correct(text, result)
 
 
-def test_provider(kind: str, api_key: str | None, model: str | None, base_url: str | None) -> str:
+def test_provider(kind: str, api_key: str | None, model: str | None, base_url: str | None) -> tuple[str, dict]:
     sample = "Dear Customer, Rs.199.00 debited via UPI to NETFLIX on 13-08-2026."
     out = classify_with_ai(sample, kind, api_key, model, base_url)
-    return f"{out.get('direction')} {out.get('amount')} {out.get('category')}"
+    text = f"{out.get('direction')} {out.get('amount')} {out.get('category')}"
+    return text, out.get("_usage") or {}

@@ -680,4 +680,20 @@ class HealthVaultRepository(
             }
         }
     }
+
+    // ---------- Shared AI ----------
+    suspend fun aiStatus() = api.aiStatus()
+    suspend fun listAiProviders() = api.listAiProviders()
+    suspend fun createAiProvider(body: AiProviderIn) = api.createAiProvider(body)
+    suspend fun deleteAiProvider(id: String) = api.deleteAiProvider(id)
+    suspend fun testAiProvider(id: String) = api.testAiProvider(id)
+    suspend fun testAiConnection() = api.testAiConnection()
+    suspend fun listAiChatThreads() = api.listAiChatThreads()
+    suspend fun getAiChatThread(id: String) = api.getAiChatThread(id)
+    suspend fun deleteAiChatThread(id: String) = api.deleteAiChatThread(id)
+    suspend fun aiChat(message: String, threadId: String? = null) =
+        api.aiChat(AiChatIn(message = message, thread_id = threadId))
+    suspend fun listAiUsage(client: String? = null, limit: Int = 100) =
+        api.listAiUsage(client, limit)
+    suspend fun aiUsageSummary(days: Int = 30) = api.aiUsageSummary(days)
 }

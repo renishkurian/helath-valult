@@ -431,7 +431,8 @@ def save_txn_image(
 
 def _ai_bundle(db: Session, user: models.User) -> dict | None:
     from app.ai_providers import get_default_bundle
-    return get_default_bundle(db, user)
+    from app.ai_usage import attach_log_context
+    return attach_log_context(get_default_bundle(db, user), db, user, "finance_sms")
 
 
 def _rule_dicts(db: Session, user: models.User, categories) -> list[dict]:

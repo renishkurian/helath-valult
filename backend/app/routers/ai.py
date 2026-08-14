@@ -142,3 +142,30 @@ def chat(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     return schemas.AiChatReplyOut(**result)
+
+
+@router.get("/usage", response_model=list[schemas.AiUsageLogOut])
+def list_usage(
+    client: str | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import ai_usage
+    require_owner(current_user)
+    client_key = (client or "").strip() or None
+    if client_key and client_key not in ai_usage.CLIENT_LABELS:
+        client_key = None
+    rows = ai_usage.list_logs(db, current_user, limit=limit, client=client_key)
+    return [schemas.AiUsageLogOut(**ai_usage.log_out(r)) for r in rows]
+
+
+@router.get("/usage/summary", response_model=schemas.AiUsageSummaryOut)
+def usage_summary(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import ai_usage
+    require_owner(current_user)
+    return schemas.AiUsageSummaryOut(**ai_usage.summary(db, current_user, days=days))

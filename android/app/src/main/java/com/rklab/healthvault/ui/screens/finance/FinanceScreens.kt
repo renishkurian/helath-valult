@@ -252,7 +252,8 @@ fun FinanceMoreScreen(
     repository: HealthVaultRepository,
     onOpenModules: () -> Unit,
     onOpenInbox: () -> Unit,
-    onOpenEmi: () -> Unit = {}
+    onOpenEmi: () -> Unit = {},
+    onOpenAiProviders: () -> Unit = {}
 ) {
     Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
@@ -261,6 +262,7 @@ fun FinanceMoreScreen(
         Spacer(Modifier.height(8.dp))
         MoreRow("Recurring payments", "EMI, chitty, loan, rent — auto-add and due alerts") { onOpenEmi() }
         MoreRow("AI & SMS inbox", "Review pending tags or paste a message") { onOpenInbox() }
+        MoreRow("AI providers", "Shared keys for SMS tagging and Ask AI") { onOpenAiProviders() }
         MoreRow("Switch module", "Health / Passwords / Money") { onOpenModules() }
     }
 }

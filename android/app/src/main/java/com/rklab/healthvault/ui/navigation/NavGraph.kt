@@ -25,6 +25,11 @@ import com.rklab.healthvault.ui.components.LockerTab
 import com.rklab.healthvault.ui.components.LockerBottomNav
 import com.rklab.healthvault.ui.components.UrlTab
 import com.rklab.healthvault.ui.components.UrlBottomNav
+import com.rklab.healthvault.ui.components.AiTab
+import com.rklab.healthvault.ui.components.AiBottomNav
+import com.rklab.healthvault.ui.screens.ai.AiAskScreen
+import com.rklab.healthvault.ui.screens.ai.AiProvidersScreen
+import com.rklab.healthvault.ui.screens.ai.AiUsageLogsScreen
 import com.rklab.healthvault.ui.screens.finance.*
 import com.rklab.healthvault.ui.screens.locker.*
 import com.rklab.healthvault.ui.screens.urls.*
@@ -76,6 +81,9 @@ private object Routes {
     const val URLS_MANAGE = "urls_manage"
     const val URLS_ADD = "urls_add?categoryId={categoryId}"
     const val URLS_ITEM = "urls_item/{itemId}"
+    const val AI = "ai"
+    const val AI_PROVIDERS = "ai_providers"
+    const val AI_LOGS = "ai_logs"
 
     fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
     fun lockerItem(itemId: String) = "locker_item/$itemId"
@@ -174,6 +182,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
+    val aiTabs = setOf(Routes.AI, Routes.AI_PROVIDERS, Routes.AI_LOGS)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
     val onLockerItem = currentRoute?.startsWith("locker_item/") == true
     val onLockerAdd = currentRoute?.startsWith("locker_add") == true
@@ -227,6 +236,24 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     }
                     navController.navigate(route) {
                         popUpTo(Routes.FINANCE) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in aiTabs) {
+                val current = when (currentRoute) {
+                    Routes.AI_PROVIDERS -> AiTab.PROVIDERS
+                    Routes.AI_LOGS -> AiTab.LOGS
+                    else -> AiTab.ASK
+                }
+                AiBottomNav(current = current) { tab ->
+                    val route = when (tab) {
+                        AiTab.ASK -> Routes.AI
+                        AiTab.PROVIDERS -> Routes.AI_PROVIDERS
+                        AiTab.LOGS -> Routes.AI_LOGS
+                    }
+                    navController.navigate(route) {
+                        popUpTo(Routes.AI) { inclusive = false; saveState = true }
                         launchSingleTop = true
                         restoreState = true
                     }
@@ -343,6 +370,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onAi = {
+                        navController.navigate(Routes.AI) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onLocker = {
                         navController.navigate(Routes.LOCKER) {
                             popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
@@ -451,6 +484,25 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 )
             }
 
+            composable(Routes.AI) {
+                AiAskScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.AI_PROVIDERS) {
+                AiProvidersScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.AI_LOGS) {
+                AiUsageLogsScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+
             composable(Routes.FINANCE) {
                 FinanceTransScreen(
                     repository = repository,
@@ -479,7 +531,8 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     repository = repository,
                     onOpenModules = { navController.navigate(Routes.MODULES) },
                     onOpenInbox = { navController.navigate(Routes.FINANCE_INBOX) },
-                    onOpenEmi = { navController.navigate(Routes.FINANCE_EMI) }
+                    onOpenEmi = { navController.navigate(Routes.FINANCE_EMI) },
+                    onOpenAiProviders = { navController.navigate(Routes.AI_PROVIDERS) }
                 )
             }
             composable(Routes.FINANCE_EMI) {

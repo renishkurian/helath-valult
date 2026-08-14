@@ -103,6 +103,9 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_ai_chat_threads_user_id", "ai_chat_threads", "user_id"),
     ("ix_ai_chat_threads_updated_at", "ai_chat_threads", "updated_at"),
     ("ix_ai_chat_messages_thread_id", "ai_chat_messages", "thread_id"),
+    ("ix_ai_usage_logs_user_id", "ai_usage_logs", "user_id"),
+    ("ix_ai_usage_logs_client", "ai_usage_logs", "client"),
+    ("ix_ai_usage_logs_created_at", "ai_usage_logs", "created_at"),
 ]
 
 

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
@@ -41,6 +42,8 @@ enum class LockerTab { LOCKER, EXPIRING }
 
 enum class UrlTab { LINKS, FAVORITES, MANAGE }
 
+enum class AiTab { ASK, PROVIDERS, LOGS }
+
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
         selectedIconColor = VaultGold,
@@ -49,6 +52,33 @@ private val navColors
         unselectedTextColor = HubTextDim,
         indicatorColor = VaultGoldSoft
     )
+
+@Composable
+fun AiBottomNav(current: AiTab, onSelect: (AiTab) -> Unit) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
+        NavigationBarItem(
+            selected = current == AiTab.ASK,
+            onClick = { onSelect(AiTab.ASK) },
+            icon = { Icon(Icons.Filled.SmartToy, contentDescription = "Ask AI") },
+            label = { Text("Ask") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == AiTab.PROVIDERS,
+            onClick = { onSelect(AiTab.PROVIDERS) },
+            icon = { Icon(Icons.Filled.VpnKey, contentDescription = "Providers") },
+            label = { Text("Keys") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == AiTab.LOGS,
+            onClick = { onSelect(AiTab.LOGS) },
+            icon = { Icon(Icons.Filled.MenuBook, contentDescription = "Usage logs") },
+            label = { Text("Logs") },
+            colors = navColors
+        )
+    }
+}
 
 @Composable
 fun PasswordVaultBottomNav(current: PasswordTab, onSelect: (PasswordTab) -> Unit) {

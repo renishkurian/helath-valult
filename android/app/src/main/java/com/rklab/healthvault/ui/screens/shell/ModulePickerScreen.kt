@@ -43,6 +43,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -81,6 +82,7 @@ import com.rklab.healthvault.ui.theme.HubGlass
 import com.rklab.healthvault.ui.theme.HubGlassHi
 import com.rklab.healthvault.ui.theme.HubRose
 import com.rklab.healthvault.ui.theme.HubSky
+import com.rklab.healthvault.ui.theme.HubSlate
 import com.rklab.healthvault.ui.theme.HubStroke
 import com.rklab.healthvault.ui.theme.HubTeal
 import com.rklab.healthvault.ui.theme.HubText
@@ -105,6 +107,7 @@ fun ModulePickerScreen(
     onHealth: () -> Unit,
     onPasswords: () -> Unit,
     onFinance: () -> Unit,
+    onAi: () -> Unit,
     onLocker: () -> Unit,
     onUrls: () -> Unit,
     onSettings: () -> Unit,
@@ -248,6 +251,46 @@ fun ModulePickerScreen(
                         )
                     }
                     TileFooter(stat = state.financeFooter)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            HubTile(
+                glow = HubSlate,
+                onClick = onAi,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(132.dp),
+                contentDescription = "Open Ask AI"
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    TileIcon(Icons.Outlined.SmartToy, HubSlate)
+                    Text(
+                        "Chat · Keys · Logs",
+                        color = HubSlate,
+                        fontFamily = MonoFont,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(ChipShape)
+                            .background(HubSlate.copy(alpha = 0.12f))
+                            .border(1.dp, HubSlate.copy(alpha = 0.25f), ChipShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Column {
+                    Text("Ask AI", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "Chat across vault modules, manage providers, and review usage",
+                        color = HubTextDim,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))

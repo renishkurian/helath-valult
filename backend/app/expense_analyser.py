@@ -256,7 +256,8 @@ def sync_gmail(
         ids, _next = gmail.list_message_ids(token, query, max_results=max_messages)
         out["fetched"] = len(ids)
         from app.ai_providers import get_default_bundle
-        ai_bundle = get_default_bundle(db, user)
+        from app.ai_usage import attach_log_context
+        ai_bundle = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser")
         for mid in ids:
             try:
                 raw = gmail.get_message(token, mid)
@@ -384,9 +385,10 @@ def retag_pending_items(
 ) -> dict[str, int]:
     """Re-run classify + hard_correct on open inbox rows (fixes bad ATM/credit tags)."""
     from app.ai_providers import get_default_bundle
+    from app.ai_usage import attach_log_context
 
     uid = vault_id(user)
-    ai = get_default_bundle(db, user) if use_ai else None
+    ai = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser") if use_ai else None
     rows = (
         db.query(models.ExpenseAnalyserItem)
         .filter(

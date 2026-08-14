@@ -573,4 +573,44 @@ interface ApiService {
 
     @DELETE("urls/tags/{id}")
     suspend fun deleteUrlTag(@Path("id") id: String): Response<Unit>
+
+    // ---------- Shared AI ----------
+    @GET("ai/status")
+    suspend fun aiStatus(): AiStatusOut
+
+    @GET("ai/providers")
+    suspend fun listAiProviders(): List<AiProviderOut>
+
+    @POST("ai/providers")
+    suspend fun createAiProvider(@Body body: AiProviderIn): AiProviderOut
+
+    @DELETE("ai/providers/{id}")
+    suspend fun deleteAiProvider(@Path("id") id: String): Response<Unit>
+
+    @POST("ai/providers/{id}/test")
+    suspend fun testAiProvider(@Path("id") id: String): Map<String, Any>
+
+    @POST("ai/test")
+    suspend fun testAiConnection(): AiConnectionTestOut
+
+    @GET("ai/chat/threads")
+    suspend fun listAiChatThreads(): List<AiChatThreadOut>
+
+    @GET("ai/chat/threads/{id}")
+    suspend fun getAiChatThread(@Path("id") id: String): AiChatThreadDetailOut
+
+    @DELETE("ai/chat/threads/{id}")
+    suspend fun deleteAiChatThread(@Path("id") id: String): Response<Unit>
+
+    @POST("ai/chat")
+    suspend fun aiChat(@Body body: AiChatIn): AiChatReplyOut
+
+    @GET("ai/usage")
+    suspend fun listAiUsage(
+        @Query("client") client: String? = null,
+        @Query("limit") limit: Int = 100
+    ): List<AiUsageLogOut>
+
+    @GET("ai/usage/summary")
+    suspend fun aiUsageSummary(@Query("days") days: Int = 30): AiUsageSummaryOut
 }

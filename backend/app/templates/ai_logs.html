@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}AI usage logs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">AI</div>
+    <h1 class="page-title">Usage logs</h1>
+    <p class="page-lead">
+      Every provider call — Ask AI, SMS tagging, Expense Analyser, and connection tests —
+      with client, model, request/response tokens, and time.
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-secondary" href="/admin/ai"><i class="bi bi-chat-dots"></i> Ask AI</a>
+    <a class="btn btn-outline-secondary" href="/admin/ai/providers"><i class="bi bi-key"></i> Providers</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-activity"></i> Calls</div>
+      <div class="val">{{ stats.calls }}</div>
+      <div class="sub">last {{ stats.days }} days</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Request tokens</div>
+      <div class="val">{{ "{:,}".format(stats.prompt_tokens) }}</div>
+      <div class="sub">prompt / input</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Response tokens</div>
+      <div class="val">{{ "{:,}".format(stats.completion_tokens) }}</div>
+      <div class="sub">completion / output</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-sigma"></i> Total tokens</div>
+      <div class="val">{{ "{:,}".format(stats.total_tokens) }}</div>
+      <div class="sub">{{ stats.ok }} ok · {{ stats.failed }} failed</div>
+    </div>
+  </div>
+</div>
+
+<div class="toolbar mb-3">
+  <a class="chip plain {% if not client_filter %}active{% endif %}" href="/admin/ai/logs">All</a>
+  {% for key, label in client_labels.items() %}
+  <a class="chip plain {% if client_filter == key %}active{% endif %}" href="/admin/ai/logs?client={{ key }}">{{ label }}</a>
+  {% endfor %}
+</div>
+
+<div class="card table-card">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-journal-text"></i></span>
+    <div>
+      <h2>Call history</h2>
+      <div class="card-sub">Newest first · tokens from the provider when reported</div>
+    </div>
+    <span class="badge badge-soft ms-auto">{{ logs | length }}</span>
+  </div>
+  {% if logs %}
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Date &amp; time</th>
+          <th>Client</th>
+          <th>Provider</th>
+          <th>Model</th>
+          <th class="num">Request</th>
+          <th class="num">Response</th>
+          <th class="num">Total</th>
+          <th class="num">ms</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in logs %}
+        <tr>
+          <td class="mono">{{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') if row.created_at else '—' }}</td>
+          <td>{{ row.client_label }}</td>
+          <td>
+            <div>{{ row.provider_name or '—' }}</div>
+            {% if row.provider_kind %}<div class="small text-muted">{{ row.provider_kind }}</div>{% endif %}
+          </td>
+          <td class="mono small">{{ row.model or '—' }}</td>
+          <td class="num">{{ "{:,}".format(row.prompt_tokens) if row.prompt_tokens is not none else '—' }}</td>
+          <td class="num">{{ "{:,}".format(row.completion_tokens) if row.completion_tokens is not none else '—' }}</td>
+          <td class="num">{{ "{:,}".format(row.total_tokens) if row.total_tokens is not none else '—' }}</td>
+          <td class="num">{{ row.latency_ms if row.latency_ms is not none else '—' }}</td>
+          <td>
+            {% if row.ok %}
+            <span class="badge badge-good">ok</span>
+            {% else %}
+            <span class="badge badge-bad" title="{{ row.error or '' }}">failed</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if row.error and not row.ok %}
+        <tr>
+          <td colspan="9" class="small text-muted" style="padding-top:0;">{{ row.error }}</td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-journal-text"></i></div>
+    <div class="empty-title">No usage yet</div>
+    <p>Ask a question, run Test connection, or sync Expense Analyser — each call lands here.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

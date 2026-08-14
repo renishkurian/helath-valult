@@ -714,6 +714,24 @@ class AiChatMessage(Base):
     thread = relationship("AiChatThread", back_populates="messages")
 
 
+class AiUsageLog(Base):
+    """Every LLM call: client, provider, model, token counts, timestamp."""
+    __tablename__ = "ai_usage_logs"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    client = Column(String(40), nullable=False, index=True)  # ask_ai | finance_sms | expense_analyser | connection_test | provider_test
+    provider_name = Column(String(120), nullable=True)
+    provider_kind = Column(String(30), nullable=True)
+    model = Column(String(120), nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)  # request / input
+    completion_tokens = Column(Integer, nullable=True)  # response / output
+    total_tokens = Column(Integer, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    ok = Column(Boolean, default=True, nullable=False)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class FinanceAiProvider(Base):
     """Legacy table — rows are copied into ai_providers on upgrade. Prefer AiProvider."""
     __tablename__ = "finance_ai_providers"

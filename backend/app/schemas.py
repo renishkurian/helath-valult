@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional, List, Dict
 from pydantic import BaseModel, EmailStr, Field
 from app.models import Relation, DocCategory, RepeatRule, AuditAction, UserRole
 
@@ -1013,6 +1013,9 @@ class AiConnectionTestOut(BaseModel):
     kind: Optional[str] = None
     model: Optional[str] = None
     sample: str = ""
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
 
 
 class AiChatIn(BaseModel):
@@ -1048,6 +1051,33 @@ class AiChatReplyOut(BaseModel):
     title: str
     reply: str
     messages: List[AiChatMessageOut] = []
+
+
+class AiUsageLogOut(BaseModel):
+    id: str
+    client: str
+    client_label: str
+    provider_name: Optional[str] = None
+    provider_kind: Optional[str] = None
+    model: Optional[str] = None
+    prompt_tokens: Optional[int] = None
+    completion_tokens: Optional[int] = None
+    total_tokens: Optional[int] = None
+    latency_ms: Optional[int] = None
+    ok: bool = True
+    error: Optional[str] = None
+    created_at: datetime
+
+
+class AiUsageSummaryOut(BaseModel):
+    days: int = 30
+    calls: int = 0
+    ok: int = 0
+    failed: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    by_client: Dict[str, int] = {}
 
 
 class FinanceRuleIn(BaseModel):

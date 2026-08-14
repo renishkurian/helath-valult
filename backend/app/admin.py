@@ -2660,6 +2660,27 @@ def ai_providers_page(request: Request, db: Session = Depends(get_db)):
     ))
 
 
+@router.get("/ai/logs", response_class=HTMLResponse)
+def ai_logs_page(request: Request, client: str = "", db: Session = Depends(get_db)):
+    from app import ai_usage
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    client_key = (client or "").strip() or None
+    if client_key and client_key not in ai_usage.CLIENT_LABELS:
+        client_key = None
+    rows = ai_usage.list_logs(db, user, limit=150, client=client_key)
+    logs = [ai_usage.log_out(r) for r in rows]
+    stats = ai_usage.summary(db, user, days=30)
+    return templates.TemplateResponse("ai_logs.html", _ai_ctx(
+        request, user, "ai_logs",
+        logs=logs,
+        stats=stats,
+        client_filter=client_key or "",
+        client_labels=ai_usage.CLIENT_LABELS,
+    ))
+
+
 @router.post("/ai/providers")
 def ai_provider_add(
     request: Request,

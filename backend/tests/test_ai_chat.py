@@ -129,7 +129,11 @@ def test_chat_roundtrip_with_mocked_llm():
     finally:
         db.close()
 
-    with patch("app.ai_chat.complete_chat", return_value="KIMS has a Lipid profile dated 2026-06-01 for Arun."):
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": "KIMS has a Lipid profile dated 2026-06-01 for Arun.",
+        "kind": "openrouter", "model": "openai/gpt-4o-mini",
+        "prompt_tokens": 120, "completion_tokens": 40, "total_tokens": 160,
+    }):
         r = client.post("/ai/chat", headers=headers, json={
             "message": "What reports do I have at KIMS?",
         })
@@ -140,6 +144,22 @@ def test_chat_roundtrip_with_mocked_llm():
     assert len(body["messages"]) == 2
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][1]["role"] == "assistant"
+
+    # Usage log written for Ask AI
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        logs = db.query(models.AiUsageLog).filter(models.AiUsageLog.user_id == vault_id(user)).all()
+        assert len(logs) >= 1
+        log = logs[-1]
+        assert log.client == "ask_ai"
+        assert log.model == "openai/gpt-4o-mini"
+        assert log.prompt_tokens == 120
+        assert log.completion_tokens == 40
+        assert log.total_tokens == 160
+        assert log.ok is True
+    finally:
+        db.close()
 
     listed = client.get("/ai/chat/threads", headers=headers)
     assert listed.status_code == 200
@@ -189,14 +209,20 @@ def test_admin_ask_page_and_session_chat():
     finally:
         db.close()
 
-    with patch("app.ai_chat.complete_chat", return_value="Nothing filed yet."):
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": "Nothing filed yet.", "kind": "ollama", "model": "llama3.2",
+        "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
+    }):
         chat = session.post("/admin/ai/ask/send", json={"message": "Any hospital reports?"})
     assert chat.status_code == 200, chat.text
     payload = chat.json()
     assert payload["reply"] == "Nothing filed yet."
     assert payload["thread_id"]
 
-    with patch("app.ai_chat.complete_chat", return_value="pong"):
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": "pong", "kind": "ollama", "model": "llama3.2",
+        "prompt_tokens": 8, "completion_tokens": 1, "total_tokens": 9,
+    }):
         probe = session.post("/admin/ai/ask/test")
     assert probe.status_code == 200, probe.text
     assert probe.json()["ok"] is True
@@ -206,10 +232,19 @@ def test_admin_ask_page_and_session_chat():
     tok = client.post("/auth/login", data={"username": email, "password": "password123"})
     assert tok.status_code == 200, tok.text
     headers = {"Authorization": f"Bearer {tok.json()['access_token']}"}
-    with patch("app.ai_chat.complete_chat", return_value="pong"):
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": "pong", "kind": "ollama", "model": "llama3.2",
+        "prompt_tokens": 8, "completion_tokens": 1, "total_tokens": 9,
+    }):
         api_probe = client.post("/ai/test", headers=headers)
     assert api_probe.status_code == 200, api_probe.text
     assert api_probe.json()["ok"] is True
+
+    logs_page = session.get("/admin/ai/logs")
+    assert logs_page.status_code == 200
+    assert "Usage logs" in logs_page.text
+    assert "Ask AI" in logs_page.text or "ask_ai" in logs_page.text
+    assert "Connection test" in logs_page.text or "connection_test" in logs_page.text
 
 
 def test_connection_requires_provider():
@@ -217,3 +252,13 @@ def test_connection_requires_provider():
     r = client.post("/ai/test", headers=headers)
     assert r.status_code == 400
     assert "provider" in r.json()["detail"].lower()
+
+
+def test_parse_usage_openai_and_anthropic():
+    from app.ai_usage import parse_usage
+    assert parse_usage({"usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}}) == {
+        "prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18,
+    }
+    assert parse_usage({"usage": {"input_tokens": 5, "output_tokens": 3}}) == {
+        "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8,
+    }

@@ -656,20 +656,32 @@ def complete_chat(
     base_url: str | None,
     system: str,
     messages: list[dict[str, str]],
-) -> str:
+) -> dict:
+    """Return {content, kind, model, prompt_tokens, completion_tokens, total_tokens}."""
     kind = (kind or "openai").lower()
     model = model or DEFAULT_MODELS.get(kind, "gpt-4o-mini")
     base = (base_url or DEFAULT_BASES.get(kind) or "https://api.openai.com/v1").rstrip("/")
     if kind == "anthropic":
         if not api_key:
             raise ValueError("Anthropic needs an API key")
-        return _anthropic_messages(api_key, model, system, messages)
-    return _openai_messages(base, api_key, model, system, messages)
+        content, usage = _anthropic_messages(api_key, model, system, messages)
+    else:
+        content, usage = _openai_messages(base, api_key, model, system, messages)
+    return {
+        "content": content or "",
+        "kind": kind,
+        "model": usage.get("model") or model,
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
+        "total_tokens": usage.get("total_tokens"),
+    }
 
 
 def _openai_messages(
     base_url: str, api_key: str | None, model: str, system: str, messages: list[dict[str, str]]
-) -> str:
+) -> tuple[str, dict]:
+    from app.ai_usage import parse_usage
+
     payload = [{"role": "system", "content": system}] + messages
     body = json.dumps({
         "model": model,
@@ -692,12 +704,17 @@ def _openai_messages(
         raise ValueError(f"Provider HTTP {exc.code}: {detail}") from exc
     except urllib.error.URLError as exc:
         raise ValueError(f"Provider unreachable: {exc.reason}") from exc
-    return (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+    content = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
+    usage = parse_usage(data)
+    usage["model"] = data.get("model") or model
+    return content, usage
 
 
 def _anthropic_messages(
     api_key: str, model: str, system: str, messages: list[dict[str, str]]
-) -> str:
+) -> tuple[str, dict]:
+    from app.ai_usage import parse_usage
+
     # Anthropic requires alternating user/assistant, first must be user.
     cleaned: list[dict[str, str]] = []
     for m in messages:
@@ -733,7 +750,10 @@ def _anthropic_messages(
         detail = exc.read().decode("utf-8", errors="replace")[:400]
         raise ValueError(f"Anthropic HTTP {exc.code}: {detail}") from exc
     parts = data.get("content") or []
-    return "".join(p.get("text") or "" for p in parts if isinstance(p, dict))
+    content = "".join(p.get("text") or "" for p in parts if isinstance(p, dict))
+    usage = parse_usage(data)
+    usage["model"] = data.get("model") or model
+    return content, usage
 
 
 def _title_from(message: str) -> str:
@@ -829,6 +849,9 @@ def delete_thread(db: Session, user: models.User, thread_id: str) -> bool:
 
 
 def ask(db: Session, user: models.User, message: str, thread_id: str | None = None) -> dict:
+    import time
+    from app import ai_usage
+
     text = (message or "").strip()
     if not text:
         raise ValueError("Type a question first")
@@ -857,18 +880,55 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     payload = [{"role": m["role"], "content": m["content"]} for m in history]
     payload.append({"role": "user", "content": text})
 
+    started = time.monotonic()
     try:
-        reply = complete_chat(
+        result = complete_chat(
             kind=bundle["kind"],
             api_key=bundle.get("api_key"),
             model=bundle.get("model"),
             base_url=bundle.get("base_url"),
             system=system,
             messages=payload,
-        ).strip()
-    except ValueError:
+        )
+        latency = int((time.monotonic() - started) * 1000)
+        reply = (result.get("content") or "").strip()
+        ai_usage.record(
+            db, user,
+            client="ask_ai",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=result.get("model") or bundle.get("model"),
+            prompt_tokens=result.get("prompt_tokens"),
+            completion_tokens=result.get("completion_tokens"),
+            total_tokens=result.get("total_tokens"),
+            latency_ms=latency,
+            ok=True,
+        )
+    except ValueError as exc:
+        latency = int((time.monotonic() - started) * 1000)
+        ai_usage.record(
+            db, user,
+            client="ask_ai",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=bundle.get("model"),
+            latency_ms=latency,
+            ok=False,
+            error=str(exc)[:200],
+        )
         raise
     except Exception as exc:
+        latency = int((time.monotonic() - started) * 1000)
+        ai_usage.record(
+            db, user,
+            client="ask_ai",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=bundle.get("model"),
+            latency_ms=latency,
+            ok=False,
+            error=str(exc)[:200],
+        )
         raise ValueError(f"Provider failed: {exc}") from exc
     if not reply:
         reply = "The provider returned an empty reply. Try again, or test the key on the Providers page."
