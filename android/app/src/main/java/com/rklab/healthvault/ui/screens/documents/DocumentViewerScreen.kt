@@ -159,7 +159,7 @@ fun DocumentViewerScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Paper)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = HubBg)
             )
         },
         containerColor = Color.Black
