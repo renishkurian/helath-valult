@@ -24,6 +24,18 @@ def test_register_and_login():
     assert "access_token" in r.json()
 
 
+def test_refresh_token_query_and_json():
+    data = _register("refresh_tok@example.com", "password123", "Refresh User")
+    refresh = data["refresh_token"]
+    q = client.post("/auth/refresh", params={"refresh_token": refresh})
+    assert q.status_code == 200, q.text
+    assert q.json()["access_token"]
+    body = client.post("/auth/refresh", json={"refresh_token": refresh})
+    assert body.status_code == 200, body.text
+    assert body.json()["access_token"]
+    assert body.json()["refresh_token"]
+
+
 def test_register_creates_self_person():
     data = _register("selfperson@example.com", "password123", "Self Person")
     headers = _auth_headers(data["access_token"])

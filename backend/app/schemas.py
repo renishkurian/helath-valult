@@ -53,6 +53,10 @@ class AppApproveIn(BaseModel):
     enabled: bool
 
 
+class RefreshIn(BaseModel):
+    refresh_token: str
+
+
 class DeviceTokenIn(BaseModel):
     token: str
     platform: str = "android"

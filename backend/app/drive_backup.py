@@ -77,7 +77,7 @@ def status_dict(row: models.GoogleDriveBackup | None, db: Session | None = None)
         "has_client": oauth_ready(db, row),
         "server_oauth": server,
         "last_run_at": row.last_run_at.isoformat() if row.last_run_at else None,
-        "last_ok": row.last_ok,
+        "last_ok": None if row.last_ok is None else bool(row.last_ok),
         "last_error": row.last_error,
         "last_file_name": row.last_file_name,
     }

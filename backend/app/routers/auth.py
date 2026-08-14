@@ -52,9 +52,23 @@ def login(
 
 
 @router.post("/refresh", response_model=schemas.LoginResponse)
-def refresh(refresh_token: str, db: Session = Depends(get_db)):
+async def refresh(
+    request: Request,
+    db: Session = Depends(get_db),
+    refresh_token: str | None = None,
+):
+    token = refresh_token
+    if not token:
+        try:
+            data = await request.json()
+            if isinstance(data, dict):
+                token = data.get("refresh_token")
+        except Exception:
+            token = None
+    if not token:
+        raise HTTPException(status_code=400, detail="refresh_token required")
     try:
-        payload = security.decode_token(refresh_token)
+        payload = security.decode_token(str(token))
         if payload.get("type") != "refresh":
             raise ValueError("wrong token type")
     except ValueError:

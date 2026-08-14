@@ -76,6 +76,7 @@ fun SettingsScreen(
     var totpCode by remember { mutableStateOf("") }
     var disableCode by remember { mutableStateOf("") }
     var account by remember { mutableStateOf<UserOut?>(null) }
+    var accountError by remember { mutableStateOf<String?>(null) }
     var drive by remember { mutableStateOf<GoogleDriveStatus?>(null) }
     var storage by remember { mutableStateOf<StorageStats?>(null) }
     var driveError by remember { mutableStateOf<String?>(null) }
@@ -89,10 +90,12 @@ fun SettingsScreen(
     fun toast(msg: String) = Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
 
     suspend fun refreshFromServer() {
-        account = runCatching { repository.me() }.getOrNull()
+        runCatching { repository.me() }
+            .onSuccess { account = it; accountError = null }
+            .onFailure { accountError = httpErr(it) }
         runCatching { repository.googleDriveStatus() }
             .onSuccess { drive = it; driveError = null }
-            .onFailure { drive = null; driveError = it.message }
+            .onFailure { drive = null; driveError = httpErr(it) }
         storage = runCatching { repository.storageStats() }.getOrNull()
         loading = false
     }
@@ -140,7 +143,12 @@ fun SettingsScreen(
                 modifier = Modifier.weight(1f),
                 icon = Icons.Outlined.Shield,
                 label = "Authenticator",
-                value = if (loading && account == null) "…" else if (totpOn) "On" else "Off",
+                value = when {
+                    loading && account == null -> "…"
+                    accountError != null && account == null -> "Can't load"
+                    totpOn -> "On"
+                    else -> "Off"
+                },
                 on = totpOn
             )
             StatusTile(
@@ -261,13 +269,23 @@ fun SettingsScreen(
                 Column(Modifier.weight(1f)) {
                     Text("Authenticator 2FA", style = MaterialTheme.typography.titleMedium, color = Ink)
                     Text(
-                        if (totpOn) "On — same as the website Security page"
-                        else "Off — website login is password only",
+                        when {
+                            totpOn -> "On — same as the website Security page"
+                            accountError != null && account == null -> "Could not load 2FA status. ${accountError}"
+                            else -> "Off — website login is password only"
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = InkSoft
                     )
                 }
-                StatusChip(if (totpOn) "On" else "Off", totpOn)
+                StatusChip(
+                    when {
+                        totpOn -> "On"
+                        accountError != null && account == null -> "—"
+                        else -> "Off"
+                    },
+                    totpOn
+                )
             }
             if (totpOn) {
                 Spacer(Modifier.height(10.dp))
@@ -670,7 +688,7 @@ private fun SettingsAction(icon: ImageVector, title: String, onClick: () -> Unit
 
 private fun driveStatusLine(drive: GoogleDriveStatus?, error: String?): String {
     return when {
-        error != null && drive == null -> "Could not load Drive status. Pull refresh below."
+        error != null && drive == null -> "Could not load Drive status. $error"
         drive == null -> "Connect Drive on the website: Storage → Google Drive."
         drive.connected && drive.enabled ->
             listOfNotNull(drive.email, "uploads at ${drive.hour}:00", "keeps ${drive.keep_days} days")
@@ -678,6 +696,15 @@ private fun driveStatusLine(drive: GoogleDriveStatus?, error: String?): String {
         drive.connected -> "Connected${drive.email?.let { " as $it" } ?: ""}. Daily upload is off."
         else -> "Not connected. On the website: Storage → Connect Google Drive."
     }
+}
+
+private fun httpErr(t: Throwable): String {
+    if (t is retrofit2.HttpException) {
+        val body = runCatching { t.response()?.errorBody()?.string() }.getOrNull().orEmpty()
+        val detail = Regex("\"detail\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.getOrNull(1)
+        return detail ?: t.message() ?: "HTTP ${t.code()}"
+    }
+    return t.message ?: "Request failed"
 }
 
 private fun formatBytes(bytes: Long): String {

@@ -10,7 +10,7 @@ class AuthInterceptor(private val tokenManager: TokenManager) : Interceptor {
 
         // Don't attach a stale token to the login/register calls themselves.
         val path = original.url.encodedPath
-        if (path.endsWith("/auth/login") || path.endsWith("/auth/register")) {
+        if (path.endsWith("/auth/login") || path.endsWith("/auth/register") || path.endsWith("/auth/refresh")) {
             return chain.proceed(original)
         }
 
