@@ -1503,3 +1503,47 @@ body.ask-ai .app-main{
   color:var(--v-ink); border-radius:999px; padding:.35rem .75rem; font-size:.8125rem;
 }
 .shop-chips button.chip:hover{ background:var(--v-hover); }
+.shop-progress-bar{
+  height:.45rem; border-radius:999px; background:var(--v-surface-2); overflow:hidden;
+  border:1px solid var(--v-line);
+}
+.shop-progress-bar > span{
+  display:block; height:100%; background:var(--v-gold, #E4C37A);
+}
+.shop-cat-bar{
+  display:flex; gap:.4rem; overflow-x:auto; padding-bottom:.5rem; margin-bottom:.5rem;
+  scrollbar-width:none;
+}
+.shop-cat-bar::-webkit-scrollbar{ display:none; }
+.shop-cat-bar .chip{ flex:0 0 auto; }
+.shop-bilingual{
+  display:inline-flex; flex-direction:column; align-items:flex-start; gap:.05rem;
+  border-radius:1rem !important; padding:.4rem .8rem !important; line-height:1.15;
+}
+.shop-chip-en{ font-size:.75rem; font-weight:700; letter-spacing:.02em; }
+.shop-chip-ml{ font-size:.7rem; color:var(--v-ink-3); }
+.shop-star{ background:rgba(228,195,122,.16) !important; border-color:var(--v-gold-line, #C9A45A) !important; }
+.shop-ai-toggle{
+  display:flex; align-items:center; gap:.5rem; font-size:.875rem; color:var(--v-ink-2);
+  cursor:pointer; user-select:none;
+}
+.shop-ai-toggle input{ margin:0; }
+.shop-suggest{
+  position:absolute; left:0; right:0; top:100%; z-index:8;
+  background:var(--v-surface); border:1px solid var(--v-line); border-radius:.75rem;
+  margin-top:.25rem; max-height:16rem; overflow:auto; box-shadow:0 12px 32px rgba(0,0,0,.35);
+}
+.shop-suggest-row{
+  display:flex; justify-content:space-between; gap:.75rem; width:100%;
+  background:transparent; border:0; color:var(--v-ink); text-align:left;
+  padding:.55rem .85rem; font-size:.875rem;
+}
+.shop-suggest-row:hover{ background:var(--v-hover); }
+.shop-item-filter{ max-width:14rem; }
+.shop-status{
+  display:inline-flex; align-items:center; border-radius:999px; padding:.15rem .55rem;
+  font-size:.6875rem; font-weight:600; letter-spacing:.02em;
+}
+.shop-status.planning{ background:rgba(125,170,255,.16); color:#9EC0FF; }
+.shop-status.shopping{ background:rgba(240,160,180,.16); color:#F3B4C4; }
+.shop-status.done{ background:rgba(74,222,155,.16); color:#7BE3B2; }

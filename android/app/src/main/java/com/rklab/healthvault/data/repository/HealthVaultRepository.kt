@@ -729,6 +729,7 @@ class HealthVaultRepository(
     suspend fun getShopList(id: String) = api.getShopList(id)
     suspend fun deleteShopList(id: String) { api.deleteShopList(id) }
     suspend fun addShopItem(listId: String, body: ShopItemIn) = api.addShopItem(listId, body)
+    suspend fun suggestShopItems(q: String, limit: Int = 8) = api.suggestShopItems(q, limit)
     suspend fun toggleShopItem(listId: String, itemId: String) = api.toggleShopItem(listId, itemId)
     suspend fun approveShopItem(listId: String, itemId: String) = api.approveShopItem(listId, itemId)
     suspend fun rejectShopItem(listId: String, itemId: String) { api.rejectShopItem(listId, itemId) }

@@ -31,7 +31,8 @@ def test_tracker_list_item_toggle_and_share():
     )
     assert item.status_code == 201, item.text
     body = item.json()
-    assert body["name"]
+    assert "Onion" in body["name"]
+    assert "ഉള്ളി" in body["name"]
     assert body["emoji"]
     item_id = body["id"]
 
@@ -70,6 +71,17 @@ def test_tracker_recognize_and_friends_send():
     rec = client.post("/tracker/recognize", headers=owner, json={"name": "paal"})
     assert rec.status_code == 200, rec.text
     assert rec.json()["english"] == "Milk"
+    assert rec.json()["malayalam"]
+    assert rec.json()["matched"] is True
+
+    brinjal = client.post("/tracker/recognize", headers=owner, json={"name": "vazhuth"})
+    assert brinjal.status_code == 200, brinjal.text
+    assert brinjal.json()["english"] == "Brinjal"
+    assert "വാഴുതന" in (brinjal.json()["malayalam"] or "")
+
+    hits = client.get("/tracker/suggest", headers=owner, params={"q": "vazhuth"})
+    assert hits.status_code == 200, hits.text
+    assert any(row["english"] == "Brinjal" for row in hits.json())
 
     groups = client.get("/tracker/quick-add", headers=owner)
     assert groups.status_code == 200
@@ -135,4 +147,6 @@ def test_admin_list_detail_renders_quick_add():
     assert "Market" in page.text
     assert "Quick add" in page.text
     assert "Potato" in page.text
+    assert "ഉള്ളി" in page.text
+    assert "Use AI (Malayalam" in page.text
     assert "Internal Server Error" not in page.text

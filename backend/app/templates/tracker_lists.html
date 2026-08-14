@@ -71,19 +71,29 @@
 {% if lists %}
 <div class="list-rows">
   {% for lst in lists %}
+  {% set n = lst.item_count or 0 %}
+  {% set c = lst.checked_count or 0 %}
+  {% set pct = ((c / n * 100)|round(0, 'floor')|int) if n else 0 %}
   <a class="list-row" href="/admin/tracker/lists/{{ lst.id }}">
+    <span class="shop-emoji">🛒</span>
     <span class="row-body">
       <span class="row-title">{{ lst.name }}</span>
       <span class="row-meta">
-        {{ lst.item_count }} items
-        {% if lst.checked_count %} · {{ lst.checked_count }} done{% endif %}
+        {{ c }}/{{ n }} items
         {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
-        {% if lst.completed %}<span class="badge badge-soft ms-1">Done</span>{% endif %}
       </span>
     </span>
-    <span class="row-side">
-      {% if lst.total_amount %}{{ inr(lst.total_amount) }}{% endif %}
-      <i class="bi bi-chevron-right text-faint"></i>
+    <span class="row-side text-end">
+      {% if lst.completed %}
+      <span class="shop-status done">Done</span>
+      {% elif c %}
+      <span class="shop-status shopping">Shopping</span>
+      {% else %}
+      <span class="shop-status planning">Planning</span>
+      {% endif %}
+      <div class="small text-muted mt-1">
+        {% if lst.total_amount %}{{ inr(lst.total_amount) }} · {% endif %}{{ pct }}%
+      </div>
     </span>
   </a>
   {% endfor %}

@@ -14,6 +14,7 @@ QUICK_ADD: dict[str, list[dict]] = {
         {"english": "Potato", "malayalam": "ഉരുളക്കിഴങ്ങ്", "emoji": "🥔"},
         {"english": "Tomato", "malayalam": "തക്കാളി", "emoji": "🍅"},
         {"english": "Onion", "malayalam": "ഉള്ളി", "emoji": "🧅"},
+        {"english": "Big Onion", "malayalam": "വലിയ ഉള്ളി", "emoji": "🧅"},
         {"english": "Garlic", "malayalam": "വെളുത്തുള്ളി", "emoji": "🧄"},
         {"english": "Ginger", "malayalam": "ഇഞ്ചി", "emoji": "🫚"},
         {"english": "Green Chilli", "malayalam": "പച്ചമുളക്", "emoji": "🌶️"},
@@ -23,12 +24,15 @@ QUICK_ADD: dict[str, list[dict]] = {
         {"english": "Spinach", "malayalam": "ചീര", "emoji": "🥬"},
         {"english": "Beans", "malayalam": "ബീൻസ്", "emoji": "🫛"},
         {"english": "Lady's Finger", "malayalam": "വെണ്ട", "emoji": "🥒"},
-        {"english": "Brinjal", "malayalam": "വാഴുതന", "emoji": "🍆"},
+        {"english": "Brinjal", "malayalam": "വാഴുതനങ്ങ", "emoji": "🍆"},
+        {"english": "Ash Gourd", "malayalam": "കുമ്പളങ്ങ", "emoji": "🍈"},
+        {"english": "Banana Flower", "malayalam": "വാഴപ്പൂ", "emoji": "🍌"},
         {"english": "Cucumber", "malayalam": "വെള്ളരി", "emoji": "🥒"},
         {"english": "Bitter Gourd", "malayalam": "പാവയ്ക്ക", "emoji": "🥒"},
         {"english": "Drumstick", "malayalam": "മുരിങ്ങക്കായി", "emoji": "🥒"},
         {"english": "Tapioca", "malayalam": "കപ്പ", "emoji": "🥔"},
         {"english": "Yam", "malayalam": "ചേന", "emoji": "🥔"},
+        {"english": "Taro", "malayalam": "ചേമ്പ്", "emoji": "🥔"},
         {"english": "Raw Banana", "malayalam": "വാഴക", "emoji": "🍌"},
         {"english": "Raw Jackfruit", "malayalam": "ചക്ക", "emoji": "🍈"},
     ],
@@ -107,6 +111,7 @@ QUICK_ADD: dict[str, list[dict]] = {
         {"english": "Egg", "malayalam": "മുട്ട", "emoji": "🥚"},
     ],
     "fish": [
+        {"english": "Fish", "malayalam": "മീൻ", "emoji": "🐟"},
         {"english": "Sardine", "malayalam": "മത്തി", "emoji": "🐟"},
         {"english": "Mackerel", "malayalam": "അയല", "emoji": "🐟"},
         {"english": "Pearl Spot", "malayalam": "കരിമീൻ", "emoji": "🐟"},
@@ -115,6 +120,7 @@ QUICK_ADD: dict[str, list[dict]] = {
         {"english": "Pomfret", "malayalam": "ആവോലി", "emoji": "🐟"},
     ],
     "meat": [
+        {"english": "Meat", "malayalam": "ഇറച്ചി", "emoji": "🍖"},
         {"english": "Chicken", "malayalam": "കോഴി", "emoji": "🍗"},
         {"english": "Mutton", "malayalam": "ആട്ടിറച്ചി", "emoji": "🍖"},
         {"english": "Beef", "malayalam": "ബീഫ്", "emoji": "🥩"},
@@ -153,17 +159,38 @@ GROUP_LABELS = {
     "household": "Household · വീട്",
 }
 
+GROUP_ICONS = {
+    "vegetables": "🥬", "fruits": "🍎", "spices": "🌶️", "dals": "🫘",
+    "grains": "🍚", "essentials": "🧂", "dairy": "🥛", "fish": "🐟",
+    "meat": "🍗", "snacks": "🥨", "household": "🧴",
+}
+
+FREQUENT = {
+    "onion", "big onion", "tomato", "potato", "garlic", "ginger",
+    "rice", "milk", "egg", "shallots", "green chilli",
+}
+
 # Transliteration keys → catalog item (from the original expense tracker).
 SEED_KEYS = {
-    "mutta": "Egg", "paal": "Milk", "pal": "Milk", "thair": "Curd", "ney": "Ghee",
+    "mutta": "Egg", "paal": "Milk", "pal": "Milk", "thair": "Curd", "thayir": "Curd",
+    "ney": "Ghee", "neyyi": "Ghee",
     "venna": "Butter", "ari": "Rice", "gothambu": "Wheat", "aripodi": "Rice Flour",
-    "ulli": "Onion", "savola": "Shallots", "veluthulli": "Garlic", "inji": "Ginger",
-    "thakali": "Tomato", "urulakizhangu": "Potato", "kizhangu": "Potato",
-    "vendakka": "Lady's Finger", "venda": "Lady's Finger", "vazhuthananga": "Brinjal",
+    "ulli": "Onion", "ullii": "Onion", "savola": "Shallots", "cheruulli": "Shallots",
+    "valiyaulli": "Big Onion", "bigonion": "Big Onion",
+    "veluthulli": "Garlic", "veluthulli": "Garlic", "inji": "Ginger",
+    "thakali": "Tomato", "thakkali": "Tomato", "urulakizhangu": "Potato",
+    "kizhangu": "Potato", "urula": "Potato",
+    "vendakka": "Lady's Finger", "venda": "Lady's Finger", "vendaka": "Lady's Finger",
+    "vazhuthananga": "Brinjal", "vazhuthanga": "Brinjal", "vazhuthananga": "Brinjal",
+    "vazhuth": "Brinjal", "vaazhuthananga": "Brinjal", "baingan": "Brinjal",
+    "eggplant": "Brinjal", "kathirikka": "Brinjal",
+    "kumbalam": "Ash Gourd", "kumbalanga": "Ash Gourd", "ashgourd": "Ash Gourd",
+    "vazhapoo": "Banana Flower", "vazhappoo": "Banana Flower", "bananaflower": "Banana Flower",
     "payar": "Beans", "mulaku": "Green Chilli", "pachamulaku": "Green Chilli",
     "cheera": "Spinach", "kappa": "Tapioca", "chembu": "Taro", "chena": "Yam",
     "thenga": "Coconut", "pazham": "Banana", "vazha": "Banana", "manga": "Mango",
-    "chakka": "Jackfruit", "ilaneer": "Tender Coconut", "kozhi": "Chicken",
+    "chakka": "Jackfruit", "ilaneer": "Tender Coconut", "ilaneer": "Tender Coconut",
+    "kozhi": "Chicken",
     "meen": "Fish", "chemmeen": "Prawns", "aadu": "Mutton", "panni": "Pork",
     "irachi": "Meat", "manjal": "Turmeric", "mulakupodi": "Chilli Powder",
     "mallipodi": "Coriander Powder", "kurumulaku": "Pepper", "jeerakam": "Cumin",
@@ -171,9 +198,10 @@ SEED_KEYS = {
     "karuva": "Cinnamon", "kariveppila": "Curry Leaves", "puli": "Tamarind",
     "uluva": "Fenugreek", "uppu": "Salt", "panjasara": "Sugar", "chakkara": "Jaggery",
     "sharkara": "Jaggery", "sharkkara": "Jaggery", "sarkara": "Jaggery",
-    "then": "Honey", "velichenna": "Coconut Oil", "enna": "Oil", "pappadam": "Pappadam",
+    "then": "Honey", "velichenna": "Coconut Oil", "enna": "Coconut Oil", "pappadam": "Pappadam",
     "parippu": "Toor Dal", "kadala": "Chickpeas", "uzhunnu": "Urad Dal",
-    "chaya": "Tea Powder", "kappi": "Coffee Powder",
+    "chaya": "Tea Powder", "chaaya": "Tea Powder", "kappi": "Coffee Powder",
+    "mathi": "Sardine", "ayala": "Mackerel", "karimeen": "Pearl Spot",
 }
 
 PARSER_TO_FINANCE = {
@@ -203,31 +231,79 @@ def _all_catalog() -> list[dict]:
     return rows
 
 
+def _fold(s: str) -> str:
+    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+
+
+def _bare_name(name: str) -> str:
+    raw = (name or "").strip()
+    if "(" in raw and raw.endswith(")"):
+        raw = raw[: raw.rfind("(")].strip()
+    return raw
+
+
+def _aliases_for() -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for key, english in SEED_KEYS.items():
+        out.setdefault(english.lower(), []).append(_fold(key) or key.lower())
+    return out
+
+
+def _entry_keys(row: dict) -> list[str]:
+    keys = [_fold(row.get("english") or ""), _fold(row.get("malayalam") or "")]
+    for alias in _aliases_for().get((row.get("english") or "").lower(), []):
+        keys.append(alias)
+    return [k for k in dict.fromkeys(keys) if k]
+
+
 def grouped_quick_add() -> list[dict]:
     groups = []
     for key, items in QUICK_ADD.items():
         groups.append({
             "key": key,
             "label": GROUP_LABELS.get(key, key.title()),
+            "icon": GROUP_ICONS.get(key, "🛒"),
             # Use "entries" — Jinja treats dict.items as dict.items(), which 500s the list page.
-            "entries": [{**it, "category": key} for it in items],
+            "entries": [
+                {
+                    **it,
+                    "category": key,
+                    "aliases": _entry_keys({**it, "category": key}),
+                    "star": (it.get("english") or "").lower() in FREQUENT,
+                }
+                for it in items
+            ],
         })
     return groups
 
 
+def catalog_payload() -> dict:
+    return {"groups": grouped_quick_add()}
+
+
+def format_item_name(english: str, malayalam: Optional[str] = None) -> str:
+    en = (english or "").strip()
+    ml = (malayalam or "").strip()
+    if en and ml:
+        return f"{en} ({ml})"
+    return en or ml
+
+
 def seed_dictionary(db: Session) -> None:
-    if db.query(models.ShopDictItem).first():
-        return
     catalog = {row["english"].lower(): row for row in _all_catalog()}
-    seen = set()
+    existing = {row[0] for row in db.query(models.ShopDictItem.key).all()}
+    added = False
+    seen: set[str] = set()
     for key, english in SEED_KEYS.items():
         row = catalog.get(english.lower())
         if not row:
             continue
         k = key.lower().strip()
-        if k in seen:
+        if not k or k in seen:
             continue
         seen.add(k)
+        if k in existing:
+            continue
         db.add(models.ShopDictItem(
             key=k,
             english=row["english"],
@@ -236,9 +312,10 @@ def seed_dictionary(db: Session) -> None:
             source="seed",
             category=row.get("category"),
         ))
+        added = True
     for row in _all_catalog():
-        k = row["english"].lower().strip()
-        if k in seen:
+        k = (row["english"] or "").lower().strip()
+        if not k or k in seen or k in existing:
             continue
         seen.add(k)
         db.add(models.ShopDictItem(
@@ -249,28 +326,129 @@ def seed_dictionary(db: Session) -> None:
             source="seed",
             category=row.get("category"),
         ))
-    db.commit()
+        added = True
+    if added:
+        db.commit()
+
+
+def _candidate_rows(db: Session) -> list[dict]:
+    seed_dictionary(db)
+    by_en: dict[str, dict] = {}
+    for row in _all_catalog():
+        by_en[(row["english"] or "").lower()] = {
+            "english": row["english"],
+            "malayalam": row.get("malayalam"),
+            "emoji": row.get("emoji") or "🛒",
+            "category": row.get("category"),
+            "keys": _entry_keys(row),
+        }
+    for row in db.query(models.ShopDictItem).all():
+        en = (row.english or "").strip()
+        if not en:
+            continue
+        slot = by_en.setdefault(en.lower(), {
+            "english": en,
+            "malayalam": row.malayalam,
+            "emoji": row.emoji or "🛒",
+            "category": row.category,
+            "keys": [],
+        })
+        extra = _fold(row.key or "")
+        if extra and extra not in slot["keys"]:
+            slot["keys"].append(extra)
+        if row.malayalam and not slot.get("malayalam"):
+            slot["malayalam"] = row.malayalam
+    return list(by_en.values())
+
+
+def _score_row(q: str, q_fold: str, row: dict) -> int:
+    en = (row.get("english") or "").lower()
+    ml = row.get("malayalam") or ""
+    ml_fold = _fold(ml)
+    keys = row.get("keys") or []
+    best = 0
+    if q == en or q == ml or q_fold == ml_fold:
+        best = max(best, 100)
+    if q_fold and q_fold == _fold(en):
+        best = max(best, 100)
+    for key in keys:
+        if not key:
+            continue
+        if key == q_fold or key == q:
+            best = max(best, 100)
+        elif q_fold and key.startswith(q_fold):
+            best = max(best, 92 if len(q_fold) >= 4 else 80)
+        elif q_fold and q_fold.startswith(key) and len(key) >= 4:
+            best = max(best, 78)
+        elif q_fold and q_fold in key:
+            best = max(best, 70)
+    if q_fold and _fold(en).startswith(q_fold):
+        best = max(best, 88)
+    if q and ml.startswith(q):
+        best = max(best, 90)
+    if q_fold and ml_fold.startswith(q_fold):
+        best = max(best, 90)
+    if q_fold and q_fold in _fold(en):
+        best = max(best, 65)
+    if q and q in ml:
+        best = max(best, 75)
+    return best
+
+
+def suggest(db: Session, name: str, limit: int = 12) -> list[dict]:
+    raw = (name or "").strip()
+    if not raw:
+        return []
+    q = _bare_name(raw).lower()
+    q_fold = _fold(q) or _fold(raw)
+    scored: list[tuple[int, dict]] = []
+    for row in _candidate_rows(db):
+        score = _score_row(q, q_fold, row)
+        if score < 65:
+            continue
+        scored.append((score, row))
+    scored.sort(key=lambda pair: (-pair[0], pair[1]["english"]))
+    out = []
+    seen = set()
+    for score, row in scored:
+        key = row["english"].lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "english": row["english"],
+            "malayalam": row.get("malayalam"),
+            "emoji": row.get("emoji") or "🛒",
+            "category": row.get("category"),
+            "matched": True,
+            "score": score,
+        })
+        if len(out) >= max(1, min(int(limit or 12), 20)):
+            break
+    return out
 
 
 def recognize(db: Session, name: str) -> dict:
-    seed_dictionary(db)
     raw = (name or "").strip()
     if not raw:
-        return {"english": "", "malayalam": None, "emoji": "🛒", "category": None}
-    q = raw.lower()
-    hit = db.query(models.ShopDictItem).filter(models.ShopDictItem.key == q).first()
-    if hit:
-        return _dict_out(hit)
-    rows = db.query(models.ShopDictItem).all()
-    for row in rows:
-        if (row.english or "").lower() == q or (row.malayalam or "") == raw:
-            return _dict_out(row)
-    for row in rows:
-        en = (row.english or "").lower()
-        ml = row.malayalam or ""
-        if q in en or q in (row.key or "") or (ml and raw in ml):
-            return _dict_out(row)
-    return {"english": raw.title(), "malayalam": None, "emoji": "🛒", "category": None}
+        return {"english": "", "malayalam": None, "emoji": "🛒", "category": None, "matched": False}
+    hits = suggest(db, raw, limit=1)
+    if hits and hits[0].get("score", 0) >= 70:
+        hit = hits[0]
+        return {
+            "english": hit["english"],
+            "malayalam": hit.get("malayalam"),
+            "emoji": hit.get("emoji") or "🛒",
+            "category": hit.get("category"),
+            "matched": True,
+        }
+    return {
+        "english": _bare_name(raw).title(),
+        "malayalam": None,
+        "emoji": "🛒",
+        "category": None,
+        "matched": False,
+    }
 
 
 def _dict_out(row: models.ShopDictItem) -> dict:
@@ -279,6 +457,7 @@ def _dict_out(row: models.ShopDictItem) -> dict:
         "malayalam": row.malayalam,
         "emoji": row.emoji or "🛒",
         "category": row.category,
+        "matched": True,
     }
 
 

@@ -33,6 +33,7 @@ import com.rklab.healthvault.ui.theme.Navy
 import com.rklab.healthvault.ui.theme.StampRed
 import com.rklab.healthvault.ui.theme.TextDark
 import com.rklab.healthvault.ui.theme.VaultGold
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -160,6 +161,8 @@ fun ShopDetailScreen(
     var lst by remember { mutableStateOf<ShopListOut?>(null) }
     var loading by remember { mutableStateOf(true) }
     var newItem by remember { mutableStateOf("") }
+    var useAi by remember { mutableStateOf(true) }
+    var suggestions by remember { mutableStateOf<List<ShopGroceryItemOut>>(emptyList()) }
 
     fun reload() {
         scope.launch {
@@ -169,6 +172,16 @@ fun ShopDetailScreen(
         }
     }
     LaunchedEffect(listId) { reload() }
+    LaunchedEffect(newItem, useAi) {
+        val q = newItem.trim()
+        if (!useAi || q.length < 2) {
+            suggestions = emptyList()
+            return@LaunchedEffect
+        }
+        delay(180)
+        runCatching { suggestions = repository.suggestShopItems(q) }
+            .onFailure { suggestions = emptyList() }
+    }
     val items = lst?.items.orEmpty()
 
     Column(Modifier.fillMaxSize().background(HubBg)) {
@@ -213,7 +226,7 @@ fun ShopDetailScreen(
             OutlinedTextField(
                 value = newItem,
                 onValueChange = { newItem = it },
-                placeholder = { Text("Onion or ഉള്ളി") },
+                placeholder = { Text("vazhuth or ഉള്ളി") },
                 singleLine = true,
                 modifier = Modifier.weight(1f)
             )
@@ -225,11 +238,50 @@ fun ShopDetailScreen(
                     runCatching { repository.addShopItem(listId, ShopItemIn(name)) }
                         .onSuccess {
                             newItem = ""
+                            suggestions = emptyList()
                             reload()
                         }
                 }
             }) {
                 Icon(Icons.Filled.Add, contentDescription = "Add", tint = VaultGold)
+            }
+        }
+        Row(
+            Modifier.padding(horizontal = 20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(checked = useAi, onCheckedChange = { useAi = it })
+            Text("Use AI (Malayalam & misspellings)", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+        }
+        if (suggestions.isNotEmpty()) {
+            Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+                suggestions.take(6).forEach { hit ->
+                    val label = buildString {
+                        append(hit.emoji)
+                        append(" ")
+                        append(hit.english)
+                        hit.malayalam?.let { append(" ($it)") }
+                    }
+                    Text(
+                        label,
+                        color = VaultGold,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                newItem = hit.english
+                                scope.launch {
+                                    runCatching { repository.addShopItem(listId, ShopItemIn(hit.english)) }
+                                        .onSuccess {
+                                            newItem = ""
+                                            suggestions = emptyList()
+                                            reload()
+                                        }
+                                }
+                            }
+                            .padding(vertical = 6.dp)
+                    )
+                }
             }
         }
         if (loading && lst == null) {

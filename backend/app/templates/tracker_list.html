@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ lst.name }}{% endblock %}
+{% set item_n = lst.item_count or 0 %}
+{% set checked_n = lst.checked_count or 0 %}
+{% set pct = ((checked_n / item_n * 100)|round(0, 'floor')|int) if item_n else 0 %}
 {% block content %}
+<div id="shop-list-root" data-catalog="{{ catalog_json | e }}">
 <div class="page-head">
   <div>
     <div class="eyebrow">
@@ -14,6 +18,9 @@
   <div class="page-actions">
     <form method="post" action="/admin/tracker/lists/{{ lst.id }}/share">
       <button class="btn btn-outline-light" type="submit"><i class="bi bi-share"></i> Share</button>
+    </form>
+    <form method="post" action="/admin/tracker/lists/{{ lst.id }}/whatsapp">
+      <button class="btn btn-outline-success" type="submit"><i class="bi bi-whatsapp"></i> WhatsApp</button>
     </form>
     <form method="post" action="/admin/tracker/lists/{{ lst.id }}/complete">
       <button class="btn btn-outline-secondary" type="submit">
@@ -36,12 +43,12 @@
 <div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
 {% endif %}
 
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-3">
   <div class="col-6 col-lg-3">
-    <div class="stat"><div class="lbl">Items</div><div class="val">{{ lst.item_count }}</div></div>
+    <div class="stat"><div class="lbl">Items</div><div class="val">{{ item_n }}</div></div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="stat"><div class="lbl">Checked</div><div class="val">{{ lst.checked_count }}</div></div>
+    <div class="stat"><div class="lbl">Checked</div><div class="val">{{ checked_n }}</div></div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat {% if lst.pending_count %}accent{% endif %}"><div class="lbl">Pending</div><div class="val">{{ lst.pending_count }}</div></div>
@@ -50,13 +57,21 @@
     <div class="stat"><div class="lbl">Total</div><div class="val">{{ inr(lst.total_amount) }}</div></div>
   </div>
 </div>
+<div class="shop-progress mb-4">
+  <div class="d-flex justify-content-between small text-muted mb-1">
+    <span>{% if lst.completed %}Done{% elif checked_n %}Shopping{% else %}Planning{% endif %}</span>
+    <span>{{ pct }}% · {{ checked_n }} of {{ item_n }}</span>
+  </div>
+  <div class="shop-progress-bar"><span style="width:{{ pct }}%"></span></div>
+</div>
 
 <div class="surface mb-4">
   <div class="section-head"><h2>Add item</h2></div>
-  <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items" class="row g-2 align-items-end">
-    <div class="col-md-4">
+  <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items" class="row g-2 align-items-end" id="shop-add-form">
+    <div class="col-md-4 position-relative">
       <label class="form-label" for="item-name">Name</label>
-      <input class="form-control" id="item-name" name="name" required placeholder="ഉള്ളി or onion" autocomplete="off">
+      <input class="form-control" id="item-name" name="name" required placeholder="vazhuth or ഉള്ളി or onion" autocomplete="off">
+      <div id="shop-suggest" class="shop-suggest" hidden></div>
     </div>
     <div class="col-4 col-md-2">
       <label class="form-label" for="item-qty">Qty</label>
@@ -99,11 +114,57 @@
 </div>
 {% endif %}
 
+<details class="surface mb-3">
+  <summary class="shop-group"><i class="bi bi-receipt"></i> Bills &amp; receipts</summary>
+  <div class="p-3 pt-0">
+    <p class="text-muted mb-2">Bank PDFs post into Money Manager after you review them. {{ pending_statements }} row(s) waiting.</p>
+    <a class="btn btn-sm btn-outline-light" href="/admin/tracker/statements"><i class="bi bi-file-earmark-pdf"></i> Open statements</a>
+  </div>
+</details>
+
+{% if groups %}
+<details class="surface mb-4" open>
+  <summary class="shop-group"><i class="bi bi-lightning"></i> Quick add <span class="text-muted fw-normal">· tap an item</span></summary>
+  <div class="p-3 pt-0">
+    <label class="shop-ai-toggle mb-3">
+      <input type="checkbox" id="shop-use-ai" checked>
+      <span>Use AI (Malayalam &amp; misspellings)</span>
+    </label>
+    <input class="form-control mb-3" id="shop-quick-search" type="search" placeholder="Search items…" autocomplete="off">
+    <div class="shop-cat-bar" id="shop-cat-bar">
+      <button type="button" class="chip active" data-cat="all">All</button>
+      {% for g in groups %}
+      <button type="button" class="chip" data-cat="{{ g.key }}">{{ g.icon }} {{ g.label.split('·')[0].strip() }}</button>
+      {% endfor %}
+    </div>
+    <div class="shop-chips" id="shop-chips-host">
+      {% for g in groups %}
+      {% for it in g.entries %}
+      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items" data-cat="{{ it.category }}" data-en="{{ it.english }}" data-ml="{{ it.malayalam or '' }}" data-keys="{{ it.aliases|join(' ') }}" {% if it.star %}data-star="1"{% endif %}>
+        <input type="hidden" name="name" value="{{ it.english }}">
+        <input type="hidden" name="emoji" value="{{ it.emoji }}">
+        <input type="hidden" name="category" value="{{ it.category }}">
+        <button class="chip shop-bilingual{% if it.star %} shop-star{% endif %}" type="submit">
+          <span class="shop-chip-en">{{ it.emoji }} {{ it.english|upper }}</span>
+          {% if it.malayalam %}<span class="shop-chip-ml">({{ it.malayalam }})</span>{% endif %}
+        </button>
+      </form>
+      {% endfor %}
+      {% endfor %}
+    </div>
+    <p class="small text-muted mb-0 mt-2" id="shop-chip-empty" hidden>No matches. Type the name above and add it.</p>
+  </div>
+</details>
+{% endif %}
+
 {% if approved %}
-<div class="section-head"><h2>On the list</h2></div>
-<div class="list-rows mb-4">
+<div class="section-head d-flex justify-content-between align-items-center">
+  <h2>Items</h2>
+  <input class="form-control shop-item-filter" id="shop-item-filter" type="search" placeholder="Search items…" autocomplete="off">
+</div>
+<div class="list-rows mb-4" id="shop-item-rows">
   {% for item in approved %}
-  <div class="list-row shop-item {% if item.checked %}checked{% endif %}">
+  <div class="list-row shop-item {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
     <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/toggle">
       <button class="btn btn-ghost p-0" type="submit" aria-label="{% if item.checked %}Uncheck{% else %}Check{% endif %}">
         <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
@@ -127,13 +188,14 @@
 {% else %}
 <div class="empty-state mb-4">
   <i class="bi bi-bag"></i>
-  <p>Nothing on the list yet. Type a name, or pick from quick-add below.</p>
+  <p>Nothing on the list yet. Type a Malayalam or English name, or pick from quick-add.</p>
 </div>
 {% endif %}
 
 {% if friends %}
 <div class="surface mb-4">
-  <div class="section-head"><h2>Send to a friend</h2></div>
+  <div class="section-head"><h2>Contributors</h2></div>
+  <p class="text-muted small">Send this list to a vault friend. They get a copy in their inbox.</p>
   <form method="post" action="/admin/tracker/lists/{{ lst.id }}/send" class="row g-2 align-items-end">
     <div class="col-md-6">
       <label class="form-label" for="send-email">Their vault email</label>
@@ -154,26 +216,11 @@
 </div>
 {% endif %}
 
-{% if groups %}
-<div class="section-head"><h2>Quick add</h2></div>
-{% for g in groups %}
-<details class="surface mb-2">
-  <summary class="shop-group">{{ g.label }}</summary>
-  <div class="shop-chips">
-    {% for it in g.entries %}
-    <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items">
-      <input type="hidden" name="name" value="{{ it.english }}">
-      <input type="hidden" name="emoji" value="{{ it.emoji }}">
-      <input type="hidden" name="category" value="{{ it.category }}">
-      <button class="chip" type="submit">{{ it.emoji }} {{ it.english }}</button>
-    </form>
-    {% endfor %}
-  </div>
-</details>
-{% endfor %}
-{% endif %}
-
 <form class="mt-4" method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" onsubmit="return confirm('Delete this list?');">
   <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete list</button>
 </form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/shop-list.js?v=1"></script>
 {% endblock %}

@@ -1553,6 +1553,7 @@ class ShopGroceryItemOut(BaseModel):
     malayalam: Optional[str] = None
     emoji: str = "🛒"
     category: Optional[str] = None
+    matched: bool = False
 
 
 class ShopSummaryOut(BaseModel):

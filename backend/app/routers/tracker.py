@@ -15,7 +15,10 @@ from app.templating import setup_templates
 from app import crypto, models, schemas
 from app.database import get_db
 from app.deps import get_current_user, require_owner, vault_id
-from app.grocery import grouped_quick_add, money, PARSER_TO_FINANCE, recognize, seed_dictionary
+from app.grocery import (
+    catalog_payload, format_item_name, grouped_quick_add, money, PARSER_TO_FINANCE,
+    recognize, seed_dictionary, suggest,
+)
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
 templates = setup_templates()
@@ -307,9 +310,13 @@ def share_list(
 
 def _add_item_row(db: Session, lst: models.ShopList, body: schemas.ShopItemIn, *, added_by: str, status: str) -> models.ShopItem:
     hint = recognize(db, body.name)
+    if hint.get("matched"):
+        display = format_item_name(hint.get("english") or "", hint.get("malayalam"))
+    else:
+        display = (body.name or hint.get("english") or "").strip()
     item = models.ShopItem(
         list_id=lst.id,
-        name=(body.name or hint["english"]).strip(),
+        name=display,
         quantity=Decimal(str(body.quantity if body.quantity not in (None, 0) else 1)),
         unit=(body.unit or "").strip() or None,
         price=Decimal(str(body.price)) if body.price not in (None, "") else None,
@@ -708,6 +715,16 @@ def recognize_item(
     return schemas.ShopGroceryItemOut(**recognize(db, body.name))
 
 
+@router.get("/suggest", response_model=list[schemas.ShopGroceryItemOut])
+def suggest_items(
+    q: str = "",
+    limit: int = 12,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return [schemas.ShopGroceryItemOut(**row) for row in suggest(db, q, limit=limit)]
+
+
 # ---------- PDF passwords ----------
 
 @router.get("/passwords", response_model=list[schemas.ShopPdfPasswordOut])
@@ -1000,6 +1017,8 @@ def ignore_one(
 
 @router.get("/public/{token}/page", response_class=HTMLResponse)
 def public_page(token: str, request: Request, db: Session = Depends(get_db), err: str = "", ok: str = ""):
+    from app.grocery import catalog_payload
+    import json
     try:
         share, lst = _list_by_token(db, token)
         db.commit()
@@ -1011,6 +1030,8 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
         "token": token,
         "err": err,
         "ok": ok,
+        "catalog_json": json.dumps(catalog_payload(), ensure_ascii=False),
+        "groups": catalog_payload()["groups"],
     })
 
 

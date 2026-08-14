@@ -1186,6 +1186,14 @@ data class ShopItemOut(
     val created_at: String = ""
 )
 
+data class ShopGroceryItemOut(
+    val english: String,
+    val malayalam: String? = null,
+    val emoji: String = "🛒",
+    val category: String? = null,
+    val matched: Boolean = false
+)
+
 data class ShopItemIn(
     val name: String,
     val quantity: Double? = 1.0,

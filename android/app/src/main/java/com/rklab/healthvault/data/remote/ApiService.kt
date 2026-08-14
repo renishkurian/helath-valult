@@ -688,6 +688,9 @@ interface ApiService {
     @POST("tracker/lists/{id}/items")
     suspend fun addShopItem(@Path("id") id: String, @Body body: ShopItemIn): ShopItemOut
 
+    @GET("tracker/suggest")
+    suspend fun suggestShopItems(@Query("q") q: String, @Query("limit") limit: Int = 8): List<ShopGroceryItemOut>
+
     @POST("tracker/lists/{id}/items/{itemId}/toggle")
     suspend fun toggleShopItem(@Path("id") id: String, @Path("itemId") itemId: String): ShopItemOut
 

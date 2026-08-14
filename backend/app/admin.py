@@ -3165,18 +3165,23 @@ def tracker_create_list(request: Request, name: str = Form(...), description: st
 @router.get("/tracker/lists/{list_id}", response_class=HTMLResponse)
 def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
-    from app.grocery import grouped_quick_add
+    from app.grocery import catalog_payload
+    import json
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     lst = tr.get_list(list_id, db=db, current_user=user)
     items = lst.items or []
     friends = tr.list_friends(db=db, current_user=user)
+    summary = tr.tracker_summary(db=db, current_user=user)
+    catalog = catalog_payload()
     return templates.TemplateResponse("tracker_list.html", _tr_ctx(
         request, user, "tr_lists", lst=lst,
         pending=[i for i in items if i.status == "pending"],
         approved=[i for i in items if i.status != "pending"],
-        friends=friends, groups=grouped_quick_add(),
+        friends=friends, groups=catalog["groups"],
+        catalog_json=json.dumps(catalog, ensure_ascii=False),
+        pending_statements=summary.pending_statements,
     ))
 
 
@@ -3249,6 +3254,30 @@ def tracker_share_list(list_id: str, request: Request, db: Session = Depends(get
         return RedirectResponse("/admin/login", status_code=302)
     share = tr.share_list(list_id, request, db=db, current_user=user)
     return RedirectResponse(f"/admin/tracker/lists/{list_id}?share={share.token}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/whatsapp")
+def tracker_whatsapp_list(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from urllib.parse import quote
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    share = tr.share_list(list_id, request, db=db, current_user=user)
+    lst = tr.get_list(list_id, db=db, current_user=user)
+    lines = [lst.name, share.url, ""]
+    for item in (lst.items or []):
+        if item.status == "pending":
+            continue
+        bit = item.name
+        if item.quantity:
+            bit += f" {item.quantity:g}"
+            if item.unit:
+                bit += f" {item.unit}"
+        if item.checked:
+            bit += " ✓"
+        lines.append(bit)
+    return RedirectResponse("https://wa.me/?text=" + quote("\n".join(lines)), status_code=303)
 
 
 @router.post("/tracker/lists/{list_id}/complete")

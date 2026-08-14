@@ -9,10 +9,10 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=10">
+<link rel="stylesheet" href="/static/vault.css?v=11">
 </head>
 <body>
-<div class="public-wrap">
+<div class="public-wrap" id="shop-list-root" data-catalog="{{ catalog_json | e }}">
   <div class="public-card" style="max-width:40rem;">
     <div class="public-brand">
       <span class="brand-mark">V</span>
@@ -33,14 +33,19 @@
     {% endif %}
 
     <form class="surface mb-4" method="post" action="/tracker/public/{{ token }}/items">
+      <label class="shop-ai-toggle mb-3">
+        <input type="checkbox" id="shop-use-ai" checked>
+        <span>Use AI (Malayalam &amp; misspellings)</span>
+      </label>
       <div class="row g-2 align-items-end">
         <div class="col-md-4">
           <label class="form-label" for="guest">Your name</label>
           <input class="form-control" id="guest" name="guest_name" required placeholder="Guest">
         </div>
-        <div class="col-md-5">
-          <label class="form-label" for="name">Item</label>
-          <input class="form-control" id="name" name="name" required placeholder="Milk">
+        <div class="col-md-5 position-relative">
+          <label class="form-label" for="item-name">Item</label>
+          <input class="form-control" id="item-name" name="name" required placeholder="vazhuth or ഉള്ളി" autocomplete="off">
+          <div id="shop-suggest" class="shop-suggest" hidden></div>
         </div>
         <div class="col-md-3">
           <button class="btn btn-primary w-100" type="submit">Suggest</button>
@@ -79,5 +84,6 @@
     </div>
   </div>
 </div>
+<script src="/static/shop-list.js?v=1"></script>
 </body>
 </html>
