@@ -53,7 +53,7 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { viewModel.load() }
 
-    Column(Modifier = Modifier.fillMaxSize().background(HubBg)) {
+    Column(modifier = Modifier.fillMaxSize().background(HubBg)) {
         OfflineBanner(isOffline = isOffline, pendingCount = pendingCount)
 
         Box(modifier = Modifier.weight(1f)) {

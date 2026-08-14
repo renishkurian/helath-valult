@@ -28,10 +28,11 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.rklab.healthvault.data.model.DocumentVersionOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.theme.HubBg
 import com.rklab.healthvault.ui.theme.Ink
 import com.rklab.healthvault.ui.theme.InkSoft
 import com.rklab.healthvault.ui.theme.Navy
-import com.rklab.healthvault.ui.theme.Paper
+import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
