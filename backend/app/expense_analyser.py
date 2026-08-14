@@ -59,7 +59,7 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
 
     row = _row(db, user)
     uid = vault_id(user)
-    counts = {"pending": 0, "matched": 0, "missed": 0, "posted": 0}
+    counts = {"pending": 0, "matched": 0, "missed": 0, "posted": 0, "corrected": 0}
     rows = (
         db.query(models.ExpenseAnalyserItem.status, func.count(models.ExpenseAnalyserItem.id))
         .filter(models.ExpenseAnalyserItem.user_id == uid)
@@ -103,6 +103,49 @@ def _f(value) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _received_day(mail: dict[str, Any] | None) -> str | None:
+    received = (mail or {}).get("received_at")
+    if received is None:
+        return None
+    if hasattr(received, "strftime"):
+        return received.strftime("%Y-%m-%d")
+    text = str(received)
+    return text[:10] if len(text) >= 10 else None
+
+
+def _best_txn_date(parsed: dict[str, Any], mail: dict[str, Any] | None, *, kind: str) -> str | None:
+    raw = parsed.get("txn_date") or parsed.get("date")
+    recv = _received_day(mail)
+    if kind == "bill_line" and raw:
+        return raw
+    if raw and recv:
+        try:
+            parsed_d = datetime.strptime(str(raw)[:10], "%Y-%m-%d")
+            recv_d = datetime.strptime(recv, "%Y-%m-%d")
+            if abs((parsed_d - recv_d).days) > 5:
+                return recv
+        except ValueError:
+            return recv
+    return raw or recv
+
+
+def _effective_sync_query(row: models.ExpenseAnalyserConnection) -> str:
+    q = (row.sync_query or "").strip()
+    if not q:
+        return gmail.DEFAULT_SYNC_QUERY
+    # Older shipped defaults omitted hdfcbank.com / instalerts — upgrade in place.
+    if "hdfcbank.net OR alerts.hdfcbank.net" in q and "hdfcbank.com" not in q:
+        return gmail.DEFAULT_SYNC_QUERY
+    return q
+
+
+def _looks_like_bank_alert(mail: dict[str, Any]) -> bool:
+    blob = f"{mail.get('from_addr') or ''} {mail.get('subject') or ''}".lower()
+    banks = ("hdfc", "icici", "sbi", "axis", "kotak", "yesbank", "indusind", "rbl", "idfc", "amex")
+    keys = ("txn", "transaction", "debited", "credited", "spent", "upi", "credit card")
+    return any(b in blob for b in banks) and any(k in blob for k in keys)
 
 
 def _parse_bill_lines(text: str) -> list[dict[str, Any]]:
@@ -151,7 +194,7 @@ def _find_ledger_match(
     txn_date: str | None,
     payee: str | None,
 ) -> models.FinanceTransaction | None:
-    if amount is None:
+    if amount is None or not txn_date:
         return None
     amt = Decimal(str(amount))
     q = db.query(models.FinanceTransaction).filter(
@@ -159,16 +202,15 @@ def _find_ledger_match(
         models.FinanceTransaction.amount == amt,
         models.FinanceTransaction.txn_type.in_(("expense", "income", "transfer")),
     )
-    if txn_date:
-        try:
-            base = datetime.strptime(txn_date, "%Y-%m-%d").date()
-            dates = [
-                (base + timedelta(days=d)).strftime("%Y-%m-%d")
-                for d in (-2, -1, 0, 1, 2)
-            ]
-            q = q.filter(models.FinanceTransaction.txn_date.in_(dates))
-        except ValueError:
-            q = q.filter(models.FinanceTransaction.txn_date == txn_date)
+    try:
+        base = datetime.strptime(txn_date, "%Y-%m-%d").date()
+        dates = [
+            (base + timedelta(days=d)).strftime("%Y-%m-%d")
+            for d in (-2, -1, 0, 1, 2)
+        ]
+        q = q.filter(models.FinanceTransaction.txn_date.in_(dates))
+    except ValueError:
+        q = q.filter(models.FinanceTransaction.txn_date == txn_date)
     rows = q.order_by(models.FinanceTransaction.created_at.desc()).limit(20).all()
     if not rows:
         return None
@@ -192,25 +234,37 @@ def _item_from_mail(
     gmail_id = mail.get("id")
     if not gmail_id:
         return None
-    # Deduplicate alerts by gmail id + kind + amount + date
+
+    amount = parsed.get("amount")
+    txn_date = _best_txn_date(parsed, mail, kind=kind)
+    payee = parsed.get("payee")
     existing = (
         db.query(models.ExpenseAnalyserItem)
         .filter(
             models.ExpenseAnalyserItem.user_id == uid,
             models.ExpenseAnalyserItem.gmail_message_id == gmail_id,
             models.ExpenseAnalyserItem.kind == kind,
-            models.ExpenseAnalyserItem.amount == _dec(parsed.get("amount")),
-            models.ExpenseAnalyserItem.txn_date == parsed.get("txn_date"),
-            models.ExpenseAnalyserItem.payee == parsed.get("payee"),
+            models.ExpenseAnalyserItem.amount == _dec(amount),
+            models.ExpenseAnalyserItem.txn_date == txn_date,
+            models.ExpenseAnalyserItem.payee == payee,
         )
         .first()
     )
     if existing:
         return None
-
-    amount = parsed.get("amount")
-    txn_date = parsed.get("txn_date")
-    payee = parsed.get("payee")
+    # One alert row per Gmail message (ignore amount/date churn from re-parse)
+    if kind == "alert":
+        prior = (
+            db.query(models.ExpenseAnalyserItem)
+            .filter(
+                models.ExpenseAnalyserItem.user_id == uid,
+                models.ExpenseAnalyserItem.gmail_message_id == gmail_id,
+                models.ExpenseAnalyserItem.kind == "alert",
+            )
+            .first()
+        )
+        if prior:
+            return None
     match = _find_ledger_match(db, uid, amount=_f(amount), txn_date=txn_date, payee=payee)
     status = "matched" if match else ("missed" if kind == "bill_line" and amount else "pending")
 
@@ -243,7 +297,7 @@ def sync_gmail(
     db: Session,
     user: models.User,
     *,
-    max_messages: int = 40,
+    max_messages: int = 200,
     trigger: str = "manual",
 ) -> dict[str, Any]:
     row = get_or_create(db, user)
@@ -252,8 +306,10 @@ def sync_gmail(
     out = {"fetched": 0, "created": 0, "skipped": 0, "matched": 0, "missed": 0, "error": None}
     try:
         token = _access_token(db, row)
-        query = (row.sync_query or "").strip() or gmail.DEFAULT_SYNC_QUERY
-        ids, _next = gmail.list_message_ids(token, query, max_results=max_messages)
+        query = _effective_sync_query(row)
+        if row.sync_query != query:
+            row.sync_query = query
+        ids = gmail.list_message_ids_paged(token, query, limit=max_messages)
         out["fetched"] = len(ids)
         from app.ai_providers import get_default_bundle
         from app.ai_usage import attach_log_context
@@ -261,7 +317,7 @@ def sync_gmail(
         for mid in ids:
             try:
                 raw = gmail.get_message(token, mid)
-                mail = gmail.extract_message(raw)
+                mail = gmail.hydrate_message_text(token, gmail.extract_message(raw))
             except Exception as exc:  # noqa: BLE001 — per-message soft fail
                 log.warning("gmail message %s failed: %s", mid, exc)
                 out["skipped"] += 1
@@ -296,8 +352,19 @@ def sync_gmail(
             else:
                 parsed = _classify_alert(text, ai=ai_bundle)
                 if parsed.get("amount") is None and not (parsed.get("direction") in ("debit", "credit")):
-                    out["skipped"] += 1
-                    continue
+                    if _looks_like_bank_alert(mail):
+                        # Keep bank subject lines even when body is empty / unparsed.
+                        subj = (mail.get("subject") or "").lower()
+                        direction = "credit" if ("credited" in subj or "received" in subj) else "debit"
+                        parsed = {
+                            **parsed,
+                            "direction": direction,
+                            "snippet": mail.get("snippet") or mail.get("subject"),
+                            "confidence": min(float(parsed.get("confidence") or 0.3), 0.35),
+                        }
+                    else:
+                        out["skipped"] += 1
+                        continue
                 item = _item_from_mail(db, uid, mail, parsed, kind="alert")
                 if item:
                     created_here += 1
@@ -418,7 +485,14 @@ def retag_pending_items(
         elif item.payee:
             item.payee = finance_ai.normalize_payee(item.payee) or item.payee
         if parsed.get("date") or parsed.get("txn_date"):
-            item.txn_date = parsed.get("date") or parsed.get("txn_date")
+            mail_proxy = {"received_at": item.received_at}
+            item.txn_date = _best_txn_date(
+                {"date": parsed.get("date"), "txn_date": parsed.get("txn_date")},
+                mail_proxy,
+                kind=item.kind or "alert",
+            ) or item.txn_date
+        elif not item.txn_date and item.received_at:
+            item.txn_date = item.received_at.strftime("%Y-%m-%d")
         if parsed.get("payment_method"):
             item.payment_method = parsed.get("payment_method")
         if parsed.get("category") or parsed.get("suggested_category"):
@@ -441,17 +515,26 @@ def list_items(
     user: models.User,
     *,
     status: str | None = None,
+    statuses: list[str] | tuple[str, ...] | None = None,
     kind: str | None = None,
     limit: int = 100,
 ) -> list[models.ExpenseAnalyserItem]:
+    from sqlalchemy import func
+
     uid = vault_id(user)
     q = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
     if status:
         q = q.filter(models.ExpenseAnalyserItem.status == status)
+    elif statuses:
+        q = q.filter(models.ExpenseAnalyserItem.status.in_(list(statuses)))
     if kind:
         q = q.filter(models.ExpenseAnalyserItem.kind == kind)
     return (
         q.order_by(
+            func.coalesce(
+                models.ExpenseAnalyserItem.received_at,
+                models.ExpenseAnalyserItem.created_at,
+            ).desc(),
             models.ExpenseAnalyserItem.created_at.desc(),
         )
         .limit(max(1, min(300, limit)))

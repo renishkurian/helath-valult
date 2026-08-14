@@ -2761,12 +2761,13 @@ def expense_analyser_home(
     st = ea.status_dict(db, user)
     filter_status = status if status in ("pending", "missed", "matched", "posted", "ignored", "corrected") else ""
     if filter_status:
-        items = ea.list_items(db, user, status=filter_status, limit=150)
+        items = ea.list_items(db, user, status=filter_status, limit=200)
     else:
-        items = [
-            i for i in ea.list_items(db, user, limit=150)
-            if i.status in ("pending", "missed", "matched", "corrected")
-        ]
+        items = ea.list_items(
+            db, user,
+            statuses=("pending", "missed", "matched", "corrected"),
+            limit=200,
+        )
     accounts = list_accounts(db=db, current_user=user)
     sync_logs = ea.list_sync_logs(db, user, limit=15)
     return templates.TemplateResponse("expense_analyser.html", _ea_ctx(

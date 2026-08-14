@@ -1312,6 +1312,7 @@ class ExpenseAnalyserStatusOut(BaseModel):
     matched: int = 0
     missed: int = 0
     posted: int = 0
+    corrected: int = 0
 
 
 class ExpenseAnalyserScheduleIn(BaseModel):

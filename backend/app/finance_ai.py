@@ -83,7 +83,8 @@ _AMOUNT_ALT_RE = re.compile(
 )
 _DEBIT_RE = re.compile(
     r"\b(debited|debit|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to|"
-    r"used for a (?:transaction|purchase|payment)|txn of|transaction of)\b",
+    r"used for a (?:transaction|purchase|payment)|"
+    r"upi txn|done a (?:upi )?txn|txn from|txn of|transaction of)\b",
     re.I,
 )
 _CREDIT_RE = re.compile(
@@ -184,7 +185,7 @@ def _parse_amount(text: str) -> float | None:
 
 
 def _parse_date(text: str) -> str | None:
-    m = _DATE_RE.search(text)
+    m = _DATE_RE.search(text or "")
     if m:
         raw = m.group(1).replace("/", "-")
         parts = raw.split("-")
@@ -211,7 +212,39 @@ def _parse_date(text: str) -> str | None:
                 return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
             except ValueError:
                 continue
-    return datetime.utcnow().strftime("%Y-%m-%d")
+    return None
+
+
+def _parse_txn_date(text: str) -> str | None:
+    """Prefer a date near spend language / amount so HTML footers don't stamp old days."""
+    blob = text or ""
+    for m in re.finditer(
+        r"(?:transaction of|txn of|debited|credited|spent|withdrawn|used for).{0,140}",
+        blob,
+        re.I | re.S,
+    ):
+        found = _parse_date(m.group(0))
+        if found:
+            return found
+    windows: list[str] = []
+    for am in list(_AMOUNT_RE.finditer(blob))[:6]:
+        prefix = blob[max(0, am.start() - 48):am.start()].lower()
+        if "credit limit" in prefix or "available" in prefix:
+            continue
+        start = max(0, am.start() - 90)
+        end = min(len(blob), am.end() + 90)
+        windows.append(blob[start:end])
+    for am in list(_AMOUNT_ALT_RE.finditer(blob))[:2]:
+        start = max(0, am.start() - 90)
+        end = min(len(blob), am.end() + 90)
+        windows.append(blob[start:end])
+    for chunk in windows:
+        found = _parse_date(chunk)
+        if found:
+            return found
+    if len(blob) <= 400:
+        return _parse_date(blob)
+    return None
 
 
 def format_payee(payee: str | None) -> str | None:
@@ -288,12 +321,13 @@ def _guess_payee(text: str) -> str | None:
 
 def detect_payment_method(text: str) -> tuple[str, float]:
     # Credit-card spend alerts must never be tagged ATM just because of odd AI guesses later.
+    # Prefer explicit "debit card" before the generic "card xx1234" credit-card pattern.
+    if _DC_RE.search(text) and not re.search(r"credit\s*card", text or "", re.I):
+        return "debit_card", 0.9
     if _CC_RE.search(text) or _CC_SPEND_RE.search(text):
         return "credit_card", 0.93
     if _ATM_RE.search(text):
         return "atm", 0.92
-    if _DC_RE.search(text):
-        return "debit_card", 0.9
     if _UPI_RE.search(text):
         return "upi", 0.93
     if _NB_RE.search(text):
@@ -379,7 +413,7 @@ def classify_heuristic(text: str) -> dict[str, Any]:
         "direction": direction,
         "amount": amount,
         "payee": payee,
-        "date": _parse_date(text),
+        "date": _parse_txn_date(text),
         "category": category,
         "payment_method": method,
         "confidence": round(conf, 3),
@@ -564,7 +598,7 @@ def classify_with_ai(
         "direction": direction,
         "amount": amount,
         "payee": normalize_payee(str(data["payee"])[:80] if data.get("payee") else None) or _guess_payee(text),
-        "date": data.get("date") or datetime.utcnow().strftime("%Y-%m-%d"),
+        "date": data.get("date") or _parse_txn_date(text),
         "category": cat,
         "payment_method": method,
         "confidence": round(conf, 3),

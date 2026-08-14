@@ -44,8 +44,8 @@
   <div class="col-6 col-lg-3">
     <div class="stat accent">
       <div class="lbl"><i class="bi bi-inbox"></i> Pending</div>
-      <div class="val">{{ status.pending }}</div>
-      <div class="sub">needs review</div>
+      <div class="val">{{ status.pending + status.corrected }}</div>
+      <div class="sub">needs review{% if status.corrected %} · {{ status.corrected }} corrected{% endif %}</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
@@ -146,6 +146,9 @@
         </div>
         <div class="text-muted small">
           {% if item.txn_date %}{{ item.txn_date }}{% elif item.received_at %}{{ item.received_at.strftime('%Y-%m-%d') }}{% endif %}
+          {% if item.received_at and item.txn_date and item.txn_date != item.received_at.strftime('%Y-%m-%d') %}
+          <span title="Gmail received date">· mail {{ item.received_at.strftime('%Y-%m-%d') }}</span>
+          {% endif %}
         </div>
       </div>
       <div class="d-flex flex-wrap justify-content-between gap-3">

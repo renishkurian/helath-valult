@@ -21,10 +21,12 @@ GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 # Bank / card / UPI alerts + statement-ish subjects (India-focused starter set).
 DEFAULT_SYNC_QUERY = (
     "("
-    "from:(hdfcbank.net OR alerts.hdfcbank.net OR hdfcbank.bank.in OR sbi.co.in OR onlinesbi.com "
-    "OR icicibank.com OR axisbank.com OR kotak.com OR yesbank.in OR indusind.com "
-    "OR citibank.com OR americanexpress.com OR amex OR rblbank.com OR idfcfirstbank.com "
-    "OR phonepe.com OR googlepay OR paytm.com OR amazonpay)"
+    "from:(hdfcbank.net OR hdfcbank.com OR hdfcbank.co.in OR alerts.hdfcbank.net "
+    "OR alerts.hdfcbank.com OR instalerts.hdfcbank.com OR hdfcbank.bank.in "
+    "OR sbi.co.in OR onlinesbi.com OR icicibank.com OR axisbank.com OR kotak.com "
+    "OR yesbank.in OR indusind.com OR citibank.com OR americanexpress.com OR amex "
+    "OR rblbank.com OR idfcfirstbank.com OR phonepe.com OR googlepay OR paytm.com "
+    "OR amazonpay)"
     " OR subject:(debited OR credited OR spent OR withdrawn OR \"txn\" OR transaction "
     "OR statement OR \"credit card\" OR \"e-statement\" OR \"e statement\")"
     ") newer_than:45d"
@@ -86,6 +88,47 @@ def list_message_ids(
     return ids, data.get("nextPageToken")
 
 
+def list_message_ids_paged(
+    access_token: str,
+    query: str,
+    *,
+    limit: int = 200,
+) -> list[str]:
+    """Walk Gmail pages until `limit` ids (Gmail caps each page at 100)."""
+    want = max(1, min(500, limit))
+    ids: list[str] = []
+    page_token: str | None = None
+    seen: set[str] = set()
+    while len(ids) < want:
+        batch, page_token = list_message_ids(
+            access_token, query,
+            max_results=min(100, want - len(ids)),
+            page_token=page_token,
+        )
+        for mid in batch:
+            if mid in seen:
+                continue
+            seen.add(mid)
+            ids.append(mid)
+            if len(ids) >= want:
+                break
+        if not page_token or not batch:
+            break
+    return ids
+
+
+def get_attachment(access_token: str, message_id: str, attachment_id: str) -> str:
+    url = (
+        f"{GMAIL_API}/messages/{urllib.parse.quote(message_id)}"
+        f"/attachments/{urllib.parse.quote(attachment_id)}"
+    )
+    data = _request_json(url, access_token)
+    raw = data.get("data") or ""
+    if not raw:
+        return ""
+    return _b64url_decode(raw).decode("utf-8", errors="replace")
+
+
 def get_message(access_token: str, message_id: str) -> dict[str, Any]:
     q = urllib.parse.urlencode({"format": "full"})
     return _request_json(f"{GMAIL_API}/messages/{urllib.parse.quote(message_id)}?{q}", access_token)
@@ -104,17 +147,24 @@ def _b64url_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + pad)
 
 
-def _walk_parts(part: dict[str, Any], out: list[tuple[str, str]]) -> None:
+def _walk_parts(
+    part: dict[str, Any],
+    out: list[tuple[str, str]],
+    pending: list[tuple[str, str]] | None = None,
+) -> None:
     mime = (part.get("mimeType") or "").lower()
     body = part.get("body") or {}
     data = body.get("data")
+    aid = body.get("attachmentId")
     if data and mime in ("text/plain", "text/html"):
         try:
             out.append((mime, _b64url_decode(data).decode("utf-8", errors="replace")))
         except (ValueError, UnicodeError):
             pass
+    elif aid and pending is not None and mime in ("text/plain", "text/html"):
+        pending.append((mime, aid))
     for child in part.get("parts") or []:
-        _walk_parts(child, out)
+        _walk_parts(child, out, pending)
 
 
 _TAG_RE = re.compile(r"<[^>]+>")
@@ -154,8 +204,9 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any]:
             received_at = None
 
     parts: list[tuple[str, str]] = []
+    pending: list[tuple[str, str]] = []
     root = payload.get("payload") or {}
-    _walk_parts(root, parts)
+    _walk_parts(root, parts, pending)
     plain = next((t for m, t in parts if m == "text/plain"), None)
     html = next((t for m, t in parts if m == "text/html"), None)
     text = (plain or "").strip() or (html_to_text(html) if html else "")
@@ -170,16 +221,44 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any]:
         "received_at": received_at,
         "snippet": payload.get("snippet"),
         "text": text,
+        "pending_attachments": pending,
     }
 
 
-def looks_like_statement(subject: str | None, text: str) -> bool:
-    blob = f"{subject or ''}\n{text or ''}".lower()
+def hydrate_message_text(access_token: str, mail: dict[str, Any]) -> dict[str, Any]:
+    """Fetch Gmail parts that only have attachmentId (common for HTML alerts)."""
+    pending = mail.get("pending_attachments") or []
+    if not pending or not mail.get("id"):
+        return mail
+    plains: list[str] = []
+    htmls: list[str] = []
+    for mime, aid in pending:
+        try:
+            body = get_attachment(access_token, mail["id"], aid)
+        except Exception:  # noqa: BLE001 — per-part soft fail
+            continue
+        if not body.strip():
+            continue
+        if mime == "text/html":
+            htmls.append(body)
+        else:
+            plains.append(body)
+    text = "\n".join(plains).strip() or html_to_text("\n".join(htmls))
+    if text:
+        mail["text"] = text
+    mail["pending_attachments"] = []
+    return mail
+
+
+def looks_like_statement(subject: str | None, text: str | None = None) -> bool:
+    """True only from the subject — alert footers often mention 'statement'."""
+    subj = (subject or "").lower()
     keys = (
         "e-statement", "estatement", "e statement", "credit card statement",
         "card statement", "monthly statement", "statement of account",
+        "account statement",
     )
-    return any(k in blob for k in keys)
+    return any(k in subj for k in keys)
 
 
 def is_http_error(exc: BaseException) -> bool:

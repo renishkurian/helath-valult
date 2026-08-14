@@ -20,6 +20,29 @@ def test_heuristic_debit_upi():
     assert out["category"] == "Food & dining"
     assert out["payment_method"] == "upi"
     assert "UPI" in (out["description"] or "")
+    assert out["date"] == "2026-08-13"
+
+
+def test_heuristic_hdfc_upi_txn_subject_style():
+    out = classify_heuristic(
+        "Dear Customer, You have done a UPI txn from HDFC Bank A/c XX1234 "
+        "for Rs.100.00 to MERCHANT NAME on 14-08-2026"
+    )
+    assert out["direction"] == "debit"
+    assert out["amount"] == 100
+    assert out["payment_method"] == "upi"
+    assert out["date"] == "2026-08-14"
+
+
+def test_parse_txn_date_ignores_footer_statement_day():
+    from app.finance_ai import _parse_txn_date
+    text = (
+        "Statement period 01-08-2026 to 05-08-2026. "
+        "Available Credit Limit Rs.50000. "
+        "Your ICICI Bank Credit Card XX2006 has been used for a transaction "
+        "of INR 636.00 on Aug 10, 2026 at 04:56:03. Info: AMAZON PAY."
+    )
+    assert _parse_txn_date(text) == "2026-08-10"
 
 
 def test_normalize_payee_casing():

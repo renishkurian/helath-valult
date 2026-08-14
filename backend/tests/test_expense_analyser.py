@@ -93,6 +93,40 @@ def test_html_to_text_and_statement_detect():
     text = html_to_text(html)
     assert "credit card statement" in text.lower()
     assert looks_like_statement("HDFC e-Statement", text)
+    # Alert footers mentioning "statement" must NOT force the bill path.
+    assert not looks_like_statement(
+        "You have done a UPI txn. Check details!",
+        "View your credit card statement online. Available Credit Limit Rs.50000",
+    )
+
+
+def test_extract_message_pending_attachment():
+    payload = {
+        "id": "m2",
+        "threadId": "t2",
+        "snippet": "You have done a UPI txn",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "You have done a UPI txn. Check details!"},
+                {"name": "From", "value": "alerts@hdfcbank.com"},
+            ],
+            "mimeType": "text/html",
+            "body": {"attachmentId": "att-1", "size": 120},
+        },
+    }
+    mail = extract_message(payload)
+    assert mail["pending_attachments"] == [("text/html", "att-1")]
+    assert "UPI txn" in (mail["snippet"] or "")
+
+
+def test_best_txn_date_prefers_gmail_when_body_is_stale():
+    from datetime import datetime
+    from app.expense_analyser import _best_txn_date
+
+    mail = {"received_at": datetime(2026, 8, 14, 17, 40)}
+    assert _best_txn_date({"date": "2026-08-05"}, mail, kind="alert") == "2026-08-14"
+    assert _best_txn_date({"date": "2026-08-14"}, mail, kind="alert") == "2026-08-14"
+    assert _best_txn_date({"txn_date": "2026-08-05"}, mail, kind="bill_line") == "2026-08-05"
 
 
 def test_extract_message_plain():
