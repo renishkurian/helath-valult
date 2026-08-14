@@ -71,14 +71,17 @@ class DocumentsViewModel(private val repository: HealthVaultRepository) : ViewMo
         }
     }
 
-    fun load(personId: String, category: DocCategory?, customCategory: String? = null) {
+    fun load(personId: String, category: DocCategory?, customCategory: String? = null, hospital: String? = null) {
         viewModelScope.launch {
             _state.value = _state.value.copy(loading = true, error = null)
             try {
-                // Repository is cache-first: IOException returns cached data instead of throwing.
                 var docs = repository.listDocuments(personId, category)
                 if (customCategory != null) {
                     docs = docs.filter { it.custom_category == customCategory }
+                }
+                if (!hospital.isNullOrBlank()) {
+                    val key = hospital.trim().lowercase()
+                    docs = docs.filter { it.hospital_name?.trim()?.lowercase() == key }
                 }
                 _state.value = _state.value.copy(loading = false, documents = docs)
             } catch (e: Exception) {

@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -110,7 +111,7 @@ fun FinanceTransScreen(
         FinanceSmsIngestor.scanInbox(context)
     }
 
-    Box(Modifier.fillMaxSize().background(Paper)) {
+    Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(20.dp, 16.dp, 8.dp, 8.dp),
@@ -118,7 +119,7 @@ fun FinanceTransScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("MONEY MANAGER", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                    Text("MONEY MANAGER", style = MaterialTheme.typography.labelMedium, color = VaultGold)
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("‹", color = InkSoft, modifier = Modifier.clickable { month = month.minusMonths(1) }.padding(end = 8.dp), fontWeight = FontWeight.Bold)
                         Text(month.format(monthLabelFmt), style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
@@ -203,9 +204,13 @@ fun FinanceTransScreen(
 @Composable
 private fun SummaryChip(label: String, value: String, color: Color, modifier: Modifier = Modifier) {
     Column(
-        modifier.clip(RoundedCornerShape(14.dp)).background(White).padding(12.dp)
+        modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(HubGlass)
+            .border(1.dp, HubStroke, RoundedCornerShape(14.dp))
+            .padding(12.dp)
     ) {
-        Text(label.uppercase(), color = InkSoft, style = MaterialTheme.typography.labelSmall)
+        Text(label.uppercase(), color = VaultGold, style = MaterialTheme.typography.labelSmall)
         Spacer(Modifier.height(4.dp))
         Text(value, color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyLarge)
     }
@@ -220,7 +225,7 @@ fun FinanceStatsScreen(repository: HealthVaultRepository) {
     LaunchedEffect(kind) {
         scope.launch { runCatching { report = repository.financeReports(month, kind) } }
     }
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         Text("Stats", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -249,7 +254,7 @@ fun FinanceMoreScreen(
     onOpenInbox: () -> Unit,
     onOpenEmi: () -> Unit = {}
 ) {
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(20.dp))
         IncomingSmsToggle()
@@ -395,7 +400,7 @@ private fun IncomingSmsBanner(onChanged: () -> Unit) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(White)
+            .background(HubGlass)
             .clickable { launcher.launch(perms.toTypedArray()) }
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -424,7 +429,7 @@ fun FinanceInboxScreen(repository: HealthVaultRepository, onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     fun reload() { scope.launch { runCatching { messages = repository.listFinanceMessages() } } }
     LaunchedEffect(Unit) { reload() }
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← More", color = InkSoft) }
         Text("AI & SMS", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         Text(

@@ -1,31 +1,60 @@
 package com.rklab.healthvault.ui.screens.passwords
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.VaultFolderOut
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
-import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.ui.components.VaultFab
+import com.rklab.healthvault.ui.components.VaultFilterChip
+import com.rklab.healthvault.ui.components.VaultListRow
+import com.rklab.healthvault.ui.components.VaultPageHeader
+import com.rklab.healthvault.ui.components.vaultFieldColors
+import com.rklab.healthvault.ui.theme.HubAmber
+import com.rklab.healthvault.ui.theme.HubBg
+import com.rklab.healthvault.ui.theme.HubRose
+import com.rklab.healthvault.ui.theme.HubSky
+import com.rklab.healthvault.ui.theme.HubTextDim
+import com.rklab.healthvault.ui.theme.HubViolet
+import com.rklab.healthvault.ui.theme.StampRed
+import com.rklab.healthvault.ui.theme.VaultGold
 import kotlinx.coroutines.launch
 
 @Composable
@@ -61,39 +90,42 @@ fun VaultListScreen(
     }
     LaunchedEffect(query, type, folderId) { reload() }
 
-    Box(Modifier.fillMaxSize().background(Paper)) {
+    Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
-            Row(
-                Modifier.fillMaxWidth().padding(20.dp, 16.dp, 8.dp, 0.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text("PASSWORD VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
-                    Text("My vault", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
-                }
-                Row {
+            VaultPageHeader(
+                eyebrow = "PASSWORD VAULT",
+                title = "My vault",
+                modifier = Modifier.padding(horizontal = 20.dp),
+                actions = {
                     IconButton(onClick = onOpenModules) {
-                        Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
+                        Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = HubTextDim)
                     }
                     Box {
                         IconButton(onClick = { menu = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = InkSoft)
+                            Icon(Icons.Filled.MoreVert, contentDescription = "More", tint = HubTextDim)
                         }
                         DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                            DropdownMenuItem(text = { Text("Trash") }, onClick = { menu = false; onOpenTrash() }, leadingIcon = { Icon(Icons.Filled.Delete, null) })
-                            DropdownMenuItem(text = { Text("New folder") }, onClick = { menu = false; showFolder = true })
+                            DropdownMenuItem(
+                                text = { Text("Trash") },
+                                onClick = { menu = false; onOpenTrash() },
+                                leadingIcon = { Icon(Icons.Filled.Delete, null) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New folder") },
+                                onClick = { menu = false; showFolder = true }
+                            )
                         }
                     }
                 }
-            }
+            )
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 placeholder = { Text("Search vault") },
-                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                leadingIcon = { Icon(Icons.Filled.Search, null, tint = HubTextDim) },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
+                colors = vaultFieldColors(),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             )
             LazyRow(
@@ -102,11 +134,7 @@ fun VaultListScreen(
             ) {
                 val chips = listOf(null to "All", "login" to "Logins", "note" to "Notes", "card" to "Cards", "identity" to "IDs")
                 items(chips) { (value, label) ->
-                    FilterChip(
-                        selected = type == value,
-                        onClick = { type = value },
-                        label = { Text(label) }
-                    )
+                    VaultFilterChip(selected = type == value, onClick = { type = value }, label = label)
                 }
             }
             if (folders.isNotEmpty()) {
@@ -115,20 +143,20 @@ fun VaultListScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     item {
-                        FilterChip(selected = folderId == null, onClick = { folderId = null }, label = { Text("All folders") })
+                        VaultFilterChip(selected = folderId == null, onClick = { folderId = null }, label = "All folders")
                     }
                     items(folders) { folder ->
-                        FilterChip(
+                        VaultFilterChip(
                             selected = folderId == folder.id,
                             onClick = { folderId = folder.id },
-                            label = { Text("${folder.name} (${folder.item_count})") }
+                            label = "${folder.name} (${folder.item_count})"
                         )
                     }
                 }
             }
             when {
                 loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Navy)
+                    CircularProgressIndicator(color = VaultGold)
                 }
                 error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(error!!, color = StampRed)
@@ -138,45 +166,36 @@ fun VaultListScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(items, key = { it.id }) { item ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White).clickable { onOpenItem(item.id) }.padding(14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(Color(0x335B8CFF)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(item.name.take(1).uppercase(), color = Navy, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(item.name, color = Ink, fontWeight = FontWeight.SemiBold)
-                                    if (item.favorite) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Icon(Icons.Filled.Star, null, tint = Mustard, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                                Text(
-                                    item.username ?: item.email ?: item.uris.firstOrNull() ?: item.item_type,
-                                    color = InkSoft,
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                            Text(item.item_type, color = InkSoft, style = MaterialTheme.typography.labelSmall)
-                        }
+                        VaultListRow(
+                            title = item.name,
+                            subtitle = item.username ?: item.email ?: item.uris.firstOrNull() ?: item.item_type,
+                            meta = item.item_type,
+                            accent = when (item.item_type) {
+                                "login" -> HubViolet
+                                "note" -> HubAmber
+                                "card" -> HubRose
+                                else -> HubSky
+                            },
+                            favorite = item.favorite,
+                            onClick = { onOpenItem(item.id) }
+                        )
                     }
                     if (items.isEmpty()) {
-                        item { Text("No items yet. Tap + to add a login.", color = InkSoft, modifier = Modifier.padding(12.dp)) }
+                        item {
+                            Text(
+                                "No items yet. Tap + to add a login.",
+                                color = HubTextDim,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
                     }
                 }
             }
         }
-        FloatingActionButton(
-            onClick = { onAddItem(type ?: "login") },
-            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-            containerColor = Navy
-        ) { Icon(Icons.Filled.Add, contentDescription = "Add", tint = TextWhite) }
+        Box(Modifier.align(Alignment.BottomEnd).padding(20.dp)) {
+            VaultFab(onClick = { onAddItem(type ?: "login") }, icon = Icons.Filled.Add, contentDescription = "Add")
+        }
     }
 
     if (showFolder) {
@@ -184,7 +203,12 @@ fun VaultListScreen(
             onDismissRequest = { showFolder = false },
             title = { Text("New folder") },
             text = {
-                OutlinedTextField(folderName, { folderName = it }, label = { Text("Name") }, singleLine = true)
+                OutlinedTextField(
+                    folderName, { folderName = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    colors = vaultFieldColors()
+                )
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -192,7 +216,7 @@ fun VaultListScreen(
                         runCatching { repository.createVaultFolder(folderName.trim()) }
                         folderName = ""; showFolder = false; reload()
                     }
-                }) { Text("Create") }
+                }) { Text("Create", color = VaultGold) }
             },
             dismissButton = { TextButton(onClick = { showFolder = false }) { Text("Cancel") } }
         )

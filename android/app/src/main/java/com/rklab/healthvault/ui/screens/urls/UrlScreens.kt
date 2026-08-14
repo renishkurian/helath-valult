@@ -127,7 +127,7 @@ fun UrlListScreen(
     }
     LaunchedEffect(query, categoryId, tagId, favoritesOnly) { reload() }
 
-    Box(Modifier.fillMaxSize().background(Paper)) {
+    Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(20.dp, 16.dp, 8.dp, 0.dp),
@@ -135,7 +135,7 @@ fun UrlListScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("URL VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                    Text("URL VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
                     Text(
                         if (favoritesOnly) "Favorites" else "Links",
                         style = MaterialTheme.typography.headlineMedium,
@@ -217,7 +217,7 @@ fun UrlListScreen(
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
             containerColor = Navy
         ) {
-            Icon(Icons.Filled.Add, contentDescription = "Add link", tint = Color.White)
+            Icon(Icons.Filled.Add, contentDescription = "Add link", tint = TextDark)
         }
     }
 }
@@ -226,7 +226,7 @@ fun UrlListScreen(
 private fun UrlCard(item: UrlItemOut, onOpen: () -> Unit, onShare: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(16.dp),
-        color = White,
+        color = HubGlass,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
     ) {
         Column {
@@ -340,7 +340,7 @@ fun UrlAddScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Paper).verticalScroll(rememberScrollState()).padding(20.dp)) {
+    Column(Modifier.fillMaxSize().background(HubBg).verticalScroll(rememberScrollState()).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← URL Vault", color = Navy) }
         Text("Add link", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(16.dp))
@@ -474,7 +474,7 @@ fun UrlItemScreen(
     }
     LaunchedEffect(itemId) { reload() }
 
-    Column(Modifier.fillMaxSize().background(Paper).verticalScroll(rememberScrollState()).padding(20.dp)) {
+    Column(Modifier.fillMaxSize().background(HubBg).verticalScroll(rememberScrollState()).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← URL Vault", color = Navy) }
         val current = item
         if (error != null) Text(error!!, color = StampRed)
@@ -690,14 +690,14 @@ fun UrlManageScreen(
     }
     LaunchedEffect(Unit) { reload() }
 
-    Column(Modifier.fillMaxSize().background(Paper)) {
+    Column(Modifier.fillMaxSize().background(HubBg)) {
         Row(
             Modifier.fillMaxWidth().padding(20.dp, 16.dp, 8.dp, 0.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("URL VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                Text("URL VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
                 Text("Manage", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
             }
             IconButton(onClick = onOpenModules) {
@@ -812,7 +812,7 @@ private fun ManageRow(
     onDelete: () -> Unit
 ) {
     var value by remember(name) { mutableStateOf(name) }
-    Surface(shape = RoundedCornerShape(14.dp), color = White, modifier = Modifier.fillMaxWidth()) {
+    Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.padding(10.dp),
             verticalAlignment = Alignment.CenterVertically,

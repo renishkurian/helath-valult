@@ -53,6 +53,12 @@ interface ApiService {
     @POST("auth/totp/enable")
     suspend fun totpEnable(@Body body: TotpVerifyIn): Response<Unit>
 
+    @POST("auth/totp/disable")
+    suspend fun totpDisable(@Body body: TotpVerifyIn): Response<Unit>
+
+    @POST("auth/app-approve")
+    suspend fun setAppApprove(@Body body: AppApproveIn): UserOut
+
     @POST("auth/totp/verify")
     suspend fun totpVerify(@Body body: TotpVerifyIn): LoginResponse
 

@@ -150,7 +150,7 @@ fun FinanceAddScreen(
         else -> category.name
     }
 
-    Column(Modifier.fillMaxSize().background(Paper)) {
+    Column(Modifier.fillMaxSize().background(HubBg)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -515,7 +515,7 @@ private fun CategoryPickerSheet(
         SheetHeader("Category", onClose, onAdd = { addingMode = "parent"; newName = "" })
         Row(Modifier.fillMaxWidth().heightIn(min = 280.dp, max = 420.dp)) {
             Column(
-                Modifier.weight(1f).fillMaxHeight().background(Paper)
+                Modifier.weight(1f).fillMaxHeight().background(HubBg)
             ) {
                 parents.forEach { p ->
                     val on = p.id == parentId

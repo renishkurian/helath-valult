@@ -134,13 +134,21 @@ async def upload_document(
 
     # If a custom category is provided, force the main category to 'other'
     actual_category = models.DocCategory.other if custom_category else category
+    hosp = (hospital_name or "").strip() or None
+    if models.category_requires_hospital(actual_category) and not hosp:
+        raise HTTPException(
+            status_code=422,
+            detail="hospital_name is required for this category (only insurance is personal)",
+        )
+    if actual_category == models.DocCategory.insurance:
+        hosp = None
 
     doc = models.Document(
         person_id=person_id,
         category=actual_category,
         custom_category=custom_category,
         title=title,
-        hospital_name=hospital_name,
+        hospital_name=hosp,
         doc_date=doc_date,
         expiry_date=expiry_date,
         tags=tags,
@@ -356,6 +364,14 @@ def update_document(
         doc.amount = update_data.amount if update_data.amount != "" else None
     if update_data.pinned is not None:
         doc.pinned = update_data.pinned
+
+    if doc.category == models.DocCategory.insurance:
+        doc.hospital_name = None
+    elif models.category_requires_hospital(doc.category) and not (doc.hospital_name or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="hospital_name is required for this category (only insurance is personal)",
+        )
 
     db.commit()
     db.refresh(doc)

@@ -34,8 +34,8 @@ fun CareScreen(repository: HealthVaultRepository) {
         personId = repository.activePersonFlow().first() ?: people.firstOrNull()?.id
     }
 
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
-        Text("CARE", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+    Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
+        Text("CARE", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(4.dp))
         Text("Health, not only files", style = MaterialTheme.typography.headlineMedium, color = Ink)
         Spacer(Modifier.height(12.dp))
@@ -85,7 +85,7 @@ private fun IceSection(repository: HealthVaultRepository, person: PersonOut?, on
                     type = "text/plain"
                     putExtra(Intent.EXTRA_TEXT, "ICE card for ${person.name}: $iceUrl")
                 }, "Share ICE card"))
-            }, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Share ICE / WhatsApp", color = White) }
+            }, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Share ICE / WhatsApp", color = TextDark) }
         }
         OutlinedTextField(allergies, { allergies = it }, label = { Text("Allergies") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(conditions, { conditions = it }, label = { Text("Conditions") }, modifier = Modifier.fillMaxWidth())
@@ -102,7 +102,7 @@ private fun IceSection(repository: HealthVaultRepository, person: PersonOut?, on
                     onSaved()
                 }.onFailure { msg = it.message }
             }
-        }, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Save ICE card", color = White) }
+        }, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Save ICE card", color = TextDark) }
         if (msg != null) Text(msg!!, color = Sage)
         Spacer(Modifier.height(40.dp))
     }
@@ -131,7 +131,7 @@ private fun MedsSection(repository: HealthVaultRepository, personId: String) {
                 name = ""; dose = ""; remaining = ""
             }
         }, enabled = name.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) {
-            Text("Add medicine", color = White)
+            Text("Add medicine", color = TextDark)
         }
     }
 }
@@ -157,7 +157,7 @@ private fun VaxSection(repository: HealthVaultRepository, personId: String) {
                 name = ""; due = ""
             }
         }, enabled = name.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) {
-            Text("Add vaccination", color = White)
+            Text("Add vaccination", color = TextDark)
         }
     }
 }
@@ -180,7 +180,7 @@ private fun VisitsSection(repository: HealthVaultRepository, personId: String) {
     Column(Modifier.verticalScroll(rememberScrollState())) {
         if (spend != null) Text("This year: bills ${spend!!.bills} + claims ${spend!!.claims} = ${spend!!.total}", color = InkSoft)
         Spacer(Modifier.height(8.dp))
-        Text("VISITS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("VISITS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         visits.forEach { Text("${it.visit_date ?: ""}  ${it.hospital_name ?: ""}  ${it.reason ?: ""}", color = Ink, modifier = Modifier.padding(vertical = 4.dp)) }
         OutlinedTextField(hospital, { hospital = it }, label = { Text("Hospital") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(reason, { reason = it }, label = { Text("Reason") }, modifier = Modifier.fillMaxWidth())
@@ -189,9 +189,9 @@ private fun VisitsSection(repository: HealthVaultRepository, personId: String) {
                 repository.addVisit(VisitIn(personId, hospital.ifBlank { null }, reason = reason.ifBlank { null }))
                 visits = repository.listVisits(personId)
             }
-        }, enabled = !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add visit", color = White) }
+        }, enabled = !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add visit", color = TextDark) }
         Spacer(Modifier.height(16.dp))
-        Text("CLAIMS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("CLAIMS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         claims.forEach { Text("${it.insurer ?: "—"}  ${it.amount ?: ""}  ${it.status}", color = Ink, modifier = Modifier.padding(vertical = 4.dp)) }
         OutlinedTextField(insurer, { insurer = it }, label = { Text("Insurer") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(amount, { amount = it }, label = { Text("Amount") }, modifier = Modifier.fillMaxWidth())
@@ -201,7 +201,7 @@ private fun VisitsSection(repository: HealthVaultRepository, personId: String) {
                 claims = repository.listClaims(personId)
                 spend = runCatching { repository.yearlySpend(personId) }.getOrNull()
             }
-        }, enabled = !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add claim", color = White) }
+        }, enabled = !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add claim", color = TextDark) }
         Spacer(Modifier.height(40.dp))
     }
 }
@@ -225,7 +225,7 @@ private fun MoreSection(repository: HealthVaultRepository, personId: String) {
     }
     Column(Modifier.verticalScroll(rememberScrollState())) {
         alerts.forEach { Text(it.message, color = Mustard, modifier = Modifier.padding(vertical = 4.dp)) }
-        Text("DOCTORS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("DOCTORS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         doctors.forEach { Text("${it.name}  ${it.specialty ?: ""}  ${it.phone ?: ""}", color = Ink, modifier = Modifier.padding(vertical = 4.dp)) }
         OutlinedTextField(docName, { docName = it }, label = { Text("Doctor name") }, modifier = Modifier.fillMaxWidth())
         Button(onClick = {
@@ -234,9 +234,9 @@ private fun MoreSection(repository: HealthVaultRepository, personId: String) {
                 doctors = repository.listDoctors()
                 docName = ""
             }
-        }, enabled = docName.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add doctor", color = White) }
+        }, enabled = docName.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add doctor", color = TextDark) }
         Spacer(Modifier.height(12.dp))
-        Text("GROWTH", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("GROWTH", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         growth.forEach { Text("${it.measured_at}  ${it.height_cm ?: "—"} cm  ${it.weight_kg ?: "—"} kg", color = Ink, modifier = Modifier.padding(vertical = 4.dp)) }
         OutlinedTextField(measured, { measured = it }, label = { Text("Date YYYY-MM-DD") }, modifier = Modifier.fillMaxWidth())
         OutlinedTextField(height, { height = it }, label = { Text("Height cm") }, modifier = Modifier.fillMaxWidth())
@@ -246,9 +246,9 @@ private fun MoreSection(repository: HealthVaultRepository, personId: String) {
                 repository.addGrowth(GrowthIn(personId, measured, height.ifBlank { null }, weight.ifBlank { null }))
                 growth = repository.listGrowth(personId)
             }
-        }, enabled = measured.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add reading", color = White) }
+        }, enabled = measured.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add reading", color = TextDark) }
         Spacer(Modifier.height(12.dp))
-        Text("TIMELINE", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("TIMELINE", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         timeline.take(20).forEach {
             Text("${it.at.take(10)}  ${it.kind}  ${it.title}", color = Ink, modifier = Modifier.padding(vertical = 3.dp))
         }

@@ -48,6 +48,7 @@ fun UploadDocumentScreen(
     repository: HealthVaultRepository,
     personId: String,
     defaultCategory: DocCategory?,
+    defaultHospital: String? = null,
     autoOpenCamera: Boolean = false,
     onDone: () -> Unit,
     onBack: () -> Unit
@@ -59,14 +60,15 @@ fun UploadDocumentScreen(
     val context = LocalContext.current
 
     var selectedPersonId by remember { mutableStateOf(personId) }
-    var category by remember { mutableStateOf(defaultCategory ?: DocCategory.OTHER) }
+    var category by remember { mutableStateOf(defaultCategory ?: DocCategory.PRESCRIPTION) }
     var customCategory by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
-    var hospitalName by remember { mutableStateOf("") }
+    var hospitalName by remember { mutableStateOf(defaultHospital.orEmpty()) }
     var docDate by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var expiryDate by remember { mutableStateOf("") }
     var tags by remember { mutableStateOf("") }
+    var formError by remember { mutableStateOf<String?>(null) }
 
     // Multi-file: list of (File, mimeType) pairs
     var pickedFiles by remember { mutableStateOf<List<Pair<File, String>>>(emptyList()) }
@@ -77,6 +79,13 @@ fun UploadDocumentScreen(
     var permissionDeniedMessage by remember { mutableStateOf<String?>(null) }
     var isProcessingFile by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    val needsHospital = category.requiresHospital()
+
+    LaunchedEffect(category) {
+        if (!needsHospital) hospitalName = ""
+        formError = null
+    }
 
     // Gallery/file picker: copy URIs to cache on a background thread
     val multiFileLauncher = rememberLauncherForActivityResult(
@@ -142,7 +151,7 @@ fun UploadDocumentScreen(
         if (autoOpenCamera) onCameraTapped()
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Paper)) {
+    Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -150,9 +159,14 @@ fun UploadDocumentScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             TextButton(onClick = onBack) { Text("← Back", color = Navy) }
-            Text("ADD DOCUMENT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text("ADD DOCUMENT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(4.dp))
             Text("Add a document", style = MaterialTheme.typography.headlineMedium, color = Ink)
+            Text(
+                "Hospital required except for insurance",
+                style = MaterialTheme.typography.bodySmall,
+                color = InkSoft
+            )
             Spacer(Modifier.height(20.dp))
 
             // File source buttons
@@ -247,14 +261,31 @@ fun UploadDocumentScreen(
                 Spacer(Modifier.height(10.dp))
             }
 
-            com.rklab.healthvault.ui.components.HospitalDropdownField(
-                label = "Hospital / clinic (optional)",
-                value = hospitalName,
-                onValueChange = { hospitalName = it },
-                suggestions = hospitals,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(Modifier.height(10.dp))
+            if (needsHospital) {
+                com.rklab.healthvault.ui.components.HospitalDropdownField(
+                    label = "Hospital*",
+                    value = hospitalName,
+                    onValueChange = { hospitalName = it; formError = null },
+                    suggestions = hospitals,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (hospitals.isEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Add a hospital card on Home first — everything except insurance must belong to one.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = StampRed
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            } else {
+                Text(
+                    "Insurance stays with the person — no hospital needed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkSoft
+                )
+                Spacer(Modifier.height(10.dp))
+            }
 
             com.rklab.healthvault.ui.components.DatePickerField(
                 label = "Date (optional)",
@@ -280,6 +311,10 @@ fun UploadDocumentScreen(
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes (optional, stored encrypted)") }, modifier = Modifier.fillMaxWidth())
 
+            if (formError != null) {
+                Spacer(Modifier.height(10.dp))
+                Text(formError!!, color = StampRed, style = MaterialTheme.typography.bodySmall)
+            }
             if (state.error != null) {
                 Spacer(Modifier.height(10.dp))
                 Text(state.error!!, color = StampRed, style = MaterialTheme.typography.bodySmall)
@@ -289,12 +324,17 @@ fun UploadDocumentScreen(
             Button(
                 onClick = {
                     if (pickedFiles.isEmpty()) return@Button
+                    if (needsHospital && hospitalName.isBlank()) {
+                        formError = "Select a hospital for this document."
+                        return@Button
+                    }
+                    formError = null
                     viewModel.upload(
                         personId = selectedPersonId,
                         category = category,
                         customCategory = customCategory.ifBlank { null },
                         title = title.ifBlank { pickedFiles.firstOrNull()?.first?.name ?: "Document" },
-                        hospitalName = hospitalName.ifBlank { null },
+                        hospitalName = if (needsHospital) hospitalName.trim() else null,
                         docDate = docDate.ifBlank { null },
                         notes = notes.ifBlank { null },
                         files = pickedFiles.map { it.first },
@@ -305,7 +345,7 @@ fun UploadDocumentScreen(
                         tags = tags.ifBlank { null }
                     )
                 },
-                enabled = pickedFiles.isNotEmpty() && !state.uploading,
+                enabled = pickedFiles.isNotEmpty() && !state.uploading && (!needsHospital || hospitals.isNotEmpty()),
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = docCategoryColor(category))
@@ -369,7 +409,7 @@ private fun SourceButton(icon: androidx.compose.ui.graphics.vector.ImageVector, 
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
-            .background(White)
+            .background(HubGlass)
             .clickable(onClick = onClick)
             .padding(vertical = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally

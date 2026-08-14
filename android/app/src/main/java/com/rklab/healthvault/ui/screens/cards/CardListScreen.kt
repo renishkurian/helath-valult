@@ -34,12 +34,12 @@ fun CardListScreen(
 
     LaunchedEffect(personId) { viewModel.load(personId) }
 
-    Box(modifier = Modifier.fillMaxSize().background(Paper)) {
+    Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onBack) { Text("← Back", color = Navy) }
             }
-            Text("$personName'S CARDS".uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text("$personName'S CARDS".uppercase(), style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(4.dp))
             Text("Hospital ID cards", style = MaterialTheme.typography.headlineMedium, color = Ink)
             Spacer(Modifier.height(18.dp))
@@ -101,7 +101,13 @@ private fun AddCardSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Paper) {
         Column(modifier = Modifier.fillMaxWidth().padding(20.dp).padding(bottom = 24.dp)) {
-            Text("Add hospital card", style = MaterialTheme.typography.headlineMedium, color = Ink)
+            Text("Add hospital", style = MaterialTheme.typography.headlineMedium, color = Ink)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Creates the hospital folder and ID card. Documents (except insurance) are filed under it.",
+                style = MaterialTheme.typography.bodySmall,
+                color = InkSoft
+            )
             Spacer(Modifier.height(16.dp))
 
             LabeledField("Hospital name*", hospital) { hospital = it }

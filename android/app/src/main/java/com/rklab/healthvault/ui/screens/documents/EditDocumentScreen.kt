@@ -33,6 +33,7 @@ fun EditDocumentScreen(
     val scope = rememberCoroutineScope()
 
     var initialized by remember { mutableStateOf(false) }
+    val hospitals by viewModel.hospitals.collectAsState()
     var category by remember { mutableStateOf(DocCategory.OTHER) }
     var customCategory by remember { mutableStateOf("") }
     var title by remember { mutableStateOf("") }
@@ -46,6 +47,7 @@ fun EditDocumentScreen(
     var saving by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var saveError by remember { mutableStateOf<String?>(null) }
+    val needsHospital = category.requiresHospital()
 
     LaunchedEffect(docId) {
         val doc = state.documents.find { it.id == docId }
@@ -64,7 +66,11 @@ fun EditDocumentScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Paper)) {
+    LaunchedEffect(category) {
+        if (!needsHospital) hospitalName = ""
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         if (loadError != null) {
             Column(modifier = Modifier.align(androidx.compose.ui.Alignment.Center).padding(20.dp)) {
                 Text(loadError!!, color = StampRed)
@@ -86,7 +92,7 @@ fun EditDocumentScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             TextButton(onClick = onBack) { Text("← Back", color = Navy) }
-            Text("EDIT DOCUMENT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text("EDIT DOCUMENT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(4.dp))
             Text("Edit details", style = MaterialTheme.typography.headlineMedium, color = Ink)
             Spacer(Modifier.height(20.dp))
@@ -120,12 +126,21 @@ fun EditDocumentScreen(
             OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title*") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Spacer(Modifier.height(10.dp))
 
-            OutlinedTextField(
-                value = hospitalName,
-                onValueChange = { hospitalName = it },
-                label = { Text("Hospital / clinic (optional)") },
-                modifier = Modifier.fillMaxWidth()
-            )
+            if (needsHospital) {
+                com.rklab.healthvault.ui.components.HospitalDropdownField(
+                    label = "Hospital*",
+                    value = hospitalName,
+                    onValueChange = { hospitalName = it },
+                    suggestions = hospitals,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else {
+                Text(
+                    "Insurance stays with the person — no hospital needed.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InkSoft
+                )
+            }
             Spacer(Modifier.height(10.dp))
 
             com.rklab.healthvault.ui.components.DatePickerField(
@@ -160,6 +175,10 @@ fun EditDocumentScreen(
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
+                    if (needsHospital && hospitalName.isBlank()) {
+                        saveError = "Select a hospital for this document."
+                        return@Button
+                    }
                     saving = true
                     saveError = null
                     scope.launch {
@@ -168,14 +187,13 @@ fun EditDocumentScreen(
                                 title = title.ifBlank { null },
                                 category = category,
                                 custom_category = customCategory.ifBlank { null },
-                                hospital_name = hospitalName.ifBlank { null },
+                                hospital_name = if (needsHospital) hospitalName.trim() else null,
                                 doc_date = docDate.ifBlank { null },
                                 notes = notes.ifBlank { null },
                                 expiry_date = expiryDate.ifBlank { null },
                                 tags = tags.ifBlank { null }
                             )
                             repository.updateDocument(docId, update)
-                            // Simply navigate back; the list reloads on re-entry
                             onDone()
                         } catch (e: Exception) {
                             saveError = e.message ?: "Failed to update document"
@@ -184,7 +202,7 @@ fun EditDocumentScreen(
                         }
                     }
                 },
-                enabled = !saving && title.isNotBlank(),
+                enabled = !saving && title.isNotBlank() && (!needsHospital || hospitalName.isNotBlank()),
                 modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = docCategoryColor(category))

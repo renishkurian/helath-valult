@@ -81,7 +81,7 @@ fun FinanceEmiScreen(repository: HealthVaultRepository, onBack: () -> Unit) {
         statusOk && kindOk
     }
 
-    Box(Modifier.fillMaxSize().background(Paper)) {
+    Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
             Row(
                 Modifier.fillMaxWidth().padding(4.dp, 4.dp, 16.dp, 8.dp),

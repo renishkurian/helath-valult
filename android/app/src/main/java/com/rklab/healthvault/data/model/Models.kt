@@ -17,10 +17,13 @@ data class UserOut(
     val full_name: String,
     val role: String = "owner",
     val vault_owner_id: String? = null,
-    val totp_enabled: Boolean = false
+    val totp_enabled: Boolean = false,
+    val app_approve: Boolean = false
 ) {
     val isViewer: Boolean get() = role == "viewer"
 }
+
+data class AppApproveIn(val enabled: Boolean)
 
 data class InviteViewerRequest(
     val email: String,
@@ -106,8 +109,15 @@ enum class DocCategory {
     @SerializedName("vaccination") VACCINATION,
     @SerializedName("bill") BILL,
     @SerializedName("medicine") MEDICINE,
-    @SerializedName("other") OTHER
+    @SerializedName("other") OTHER;
+
+    /** Everything except insurance must be filed under a hospital. */
+    fun requiresHospital(): Boolean = this != INSURANCE
 }
+
+/** Categories shown under each hospital on the health overview. */
+val HospitalScopedCategories: List<DocCategory> =
+    DocCategory.entries.filter { it.requiresHospital() }
 
 data class DocumentOut(
     val id: String,

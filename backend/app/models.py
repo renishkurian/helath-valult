@@ -31,6 +31,16 @@ class DocCategory(str, enum.Enum):
     other = "other"
 
 
+# Everything except insurance is filed under a specific hospital/clinic.
+HOSPITAL_SCOPED_CATEGORIES = frozenset(
+    c for c in DocCategory if c != DocCategory.insurance
+)
+
+
+def category_requires_hospital(category: DocCategory) -> bool:
+    return category in HOSPITAL_SCOPED_CATEGORIES
+
+
 class RepeatRule(str, enum.Enum):
     none = "none"
     daily = "daily"

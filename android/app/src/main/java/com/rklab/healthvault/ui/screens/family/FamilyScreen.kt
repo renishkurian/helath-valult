@@ -1,6 +1,7 @@
 package com.rklab.healthvault.ui.screens.family
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,9 +33,9 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
 
     LaunchedEffect(Unit) { viewModel.load() }
 
-    Box(modifier = Modifier.fillMaxSize().background(Paper)) {
+    Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-            Text("FAMILY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text("FAMILY", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(4.dp))
             Text("Who you're managing", style = MaterialTheme.typography.headlineMedium, color = Ink)
             if (!isViewer) {
@@ -68,7 +69,7 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
         FloatingActionButton(
             onClick = { showAddDialog = true },
             containerColor = Navy,
-            contentColor = White,
+            contentColor = TextDark,
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
         ) {
             Icon(Icons.Filled.Add, contentDescription = "Add family member")
@@ -104,7 +105,8 @@ private fun PersonRow(person: PersonOut, onClick: () -> Unit, onDelete: (() -> U
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(White)
+            .background(HubGlass)
+            .border(1.dp, HubStroke, RoundedCornerShape(14.dp))
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

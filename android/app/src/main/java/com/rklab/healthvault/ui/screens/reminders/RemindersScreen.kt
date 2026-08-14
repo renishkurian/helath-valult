@@ -1,6 +1,7 @@
 package com.rklab.healthvault.ui.screens.reminders
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,9 +37,9 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
 
     LaunchedEffect(Unit) { viewModel.load() }
 
-    Box(modifier = Modifier.fillMaxSize().background(Paper)) {
+    Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-            Text("REMINDERS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text("REMINDERS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(4.dp))
             Text("Medicines & appointments", style = MaterialTheme.typography.headlineMedium, color = Ink)
             Spacer(Modifier.height(18.dp))
@@ -76,7 +77,7 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
         if (!repository.isViewer) {
         FloatingActionButton(
             onClick = { showAddDialog = true },
-            containerColor = Navy, contentColor = White,
+            containerColor = Navy, contentColor = TextDark,
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp)
         ) { Icon(Icons.Filled.Add, contentDescription = "Add reminder") }
         }
@@ -102,7 +103,8 @@ private fun ReminderRow(title: String, description: String?, remindAt: String, r
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(White)
+            .background(HubGlass)
+            .border(1.dp, HubStroke, RoundedCornerShape(14.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

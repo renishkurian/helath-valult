@@ -16,7 +16,7 @@ import com.rklab.healthvault.ui.theme.*
 fun PinLockScreen(error: Boolean, onSubmit: (String) -> Unit) {
     var pin by remember { mutableStateOf("") }
     Column(
-        modifier = Modifier.fillMaxSize().background(Paper).padding(28.dp),
+        modifier = Modifier.fillMaxSize().background(HubBg).padding(28.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

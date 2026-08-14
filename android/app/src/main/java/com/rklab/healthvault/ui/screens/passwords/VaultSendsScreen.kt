@@ -2,19 +2,35 @@ package com.rklab.healthvault.ui.screens.passwords
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultSendOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
-import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.ui.components.VaultCardShape
+import com.rklab.healthvault.ui.components.VaultFilterChip
+import com.rklab.healthvault.ui.components.VaultPageHeader
+import com.rklab.healthvault.ui.components.VaultPrimaryButton
+import com.rklab.healthvault.ui.components.vaultFieldColors
+import com.rklab.healthvault.ui.theme.HubBg
+import com.rklab.healthvault.ui.theme.HubGlass
+import com.rklab.healthvault.ui.theme.HubStroke
+import com.rklab.healthvault.ui.theme.HubText
+import com.rklab.healthvault.ui.theme.HubTextDim
+import com.rklab.healthvault.ui.theme.StampRed
+import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.util.ClipboardUtil
 import kotlinx.coroutines.launch
 
@@ -30,6 +46,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     var itemId by remember { mutableStateOf(prefillItemId) }
     var pin by remember { mutableStateOf("") }
     var hours by remember { mutableStateOf("48") }
+    val fieldColors = vaultFieldColors()
 
     fun reload() {
         scope.launch {
@@ -43,32 +60,71 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     LaunchedEffect(Unit) { reload() }
     val base = repository.getServerUrl()?.trimEnd('/') ?: ""
 
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
-        Text("SEND", style = MaterialTheme.typography.labelMedium, color = InkSoft)
-        Text("Share a secret", style = MaterialTheme.typography.headlineMedium, color = Ink)
-        Spacer(Modifier.height(12.dp))
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 40.dp)) {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(HubBg)
+            .padding(horizontal = 20.dp)
+    ) {
+        VaultPageHeader(
+            eyebrow = "SEND",
+            title = "Share a secret"
+        )
+        Spacer(Modifier.height(4.dp))
+        LazyColumn(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(bottom = 40.dp)
+        ) {
             item {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                OutlinedTextField(
+                    name, { name = it }, label = { Text("Name") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
+                )
+                Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = sendType == "text", onClick = { sendType = "text" }, label = { Text("Text") })
-                    FilterChip(selected = sendType == "login", onClick = { sendType = "login" }, label = { Text("Login") })
+                    VaultFilterChip(
+                        selected = sendType == "text",
+                        onClick = { sendType = "text" },
+                        label = "Text"
+                    )
+                    VaultFilterChip(
+                        selected = sendType == "login",
+                        onClick = { sendType = "login" },
+                        label = "Login"
+                    )
                 }
+                Spacer(Modifier.height(8.dp))
                 if (sendType == "text") {
-                    OutlinedTextField(text, { text = it }, label = { Text("Text") }, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        text, { text = it }, label = { Text("Text") },
+                        modifier = Modifier.fillMaxWidth(), colors = fieldColors
+                    )
                 } else {
-                    items.forEach { item ->
-                        FilterChip(
-                            selected = itemId == item.id,
-                            onClick = { itemId = item.id; if (name.isBlank()) name = item.name },
-                            label = { Text(item.name) }
-                        )
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items.forEach { item ->
+                            VaultFilterChip(
+                                selected = itemId == item.id,
+                                onClick = { itemId = item.id; if (name.isBlank()) name = item.name },
+                                label = item.name
+                            )
+                        }
                     }
                 }
-                OutlinedTextField(pin, { pin = it }, label = { Text("PIN (optional)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-                OutlinedTextField(hours, { hours = it.filter(Char::isDigit) }, label = { Text("Expires in hours") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                 Spacer(Modifier.height(8.dp))
-                Button(
+                OutlinedTextField(
+                    pin, { pin = it }, label = { Text("PIN (optional)") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
+                )
+                OutlinedTextField(
+                    hours, { hours = it.filter(Char::isDigit) }, label = { Text("Expires in hours") },
+                    modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
+                )
+                Spacer(Modifier.height(8.dp))
+                VaultPrimaryButton(
+                    text = "Create send",
                     onClick = {
                         scope.launch {
                             runCatching {
@@ -91,25 +147,36 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                 name = ""; text = ""; pin = ""; reload()
                             }
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(containerColor = Navy)
-                ) { Text("Create send", color = TextWhite) }
+                    }
+                )
                 Spacer(Modifier.height(16.dp))
-                Text("YOUR SENDS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                Text(
+                    "YOUR SENDS",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = VaultGold
+                )
             }
             items(sends, key = { it.id }) { send ->
-                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Text(send.name, color = Ink)
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(VaultCardShape)
+                        .background(HubGlass)
+                        .border(1.dp, HubStroke, VaultCardShape)
+                        .padding(14.dp)
+                ) {
+                    Text(send.name, color = HubText, fontWeight = FontWeight.SemiBold)
                     Text(
                         "${send.send_type} · ${send.view_count} views · ${if (send.revoked) "revoked" else "active"}",
-                        color = InkSoft,
+                        color = HubTextDim,
                         style = MaterialTheme.typography.bodySmall
                     )
                     val url = "$base/v/${send.token}"
-                    Text(url, color = Navy, style = MaterialTheme.typography.bodySmall)
+                    Text(url, color = VaultGold, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { ClipboardUtil.copy(context, "Send link", url) }) { Text("Copy link", color = Navy) }
+                        TextButton(onClick = { ClipboardUtil.copy(context, "Send link", url) }) {
+                            Text("Copy link", color = VaultGold)
+                        }
                         if (!send.revoked) {
                             TextButton(onClick = {
                                 scope.launch { repository.revokeVaultSend(send.id); reload() }

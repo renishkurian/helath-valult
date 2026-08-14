@@ -495,6 +495,8 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
         active_person = next((p for p in people if p.relation == models.Relation.self_), people[0] if people else None)
 
     cards, documents, folder_counts, recent_documents, expiring_cards = [], [], {}, [], []
+    hospital_folders, insurance_count, unassigned_folders = [], 0, {}
+    hospital_scoped_cats = [c.value for c in models.DocCategory if models.category_requires_hospital(c)]
     if active_person:
         card_rows = db.query(models.HospitalCard).filter(models.HospitalCard.person_id == active_person.id).all()
         cards = [card_out(c) for c in card_rows]
@@ -516,11 +518,39 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
             folder_counts[d["category"]] = folder_counts.get(d["category"], 0) + 1
         recent_documents = sorted(documents, key=lambda d: d["created_at"], reverse=True)[:8]
 
+        # Group hospital-scoped docs under matching hospital cards (by name).
+        card_keys = {(c["hospital_name"] or "").strip().lower(): c for c in cards}
+        per_hospital = {k: {cat: 0 for cat in hospital_scoped_cats} for k in card_keys}
+        unassigned_folders = {cat: 0 for cat in hospital_scoped_cats}
+        insurance_count = 0
+        for d in documents:
+            cat = d["category"]
+            if cat == models.DocCategory.insurance.value:
+                insurance_count += 1
+                continue
+            if cat not in unassigned_folders:
+                continue
+            key = (d.get("hospital_name") or "").strip().lower()
+            if key and key in per_hospital:
+                per_hospital[key][cat] += 1
+            else:
+                unassigned_folders[cat] += 1
+        hospital_folders = [
+            {"card": card, "counts": per_hospital[(card["hospital_name"] or "").strip().lower()]}
+            for card in cards
+        ]
+        if not any(unassigned_folders.values()):
+            unassigned_folders = {}
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "session_user": user, "active_nav": "dashboard",
         "people": people, "active_person": active_person, "active_person_id": active_person.id if active_person else None,
         "cards": cards, "folder_counts": folder_counts, "recent_documents": recent_documents,
         "expiring_cards": expiring_cards,
+        "hospital_folders": hospital_folders,
+        "hospital_scoped_cats": hospital_scoped_cats,
+        "insurance_count": insurance_count,
+        "unassigned_folders": unassigned_folders,
     })
 
 
@@ -610,7 +640,13 @@ def cards_delete(request: Request, card_id: str, person_id: str = Form(...), db:
 
 # ---------- Documents ----------
 @router.get("/documents", response_class=HTMLResponse)
-def documents_page(request: Request, person: str, category: Optional[str] = None, db: Session = Depends(get_db)):
+def documents_page(
+    request: Request,
+    person: str,
+    category: Optional[str] = None,
+    hospital: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -622,13 +658,19 @@ def documents_page(request: Request, person: str, category: Optional[str] = None
     q = db.query(models.Document).filter(models.Document.person_id == active_person.id)
     if category:
         q = q.filter(models.Document.category == models.DocCategory(category))
+    if hospital:
+        q = q.filter(models.Document.hospital_name.ilike(hospital))
     docs = [doc_out(d) for d in q.order_by(models.Document.created_at.desc()).all()]
+
+    card_rows = db.query(models.HospitalCard).filter(models.HospitalCard.person_id == active_person.id).all()
+    hospitals = [c.hospital_name for c in card_rows]
 
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     return templates.TemplateResponse("documents.html", {
         "request": request, "session_user": user, "active_nav": "dashboard",
         "people": people, "active_person": active_person, "active_person_id": active_person.id,
-        "documents": docs, "category": category,
+        "documents": docs, "category": category, "hospital": hospital, "hospitals": hospitals,
+        "hospital_scoped_cats": [c.value for c in models.DocCategory if models.category_requires_hospital(c)],
     })
 
 
@@ -639,6 +681,7 @@ async def documents_add(
     hospital_name: str = Form(""), doc_date: str = Form(""), notes: str = Form(""),
     expiry_date: str = Form(""), tags: str = Form(""),
     redirect_to: str = Form("dashboard"), redirect_category: str = Form(""),
+    redirect_hospital: str = Form(""),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
@@ -648,10 +691,17 @@ async def documents_add(
 
     person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if person:
+        cat = models.DocCategory(category)
+        hosp = (hospital_name or "").strip() or None
+        if models.category_requires_hospital(cat) and not hosp:
+            return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+        if cat == models.DocCategory.insurance:
+            hosp = None
+
         raw = await file.read()
         doc = models.Document(
-            person_id=person.id, category=models.DocCategory(category), title=title,
-            hospital_name=hospital_name or None, doc_date=doc_date or None,
+            person_id=person.id, category=cat, title=title,
+            hospital_name=hosp, doc_date=doc_date or None,
             expiry_date=expiry_date or None, tags=tags or None,
             file_type=file.content_type, file_size=len(raw),
             notes_enc=crypto.encrypt_text(notes or None), file_path="",
@@ -683,7 +733,13 @@ async def documents_add(
         db.commit()
 
     if redirect_to == "folder":
-        return RedirectResponse(f"/admin/documents?person={person_id}&category={redirect_category}", status_code=302)
+        qs = f"/admin/documents?person={person_id}"
+        if redirect_category:
+            qs += f"&category={redirect_category}"
+        if redirect_hospital:
+            from urllib.parse import quote
+            qs += f"&hospital={quote(redirect_hospital)}"
+        return RedirectResponse(qs, status_code=302)
     return RedirectResponse(f"/admin?person={person_id}", status_code=302)
 
 

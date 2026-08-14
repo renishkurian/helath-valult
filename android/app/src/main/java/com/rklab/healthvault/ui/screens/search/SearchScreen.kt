@@ -70,8 +70,8 @@ fun SearchScreen(repository: HealthVaultRepository, onOpenDocument: (DocumentOut
     val viewModel: SearchViewModel = viewModel(factory = ViewModelFactory(repository))
     val state by viewModel.state.collectAsState()
 
-    Column(modifier = Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
-        Text("SEARCH", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+    Column(modifier = Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
+        Text("SEARCH", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(4.dp))
         Text("Find a card or document", style = MaterialTheme.typography.headlineMedium, color = Ink)
         Spacer(Modifier.height(16.dp))
@@ -92,7 +92,7 @@ fun SearchScreen(repository: HealthVaultRepository, onOpenDocument: (DocumentOut
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(bottom = 100.dp)) {
             if (state.cards.isNotEmpty()) {
-                item { Text("HOSPITAL CARDS", style = MaterialTheme.typography.labelMedium, color = InkSoft) }
+                item { Text("HOSPITAL CARDS", style = MaterialTheme.typography.labelMedium, color = VaultGold) }
                 items(state.cards) { card ->
                     HealthIdCard(
                         card = card,
@@ -102,10 +102,10 @@ fun SearchScreen(repository: HealthVaultRepository, onOpenDocument: (DocumentOut
                 }
             }
             if (state.documents.isNotEmpty()) {
-                item { Text("DOCUMENTS", style = MaterialTheme.typography.labelMedium, color = InkSoft) }
+                item { Text("DOCUMENTS", style = MaterialTheme.typography.labelMedium, color = VaultGold) }
                 item {
                     Column(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(White)
+                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(HubGlass)
                     ) {
                         state.documents.forEach { doc ->
                             val ownerName = state.peopleMap[doc.person_id] ?: "Unknown"

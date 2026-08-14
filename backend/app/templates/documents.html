@@ -3,17 +3,32 @@
 {% block content %}
 {% set cat_colors = {'hospital_card':'#7FA6FF','prescription':'#4ADE9B','lab_report':'#C0A8FF','insurance':'#F0C36A','vaccination':'#4ADE9B','bill':'#FF8095','medicine':'#F0C36A','other':'#8B95A8'} %}
 {% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
-{% set folder_label = {'hospital_card':'Hospital Cards','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+{% set folder_label = {'hospital_card':'Card scans','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
 
 <div class="page-head">
   <div>
     <div class="eyebrow">
       <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
       <i class="bi bi-chevron-right"></i>
+      {% if hospital %}
+        <span>{{ hospital | nice }}</span>
+        <i class="bi bi-chevron-right"></i>
+      {% endif %}
       Documents
     </div>
-    <h1 class="page-title">{{ folder_label.get(category, 'All documents') if category else 'All documents' }}</h1>
-    <p class="page-lead">Files kept for {{ active_person.name | nice }}, encrypted on this server.</p>
+    <h1 class="page-title">
+      {% if category %}{{ folder_label.get(category, category) }}{% else %}All documents{% endif %}
+      {% if hospital %}<span class="text-faint"> · {{ hospital | nice }}</span>{% endif %}
+    </h1>
+    <p class="page-lead">
+      {% if category == 'insurance' %}
+        Insurance for {{ active_person.name | nice }} — not tied to a hospital.
+      {% elif hospital %}
+        Filed under {{ hospital | nice }} for {{ active_person.name | nice }}.
+      {% else %}
+        Files kept for {{ active_person.name | nice }}, encrypted on this server.
+      {% endif %}
+    </p>
   </div>
   <div class="page-actions">
     <a class="btn btn-ghost btn-icon" href="/admin?person={{ active_person.id }}" aria-label="Back to {{ active_person.name | nice }}">
@@ -26,15 +41,30 @@
 </div>
 
 <div class="filter-bar">
-  <a class="chip plain {% if not category %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}">
+  <a class="chip plain {% if not category and not hospital %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}">
     <i class="bi bi-collection"></i> All
   </a>
-  {% for cat, label in folder_label.items() %}
-  <a class="chip plain {% if cat == category %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}">
-    <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span> {{ label }}
+  {% for cat in hospital_scoped_cats %}
+  <a class="chip plain {% if cat == category %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}{% if hospital %}&hospital={{ hospital | urlencode }}{% endif %}">
+    <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span> {{ folder_label[cat] }}
+  </a>
+  {% endfor %}
+  <a class="chip plain {% if category == 'insurance' %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}&category=insurance">
+    <span class="folder-dot" style="background:{{ cat_colors.insurance }}"></span> Insurance
+  </a>
+</div>
+
+{% if hospitals and category != 'insurance' %}
+<div class="filter-bar mb-3">
+  <span class="text-faint me-2" style="font-size:.75rem;align-self:center;">Hospital</span>
+  <a class="chip plain {% if not hospital %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}{% if category %}&category={{ category }}{% endif %}">All hospitals</a>
+  {% for h in hospitals %}
+  <a class="chip plain {% if hospital and hospital|lower == h|lower %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}{% if category %}&category={{ category }}{% endif %}&hospital={{ h | urlencode }}">
+    <i class="bi bi-building"></i> {{ h | nice }}
   </a>
   {% endfor %}
 </div>
+{% endif %}
 
 <div class="collapse mb-4" id="add-doc">
   <div class="card">
@@ -42,17 +72,18 @@
       <span class="card-ico gold"><i class="bi bi-cloud-arrow-up"></i></span>
       <div>
         <h2>Add a document</h2>
-        <div class="card-sub">Stored encrypted for {{ active_person.name | nice }}</div>
+        <div class="card-sub">Hospital required except for insurance</div>
       </div>
       <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc" aria-label="Close">
         <i class="bi bi-x-lg"></i>
       </button>
     </div>
     <div class="card-body">
-      <form method="post" action="/admin/documents/add" enctype="multipart/form-data">
+      <form method="post" action="/admin/documents/add" enctype="multipart/form-data" id="docs-upload-form">
         <input type="hidden" name="person_id" value="{{ active_person.id }}">
         <input type="hidden" name="redirect_to" value="folder">
         <input type="hidden" name="redirect_category" value="{{ category or '' }}">
+        <input type="hidden" name="redirect_hospital" value="{{ hospital or '' }}">
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label" for="d-title">Title <span class="req">*</span></label>
@@ -61,14 +92,23 @@
           <div class="col-md-6">
             <label class="form-label" for="d-category">Category <span class="req">*</span></label>
             <select class="form-select" id="d-category" name="category" required>
-              {% for cat, label in folder_label.items() %}
-                <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ label }}</option>
+              {% for cat in hospital_scoped_cats %}
+                <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ folder_label[cat] }}</option>
               {% endfor %}
+              <option value="insurance" {% if category == 'insurance' %}selected{% endif %}>{{ folder_label.insurance }}</option>
             </select>
           </div>
-          <div class="col-md-6">
-            <label class="form-label" for="d-hospital">Hospital / clinic</label>
-            <input class="form-control" id="d-hospital" type="text" name="hospital_name">
+          <div class="col-md-6" id="d-hospital-wrap">
+            <label class="form-label" for="d-hospital">Hospital <span class="req">*</span></label>
+            <select class="form-select" id="d-hospital" name="hospital_name" required>
+              <option value="">Select hospital…</option>
+              {% for h in hospitals %}
+                <option value="{{ h }}" {% if hospital and hospital|lower == h|lower %}selected{% endif %}>{{ h | nice }}</option>
+              {% endfor %}
+            </select>
+            {% if not hospitals %}
+              <div class="form-text text-warning">Add a hospital on the overview first.</div>
+            {% endif %}
           </div>
           <div class="col-md-6">
             <label class="form-label" for="d-date">Date</label>
@@ -138,7 +178,7 @@
               <span class="text-faint">—</span>
             {% endif %}
           </td>
-          <td>{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}</td>
+          <td>{% if doc.category == 'insurance' %}<span class="text-faint">Personal</span>{% else %}{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}{% endif %}</td>
           <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
           <td class="table-actions">
             <div class="d-flex gap-2 justify-content-end">
@@ -161,7 +201,7 @@
             <div class="empty-state">
               <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
               <div class="empty-title">Nothing here yet</div>
-              <p>Upload a prescription, lab report, or bill and it will show up in this folder.</p>
+              <p>{% if category == 'insurance' %}Upload an insurance policy or claim document.{% else %}Upload a file under this hospital folder.{% endif %}</p>
               <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">
                 <i class="bi bi-cloud-arrow-up"></i> Add document
               </button>
@@ -173,4 +213,21 @@
     </table>
   </div>
 </div>
+
+<script>
+(function () {
+  var cat = document.getElementById('d-category');
+  var wrap = document.getElementById('d-hospital-wrap');
+  var hosp = document.getElementById('d-hospital');
+  if (!cat || !wrap || !hosp) return;
+  function sync() {
+    var needs = cat.value !== 'insurance';
+    wrap.style.display = needs ? '' : 'none';
+    hosp.required = needs;
+    if (!needs) hosp.value = '';
+  }
+  cat.addEventListener('change', sync);
+  sync();
+})();
+</script>
 {% endblock %}

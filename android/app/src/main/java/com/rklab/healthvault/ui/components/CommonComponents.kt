@@ -22,7 +22,7 @@ import com.rklab.healthvault.ui.theme.*
 data class FolderDef(val category: DocCategory, val label: String, val bg: Color, val customCategory: String? = null)
 
 val FolderDefs = listOf(
-    FolderDef(DocCategory.HOSPITAL_CARD, "Hospital Cards", CatHospitalCard),
+    FolderDef(DocCategory.HOSPITAL_CARD, "Card scans", CatHospitalCard),
     FolderDef(DocCategory.PRESCRIPTION, "Prescriptions", CatPrescription),
     FolderDef(DocCategory.LAB_REPORT, "Lab Reports", CatLabReport),
     FolderDef(DocCategory.INSURANCE, "Insurance", CatInsurance),
@@ -30,6 +30,13 @@ val FolderDefs = listOf(
     FolderDef(DocCategory.BILL, "Bills", CatBill),
     FolderDef(DocCategory.MEDICINE, "Medicines", CatMedicine),
 )
+
+/** Folders that nest under a hospital (everything except insurance). */
+val HospitalScopedFolderDefs: List<FolderDef> =
+    FolderDefs.filter { it.category.requiresHospital() } +
+        listOf(FolderDef(DocCategory.OTHER, "Other", CatOther))
+
+val InsuranceFolderDef = FolderDef(DocCategory.INSURANCE, "Insurance", CatInsurance)
 
 private val folderTabShape = GenericShape { size, _ ->
     moveTo(0f, size.height * 0.22f)
@@ -47,8 +54,8 @@ fun FolderTab(def: FolderDef, count: Int, onClick: () -> Unit) {
             .width(110.dp)
             .height(110.dp)
             .clip(RoundedCornerShape(16.dp))
-            .background(CardSurface)
-            .border(1.dp, CardOutline, RoundedCornerShape(16.dp))
+            .background(HubGlass)
+            .border(1.dp, HubStroke, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(14.dp),
         verticalArrangement = Arrangement.SpaceBetween
@@ -124,7 +131,9 @@ fun LedgerRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(CardSurface)
+            .clip(RoundedCornerShape(14.dp))
+            .background(HubGlass)
+            .border(1.dp, HubStroke, RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -206,7 +215,7 @@ fun FamilyAvatarChip(
             Text(
                 initials,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (selected) TextWhite else TextGray
+                color = if (selected) TextDark else TextGray
             )
         }
         Spacer(Modifier.height(8.dp))

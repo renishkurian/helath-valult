@@ -185,6 +185,24 @@ def totp_disable(body: schemas.TotpVerifyIn, db: Session = Depends(get_db), curr
     db.commit()
 
 
+@router.post("/app-approve", response_model=schemas.UserOut)
+def set_app_approve(
+    body: schemas.AppApproveIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    current_user.app_approve = bool(body.enabled)
+    if not current_user.app_approve:
+        db.query(models.LoginChallenge).filter(
+            models.LoginChallenge.user_id == current_user.id,
+            models.LoginChallenge.status == "pending",
+        ).update({"status": "expired"}, synchronize_session=False)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
 @router.post("/totp/verify", response_model=schemas.LoginResponse)
 def totp_verify(body: schemas.TotpVerifyIn, request: Request, db: Session = Depends(get_db)):
     if not body.totp_token:

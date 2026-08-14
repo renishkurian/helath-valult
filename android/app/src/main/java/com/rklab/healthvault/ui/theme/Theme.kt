@@ -1,6 +1,5 @@
 package com.rklab.healthvault.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -8,22 +7,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val HealthVaultDark = darkColorScheme(
-    primary = Navy,
-    onPrimary = TextWhite,
+    primary = VaultGold,
+    onPrimary = TextDark,
     secondary = Sage,
-    onSecondary = TextWhite,
+    onSecondary = TextDark,
     background = DarkBackground,
     onBackground = TextWhite,
     surface = CardSurface,
     onSurface = TextWhite,
-    surfaceVariant = CardSurface,
+    surfaceVariant = CardSurfaceRaised,
     onSurfaceVariant = TextGray,
     outline = CardOutline,
     error = StampRed,
+    primaryContainer = VaultGoldSoft,
+    onPrimaryContainer = VaultGold,
 )
 
 private val HealthVaultLight = lightColorScheme(
-    primary = Color(0xFF3D6FE5),
+    primary = VaultGoldDeep,
     onPrimary = Color.White,
     secondary = Color(0xFF0F9F6E),
     onSecondary = Color.White,

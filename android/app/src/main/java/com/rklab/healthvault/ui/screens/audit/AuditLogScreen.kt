@@ -39,9 +39,9 @@ fun AuditLogScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    Column(modifier = Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← Back", color = Navy) }
-        Text("ACTIVITY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("ACTIVITY", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(4.dp))
         Text("Who viewed what", style = MaterialTheme.typography.headlineMedium, color = Ink)
         Spacer(Modifier.height(18.dp))
@@ -63,7 +63,7 @@ private fun AuditRow(entry: AuditLogOut) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(White)
+            .background(HubGlass)
             .padding(12.dp)
     ) {
         Text(actionLabel(entry.action), style = MaterialTheme.typography.bodyMedium, color = Ink)

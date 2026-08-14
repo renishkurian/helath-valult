@@ -194,10 +194,10 @@ fun DocumentViewerScreen(
                             Column(
                                 Modifier
                                     .fillMaxWidth()
-                                    .background(Paper)
+                                    .background(HubBg)
                                     .padding(16.dp)
                             ) {
-                                Text("EXTRACTED TEXT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                                Text("EXTRACTED TEXT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
                                 Spacer(Modifier.height(6.dp))
                                 Text(extractedText!!, style = MaterialTheme.typography.bodySmall, color = Ink, maxLines = 8)
                             }

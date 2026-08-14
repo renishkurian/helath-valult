@@ -995,6 +995,21 @@ button.list-row:last-child{ border-bottom:none; }
   background:var(--v-surface-2); border:1px solid var(--v-line);
 }
 
+/* Hospital blocks on health overview */
+.hospital-block{
+  padding:1.25rem; border:1px solid var(--v-line); border-radius:var(--v-r);
+  background:var(--v-surface); box-shadow:var(--v-sh-1);
+}
+.hospital-folders-head{
+  display:flex; flex-direction:column; gap:.125rem; margin-bottom:.875rem;
+}
+.hospital-folders-head h3{
+  margin:0; font-size:1rem; font-weight:650; letter-spacing:-0.02em;
+}
+.section-note{
+  margin:0; font-size:.875rem; color:var(--v-ink-3); max-width:40rem;
+}
+
 /* Document folders */
 .folder-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:.75rem; }
 .folder{

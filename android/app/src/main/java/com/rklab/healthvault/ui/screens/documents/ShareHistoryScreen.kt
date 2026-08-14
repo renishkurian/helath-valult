@@ -55,9 +55,9 @@ fun ShareHistoryScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Paper).padding(20.dp)) {
+    Column(modifier = Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← Back", color = Navy) }
-        Text("SHARED LINKS", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("SHARED LINKS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(4.dp))
         Text("Who opened what", style = MaterialTheme.typography.headlineMedium, color = Ink)
         Spacer(Modifier.height(8.dp))
@@ -116,7 +116,7 @@ private fun ShareLinkCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(White)
+            .background(HubGlass)
             .padding(14.dp)
     ) {
         Text(link.document_title ?: "Document", style = MaterialTheme.typography.bodyMedium, color = Ink)

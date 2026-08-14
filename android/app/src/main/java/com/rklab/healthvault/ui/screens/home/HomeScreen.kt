@@ -38,10 +38,10 @@ import java.time.temporal.ChronoUnit
 fun HomeScreen(
     repository: HealthVaultRepository,
     onAddFamily: () -> Unit,
-    onOpenFolder: (String, DocCategory, String?) -> Unit,
-    onAddDocument: (String) -> Unit,
+    onOpenFolder: (personId: String, category: DocCategory, customCategory: String?, hospital: String?) -> Unit,
+    onAddDocument: (personId: String, hospital: String?) -> Unit,
     onOpenDocument: (DocumentOut, String?) -> Unit,
-    onAddCard: () -> Unit,
+    onAddCard: (personId: String, personName: String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenModules: () -> Unit = {},
     isViewer: Boolean = false
@@ -53,8 +53,7 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { viewModel.load() }
 
-    Column(modifier = Modifier.fillMaxSize().background(Paper)) {
-        // Offline banner slides in at the very top when the Pi is unreachable.
+    Column(Modifier = Modifier.fillMaxSize().background(HubBg)) {
         OfflineBanner(isOffline = isOffline, pendingCount = pendingCount)
 
         Box(modifier = Modifier.weight(1f)) {
@@ -77,32 +76,36 @@ fun HomeScreen(
             }
 
             val activeId = state.activePerson?.id.orEmpty()
+            val activeName = state.activePerson?.name.orEmpty()
             LazyColumnContent(
                 state, viewModel,
                 onAddFamily = onAddFamily,
-                onOpenFolder = { cat, customCat -> onOpenFolder(activeId, cat, customCat) },
-                onAddDocument = { onAddDocument(activeId) },
+                onOpenFolder = { cat, customCat, hospital -> onOpenFolder(activeId, cat, customCat, hospital) },
+                onAddDocument = { hospital -> onAddDocument(activeId, hospital) },
                 onOpenDocument = onOpenDocument,
-                onAddCard = onAddCard,
+                onAddCard = { onAddCard(activeId, activeName) },
                 onOpenSettings = onOpenSettings,
                 onOpenModules = onOpenModules,
                 isViewer = isViewer
             )
 
             if (!isViewer) {
-            FloatingActionButton(
-                onClick = { onAddDocument(state.activePerson?.id.orEmpty()) },
-                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp).size(64.dp),
-                containerColor = Color.Transparent,
-                elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxSize().background(GradientPrimary, CircleShape),
-                    contentAlignment = Alignment.Center
+                FloatingActionButton(
+                    onClick = {
+                        val hospital = state.cards.firstOrNull()?.hospital_name
+                        onAddDocument(activeId, hospital)
+                    },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp).size(64.dp),
+                    containerColor = Color.Transparent,
+                    elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                 ) {
-                    Icon(Icons.Filled.Add, contentDescription = "Add document", tint = TextWhite, modifier = Modifier.size(32.dp))
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(GradientPrimary, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Add document", tint = TextDark, modifier = Modifier.size(32.dp))
+                    }
                 }
-            }
             }
         }
     }
@@ -113,8 +116,8 @@ private fun LazyColumnContent(
     state: HomeUiState,
     viewModel: HomeViewModel,
     onAddFamily: () -> Unit,
-    onOpenFolder: (DocCategory, String?) -> Unit,
-    onAddDocument: () -> Unit,
+    onOpenFolder: (DocCategory, String?, String?) -> Unit,
+    onAddDocument: (String?) -> Unit,
     onOpenDocument: (DocumentOut, String?) -> Unit,
     onAddCard: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -127,11 +130,19 @@ private fun LazyColumnContent(
     ) {
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                Text(
-                    "Hi, ${state.activePerson?.name?.split(" ")?.first() ?: "there"}",
-                    style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                    color = TextWhite
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Hi, ${state.activePerson?.name?.split(" ")?.first() ?: "there"}",
+                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                        color = TextWhite
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Papers live under a hospital. Insurance stays with the person.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextGray
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(
                         modifier = Modifier.size(48.dp).clip(CircleShape).background(CardSurface).border(1.dp, CardOutline, CircleShape),
@@ -170,12 +181,8 @@ private fun LazyColumnContent(
                             modifier = Modifier
                                 .size(52.dp)
                                 .clip(CircleShape)
-                                .background(androidx.compose.ui.graphics.Color.Transparent)
-                                .border(
-                                    width = 1.dp,
-                                    color = TextGray,
-                                    shape = CircleShape
-                                ),
+                                .background(Color.Transparent)
+                                .border(1.dp, TextGray, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             IconButton(onClick = onAddFamily) {
@@ -188,22 +195,6 @@ private fun LazyColumnContent(
                 }
             }
             Spacer(Modifier.height(22.dp))
-        }
-
-        if (state.cards.isEmpty()) {
-            item {
-                EmptyCardPrompt(onAddCard)
-                Spacer(Modifier.height(24.dp))
-            }
-        } else {
-            items(state.cards) { card ->
-                HealthIdCard(
-                    card = card,
-                    patientName = state.activePerson?.name ?: "",
-                    modifier = Modifier.fillMaxWidth()
-                )
-                Spacer(Modifier.height(24.dp))
-            }
         }
 
         if (state.expiringCards.isNotEmpty() || state.expiringDocuments.isNotEmpty()) {
@@ -221,50 +212,69 @@ private fun LazyColumnContent(
         }
 
         item {
-            SectionHead("Folders", "${state.folderCounts.values.sum()} documents")
+            SectionHead("Hospitals", "${state.cards.size} · ${state.documentCount} documents")
             Spacer(Modifier.height(12.dp))
         }
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                items(state.folders) { def ->
-                    val key = def.customCategory ?: def.category.name
-                    FolderTab(def = def, count = state.folderCounts[key] ?: 0) {
-                        onOpenFolder(def.category, def.customCategory)
+
+        if (state.hospitalFolders.isEmpty()) {
+            item {
+                EmptyCardPrompt(onAddCard)
+                Spacer(Modifier.height(24.dp))
+            }
+        } else {
+            items(state.hospitalFolders) { group ->
+                HospitalBlock(
+                    group = group,
+                    folderDefs = state.hospitalFolderDefs,
+                    patientName = state.activePerson?.name ?: "",
+                    onOpenFolder = { def ->
+                        onOpenFolder(def.category, def.customCategory, group.card.hospital_name)
+                    },
+                    onAddDocument = { onAddDocument(group.card.hospital_name) },
+                    isViewer = isViewer
+                )
+                Spacer(Modifier.height(20.dp))
+            }
+            if (!isViewer) {
+                item {
+                    TextButton(onClick = onAddCard) {
+                        Text("+ Add hospital", color = Navy, fontWeight = FontWeight.SemiBold)
                     }
+                    Spacer(Modifier.height(16.dp))
                 }
-                if (!isViewer) item {
-                    Column(
-                        modifier = Modifier
-                            .width(110.dp)
-                            .height(110.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(CardSurface)
-                            .border(1.dp, CardOutline, RoundedCornerShape(16.dp))
-                            .clickable(onClick = { onAddDocument() })
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .clip(CircleShape)
-                                .background(Color.Transparent)
-                                .border(1.dp, TextGray, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = "Add Folder", tint = TextGray)
-                        }
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "New Folder",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = TextGray
-                        )
+            }
+        }
+
+        item {
+            SectionHead("Insurance", "Personal — not under a hospital")
+            Spacer(Modifier.height(12.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                item {
+                    FolderTab(def = InsuranceFolderDef, count = state.insuranceCount) {
+                        onOpenFolder(DocCategory.INSURANCE, null, null)
                     }
                 }
             }
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(24.dp))
+        }
+
+        if (state.unassignedCounts.isNotEmpty()) {
+            item {
+                SectionHead("Unassigned", "Older files without a hospital")
+                Spacer(Modifier.height(12.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(state.hospitalFolderDefs.filter {
+                        val key = it.customCategory ?: it.category.name
+                        (state.unassignedCounts[key] ?: 0) > 0
+                    }) { def ->
+                        val key = def.customCategory ?: def.category.name
+                        FolderTab(def = def, count = state.unassignedCounts[key] ?: 0) {
+                            onOpenFolder(def.category, def.customCategory, null)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
         }
 
         if (state.labTrends.isNotEmpty()) {
@@ -289,30 +299,35 @@ private fun LazyColumnContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(White)
+                        .background(HubGlass)
                         .padding(24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No documents yet. Tap + to add your first one.", color = InkSoft, style = MaterialTheme.typography.bodyMedium)
+                    Text("Add a hospital, then upload a document under it.", color = InkSoft, style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(14.dp))
-                        .background(White)
+                        .background(HubGlass)
                 ) {
                     state.recentDocuments.forEachIndexed { idx, doc ->
+                        val metaHospital = when {
+                            doc.category == DocCategory.INSURANCE -> "Personal"
+                            !doc.hospital_name.isNullOrBlank() -> doc.hospital_name
+                            else -> "—"
+                        }
                         LedgerRow(
                             title = doc.title,
-                            metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · ${doc.hospital_name ?: "—"}",
+                            metaLine = "${doc.doc_date ?: doc.created_at.take(10)} · $metaHospital",
                             category = doc.category,
                             tagLabel = if (doc.file_count > 1) "${doc.file_count} files" else "Open",
-                            onClick = { 
+                            onClick = {
                                 if (doc.file_count > 1) {
-                                    onOpenFolder(doc.category, doc.custom_category)
+                                    onOpenFolder(doc.category, doc.custom_category, doc.hospital_name)
                                 } else {
-                                    onOpenDocument(doc, null) 
+                                    onOpenDocument(doc, null)
                                 }
                             }
                         )
@@ -320,6 +335,56 @@ private fun LazyColumnContent(
                             Divider(color = PaperDeep, thickness = 1.dp)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HospitalBlock(
+    group: HospitalFolderGroup,
+    folderDefs: List<FolderDef>,
+    patientName: String,
+    onOpenFolder: (FolderDef) -> Unit,
+    onAddDocument: () -> Unit,
+    isViewer: Boolean
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardSurface)
+            .border(1.dp, CardOutline, RoundedCornerShape(18.dp))
+            .padding(16.dp)
+    ) {
+        HealthIdCard(
+            card = group.card,
+            patientName = patientName,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(14.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(group.card.hospital_name, style = MaterialTheme.typography.titleSmall, color = TextWhite)
+                Text("Documents for this hospital", style = MaterialTheme.typography.labelSmall, color = TextGray)
+            }
+            if (!isViewer) {
+                TextButton(onClick = onAddDocument) {
+                    Text("Upload", color = Navy, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(folderDefs) { def ->
+                val key = def.customCategory ?: def.category.name
+                FolderTab(def = def, count = group.counts[key] ?: 0) {
+                    onOpenFolder(def)
                 }
             }
         }
@@ -337,10 +402,10 @@ private fun EmptyCardPrompt(onAddCard: () -> Unit) {
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("No hospital card yet", style = MaterialTheme.typography.titleLarge, color = TextWhite)
+        Text("No hospitals yet", style = MaterialTheme.typography.titleLarge, color = TextWhite)
         Spacer(Modifier.height(6.dp))
         Text(
-            "Add a hospital ID card to keep it one tap away.",
+            "Add a hospital first. Prescriptions, labs, bills, and vaccines are filed under it.",
             style = MaterialTheme.typography.bodyMedium,
             color = TextGray
         )
@@ -356,7 +421,7 @@ private fun EmptyCardPrompt(onAddCard: () -> Unit) {
                 modifier = Modifier.fillMaxSize().background(GradientPrimary),
                 contentAlignment = Alignment.Center
             ) {
-                Text("Add hospital card", color = TextWhite, fontWeight = FontWeight.SemiBold)
+                Text("Add hospital", color = TextWhite, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -369,7 +434,7 @@ private fun LabTrendCard(trend: com.rklab.healthvault.data.model.LabTrend) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(White)
+            .background(HubGlass)
             .padding(16.dp)
     ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -438,10 +503,4 @@ private fun SectionHead(title: String, count: String) {
         Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
         Text(count, style = MaterialTheme.typography.labelMedium, color = InkSoft)
     }
-}
-
-private fun formatSize(bytes: Long?): String {
-    if (bytes == null) return "—"
-    val kb = bytes / 1024.0
-    return if (kb < 1024) "%.0f KB".format(kb) else "%.1f MB".format(kb / 1024.0)
 }

@@ -18,7 +18,14 @@ import com.rklab.healthvault.data.model.VaultGenerateIn
 import com.rklab.healthvault.data.model.VaultItemIn
 import com.rklab.healthvault.data.model.VaultItemUpdate
 import com.rklab.healthvault.data.repository.HealthVaultRepository
-import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.ui.components.VaultBackLink
+import com.rklab.healthvault.ui.components.VaultFilterChip
+import com.rklab.healthvault.ui.components.VaultPageHeader
+import com.rklab.healthvault.ui.components.VaultPrimaryButton
+import com.rklab.healthvault.ui.components.vaultFieldColors
+import com.rklab.healthvault.ui.theme.HubBg
+import com.rklab.healthvault.ui.theme.StampRed
+import com.rklab.healthvault.ui.theme.VaultGold
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +59,7 @@ fun VaultEditScreen(
     var phone by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val fieldColors = vaultFieldColors()
 
     LaunchedEffect(itemId) {
         folders = runCatching { repository.listVaultFolders() }.getOrDefault(emptyList())
@@ -78,20 +86,32 @@ fun VaultEditScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp).verticalScroll(rememberScrollState())) {
-        TextButton(onClick = onBack) { Text("← Cancel", color = Navy) }
-        Text(if (itemId == null) "New item" else "Edit item", style = MaterialTheme.typography.headlineMedium, color = Ink)
-        Spacer(Modifier.height(12.dp))
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(HubBg)
+            .padding(20.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        VaultBackLink("← Cancel", onBack)
+        VaultPageHeader(
+            eyebrow = "PASSWORD VAULT",
+            title = if (itemId == null) "New item" else "Edit item"
+        )
+        Spacer(Modifier.height(4.dp))
         if (itemId == null) {
             val types = listOf("login", "note", "card", "identity")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 types.forEach { t ->
-                    FilterChip(selected = type == t, onClick = { type = t }, label = { Text(t) })
+                    VaultFilterChip(selected = type == t, onClick = { type = t }, label = t)
                 }
             }
             Spacer(Modifier.height(12.dp))
         }
-        OutlinedTextField(name, { name = it }, label = { Text("Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+        OutlinedTextField(
+            name, { name = it }, label = { Text("Name") },
+            modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
+        )
         if (folders.isNotEmpty()) {
             var expanded by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
@@ -100,7 +120,8 @@ fun VaultEditScreen(
                     onValueChange = {},
                     readOnly = true,
                     label = { Text("Folder") },
-                    modifier = Modifier.fillMaxWidth().menuAnchor()
+                    modifier = Modifier.fillMaxWidth().menuAnchor(),
+                    colors = fieldColors
                 )
                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     DropdownMenuItem(text = { Text("No folder") }, onClick = { folderId = null; expanded = false })
@@ -111,36 +132,70 @@ fun VaultEditScreen(
             }
         }
         if (type == "login" || type == "note") {
-            OutlinedTextField(username, { username = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            SecretField(password, { password = it }, "Password", Modifier.fillMaxWidth())
+            OutlinedTextField(
+                username, { username = it }, label = { Text("Username") },
+                modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
+            )
+            SecretField(password, { password = it }, "Password", Modifier.fillMaxWidth(), fieldColors)
             TextButton(onClick = {
                 scope.launch {
                     runCatching { password = repository.generatePassword(VaultGenerateIn(length = 16)).value }
                 }
-            }) { Text("Generate password", color = Navy) }
-            OutlinedTextField(uris, { uris = it }, label = { Text("Website / URI (one per line)") }, modifier = Modifier.fillMaxWidth())
-            SecretField(totp, { totp = it }, "Authenticator key", Modifier.fillMaxWidth())
+            }) { Text("Generate password", color = VaultGold) }
+            OutlinedTextField(
+                uris, { uris = it }, label = { Text("Website / URI (one per line)") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
+            SecretField(totp, { totp = it }, "Authenticator key", Modifier.fillMaxWidth(), fieldColors)
         }
         if (type == "card") {
-            OutlinedTextField(cardholder, { cardholder = it }, label = { Text("Cardholder") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(cardBrand, { cardBrand = it }, label = { Text("Brand") }, modifier = Modifier.fillMaxWidth())
-            SecretField(cardNumber, { cardNumber = it }, "Number", Modifier.fillMaxWidth())
+            OutlinedTextField(
+                cardholder, { cardholder = it }, label = { Text("Cardholder") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
+            OutlinedTextField(
+                cardBrand, { cardBrand = it }, label = { Text("Brand") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
+            SecretField(cardNumber, { cardNumber = it }, "Number", Modifier.fillMaxWidth(), fieldColors)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(expMonth, { expMonth = it }, label = { Text("MM") }, modifier = Modifier.weight(1f))
-                OutlinedTextField(expYear, { expYear = it }, label = { Text("YYYY") }, modifier = Modifier.weight(1f))
-                SecretField(cvv, { cvv = it }, "CVV", Modifier.weight(1f))
+                OutlinedTextField(
+                    expMonth, { expMonth = it }, label = { Text("MM") },
+                    modifier = Modifier.weight(1f), colors = fieldColors
+                )
+                OutlinedTextField(
+                    expYear, { expYear = it }, label = { Text("YYYY") },
+                    modifier = Modifier.weight(1f), colors = fieldColors
+                )
+                SecretField(cvv, { cvv = it }, "CVV", Modifier.weight(1f), fieldColors)
             }
         }
         if (type == "identity") {
-            OutlinedTextField(firstName, { firstName = it }, label = { Text("First name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(lastName, { lastName = it }, label = { Text("Last name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(email, { email = it }, label = { Text("Email") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(phone, { phone = it }, label = { Text("Phone") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                firstName, { firstName = it }, label = { Text("First name") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
+            OutlinedTextField(
+                lastName, { lastName = it }, label = { Text("Last name") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
+            OutlinedTextField(
+                email, { email = it }, label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
+            OutlinedTextField(
+                phone, { phone = it }, label = { Text("Phone") },
+                modifier = Modifier.fillMaxWidth(), colors = fieldColors
+            )
         }
-        OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth().height(120.dp))
+        OutlinedTextField(
+            notes, { notes = it }, label = { Text("Notes") },
+            modifier = Modifier.fillMaxWidth().height(120.dp), colors = fieldColors
+        )
         if (error != null) Text(error!!, color = StampRed)
         Spacer(Modifier.height(16.dp))
-        Button(
+        VaultPrimaryButton(
+            text = if (saving) "Saving…" else "Save",
             onClick = {
                 saving = true
                 scope.launch {
@@ -179,10 +234,8 @@ fun VaultEditScreen(
                     saving = false
                 }
             },
-            enabled = name.isNotBlank() && !saving,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Navy)
-        ) { Text(if (saving) "Saving…" else "Save", color = TextWhite) }
+            enabled = name.isNotBlank() && !saving
+        )
     }
 }
 
@@ -191,7 +244,8 @@ private fun SecretField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    colors: TextFieldColors
 ) {
     var visible by remember { mutableStateOf(false) }
     OutlinedTextField(
@@ -200,12 +254,14 @@ private fun SecretField(
         label = { Text(label) },
         modifier = modifier,
         singleLine = true,
+        colors = colors,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
             IconButton(onClick = { visible = !visible }) {
                 Icon(
                     if (visible) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
-                    contentDescription = if (visible) "Hide $label" else "Show $label"
+                    contentDescription = if (visible) "Hide $label" else "Show $label",
+                    tint = VaultGold
                 )
             }
         }

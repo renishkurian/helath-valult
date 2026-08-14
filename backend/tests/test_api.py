@@ -92,9 +92,16 @@ def test_document_upload_download_is_encrypted_on_disk():
     headers = _auth_headers(data["access_token"])
     person_id = client.get("/people", headers=headers).json()[0]["id"]
 
+    client.post("/cards", json={"person_id": person_id, "hospital_name": "City Lab"}, headers=headers)
+
     payload = b"confidential lab result data"
     files = {"files": ("report.txt", payload, "text/plain")}
-    form = {"person_id": person_id, "category": "lab_report", "title": "CBC Report"}
+    form = {
+        "person_id": person_id,
+        "category": "lab_report",
+        "title": "CBC Report",
+        "hospital_name": "City Lab",
+    }
     r = client.post("/documents", data=form, files=files, headers=headers)
     assert r.status_code == 201
     doc_id = r.json()["id"]
@@ -229,10 +236,17 @@ def test_ocr_text_is_searchable_and_labs_parse():
     data = _register("ocr@example.com", "password123", "Ocr User")
     headers = _auth_headers(data["access_token"])
     person_id = client.get("/people", headers=headers).json()[0]["id"]
+    client.post("/cards", json={"person_id": person_id, "hospital_name": "City Clinic"}, headers=headers)
 
     payload = b"Lab report\nGlucose 142 mg/dL\nHbA1c 6.4\nCholesterol 190\nBP 128/82\n"
     files = {"files": ("labs.txt", payload, "text/plain")}
-    form = {"person_id": person_id, "category": "lab_report", "title": "Annual labs", "doc_date": "2026-08-01"}
+    form = {
+        "person_id": person_id,
+        "category": "lab_report",
+        "title": "Annual labs",
+        "doc_date": "2026-08-01",
+        "hospital_name": "City Clinic",
+    }
     r = client.post("/documents", data=form, files=files, headers=headers)
     assert r.status_code == 201, r.text
     doc_id = r.json()["id"]
@@ -301,8 +315,9 @@ def test_encrypted_backup_roundtrip():
     data = _register("backup@example.com", "password123", "Backup User")
     headers = _auth_headers(data["access_token"])
     person_id = client.get("/people", headers=headers).json()[0]["id"]
+    client.post("/cards", json={"person_id": person_id, "hospital_name": "Backup Hosp"}, headers=headers)
     files = {"files": ("note.txt", b"keep me", "text/plain")}
-    form = {"person_id": person_id, "category": "other", "title": "Keep"}
+    form = {"person_id": person_id, "category": "other", "title": "Keep", "hospital_name": "Backup Hosp"}
     assert client.post("/documents", data=form, files=files, headers=headers).status_code == 201
 
     r = client.get("/backup/export?password=secret-pass", headers=headers)
@@ -385,8 +400,14 @@ def test_share_pack_and_pin():
     data = _register("pack@example.com", "password123", "Pack User")
     headers = _auth_headers(data["access_token"])
     person_id = client.get("/people", headers=headers).json()[0]["id"]
+    client.post("/cards", json={"person_id": person_id, "hospital_name": "Pack Hosp"}, headers=headers)
     files = {"files": ("id.txt", b"uhid-1", "text/plain")}
-    form = {"person_id": person_id, "category": "hospital_card", "title": "ID"}
+    form = {
+        "person_id": person_id,
+        "category": "hospital_card",
+        "title": "ID",
+        "hospital_name": "Pack Hosp",
+    }
     doc_id = client.post("/documents", data=form, files=files, headers=headers).json()["id"]
 
     r = client.post("/share/packs", json={"title": "Front desk", "document_ids": [doc_id], "expires_in_hours": 4, "pin": "1234"}, headers=headers)
@@ -422,6 +443,15 @@ def test_totp_setup_and_login_gate():
     verify = client.post("/auth/totp/verify", json={"totp_token": body["totp_token"], "code": totp_code(secret)})
     assert verify.status_code == 200
     assert verify.json()["access_token"]
+
+    me = client.get("/auth/me", headers=headers)
+    assert me.status_code == 200
+    assert me.json()["totp_enabled"] is True
+    assert me.json()["app_approve"] is False
+    flipped = client.post("/auth/app-approve", json={"enabled": True}, headers=headers)
+    assert flipped.status_code == 200
+    assert flipped.json()["app_approve"] is True
+    assert client.get("/auth/me", headers=headers).json()["app_approve"] is True
 
 
 def test_password_vault_login_totp_trash_send_health():

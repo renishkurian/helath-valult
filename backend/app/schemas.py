@@ -43,9 +43,14 @@ class UserOut(BaseModel):
     role: str = UserRole.owner.value
     vault_owner_id: Optional[str] = None
     totp_enabled: bool = False
+    app_approve: bool = False
 
     class Config:
         from_attributes = True
+
+
+class AppApproveIn(BaseModel):
+    enabled: bool
 
 
 class DeviceTokenIn(BaseModel):

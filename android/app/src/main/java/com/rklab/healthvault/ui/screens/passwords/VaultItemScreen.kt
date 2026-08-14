@@ -1,8 +1,16 @@
 package com.rklab.healthvault.ui.screens.passwords
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -10,21 +18,41 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.StarBorder
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import com.rklab.healthvault.data.model.VaultHistoryOut
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.model.VaultTotpOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
-import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.ui.components.VaultBackLink
+import com.rklab.healthvault.ui.components.VaultGlassCard
+import com.rklab.healthvault.ui.components.VaultOutlinedButton
+import com.rklab.healthvault.ui.components.VaultPrimaryButton
+import com.rklab.healthvault.ui.theme.HubBg
+import com.rklab.healthvault.ui.theme.HubText
+import com.rklab.healthvault.ui.theme.HubTextDim
+import com.rklab.healthvault.ui.theme.Sage
+import com.rklab.healthvault.ui.theme.SageBg
+import com.rklab.healthvault.ui.theme.StampRed
+import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.util.ClipboardUtil
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -61,17 +89,23 @@ fun VaultItemScreen(
     }
 
     val current = item
-    Column(Modifier.fillMaxSize().background(Paper).padding(20.dp).verticalScroll(rememberScrollState())) {
-        TextButton(onClick = onBack) { Text("← Vault", color = Navy) }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(HubBg)
+            .padding(20.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        VaultBackLink("← Vault", onBack)
         if (error != null) Text(error!!, color = StampRed)
         if (current == null) {
-            CircularProgressIndicator(color = Navy)
+            CircularProgressIndicator(color = VaultGold)
             return@Column
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text(current.item_type.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
-                Text(current.name, style = MaterialTheme.typography.headlineMedium, color = Ink)
+                Text(current.item_type.uppercase(), style = MaterialTheme.typography.labelMedium, color = VaultGold)
+                Text(current.name, style = MaterialTheme.typography.headlineMedium, color = HubText)
             }
             IconButton(onClick = {
                 scope.launch {
@@ -79,19 +113,24 @@ fun VaultItemScreen(
                     load()
                 }
             }) {
-                Icon(if (current.favorite) Icons.Filled.Star else Icons.Outlined.StarBorder, null, tint = Mustard)
+                Icon(if (current.favorite) Icons.Filled.Star else Icons.Outlined.StarBorder, null, tint = VaultGold)
             }
         }
         Spacer(Modifier.height(16.dp))
         totp?.let {
-            Surface(color = SageBg, shape = MaterialTheme.shapes.medium) {
-                Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(SageBg, RoundedCornerShape(16.dp))
+                    .padding(14.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Column {
-                        Text("Authenticator", color = InkSoft, style = MaterialTheme.typography.labelSmall)
+                        Text("Authenticator", color = HubTextDim, style = MaterialTheme.typography.labelSmall)
                         Text(it.code, color = Sage, style = MaterialTheme.typography.headlineMedium, fontFamily = FontFamily.Monospace)
                     }
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("${it.remaining}s", color = InkSoft)
+                        Text("${it.remaining}s", color = HubTextDim)
                         IconButton(onClick = { ClipboardUtil.copy(context, "Code", it.code) }) {
                             Icon(Icons.Filled.ContentCopy, null, tint = Sage)
                         }
@@ -100,35 +139,35 @@ fun VaultItemScreen(
             }
             Spacer(Modifier.height(12.dp))
         }
-        CopyRow("Username", current.username)
-        CopyRow("Password", current.password, secret = true)
-        current.uris.forEach { CopyRow("URI", it) }
-        CopyRow("Notes", current.notes)
-        CopyRow("Card number", current.card_number, secret = true)
-        CopyRow("CVV", current.card_cvv, secret = true)
-        CopyRow("Cardholder", current.cardholder_name)
-        CopyRow("Expiry", listOfNotNull(current.card_exp_month, current.card_exp_year).joinToString("/").ifBlank { null })
-        CopyRow("Name", listOfNotNull(current.first_name, current.last_name).joinToString(" ").ifBlank { null })
-        CopyRow("Email", current.email)
-        CopyRow("Phone", current.phone)
-        CopyRow("SSN", current.ssn, secret = true)
-        CopyRow("License", current.license_number, secret = true)
-        CopyRow("Passport", current.passport_number, secret = true)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = onEdit, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Navy)) {
-            Text("Edit", color = TextWhite)
+        VaultGlassCard {
+            CopyRow("Username", current.username)
+            CopyRow("Password", current.password, secret = true)
+            current.uris.forEach { CopyRow("URI", it) }
+            CopyRow("Notes", current.notes)
+            CopyRow("Card number", current.card_number, secret = true)
+            CopyRow("CVV", current.card_cvv, secret = true)
+            CopyRow("Cardholder", current.cardholder_name)
+            CopyRow("Expiry", listOfNotNull(current.card_exp_month, current.card_exp_year).joinToString("/").ifBlank { null })
+            CopyRow("Name", listOfNotNull(current.first_name, current.last_name).joinToString(" ").ifBlank { null })
+            CopyRow("Email", current.email)
+            CopyRow("Phone", current.phone)
+            CopyRow("SSN", current.ssn, secret = true)
+            CopyRow("License", current.license_number, secret = true)
+            CopyRow("Passport", current.passport_number, secret = true)
         }
+        Spacer(Modifier.height(16.dp))
+        VaultPrimaryButton("Edit", onEdit)
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = onSend, modifier = Modifier.fillMaxWidth()) { Text("Send a copy", color = Navy) }
+        VaultOutlinedButton("Send a copy", onSend)
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = {
+        VaultOutlinedButton("Move to trash", {
             scope.launch {
                 runCatching { repository.trashVaultItem(itemId) }
                 onBack()
             }
-        }, modifier = Modifier.fillMaxWidth()) { Text("Move to trash", color = StampRed) }
+        }, color = StampRed)
         Spacer(Modifier.height(24.dp))
-        Text("ITEM HISTORY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("ITEM HISTORY", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(8.dp))
         MetaRow("Last edited", formatVaultDate(current.updated_at ?: current.created_at))
         MetaRow("Created", formatVaultDate(current.created_at))
@@ -137,12 +176,15 @@ fun VaultItemScreen(
         }
         if (history.isNotEmpty()) {
             Spacer(Modifier.height(20.dp))
-            Text("PASSWORD HISTORY", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+            Text("PASSWORD HISTORY", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(8.dp))
-            history.forEach { h ->
-                CopyRow(formatVaultDate(h.created_at), h.password, secret = true)
+            VaultGlassCard {
+                history.forEach { h ->
+                    CopyRow(formatVaultDate(h.created_at), h.password, secret = true)
+                }
             }
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 
@@ -157,10 +199,10 @@ private fun CopyRow(label: String, value: String?, secret: Boolean = false) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.labelSmall, color = InkSoft)
+            Text(label, style = MaterialTheme.typography.labelSmall, color = HubTextDim)
             Text(
                 if (hidden) "••••••••" else value,
-                color = Ink,
+                color = HubText,
                 fontFamily = if (secret) FontFamily.Monospace else FontFamily.Default
             )
         }
@@ -169,12 +211,12 @@ private fun CopyRow(label: String, value: String?, secret: Boolean = false) {
                 Icon(
                     if (hidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
                     contentDescription = if (hidden) "Show $label" else "Hide $label",
-                    tint = Navy
+                    tint = VaultGold
                 )
             }
         }
         IconButton(onClick = { ClipboardUtil.copy(context, label, value) }) {
-            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $label", tint = Navy)
+            Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $label", tint = VaultGold)
         }
     }
 }
@@ -185,8 +227,8 @@ private fun MetaRow(label: String, value: String) {
         Modifier.fillMaxWidth().padding(vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = InkSoft)
-        Text(value, color = Ink, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = HubTextDim)
+        Text(value, color = HubText, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
     }
 }
 

@@ -43,6 +43,7 @@ fun DocumentListScreen(
     personId: String,
     category: DocCategory?,
     customCategory: String? = null,
+    hospital: String? = null,
     title: String,
     onBack: () -> Unit,
     onAddDocument: () -> Unit,
@@ -73,7 +74,9 @@ fun DocumentListScreen(
     var docFiles by remember { mutableStateOf<List<DocumentFileOut>>(emptyList()) }
     var fetchingFiles by remember { mutableStateOf(false) }
 
-    LaunchedEffect(personId, category, customCategory) { viewModel.load(personId, category, customCategory) }
+    LaunchedEffect(personId, category, customCategory, hospital) {
+        viewModel.load(personId, category, customCategory, hospital)
+    }
 
     // Fetch files when a document is selected for the bottom sheet
     LaunchedEffect(selectedDocForFiles) {
@@ -94,13 +97,13 @@ fun DocumentListScreen(
         onOpenFile(docId, fileId)
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Paper)) {
+    Column(modifier = Modifier.fillMaxSize().background(HubBg)) {
         OfflineBanner(isOffline = isOffline, pendingCount = pendingCount)
 
         Box(modifier = Modifier.weight(1f)) {
             Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
                 TextButton(onClick = onBack) { Text("← Back", color = Navy) }
-                Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                Text(title.uppercase(), style = MaterialTheme.typography.labelMedium, color = VaultGold)
                 Spacer(Modifier.height(4.dp))
                 Text("${state.documents.size} documents", style = MaterialTheme.typography.headlineMedium, color = Ink)
                 if (!repository.isViewer) {
@@ -177,7 +180,13 @@ fun DocumentListScreen(
                                 metaLine = buildString {
                                     append(doc.doc_date ?: doc.created_at.take(10))
                                     append(" · ")
-                                    append(doc.hospital_name ?: "—")
+                                    append(
+                                        when {
+                                            doc.category == DocCategory.INSURANCE -> "Personal"
+                                            !doc.hospital_name.isNullOrBlank() -> doc.hospital_name
+                                            else -> "—"
+                                        }
+                                    )
                                     if (!doc.tags.isNullOrBlank()) append(" · ${doc.tags}")
                                     if (doc.version > 1) append(" · v${doc.version}")
                                 },

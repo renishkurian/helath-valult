@@ -98,16 +98,31 @@ private object Routes {
     const val AUDIT = "audit"
     const val SHARES = "shares"
     const val CARDS = "cards/{personId}/{personName}"
-    const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}"
-    const val UPLOAD = "upload/{personId}?category={category}&camera={camera}"
+    const val DOCUMENTS = "documents/{personId}?category={category}&custom_category={custom_category}&label={label}&hospital={hospital}"
+    const val UPLOAD = "upload/{personId}?category={category}&camera={camera}&hospital={hospital}"
     const val VIEWER = "viewer/{docId}?fileId={fileId}"
     const val EDIT = "edit/{docId}"
 
     fun cards(personId: String, personName: String) = "cards/$personId/$personName"
-    fun documents(personId: String, category: DocCategory?, customCategory: String?) =
-        "documents/$personId?category=${category?.name ?: ""}&custom_category=${customCategory ?: ""}&label=${customCategory ?: category?.name ?: "Documents"}"
-    fun upload(personId: String, category: DocCategory?, camera: Boolean = false) =
-        "upload/$personId?category=${category?.name ?: ""}&camera=${if (camera) "1" else "0"}"
+    fun documents(
+        personId: String,
+        category: DocCategory?,
+        customCategory: String?,
+        hospital: String? = null
+    ): String {
+        val label = customCategory ?: category?.name ?: "Documents"
+        val hosp = android.net.Uri.encode(hospital.orEmpty())
+        return "documents/$personId?category=${category?.name ?: ""}&custom_category=${customCategory ?: ""}&label=$label&hospital=$hosp"
+    }
+    fun upload(
+        personId: String,
+        category: DocCategory?,
+        camera: Boolean = false,
+        hospital: String? = null
+    ): String {
+        val hosp = android.net.Uri.encode(hospital.orEmpty())
+        return "upload/$personId?category=${category?.name ?: ""}&camera=${if (camera) "1" else "0"}&hospital=$hosp"
+    }
     fun viewer(docId: String, fileId: String?) = "viewer/$docId?fileId=${fileId ?: ""}"
     fun edit(docId: String) = "edit/$docId"
 }
@@ -166,7 +181,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val onUrlAdd = currentRoute?.startsWith("urls_add") == true
 
     Scaffold(
-        containerColor = if (currentRoute == Routes.MODULES) HubBg else MaterialTheme.colorScheme.background,
+        containerColor = HubBg,
         bottomBar = {
             if (currentRoute in lockerTabs || onLockerItem || onLockerAdd) {
                 val current = if (currentRoute == Routes.LOCKER_EXPIRING) LockerTab.EXPIRING else LockerTab.LOCKER
@@ -573,16 +588,18 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 HomeScreen(
                     repository = repository,
                     onAddFamily = { navController.navigate(Routes.FAMILY) },
-                    onOpenFolder = { personId, category, customCategory ->
-                        navController.navigate(Routes.documents(personId, category, customCategory))
+                    onOpenFolder = { personId, category, customCategory, hospital ->
+                        navController.navigate(Routes.documents(personId, category, customCategory, hospital))
                     },
-                    onAddDocument = { personId ->
-                        navController.navigate(Routes.upload(personId, null))
+                    onAddDocument = { personId, hospital ->
+                        navController.navigate(Routes.upload(personId, null, hospital = hospital))
                     },
-                    onOpenDocument = { doc, fileId -> 
+                    onOpenDocument = { doc, fileId ->
                         navController.navigate(Routes.viewer(doc.id, fileId))
                     },
-                    onAddCard = { navController.navigate(Routes.FAMILY) },
+                    onAddCard = { personId, personName ->
+                        navController.navigate(Routes.cards(personId, personName))
+                    },
                     onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                     onOpenModules = { navController.navigate(Routes.MODULES) },
                     isViewer = isViewer
@@ -635,14 +652,19 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     navArgument("personId") { type = NavType.StringType },
                     navArgument("category") { type = NavType.StringType; nullable = true; defaultValue = "" },
                     navArgument("custom_category") { type = NavType.StringType; nullable = true; defaultValue = "" },
-                    navArgument("label") { type = NavType.StringType; defaultValue = "" }
+                    navArgument("label") { type = NavType.StringType; defaultValue = "" },
+                    navArgument("hospital") { type = NavType.StringType; nullable = true; defaultValue = "" }
                 )
             ) { entry ->
                 val personId = entry.arguments?.getString("personId").orEmpty()
                 val categoryStr = entry.arguments?.getString("category").orEmpty()
                 val category = categoryStr.takeIf { it.isNotBlank() }?.let { DocCategory.valueOf(it) }
                 val customCategory = entry.arguments?.getString("custom_category")?.takeIf { it.isNotBlank() }
-                val label = entry.arguments?.getString("label") ?: "Documents"
+                val hospital = entry.arguments?.getString("hospital")?.takeIf { it.isNotBlank() }
+                val label = buildString {
+                    append(entry.arguments?.getString("label") ?: "Documents")
+                    if (!hospital.isNullOrBlank()) append(" · $hospital")
+                }
 
                 var resolvedPersonId by remember { mutableStateOf(personId) }
                 LaunchedEffect(Unit) {
@@ -656,9 +678,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         personId = resolvedPersonId,
                         category = category,
                         customCategory = customCategory,
+                        hospital = hospital,
                         title = label,
                         onBack = { navController.popBackStack() },
-                        onAddDocument = { navController.navigate(Routes.upload(resolvedPersonId, category)) },
+                        onAddDocument = {
+                            navController.navigate(
+                                Routes.upload(resolvedPersonId, category, hospital = hospital)
+                            )
+                        },
                         onOpenFile = { docId, fileId -> navController.navigate(Routes.viewer(docId, fileId)) },
                         onEditDocument = { docId -> navController.navigate(Routes.edit(docId)) }
                     )
@@ -688,19 +715,19 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 arguments = listOf(
                     navArgument("personId") { type = NavType.StringType },
                     navArgument("category") { type = NavType.StringType; nullable = true; defaultValue = "" },
-                    navArgument("camera") { type = NavType.StringType; nullable = true; defaultValue = "0" }
+                    navArgument("camera") { type = NavType.StringType; nullable = true; defaultValue = "0" },
+                    navArgument("hospital") { type = NavType.StringType; nullable = true; defaultValue = "" }
                 )
             ) { entry ->
                 val personId = entry.arguments?.getString("personId").orEmpty()
                 val categoryStr = entry.arguments?.getString("category").orEmpty()
                 val category = categoryStr.takeIf { it.isNotBlank() }?.let { DocCategory.valueOf(it) }
                 val autoCamera = entry.arguments?.getString("camera") == "1"
+                val defaultHospital = entry.arguments?.getString("hospital")?.takeIf { it.isNotBlank() }
 
                 var resolvedPersonId by remember { mutableStateOf(personId) }
                 LaunchedEffect(Unit) {
                     if (resolvedPersonId.isBlank()) {
-                        // Try DataStore first; if still empty (e.g. first login before HomeViewModel
-                        // has written it), fall back to the first person from the API.
                         val fromStore = repository.activePersonFlow().first().orEmpty()
                         resolvedPersonId = if (fromStore.isNotBlank()) {
                             fromStore
@@ -714,6 +741,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         repository = repository,
                         personId = resolvedPersonId,
                         defaultCategory = category,
+                        defaultHospital = defaultHospital,
                         autoOpenCamera = autoCamera,
                         onDone = { navController.popBackStack() },
                         onBack = { navController.popBackStack() }

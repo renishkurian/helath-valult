@@ -1,31 +1,35 @@
 package com.rklab.healthvault.ui.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.VpnKey
-import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.MoreHoriz
-import androidx.compose.material.icons.filled.MenuBook
-import androidx.compose.material.icons.filled.AccountBalanceWallet
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Label
-import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.rklab.healthvault.ui.theme.InkSoft
-import com.rklab.healthvault.ui.theme.Navy
-import com.rklab.healthvault.ui.theme.White
+import com.rklab.healthvault.ui.theme.HubDock
+import com.rklab.healthvault.ui.theme.HubTextDim
+import com.rklab.healthvault.ui.theme.VaultGold
+import com.rklab.healthvault.ui.theme.VaultGoldSoft
 
 enum class MainTab { HOME, SEARCH, CARE, REMINDERS, FAMILY }
 
@@ -39,16 +43,16 @@ enum class UrlTab { LINKS, FAVORITES, MANAGE }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
-        selectedIconColor = Navy,
-        selectedTextColor = Navy,
-        unselectedIconColor = InkSoft,
-        unselectedTextColor = InkSoft,
-        indicatorColor = Color(0x335B8CFF)
+        selectedIconColor = VaultGold,
+        selectedTextColor = VaultGold,
+        unselectedIconColor = HubTextDim,
+        unselectedTextColor = HubTextDim,
+        indicatorColor = VaultGoldSoft
     )
 
 @Composable
 fun PasswordVaultBottomNav(current: PasswordTab, onSelect: (PasswordTab) -> Unit) {
-    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
         NavigationBarItem(
             selected = current == PasswordTab.VAULT,
             onClick = { onSelect(PasswordTab.VAULT) },
@@ -82,7 +86,7 @@ fun PasswordVaultBottomNav(current: PasswordTab, onSelect: (PasswordTab) -> Unit
 
 @Composable
 fun FinanceBottomNav(current: FinanceTab, onSelect: (FinanceTab) -> Unit) {
-    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
         NavigationBarItem(
             selected = current == FinanceTab.TRANS,
             onClick = { onSelect(FinanceTab.TRANS) },
@@ -116,7 +120,7 @@ fun FinanceBottomNav(current: FinanceTab, onSelect: (FinanceTab) -> Unit) {
 
 @Composable
 fun LockerBottomNav(current: LockerTab, onSelect: (LockerTab) -> Unit) {
-    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
         NavigationBarItem(
             selected = current == LockerTab.LOCKER,
             onClick = { onSelect(LockerTab.LOCKER) },
@@ -136,7 +140,7 @@ fun LockerBottomNav(current: LockerTab, onSelect: (LockerTab) -> Unit) {
 
 @Composable
 fun UrlBottomNav(current: UrlTab, onSelect: (UrlTab) -> Unit) {
-    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
         NavigationBarItem(
             selected = current == UrlTab.LINKS,
             onClick = { onSelect(UrlTab.LINKS) },
@@ -163,7 +167,7 @@ fun UrlBottomNav(current: UrlTab, onSelect: (UrlTab) -> Unit) {
 
 @Composable
 fun HealthVaultBottomNav(current: MainTab, onSelect: (MainTab) -> Unit) {
-    NavigationBar(containerColor = White, tonalElevation = 0.dp) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
         NavigationBarItem(
             selected = current == MainTab.HOME,
             onClick = { onSelect(MainTab.HOME) },

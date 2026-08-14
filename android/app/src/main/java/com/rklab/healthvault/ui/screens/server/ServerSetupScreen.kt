@@ -39,7 +39,7 @@ fun ServerSetupScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Paper)
+            .background(HubBg)
             .padding(horizontal = 28.dp),
         verticalArrangement = Arrangement.Center
     ) {
@@ -54,7 +54,7 @@ fun ServerSetupScreen(
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("HEALTH VAULT", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+        Text("HEALTH VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(6.dp))
         Text("Connect to your\nserver", style = MaterialTheme.typography.headlineLarge, color = Ink)
         Spacer(Modifier.height(8.dp))

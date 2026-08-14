@@ -4,6 +4,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.components.FolderDef
+import com.rklab.healthvault.ui.components.HospitalScopedFolderDefs
+import com.rklab.healthvault.ui.theme.CatOther
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,18 +18,26 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
+data class HospitalFolderGroup(
+    val card: CardOut,
+    val counts: Map<String, Int>
+)
+
 data class HomeUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val people: List<PersonOut> = emptyList(),
     val activePerson: PersonOut? = null,
     val cards: List<CardOut> = emptyList(),
+    val hospitalFolders: List<HospitalFolderGroup> = emptyList(),
+    val hospitalFolderDefs: List<FolderDef> = emptyList(),
+    val insuranceCount: Int = 0,
+    val unassignedCounts: Map<String, Int> = emptyMap(),
     val recentDocuments: List<DocumentOut> = emptyList(),
-    val folders: List<com.rklab.healthvault.ui.components.FolderDef> = emptyList(),
-    val folderCounts: Map<String, Int> = emptyMap(), // key is either category name or custom category name
     val expiringCards: List<CardOut> = emptyList(),
     val expiringDocuments: List<DocumentOut> = emptyList(),
-    val labTrends: List<LabTrend> = emptyList()
+    val labTrends: List<LabTrend> = emptyList(),
+    val documentCount: Int = 0
 )
 
 class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel() {
@@ -46,8 +57,6 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
     init {
         viewModelScope.launch {
             repository.activePersonFlow().collect { savedActiveId ->
-                // When the active person ID changes (e.g. from the Upload screen),
-                // we automatically refresh the home screen for that person.
                 loadInternal(savedActiveId)
             }
         }
@@ -70,7 +79,6 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
 
             if (active != null && active.id != savedActiveId) {
                 repository.setActivePerson(active.id)
-                // This will trigger the collect() block above, but it's fine.
             }
 
             loadForPerson(people, active)
@@ -93,35 +101,57 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
         }
         val cards = repository.listCards(active.id)
         val documents = repository.listDocuments(active.id)
-        
-        val counts = mutableMapOf<String, Int>()
-        val customFolders = mutableSetOf<String>()
-        
+
+        val folderDefs = HospitalScopedFolderDefs.toMutableList()
+        val customFolders = linkedSetOf<String>()
         documents.forEach { doc ->
             if (doc.category == DocCategory.OTHER && !doc.custom_category.isNullOrBlank()) {
-                val customName = doc.custom_category
-                customFolders.add(customName)
-                counts[customName] = (counts[customName] ?: 0) + 1
-            } else {
-                val catKey = doc.category.name
-                counts[catKey] = (counts[catKey] ?: 0) + 1
+                customFolders.add(doc.custom_category)
             }
         }
-        
-        // Base folders
-        val baseFolders = com.rklab.healthvault.ui.components.FolderDefs
-        
-        // Generate custom folders
-        val generatedCustomFolders = customFolders.map { customName ->
-            com.rklab.healthvault.ui.components.FolderDef(
+        customFolders.sorted().forEach { name ->
+            folderDefs += FolderDef(
                 category = DocCategory.OTHER,
-                customCategory = customName,
-                label = customName,
-                bg = com.rklab.healthvault.ui.theme.CatOther
+                customCategory = name,
+                label = name,
+                bg = CatOther
             )
-        }.sortedBy { it.label }
-        
-        val allFolders = baseFolders + generatedCustomFolders
+        }
+
+        val cardKeys = cards.associateBy { it.hospital_name.trim().lowercase() }
+        val perHospital = cardKeys.keys.associateWith {
+            mutableMapOf<String, Int>().withDefault { 0 }
+        }.toMutableMap()
+        val unassigned = mutableMapOf<String, Int>().withDefault { 0 }
+        var insuranceCount = 0
+
+        fun countKey(doc: DocumentOut): String =
+            if (doc.category == DocCategory.OTHER && !doc.custom_category.isNullOrBlank()) {
+                doc.custom_category
+            } else {
+                doc.category.name
+            }
+
+        documents.forEach { doc ->
+            if (doc.category == DocCategory.INSURANCE) {
+                insuranceCount++
+                return@forEach
+            }
+            if (!doc.category.requiresHospital() && doc.category != DocCategory.OTHER) return@forEach
+            val key = countKey(doc)
+            val hospKey = doc.hospital_name?.trim()?.lowercase().orEmpty()
+            if (hospKey.isNotEmpty() && perHospital.containsKey(hospKey)) {
+                val map = perHospital.getValue(hospKey)
+                map[key] = map.getValue(key) + 1
+            } else {
+                unassigned[key] = unassigned.getValue(key) + 1
+            }
+        }
+
+        val hospitalFolders = cards.map { card ->
+            val key = card.hospital_name.trim().lowercase()
+            HospitalFolderGroup(card = card, counts = perHospital[key]?.toMap() ?: emptyMap())
+        }
 
         val expiring = cards.filter { isExpiringSoon(it.valid_till) }
         val expiringDocs = documents.filter { isExpiringSoon(it.expiry_date) }
@@ -132,12 +162,15 @@ class HomeViewModel(private val repository: HealthVaultRepository) : ViewModel()
             people = people,
             activePerson = active,
             cards = cards,
+            hospitalFolders = hospitalFolders,
+            hospitalFolderDefs = folderDefs,
+            insuranceCount = insuranceCount,
+            unassignedCounts = unassigned.filterValues { it > 0 },
             recentDocuments = documents.sortedByDescending { it.created_at }.take(6),
-            folders = allFolders,
-            folderCounts = counts,
             expiringCards = expiring,
             expiringDocuments = expiringDocs,
-            labTrends = trends
+            labTrends = trends,
+            documentCount = documents.size
         )
     }
 

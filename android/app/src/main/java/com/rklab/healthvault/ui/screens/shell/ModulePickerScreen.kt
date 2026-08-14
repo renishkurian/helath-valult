@@ -88,6 +88,7 @@ import com.rklab.healthvault.ui.theme.HubTextDim
 import com.rklab.healthvault.ui.theme.HubTextFaint
 import com.rklab.healthvault.ui.theme.HubViolet
 import com.rklab.healthvault.ui.theme.MonoFont
+import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.util.ViewModelFactory
 
 private val TileShape = RoundedCornerShape(24.dp)
@@ -150,7 +151,7 @@ fun ModulePickerScreen(
             Spacer(Modifier.height(16.dp))
             Text(
                 "MODULES",
-                color = HubTextFaint,
+                color = VaultGold,
                 fontFamily = MonoFont,
                 fontSize = 10.5.sp,
                 fontWeight = FontWeight.Medium,
@@ -323,7 +324,7 @@ private fun HubTopBar(greeting: String, title: String, onScanQr: () -> Unit, onS
         Column(Modifier.padding(start = 2.dp)) {
             Text(
                 greeting,
-                color = HubTextFaint,
+                color = VaultGold,
                 fontFamily = MonoFont,
                 fontSize = 10.5.sp,
                 letterSpacing = 1.4.sp,
