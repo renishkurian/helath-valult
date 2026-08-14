@@ -184,6 +184,11 @@ def test_display_name_and_relation_labels():
     assert nice_name("renish") == "Renish"
     assert nice_name("deepthi k") == "Deepthi K"
     assert nice_name("capture_1786555722891.jpg") == "capture_1786555722891.jpg"
+    assert nice_name("credit_card") == "Credit Card"
+    from app.templating import labelize
+    assert labelize("credit_card") == "Credit card"
+    assert labelize("bill_line") == "Bill line"
+    assert labelize("upi") == "UPI"
     assert relation_label(Relation.self_) == "You"
     assert relation_label(Relation.spouse) == "Spouse"
     assert relation_label("Relation.self_") == "You"

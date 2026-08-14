@@ -1380,6 +1380,9 @@ class ExpenseAnalyserSyncLogOut(BaseModel):
 class ExpenseAnalyserPostIn(BaseModel):
     account_id: Optional[str] = None
     category_id: Optional[str] = None
+    subcategory_id: Optional[str] = None
+    new_category: Optional[str] = None
+    new_subcategory: Optional[str] = None
 
 
 class ExpenseAnalyserQueryIn(BaseModel):

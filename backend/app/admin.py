@@ -2805,6 +2805,26 @@ def expense_analyser_home(
             limit=pager["per_page"], offset=pager["offset"],
         )
     accounts = list_accounts(db=db, current_user=user)
+    cat_rows = (
+        db.query(models.FinanceCategory)
+        .filter(models.FinanceCategory.user_id == vault_id(user))
+        .order_by(models.FinanceCategory.kind, models.FinanceCategory.name)
+        .all()
+    )
+    ea_cats = [
+        {
+            "id": c.id,
+            "name": c.name,
+            "parent_id": c.parent_id or "",
+            "kind": c.kind,
+        }
+        for c in cat_rows
+    ]
+    cat_picks: dict[str, dict[str, str]] = {}
+    for item in items:
+        kind = "income" if item.direction == "credit" else "expense"
+        parent_id, sub_id = ea.match_category_ids(cat_rows, item.suggested_category, kind)
+        cat_picks[item.id] = {"parent": parent_id, "sub": sub_id, "kind": kind}
     sync_logs = ea.list_sync_logs(db, user, limit=15)
     pager_prev, pager_next = _pager_urls(
         "/admin/expense-analyser", pager, status=filter_status or None,
@@ -2814,6 +2834,7 @@ def expense_analyser_home(
         status=st, items=items, accounts=accounts,
         filter_status=filter_status, inr=inr, sync_logs=sync_logs,
         pager=pager, pager_prev=pager_prev, pager_next=pager_next,
+        ea_cats=ea_cats, cat_picks=cat_picks,
     ))
 
 
@@ -3010,6 +3031,10 @@ async def expense_analyser_post_item(item_id: str, request: Request, db: Session
         ea.post_to_finance(
             db, user, item_id,
             account_id=str(form.get("account_id") or "") or None,
+            category_id=str(form.get("category_id") or "") or None,
+            subcategory_id=str(form.get("subcategory_id") or "") or None,
+            new_category=str(form.get("new_category") or "").strip() or None,
+            new_subcategory=str(form.get("new_subcategory") or "").strip() or None,
         )
     except (LookupError, RuntimeError) as exc:
         return RedirectResponse(f"/admin/expense-analyser?err={exc}", status_code=302)

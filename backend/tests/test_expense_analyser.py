@@ -204,12 +204,54 @@ def test_bill_line_parse_and_post_bridge():
         db.refresh(item)
         assert item.status == "posted"
         assert item.finance_txn_id == txn.id
+        shop = db.query(models.FinanceCategory).filter_by(id=txn.category_id).first()
+        assert shop is None or shop.name == "Shopping"
     finally:
         db.close()
 
     r = client.get("/expense-analyser/items?status=posted", headers=headers)
     assert r.status_code == 200
     assert any(i["payee"] == "AMAZON PAY" for i in r.json())
+
+
+def test_post_creates_category_and_subcategory():
+    headers, email = _headers()
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        item = models.ExpenseAnalyserItem(
+            user_id=uid,
+            gmail_message_id="g-newcat",
+            kind="alert",
+            direction="debit",
+            amount=Decimal("99.00"),
+            payee="LOCAL CAFE",
+            txn_date="2026-08-14",
+            payment_method="upi",
+            suggested_category="Food & dining",
+            status="pending",
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        txn = post_to_finance(
+            db, user, item.id,
+            account_id=accounts[0]["id"],
+            new_category="Eating out",
+            new_subcategory="Cafe",
+        )
+        cat = db.query(models.FinanceCategory).filter_by(id=txn.category_id).first()
+        assert cat is not None
+        assert cat.name == "Cafe"
+        parent = db.query(models.FinanceCategory).filter_by(id=cat.parent_id).first()
+        assert parent is not None
+        assert parent.name == "Eating out"
+        db.refresh(item)
+        assert item.suggested_category == "Eating out / Cafe"
+    finally:
+        db.close()
 
 
 def test_clear_inbox_removes_all_items():

@@ -157,9 +157,9 @@
     <div class="card-body">
       <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
         <div>
-          <span class="badge text-bg-secondary">{{ item.kind }}</span>
-          <span class="badge text-bg-{% if item.status == 'missed' %}warning{% elif item.status == 'matched' %}success{% elif item.status == 'posted' %}primary{% else %}light{% endif %}">{{ item.status }}</span>
-          {% if item.payment_method %}<span class="badge text-bg-light">{{ item.payment_method }}</span>{% endif %}
+          <span class="badge text-bg-secondary">{{ item.kind | labelize }}</span>
+          <span class="badge text-bg-{% if item.status == 'missed' %}warning{% elif item.status == 'matched' %}success{% elif item.status == 'posted' %}primary{% else %}light{% endif %}">{{ item.status | labelize }}</span>
+          {% if item.payment_method %}<span class="badge text-bg-light">{{ item.payment_method | labelize }}</span>{% endif %}
         </div>
         <div class="text-muted small">
           {% if item.txn_date %}{{ item.txn_date }}{% elif item.received_at %}{{ item.received_at.strftime('%Y-%m-%d') }}{% endif %}
@@ -172,7 +172,11 @@
         <div>
           <div class="fw-semibold">{{ (item.payee or item.subject or 'Untitled') | nice }}</div>
           <div class="text-muted small">{{ item.from_addr or '' }}</div>
-          {% if item.suggested_category %}<div class="small mt-1">Category: {{ item.suggested_category }}</div>{% endif %}
+          {% if item.status not in ('posted', 'ignored') and item.suggested_category %}
+          <div class="small mt-1 text-muted">Suggested: {{ item.suggested_category }}</div>
+          {% elif item.status in ('posted', 'ignored') and item.suggested_category %}
+          <div class="small mt-1">Category: {{ item.suggested_category }}</div>
+          {% endif %}
           {% if item.raw_snippet %}<div class="small text-muted mt-2" style="max-width:42rem;">{{ item.raw_snippet }}</div>{% endif %}
         </div>
         <div class="text-end">
@@ -185,14 +189,37 @@
         </div>
       </div>
       {% if item.status not in ('posted', 'ignored') and item.kind != 'bill' %}
-      <div class="d-flex flex-wrap gap-2 mt-3">
-        <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/post" class="d-flex flex-wrap gap-2 align-items-center">
-          <select class="form-select form-select-sm" name="account_id" style="width:auto;min-width:10rem;">
-            {% for a in accounts %}
-            <option value="{{ a.id }}">{{ a.name }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-wallet2"></i> Post to Money Manager</button>
+      {% set pick = cat_picks.get(item.id, {'parent': '', 'sub': '', 'kind': 'expense'}) %}
+      {% set item_kind = pick.kind or 'expense' %}
+      <div class="mt-3">
+        <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/post" class="ea-post-form">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <select class="form-select form-select-sm" name="account_id" style="width:auto;min-width:10rem;" title="Account">
+              {% for a in accounts %}
+              <option value="{{ a.id }}">{{ a.name }}</option>
+              {% endfor %}
+            </select>
+            <select class="form-select form-select-sm ea-parent" name="category_id" data-kind="{{ item_kind }}" style="width:auto;min-width:10rem;" title="Category">
+              <option value="">Category</option>
+              {% for c in ea_cats if not c.parent_id and c.kind == item_kind %}
+              <option value="{{ c.id }}" {% if pick.parent == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+            <select class="form-select form-select-sm ea-sub" name="subcategory_id" style="width:auto;min-width:10rem;" title="Subcategory">
+              <option value="">Subcategory</option>
+              {% for c in ea_cats if c.parent_id == pick.parent and c.kind == item_kind %}
+              <option value="{{ c.id }}" {% if pick.sub == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-wallet2"></i> Post to Money Manager</button>
+          </div>
+          <details class="mt-2">
+            <summary class="small text-muted" style="cursor:pointer;">Add category / subcategory</summary>
+            <div class="d-flex flex-wrap gap-2 mt-2">
+              <input class="form-control form-control-sm" name="new_category" placeholder="New category" style="max-width:12rem;" maxlength="120">
+              <input class="form-control form-control-sm" name="new_subcategory" placeholder="New subcategory" style="max-width:12rem;" maxlength="120">
+            </div>
+          </details>
         </form>
         <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/ignore">
           <button class="btn btn-sm btn-outline-secondary" type="submit">Ignore</button>
@@ -207,4 +234,33 @@
 </div>
 {% include "_pager.html" %}
 {% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  var CATS = {{ ea_cats | default([]) | tojson }};
+  function fillSubs(sel){
+    var form = sel.form;
+    if (!form) return;
+    var sub = form.querySelector("select.ea-sub");
+    if (!sub) return;
+    var kind = sel.getAttribute("data-kind") || "";
+    var parentId = sel.value;
+    var keep = sub.value;
+    sub.innerHTML = '<option value="">Subcategory</option>';
+    CATS.forEach(function(c){
+      if (c.parent_id === parentId && (!kind || c.kind === kind)) {
+        var o = document.createElement("option");
+        o.value = c.id;
+        o.textContent = c.name;
+        if (c.id === keep) o.selected = true;
+        sub.appendChild(o);
+      }
+    });
+  }
+  document.querySelectorAll("select.ea-parent").forEach(function(sel){
+    sel.addEventListener("change", function(){ fillSubs(sel); });
+  });
+})();
+</script>
 {% endblock %}

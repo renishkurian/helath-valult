@@ -2,6 +2,8 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from app.finance_ai import PAYMENT_LABELS
+
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
 _RELATION_LABELS = {
@@ -10,6 +12,19 @@ _RELATION_LABELS = {
     "child": "Child",
     "parent": "Parent",
     "other": "Other",
+}
+
+_TAG_LABELS = {
+    "alert": "Alert",
+    "bill": "Statement",
+    "bill_line": "Bill line",
+    "pending": "Pending",
+    "matched": "Matched",
+    "corrected": "Corrected",
+    "posted": "Posted",
+    "ignored": "Ignored",
+    "missed": "Missed",
+    **PAYMENT_LABELS,
 }
 
 
@@ -24,7 +39,20 @@ def nice_name(value) -> str:
         return text
     if "." in text and " " not in text:
         return text
+    text = text.replace("_", " ")
     return " ".join(part[:1].upper() + part[1:] if part else part for part in text.split())
+
+
+def labelize(value) -> str:
+    """Human labels for snake_case tags (credit_card → Credit card)."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    if text in _TAG_LABELS:
+        return _TAG_LABELS[text]
+    return nice_name(text.replace("-", "_"))
 
 
 def enum_value(value) -> str:
@@ -48,6 +76,7 @@ def relation_label(value) -> str:
 def setup_templates() -> Jinja2Templates:
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["nice"] = nice_name
+    templates.env.filters["labelize"] = labelize
     templates.env.filters["relabel"] = relation_label
     templates.env.filters["enum_value"] = enum_value
     return templates

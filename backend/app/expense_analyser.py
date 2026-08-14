@@ -727,6 +727,146 @@ def reconnect_matches(db: Session, user: models.User) -> int:
     return n
 
 
+def _get_or_create_category(
+    db: Session,
+    user: models.User,
+    *,
+    name: str,
+    kind: str,
+    parent_id: str | None = None,
+    account_id: str | None = None,
+) -> models.FinanceCategory:
+    from app.routers.finance import CAT_COLORS, _find_category
+
+    uid = vault_id(user)
+    want = (name or "").strip()
+    if not want:
+        raise RuntimeError("Category name required")
+    cats = (
+        db.query(models.FinanceCategory)
+        .filter(models.FinanceCategory.user_id == uid)
+        .all()
+    )
+    if parent_id:
+        parent = next((c for c in cats if c.id == parent_id), None)
+        if parent and parent.parent_id:
+            raise RuntimeError("Only one subcategory level is allowed")
+        for c in cats:
+            if c.parent_id == parent_id and c.name.lower() == want.lower():
+                return c
+    else:
+        for c in cats:
+            if (
+                not c.parent_id
+                and c.name.lower() == want.lower()
+                and (c.kind == kind or not kind)
+            ):
+                if account_id and c.account_id and c.account_id != account_id:
+                    continue
+                return c
+        found = _find_category(cats, want, kind, account_id)
+        if found and not found.parent_id:
+            return found
+    row = models.FinanceCategory(
+        user_id=uid,
+        name=want[:120],
+        kind=kind if kind in ("expense", "income") else "expense",
+        color=CAT_COLORS[0],
+        account_id=account_id,
+        parent_id=parent_id,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def resolve_post_category(
+    db: Session,
+    user: models.User,
+    item: models.ExpenseAnalyserItem,
+    *,
+    category_id: str | None = None,
+    subcategory_id: str | None = None,
+    new_category: str | None = None,
+    new_subcategory: str | None = None,
+    account_id: str | None = None,
+) -> models.FinanceCategory | None:
+    uid = vault_id(user)
+    kind = "income" if item.direction == "credit" else "expense"
+    cats = (
+        db.query(models.FinanceCategory)
+        .filter(models.FinanceCategory.user_id == uid)
+        .all()
+    )
+    parent = None
+    if (new_category or "").strip():
+        parent = _get_or_create_category(
+            db, user, name=new_category, kind=kind, account_id=account_id,
+        )
+    elif category_id:
+        parent = next((c for c in cats if c.id == category_id), None)
+
+    leaf = None
+    if (new_subcategory or "").strip():
+        if not parent:
+            raise RuntimeError("Pick or add a category before adding a subcategory")
+        leaf = _get_or_create_category(
+            db, user, name=new_subcategory, kind=parent.kind,
+            parent_id=parent.id, account_id=account_id or parent.account_id,
+        )
+    elif subcategory_id:
+        leaf = next((c for c in cats if c.id == subcategory_id), None)
+    return leaf or parent
+
+
+def match_category_ids(
+    cats: list[models.FinanceCategory],
+    suggested: str | None,
+    kind: str,
+) -> tuple[str, str]:
+    """Return (parent_id, subcategory_id) for a suggested category name."""
+    want = (suggested or "").strip()
+    if not want:
+        return "", ""
+    parent_name, sub_name = want, ""
+    if " / " in want:
+        parent_name, sub_name = want.split(" / ", 1)
+
+    def _kind_ok(c: models.FinanceCategory) -> bool:
+        return (not kind) or c.kind == kind
+
+    if sub_name:
+        for c in cats:
+            if not _kind_ok(c) or not c.parent_id:
+                continue
+            if c.name.lower() != sub_name.strip().lower():
+                continue
+            parent = next((p for p in cats if p.id == c.parent_id), None)
+            if parent and parent.name.lower() == parent_name.lower():
+                return parent.id, c.id
+        for c in cats:
+            if _kind_ok(c) and not c.parent_id and c.name.lower() == parent_name.lower():
+                kid = next(
+                    (
+                        k for k in cats
+                        if k.parent_id == c.id and k.name.lower() == sub_name.strip().lower()
+                    ),
+                    None,
+                )
+                return c.id, kid.id if kid else ""
+    for c in cats:
+        if not _kind_ok(c):
+            continue
+        if c.name.lower() == want.lower():
+            if c.parent_id:
+                return c.parent_id, c.id
+            return c.id, ""
+    for c in cats:
+        if _kind_ok(c) and not c.parent_id and c.name.lower() == parent_name.lower():
+            return c.id, ""
+    return "", ""
+
+
 def post_to_finance(
     db: Session,
     user: models.User,
@@ -734,6 +874,9 @@ def post_to_finance(
     *,
     account_id: str | None = None,
     category_id: str | None = None,
+    subcategory_id: str | None = None,
+    new_category: str | None = None,
+    new_subcategory: str | None = None,
 ) -> models.FinanceTransaction:
     """Create a Money Manager transaction from an analyser item (explicit bridge)."""
     from app.routers import finance as fn
@@ -770,11 +913,29 @@ def post_to_finance(
         raise RuntimeError("No suitable Money Manager account")
 
     kind = "income" if item.direction == "credit" else "expense"
-    cat = None
-    if category_id:
-        cat = next((c for c in cats if c.id == category_id), None)
+    cat = resolve_post_category(
+        db, user, item,
+        category_id=category_id,
+        subcategory_id=subcategory_id,
+        new_category=new_category,
+        new_subcategory=new_subcategory,
+        account_id=acc.id,
+    )
     if not cat and item.suggested_category:
-        cat = fn._find_category(cats, item.suggested_category, kind, acc.id)
+        cat = fn._find_category(cats, item.suggested_category.split(" / ")[0], kind, acc.id)
+        if " / " in (item.suggested_category or ""):
+            parent, sub = match_category_ids(cats, item.suggested_category, kind)
+            cat = next((c for c in cats if c.id == (sub or parent)), cat)
+    if cat:
+        if cat.parent_id:
+            parent_row = next((c for c in cats if c.id == cat.parent_id), None)
+            if parent_row is None:
+                parent_row = db.query(models.FinanceCategory).filter_by(id=cat.parent_id).first()
+            item.suggested_category = (
+                f"{parent_row.name} / {cat.name}" if parent_row else cat.name
+            )
+        else:
+            item.suggested_category = cat.name
     desc = finance_ai.build_description(method, item.payee, item.suggested_category)
     notes = (item.notes or item.raw_snippet or item.subject or "")[:400]
 
