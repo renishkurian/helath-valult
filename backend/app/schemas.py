@@ -1308,6 +1308,7 @@ class ExpenseAnalyserStatusOut(BaseModel):
     last_sync_at: Optional[str] = None
     last_ok: Optional[bool] = None
     last_error: Optional[str] = None
+    syncing: bool = False
     pending: int = 0
     matched: int = 0
     missed: int = 0

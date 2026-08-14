@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -21,6 +23,10 @@ log = logging.getLogger("vault.expense_analyser")
 
 STATUSES = ("pending", "matched", "corrected", "posted", "ignored", "missed")
 KINDS = ("alert", "bill", "bill_line")
+_TEXT_LIMIT = 6000
+_SYNC_BUSY: dict[str, float] = {}
+_SYNC_LOCK = threading.Lock()
+_SYNC_STALE_SEC = 15 * 60
 
 _BILL_LINE_RE = re.compile(
     r"(?P<date>\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})"
@@ -30,6 +36,58 @@ _BILL_LINE_RE = re.compile(
     r"(?P<payee>[A-Za-z0-9 &._-]{3,40})?",
     re.I,
 )
+
+
+def _is_syncing(uid: str) -> bool:
+    started = _SYNC_BUSY.get(uid)
+    if not started:
+        return False
+    if time.time() - started > _SYNC_STALE_SEC:
+        _SYNC_BUSY.pop(uid, None)
+        return False
+    return True
+
+
+def _mark_syncing(uid: str, busy: bool) -> None:
+    with _SYNC_LOCK:
+        if busy:
+            _SYNC_BUSY[uid] = time.time()
+        else:
+            _SYNC_BUSY.pop(uid, None)
+
+
+def start_sync_background(user_id: str, *, trigger: str = "manual") -> bool:
+    """Run Gmail sync on a worker thread so the Pi web process stays up."""
+    if _is_syncing(user_id):
+        return False
+    _mark_syncing(user_id, True)
+
+    def _run() -> None:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if user:
+                sync_gmail(db, user, trigger=trigger, use_ai=False)
+        except Exception:
+            log.exception("background expense analyser sync failed")
+        finally:
+            _mark_syncing(user_id, False)
+            db.close()
+
+    threading.Thread(target=_run, name=f"ea-sync-{user_id[:8]}", daemon=True).start()
+    return True
+
+
+def _known_gmail_ids(db: Session, uid: str) -> set[str]:
+    rows = (
+        db.query(models.ExpenseAnalyserItem.gmail_message_id)
+        .filter(models.ExpenseAnalyserItem.user_id == uid)
+        .distinct()
+        .all()
+    )
+    return {r[0] for r in rows if r[0]}
 
 
 def _row(db: Session, user: models.User) -> models.ExpenseAnalyserConnection | None:
@@ -79,6 +137,7 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
         "last_sync_at": row.last_sync_at.isoformat() if row and row.last_sync_at else None,
         "last_ok": row.last_ok if row else None,
         "last_error": row.last_error if row else None,
+        "syncing": _is_syncing(uid),
         **counts,
     }
 
@@ -297,8 +356,9 @@ def sync_gmail(
     db: Session,
     user: models.User,
     *,
-    max_messages: int = 200,
+    max_messages: int = 80,
     trigger: str = "manual",
+    use_ai: bool = False,
 ) -> dict[str, Any]:
     row = get_or_create(db, user)
     uid = vault_id(user)
@@ -311,13 +371,25 @@ def sync_gmail(
             row.sync_query = query
         ids = gmail.list_message_ids_paged(token, query, limit=max_messages)
         out["fetched"] = len(ids)
-        from app.ai_providers import get_default_bundle
-        from app.ai_usage import attach_log_context
-        ai_bundle = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser")
+        known = _known_gmail_ids(db, uid)
+        ai_bundle = None
+        if use_ai:
+            from app.ai_providers import get_default_bundle
+            from app.ai_usage import attach_log_context
+            ai_bundle = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser")
+        processed = 0
         for mid in ids:
+            if mid in known:
+                out["skipped"] += 1
+                continue
             try:
                 raw = gmail.get_message(token, mid)
-                mail = gmail.hydrate_message_text(token, gmail.extract_message(raw))
+                mail = gmail.extract_message(raw)
+                raw = None
+                body = mail.get("text") or ""
+                if len(body) < 80 or finance_ai._parse_amount(body) is None:
+                    mail = gmail.hydrate_message_text(token, mail)
+                mail["text"] = (mail.get("text") or "")[:_TEXT_LIMIT]
             except Exception as exc:  # noqa: BLE001 — per-message soft fail
                 log.warning("gmail message %s failed: %s", mid, exc)
                 out["skipped"] += 1
@@ -353,7 +425,6 @@ def sync_gmail(
                 parsed = _classify_alert(text, ai=ai_bundle)
                 if parsed.get("amount") is None and not (parsed.get("direction") in ("debit", "credit")):
                     if _looks_like_bank_alert(mail):
-                        # Keep bank subject lines even when body is empty / unparsed.
                         subj = (mail.get("subject") or "").lower()
                         direction = "credit" if ("credited" in subj or "received" in subj) else "debit"
                         parsed = {
@@ -364,6 +435,7 @@ def sync_gmail(
                         }
                     else:
                         out["skipped"] += 1
+                        known.add(mid)
                         continue
                 item = _item_from_mail(db, uid, mail, parsed, kind="alert")
                 if item:
@@ -376,17 +448,20 @@ def sync_gmail(
                     out["skipped"] += 1
 
             out["created"] += created_here
+            known.add(mid)
             if created_here == 0 and is_bill:
                 out["skipped"] += 1
+            processed += 1
+            if processed % 12 == 0:
+                db.commit()
 
         row.last_sync_at = datetime.utcnow()
         row.last_ok = True
         row.last_error = None
         _record_sync_log(db, uid, trigger=trigger, started=started, out=out, ok=True)
         db.commit()
-        # Auto-correct open items with improved rules + shared AI (if configured).
         try:
-            fix = retag_pending_items(db, user, limit=max(40, int(out.get("created") or 0) + 20))
+            fix = retag_pending_items(db, user, limit=30, use_ai=False)
             out["retagged"] = fix.get("updated", 0)
         except Exception:  # noqa: BLE001
             log.exception("expense analyser retag after sync failed")

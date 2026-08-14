@@ -12,7 +12,9 @@
   <div class="d-flex gap-2 flex-wrap">
     {% if status.connected %}
     <form method="post" action="/admin/expense-analyser/sync">
-      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-repeat"></i> Sync Gmail</button>
+      <button class="btn btn-primary" type="submit" {% if status.syncing %}disabled{% endif %}>
+        <i class="bi bi-arrow-repeat"></i> {% if status.syncing %}Syncing…{% else %}Sync Gmail{% endif %}
+      </button>
     </form>
     <form method="post" action="/admin/expense-analyser/reconcile">
       <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-shuffle"></i> Re-match ledger</button>
@@ -29,6 +31,10 @@
 
 {% if request.query_params.get('ok') == 'synced' %}
 <div class="alert alert-success" role="alert">Gmail sync finished — {{ request.query_params.get('created', '0') }} new item(s).</div>
+{% elif request.query_params.get('ok') == 'sync_started' %}
+<div class="alert alert-success" role="alert">Gmail sync started in the background. This page will refresh until it finishes.</div>
+{% elif request.query_params.get('ok') == 'sync_busy' %}
+<div class="alert alert-warning" role="alert">A Gmail sync is already running. Wait a moment, then refresh.</div>
 {% elif request.query_params.get('ok') == 'retagged' %}
 <div class="alert alert-success" role="alert">Re-tagged {{ request.query_params.get('updated', '0') }} item(s) with AI / corrected rules.</div>
 {% elif request.query_params.get('ok') == 'cleared' %}
@@ -37,6 +43,13 @@
 <div class="alert alert-success" role="alert">Posted to Money Manager.</div>
 {% elif request.query_params.get('err') %}
 <div class="alert alert-danger" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+{% if status.syncing %}
+<div class="alert alert-info" role="alert">
+  <i class="bi bi-arrow-repeat"></i> Sync is running on the server. The site stays up — this list refreshes automatically.
+</div>
+<script>setTimeout(function () { window.location.href = "/admin/expense-analyser"; }, 4000);</script>
 {% endif %}
 
 {% if status.last_error and status.last_ok is sameas false %}

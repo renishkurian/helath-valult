@@ -33,6 +33,7 @@ def test_status_endpoint_unconnected():
     assert "sync_query" in body
     assert body["enabled"] is False
     assert body["hour"] == 6
+    assert body.get("syncing") is False
 
 
 def test_schedule_and_insights():
@@ -253,3 +254,26 @@ def test_paginate_helper():
     assert p["page"] == 1
     assert p["has_prev"] is False
     assert p["has_next"] is False
+
+
+def test_known_gmail_ids_and_sync_busy_flag():
+    from app.expense_analyser import _known_gmail_ids, _is_syncing, _mark_syncing, start_sync_background
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="already-there", kind="alert",
+            direction="debit", status="pending",
+        ))
+        db.commit()
+        assert "already-there" in _known_gmail_ids(db, uid)
+        _mark_syncing(uid, True)
+        assert _is_syncing(uid) is True
+        assert start_sync_background(uid) is False
+        _mark_syncing(uid, False)
+        assert _is_syncing(uid) is False
+    finally:
+        db.close()

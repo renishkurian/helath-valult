@@ -2923,13 +2923,10 @@ def expense_analyser_sync(request: Request, db: Session = Depends(get_db)):
     row = ea.get_or_create(db, user)
     if not row.refresh_token_enc:
         return RedirectResponse("/admin/expense-analyser/settings?err=client", status_code=302)
-    result = ea.sync_gmail(db, user)
-    if result.get("error"):
-        return RedirectResponse(f"/admin/expense-analyser?err={result['error'][:80]}", status_code=302)
-    return RedirectResponse(
-        f"/admin/expense-analyser?ok=synced&created={result.get('created', 0)}",
-        status_code=302,
-    )
+    started = ea.start_sync_background(vault_id(user), trigger="manual")
+    if not started:
+        return RedirectResponse("/admin/expense-analyser?ok=sync_busy", status_code=303)
+    return RedirectResponse("/admin/expense-analyser?ok=sync_started", status_code=303)
 
 
 @router.post("/expense-analyser/reconcile")
