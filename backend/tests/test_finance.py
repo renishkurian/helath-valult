@@ -22,6 +22,15 @@ def test_heuristic_debit_upi():
     assert "UPI" in (out["description"] or "")
 
 
+def test_normalize_payee_casing():
+    from app.finance_ai import normalize_payee, format_payee
+    assert normalize_payee("FLIPKART I of INR 476.00 with your SBI Cr") == "Flipkart"
+    assert normalize_payee("inform you that") is None
+    assert normalize_payee("merchant platform using your SBI Credit C") is None
+    assert format_payee("amazon pay") == "Amazon Pay"
+    assert format_payee("HDFC BANK") == "HDFC Bank"
+
+
 def test_heuristic_icici_credit_card_amazon():
     from app.finance_ai import classify_message, hard_correct
     text = (
@@ -34,8 +43,7 @@ def test_heuristic_icici_credit_card_amazon():
     assert out["payment_method"] == "credit_card"
     assert out["amount"] == 636
     assert out["category"] == "Shopping"
-    assert "AMAZON" in (out["payee"] or "").upper()
-    # Simulate a bad AI result and ensure hard_correct fixes it.
+    assert "Amazon" in (out["payee"] or "")
     bad = {
         "direction": "credit", "amount": 636, "payee": "the primary card holder",
         "category": "ATM / cash", "payment_method": "atm", "confidence": 0.99,
@@ -44,7 +52,7 @@ def test_heuristic_icici_credit_card_amazon():
     assert fixed["direction"] == "debit"
     assert fixed["payment_method"] == "credit_card"
     assert fixed["category"] == "Shopping"
-    assert "AMAZON" in (fixed["payee"] or "").upper()
+    assert "Amazon" in (fixed["payee"] or "")
     assert classify_message(text)["payment_method"] == "credit_card"
 
 

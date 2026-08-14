@@ -412,7 +412,9 @@ def retag_pending_items(
         if parsed.get("amount") is not None:
             item.amount = _dec(parsed.get("amount"))
         if parsed.get("payee"):
-            item.payee = parsed.get("payee")
+            item.payee = finance_ai.normalize_payee(parsed.get("payee")) or parsed.get("payee")
+        elif item.payee:
+            item.payee = finance_ai.normalize_payee(item.payee) or item.payee
         if parsed.get("date") or parsed.get("txn_date"):
             item.txn_date = parsed.get("date") or parsed.get("txn_date")
         if parsed.get("payment_method"):
@@ -764,7 +766,7 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
         debit_total += amt
         cat = (item.suggested_category or "Other").strip() or "Other"
         method = (item.payment_method or "other").strip() or "other"
-        payee = (item.payee or item.subject or "Unknown").strip() or "Unknown"
+        payee = finance_ai.normalize_payee(item.payee) or finance_ai.format_payee(item.payee) or "Unknown"
         day = _item_day(item) or ym + "-01"
         by_cat[cat] = by_cat.get(cat, 0) + amt
         cat_count[cat] = cat_count.get(cat, 0) + 1

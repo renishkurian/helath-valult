@@ -108,13 +108,51 @@ _DC_RE = re.compile(r"debit\s*card|\bdc\s*(?:xx|ending)|pos\s+(?:purchase|txn)",
 _UPI_RE = re.compile(r"\bupi\b|vpa|upi[\s-]?ref|upi-?id|@oksbi|@okaxis|@ybl|@paytm|@ibl", re.I)
 _NB_RE = re.compile(r"\bneft\b|\bimps\b|\brtgs\b|net\s*banking|internet banking", re.I)
 _PAYEE_RE = re.compile(
-    r"(?:to|from|via u?pi(?:/.*?|id)?(?:\s+to)?)\s+([A-Z0-9][A-Za-z0-9 .&@_-]{2,40})",
+    r"(?:to|from|via u?pi(?:/.*?|id)?(?:\s+to)?)\s+"
+    r"(?!inform\b|you\b|your\b|the\b|a\b|an\b)"
+    r"([A-Z0-9][A-Za-z0-9 .&@_-]{2,40})",
     re.I,
 )
 _INFO_PAYEE_RE = re.compile(
-    r"(?:info|merchant|at)\s*:\s*([A-Z0-9][A-Za-z0-9 .&@/_-]{2,50})",
+    r"(?:info|merchant)\s*:\s*([A-Z0-9][A-Za-z0-9 .&@/_-]{2,50})",
     re.I,
 )
+_PAYEE_CUT_RE = re.compile(
+    r"\b(?:of\s+(?:inr|rs\.?|₹)|with\s+your|using\s+your|on\s+your|"
+    r"has\s+been|credit\s*c(?:ard)?|debit\s*c(?:ard)?|available|"
+    r"info\s*:|txn|transaction|for\s+rs|for\s+inr)\b.*$",
+    re.I,
+)
+_JUNK_PAYEE_RE = re.compile(
+    r"^(?:inform you that|merchant platform|apply|your|a/c|account|"
+    r"upi|imps|neft|card holder|primary card holder|the primary card holder|"
+    r"dear customer|customer)$",
+    re.I,
+)
+_PAYEE_BRANDS = {
+    "hdfc": "HDFC",
+    "hdfc bank": "HDFC Bank",
+    "sbi": "SBI",
+    "icici": "ICICI",
+    "icici bank": "ICICI Bank",
+    "axis": "Axis",
+    "axis bank": "Axis Bank",
+    "amazon": "Amazon",
+    "amazon pay": "Amazon Pay",
+    "flipkart": "Flipkart",
+    "swiggy": "Swiggy",
+    "zomato": "Zomato",
+    "paytm": "Paytm",
+    "phonepe": "PhonePe",
+    "google pay": "Google Pay",
+    "gpay": "GPay",
+    "netflix": "Netflix",
+    "spotify": "Spotify",
+    "uber": "Uber",
+    "ola": "Ola",
+    "irctc": "IRCTC",
+    "atm": "ATM",
+}
 _DATE_RE = re.compile(r"\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b")
 _DATE_NAMED_RE = re.compile(
     r"\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*,?\s+\d{2,4})"
@@ -176,24 +214,76 @@ def _parse_date(text: str) -> str | None:
     return datetime.utcnow().strftime("%Y-%m-%d")
 
 
+def format_payee(payee: str | None) -> str | None:
+    """Title-case payee for display; keep known bank/brand spellings."""
+    text = (payee or "").strip(" .-_")
+    if not text:
+        return None
+    lower = re.sub(r"\s+", " ", text).strip().lower()
+    if lower in _PAYEE_BRANDS:
+        return _PAYEE_BRANDS[lower]
+    for key, nice in sorted(_PAYEE_BRANDS.items(), key=lambda kv: -len(kv[0])):
+        if lower == key or lower.startswith(key + " "):
+            rest = text[len(key):].strip(" .-_")
+            return nice if not rest else f"{nice} {format_payee(rest) or rest.title()}"
+    parts = []
+    for part in re.split(r"(\s+)", text):
+        if not part or part.isspace():
+            parts.append(part)
+            continue
+        low = part.lower()
+        if low in _PAYEE_BRANDS:
+            parts.append(_PAYEE_BRANDS[low])
+        elif part.isupper() and len(part) <= 5:
+            parts.append(part)
+        else:
+            parts.append(part[:1].upper() + part[1:].lower())
+    return "".join(parts).strip() or None
+
+
+def normalize_payee(payee: str | None) -> str | None:
+    """Strip alert boilerplate and return a clean, cased merchant name."""
+    text = re.sub(r"\s+", " ", (payee or "").strip(" .-_"))
+    if not text:
+        return None
+    text = _PAYEE_CUT_RE.sub("", text).strip(" .-_")
+    text = re.sub(r"\bINR\s*[\d,]+\.?\d*\b", "", text, flags=re.I)
+    text = re.sub(r"\bRs\.?\s*[\d,]+\.?\d*\b", "", text, flags=re.I)
+    text = re.sub(r"\s+", " ", text).strip(" .-_")
+    if len(text) < 2 or _JUNK_PAYEE_RE.match(text):
+        return None
+    if re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", text):
+        return None
+    if len(text.split()) > 6:
+        text = " ".join(text.split()[:4]).strip(" .-_")
+    # Drop trailing single-letter leftovers from cut alerts ("FLIPKART I").
+    parts = text.split()
+    while parts and len(parts[-1]) == 1:
+        parts.pop()
+    text = " ".join(parts).strip(" .-_")
+    if len(text) < 2 or _JUNK_PAYEE_RE.match(text):
+        return None
+    return format_payee(text)
+
+
 def _guess_payee(text: str) -> str | None:
     m = _INFO_PAYEE_RE.search(text or "")
     if m:
-        payee = re.sub(r"\s+", " ", m.group(1)).strip(" .-_")
-        # Drop trailing noise like "The Available..."
-        payee = re.split(r"\b(?:The|Available|Credit|Limit|Info)\b", payee, maxsplit=1)[0].strip(" .-_")
-        if len(payee) >= 3:
-            return payee[:80]
+        payee = normalize_payee(m.group(1))
+        if payee:
+            return payee
     m = _PAYEE_RE.search(text or "")
-    if not m:
-        return None
-    payee = re.sub(r"\s+", " ", m.group(1)).strip(" .-")
-    if payee.lower() in {"your", "a/c", "account", "upi", "imps", "neft"}:
-        return None
-    # Skip times like 04:56:03
-    if re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", payee):
-        return None
-    return payee[:80]
+    if m:
+        payee = normalize_payee(m.group(1))
+        if payee:
+            return payee
+    lower = (text or "").lower()
+    for key, nice in sorted(_PAYEE_BRANDS.items(), key=lambda kv: -len(kv[0])):
+        if key in {"atm", "hdfc", "sbi", "icici", "axis", "hdfc bank", "icici bank", "axis bank"}:
+            continue
+        if re.search(rf"\b{re.escape(key)}\b", lower):
+            return nice
+    return None
 
 
 def detect_payment_method(text: str) -> tuple[str, float]:
@@ -319,13 +409,18 @@ def hard_correct(text: str, result: dict[str, Any]) -> dict[str, Any]:
                 out["payee"] = payee
     elif method == "atm" and out.get("payment_method") not in {"credit_card", "debit_card", "upi"}:
         out["payment_method"] = "atm"
-    # Never keep ATM category on an obvious Amazon / merchant card spend.
     lower = (text or "").lower()
     if "amazon" in lower and out.get("payment_method") == "credit_card":
         out["category"] = "Shopping"
-        out["payee"] = out.get("payee") or _guess_payee(text) or "AMAZON"
+        out["payee"] = out.get("payee") or _guess_payee(text) or "Amazon"
         out["direction"] = "debit"
         out["confidence"] = max(float(out.get("confidence") or 0), 0.9)
+    cleaned = normalize_payee(out.get("payee"))
+    if cleaned:
+        out["payee"] = cleaned
+    elif out.get("payee"):
+        # Junk payee — try body extraction, else drop.
+        out["payee"] = _guess_payee(text)
     out["description"] = build_description(
         out.get("payment_method"), out.get("payee"), out.get("category"), out.get("notes"),
     )
@@ -457,7 +552,7 @@ def classify_with_ai(
     return {
         "direction": direction,
         "amount": amount,
-        "payee": (str(data["payee"])[:80] if data.get("payee") else None),
+        "payee": normalize_payee(str(data["payee"])[:80] if data.get("payee") else None) or _guess_payee(text),
         "date": data.get("date") or datetime.utcnow().strftime("%Y-%m-%d"),
         "category": cat,
         "payment_method": method,
