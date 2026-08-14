@@ -127,6 +127,33 @@ def test_provider_row(db: Session, user: models.User, provider_id: str) -> str:
     )
 
 
+def test_default_connection(db: Session, user: models.User) -> dict:
+    """Ping the default provider with a tiny chat completion (Ask AI path)."""
+    from app.ai_chat import complete_chat
+
+    bundle = get_default_bundle(db, user)
+    if not bundle:
+        raise LookupError("Add an AI provider first")
+    reply = complete_chat(
+        kind=bundle["kind"],
+        api_key=bundle.get("api_key"),
+        model=bundle.get("model"),
+        base_url=bundle.get("base_url"),
+        system="You are a connection probe. Reply with exactly one word: pong",
+        messages=[{"role": "user", "content": "ping"}],
+    ).strip()
+    if not reply:
+        raise ValueError("Provider returned an empty reply")
+    sample = reply[:160]
+    return {
+        "ok": True,
+        "name": bundle.get("name"),
+        "kind": bundle.get("kind"),
+        "model": bundle.get("model"),
+        "sample": sample,
+    }
+
+
 def status_summary(db: Session, user: models.User) -> dict:
     rows = list_providers(db, user)
     default = next((r for r in rows if r.is_default and r.enabled), None) or next(
@@ -137,4 +164,6 @@ def status_summary(db: Session, user: models.User) -> dict:
         "has_default": bool(default),
         "default_name": default.name if default else None,
         "default_kind": default.kind if default else None,
+        "default_id": default.id if default else None,
+        "default_model": default.model if default else None,
     }

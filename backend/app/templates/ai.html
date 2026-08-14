@@ -6,16 +6,24 @@
     <div class="eyebrow">Shared configuration</div>
     <h1 class="page-title">AI providers</h1>
     <p class="page-lead">
-      One vault-wide key store for Money Manager SMS tagging, Expense Analyser mail, and future modules.
+      One vault-wide key store for Ask AI, Money Manager SMS tagging, and Expense Analyser mail.
       Heuristics still work without a key.
     </p>
+  </div>
+  <div class="page-actions">
+    {% if summary.has_default %}
+    <form method="post" action="/admin/ai/providers/test-default">
+      <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-lightning"></i> Test connection</button>
+    </form>
+    {% endif %}
+    <a class="btn btn-primary" href="/admin/ai"><i class="bi bi-chat-dots"></i> Ask AI</a>
   </div>
 </div>
 
 {% if request.query_params.get('ok') == 'saved' %}
 <div class="alert alert-success" role="alert">Provider saved.</div>
 {% elif request.query_params.get('ok') == 'tested' %}
-<div class="alert alert-success" role="alert">Test ok: {{ request.query_params.get('sample') }}</div>
+<div class="alert alert-success" role="alert">Connection ok: {{ request.query_params.get('sample') }}</div>
 {% elif request.query_params.get('err') %}
 <div class="alert alert-danger" role="alert">{{ request.query_params.get('err') }}</div>
 {% endif %}
@@ -38,8 +46,8 @@
   <div class="col-12 col-lg-4">
     <div class="stat">
       <div class="lbl"><i class="bi bi-boxes"></i> Used by</div>
-      <div class="val" style="font-size:1rem;">Money · Mail</div>
-      <div class="sub">Money Manager &amp; Expense Analyser</div>
+      <div class="val" style="font-size:1rem;">Ask · Money · Mail</div>
+      <div class="sub">Ask AI, Money Manager &amp; Expense Analyser</div>
     </div>
   </div>
 </div>
@@ -152,6 +160,7 @@
       <div class="card-body">
         <h2 class="h5 mb-2">Where this is used</h2>
         <ul class="mb-0 text-muted">
+          <li><a href="/admin/ai">Ask AI</a> — chat about health reports, card statements, spend, locker items</li>
           <li><a href="/admin/finance/ai">Money Manager → SMS inbox</a> — classify paste/SMS</li>
           <li><a href="/admin/expense-analyser">Expense Analyser</a> — classify Gmail bank alerts on sync</li>
         </ul>

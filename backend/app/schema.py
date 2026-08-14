@@ -100,6 +100,9 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_login_challenges_status", "login_challenges", "status"),
     ("ix_login_challenges_expires_at", "login_challenges", "expires_at"),
     ("ix_login_challenges_kind", "login_challenges", "kind"),
+    ("ix_ai_chat_threads_user_id", "ai_chat_threads", "user_id"),
+    ("ix_ai_chat_threads_updated_at", "ai_chat_threads", "updated_at"),
+    ("ix_ai_chat_messages_thread_id", "ai_chat_messages", "thread_id"),
 ]
 
 

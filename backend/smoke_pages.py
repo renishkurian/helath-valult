@@ -124,6 +124,7 @@ PAGES = [
     "/admin/finance/add", "/admin/finance/add?txn_type=income", "/admin/finance/stats",
     "/admin/finance/accounts", "/admin/finance/more",
     "/admin/finance/categories", "/admin/finance/plan", "/admin/finance/recurring", "/admin/finance/ai",
+    "/admin/ai", "/admin/ai/providers",
     "/admin/locker", "/admin/locker?expiring=1", "/admin/locker/add",
     "/admin/urls", "/admin/urls?favorite=1", "/admin/urls/add", "/admin/urls/manage",
     "/admin/sa", "/admin/sa/users", "/admin/sa/online", "/admin/sa/logins",

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -1830,7 +1830,7 @@ def finance_ai_add(
         name=name, kind=kind, api_key=api_key or None, model=model or None,
         base_url=base_url or None, is_default=bool(is_default),
     )
-    return RedirectResponse("/admin/ai?ok=saved", status_code=302)
+    return RedirectResponse("/admin/ai/providers?ok=saved", status_code=302)
 
 
 @router.post("/finance/ai/keys/{key_id}/delete")
@@ -1840,7 +1840,7 @@ def finance_ai_delete(key_id: str, request: Request, db: Session = Depends(get_d
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     ap.delete_provider(db, user, key_id)
-    return RedirectResponse("/admin/ai", status_code=302)
+    return RedirectResponse("/admin/ai/providers", status_code=302)
 
 
 @router.post("/finance/ai/ingest")
@@ -2536,6 +2536,117 @@ def _ai_ctx(request, user, active_nav, **extra):
 
 @router.get("/ai", response_class=HTMLResponse)
 def ai_home(request: Request, db: Session = Depends(get_db)):
+    from app import ai_chat, ai_providers as ap
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = ap.status_summary(db, user)
+    boot = {
+        "hasProvider": bool(summary.get("has_default")),
+        "providerName": summary.get("default_name"),
+        "providerKind": summary.get("default_kind"),
+        "hints": ai_chat.suggestion_hints(db, user),
+    }
+    return templates.TemplateResponse("ai_ask.html", _ai_ctx(
+        request, user, "ai_ask",
+        summary=summary,
+        boot=json.dumps(boot).replace("<", "\\u003c"),
+    ))
+
+
+@router.get("/ai/ask/threads")
+def ai_ask_threads(request: Request, db: Session = Depends(get_db)):
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    return ai_chat.list_threads(db, user)
+
+
+@router.get("/ai/ask/threads/{thread_id}")
+def ai_ask_thread(thread_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    detail = ai_chat.thread_detail(db, user, thread_id)
+    if not detail:
+        return JSONResponse({"detail": "Chat not found"}, status_code=404)
+    return detail
+
+
+@router.post("/ai/ask/threads/{thread_id}/delete")
+def ai_ask_thread_delete(thread_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    if not ai_chat.delete_thread(db, user, thread_id):
+        return JSONResponse({"detail": "Chat not found"}, status_code=404)
+    return {"ok": True}
+
+
+@router.post("/ai/ask/send")
+async def ai_ask_send(request: Request, db: Session = Depends(get_db)):
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, status_code=400)
+    message = (body.get("message") or "").strip()
+    thread_id = body.get("thread_id") or None
+    try:
+        return ai_chat.ask(db, user, message, thread_id)
+    except LookupError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+    except ValueError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
+@router.post("/ai/ask/test")
+def ai_ask_test_connection(request: Request, db: Session = Depends(get_db)):
+    """Session-auth ping of the default Ask AI provider."""
+    from app import ai_providers as ap
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    try:
+        return ap.test_default_connection(db, user)
+    except LookupError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+    except ValueError as exc:
+        return JSONResponse({"detail": f"Connection failed: {exc}"}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"detail": f"Connection failed: {exc}"}, status_code=400)
+
+
+@router.post("/ai/providers/test-default")
+def ai_providers_test_default(request: Request, db: Session = Depends(get_db)):
+    from app import ai_providers as ap
+    from urllib.parse import quote
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        result = ap.test_default_connection(db, user)
+        label = result.get("name") or "default"
+        sample = f"{label}: {result.get('sample') or 'ok'}"
+        return RedirectResponse(
+            f"/admin/ai/providers?ok=tested&sample={quote(sample[:160])}",
+            status_code=302,
+        )
+    except Exception as exc:
+        return RedirectResponse(
+            f"/admin/ai/providers?err={quote(str(exc)[:200])}",
+            status_code=302,
+        )
+
+
+@router.get("/ai/providers", response_class=HTMLResponse)
+def ai_providers_page(request: Request, db: Session = Depends(get_db)):
     from app import ai_providers as ap
     from app.routers import ai as ai_api
     user = require_login(request, db)
@@ -2569,7 +2680,7 @@ def ai_provider_add(
         name=name, kind=kind, api_key=api_key or None, model=model or None,
         base_url=base_url or None, is_default=bool(is_default),
     )
-    return RedirectResponse("/admin/ai?ok=saved", status_code=302)
+    return RedirectResponse("/admin/ai/providers?ok=saved", status_code=302)
 
 
 @router.post("/ai/providers/{provider_id}/delete")
@@ -2579,7 +2690,7 @@ def ai_provider_delete(provider_id: str, request: Request, db: Session = Depends
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     ap.delete_provider(db, user, provider_id)
-    return RedirectResponse("/admin/ai", status_code=302)
+    return RedirectResponse("/admin/ai/providers", status_code=302)
 
 
 @router.post("/ai/providers/{provider_id}/test")
@@ -2591,9 +2702,9 @@ def ai_provider_test(provider_id: str, request: Request, db: Session = Depends(g
         return RedirectResponse("/admin/login", status_code=302)
     try:
         sample = ap.test_provider_row(db, user, provider_id)
-        return RedirectResponse(f"/admin/ai?ok=tested&sample={quote(sample[:120])}", status_code=302)
+        return RedirectResponse(f"/admin/ai/providers?ok=tested&sample={quote(sample[:120])}", status_code=302)
     except Exception as exc:
-        return RedirectResponse(f"/admin/ai?err={quote(str(exc)[:160])}", status_code=302)
+        return RedirectResponse(f"/admin/ai/providers?err={quote(str(exc)[:160])}", status_code=302)
 
 
 # ---------- Expense Analyser ----------

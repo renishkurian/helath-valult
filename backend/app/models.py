@@ -688,6 +688,32 @@ class AiProvider(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class AiChatThread(Base):
+    """Ask AI conversation. Message bodies are encrypted at rest."""
+    __tablename__ = "ai_chat_threads"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(200), nullable=False, default="New chat")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, index=True)
+
+    messages = relationship(
+        "AiChatMessage", back_populates="thread", cascade="all, delete-orphan",
+        order_by="AiChatMessage.created_at",
+    )
+
+
+class AiChatMessage(Base):
+    __tablename__ = "ai_chat_messages"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    thread_id = Column(String(32), ForeignKey("ai_chat_threads.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False)  # user | assistant
+    content_enc = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    thread = relationship("AiChatThread", back_populates="messages")
+
+
 class FinanceAiProvider(Base):
     """Legacy table — rows are copied into ai_providers on upgrade. Prefer AiProvider."""
     __tablename__ = "finance_ai_providers"

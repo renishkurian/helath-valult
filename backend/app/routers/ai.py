@@ -4,7 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app import ai_providers as ap
+from app import ai_chat, ai_providers as ap
 from app import models, schemas
 from app.database import get_db
 from app.deps import get_current_user, require_owner
@@ -75,3 +75,70 @@ def test_provider(
         raise HTTPException(404, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(400, f"Provider test failed: {exc}") from exc
+
+
+@router.post("/test", response_model=schemas.AiConnectionTestOut)
+def test_default_connection(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Ping the vault default provider with a chat completion (Ask AI path)."""
+    require_owner(current_user)
+    try:
+        return schemas.AiConnectionTestOut(**ap.test_default_connection(db, current_user))
+    except LookupError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, f"Connection failed: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(400, f"Connection failed: {exc}") from exc
+
+
+@router.get("/chat/threads", response_model=list[schemas.AiChatThreadOut])
+def list_chat_threads(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    return [schemas.AiChatThreadOut(**t) for t in ai_chat.list_threads(db, current_user)]
+
+
+@router.get("/chat/threads/{thread_id}", response_model=schemas.AiChatThreadDetailOut)
+def get_chat_thread(
+    thread_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    detail = ai_chat.thread_detail(db, current_user, thread_id)
+    if not detail:
+        raise HTTPException(404, "Chat not found")
+    return schemas.AiChatThreadDetailOut(**detail)
+
+
+@router.delete("/chat/threads/{thread_id}")
+def delete_chat_thread(
+    thread_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    if not ai_chat.delete_thread(db, current_user, thread_id):
+        raise HTTPException(404, "Chat not found")
+    return {"ok": True}
+
+
+@router.post("/chat", response_model=schemas.AiChatReplyOut)
+def chat(
+    body: schemas.AiChatIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        result = ai_chat.ask(db, current_user, body.message, body.thread_id)
+    except LookupError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.AiChatReplyOut(**result)

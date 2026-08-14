@@ -8,7 +8,7 @@
   {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#7FA6FF'},
   {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#4ADE9B'},
   {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#5EEAD4'},
-  {'key':'ai','name':'AI providers','kicker':'Shared keys','href':'/admin/ai','icon':'bi-robot','accent':'#94A3B8'},
+  {'key':'ai','name':'AI','kicker':'Ask & keys','href':'/admin/ai','icon':'bi-robot','accent':'#94A3B8'},
   {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0C36A'},
   {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'}
 ] %}
@@ -44,7 +44,8 @@
 {% elif active_module == 'ai' %}
   {% set mod_key = 'ai' %}
   {% set nav_items = [
-    {'key':'ai_providers','label':'Providers','href':'/admin/ai','icon':'bi-robot'}
+    {'key':'ai_ask','label':'Ask AI','href':'/admin/ai','icon':'bi-chat-dots'},
+    {'key':'ai_providers','label':'Providers','href':'/admin/ai/providers','icon':'bi-key'}
   ] %}
 {% elif active_module == 'locker' %}
   {% set mod_key = 'locker' %}
@@ -182,10 +183,10 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=8">
+<link rel="stylesheet" href="/static/vault.css?v=9">
 {% block head %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 <a class="skip-link" href="#main">Skip to content</a>
 
 <header class="app-topbar">

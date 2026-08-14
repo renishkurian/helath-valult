@@ -1003,6 +1003,51 @@ class AiStatusOut(BaseModel):
     has_default: bool = False
     default_name: Optional[str] = None
     default_kind: Optional[str] = None
+    default_id: Optional[str] = None
+    default_model: Optional[str] = None
+
+
+class AiConnectionTestOut(BaseModel):
+    ok: bool = True
+    name: Optional[str] = None
+    kind: Optional[str] = None
+    model: Optional[str] = None
+    sample: str = ""
+
+
+class AiChatIn(BaseModel):
+    message: str = Field(min_length=1, max_length=8000)
+    thread_id: Optional[str] = None
+
+
+class AiChatMessageOut(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: datetime
+
+
+class AiChatThreadOut(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    preview: Optional[str] = None
+
+
+class AiChatThreadDetailOut(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: List[AiChatMessageOut] = []
+
+
+class AiChatReplyOut(BaseModel):
+    thread_id: str
+    title: str
+    reply: str
+    messages: List[AiChatMessageOut] = []
 
 
 class FinanceRuleIn(BaseModel):

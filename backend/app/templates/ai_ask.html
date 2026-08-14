@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Ask AI{% endblock %}
+{% block body_class %}ask-ai{% endblock %}
+{% block content %}
+<div class="ask-shell" id="ask-shell">
+  <aside class="ask-rail" id="ask-rail" aria-label="Chat history">
+    <div class="ask-rail-head">
+      <button class="btn btn-primary ask-new" type="button" id="ask-new">
+        <i class="bi bi-plus-lg"></i> New chat
+      </button>
+      <button class="icon-btn ask-rail-close d-lg-none" type="button" id="ask-rail-close" aria-label="Close chats">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="ask-rail-list" id="ask-threads" role="list"></div>
+    <div class="ask-rail-foot">
+      {% if summary.has_default %}
+      <button class="btn btn-outline-secondary btn-sm ask-test w-100" type="button" id="ask-test">
+        <i class="bi bi-lightning"></i> Test connection
+      </button>
+      <a class="ask-provider" href="/admin/ai/providers">
+        <i class="bi bi-circle-fill"></i>
+        <span>
+          <strong>{{ summary.default_name }}</strong>
+          <em>{{ summary.default_kind }}{% if summary.default_model %} · {{ summary.default_model }}{% endif %}</em>
+        </span>
+      </a>
+      {% else %}
+      <a class="ask-provider warn" href="/admin/ai/providers">
+        <i class="bi bi-exclamation-triangle"></i>
+        <span>
+          <strong>No provider</strong>
+          <em>Add a key to chat</em>
+        </span>
+      </a>
+      {% endif %}
+      <div class="ask-test-status" id="ask-test-status" hidden role="status"></div>
+    </div>
+  </aside>
+
+  <section class="ask-stage" aria-label="Conversation">
+    <header class="ask-stage-bar">
+      <button class="icon-btn d-lg-none" type="button" id="ask-rail-open" aria-label="Open chats">
+        <i class="bi bi-layout-sidebar"></i>
+      </button>
+      <div class="ask-stage-title">
+        <div class="eyebrow">Ask AI</div>
+        <h1 id="ask-title">New chat</h1>
+      </div>
+      {% if summary.has_default %}
+      <button class="btn btn-outline-secondary btn-sm d-none d-md-inline-flex" type="button" id="ask-test-bar">
+        <i class="bi bi-lightning"></i> Test
+      </button>
+      {% endif %}
+      <button class="btn btn-ghost btn-sm" type="button" id="ask-delete" hidden>
+        <i class="bi bi-trash3"></i> Delete
+      </button>
+    </header>
+
+    <div class="ask-scroll" id="ask-scroll">
+      <div class="ask-empty" id="ask-empty">
+        <div class="ask-mark" aria-hidden="true"><i class="bi bi-stars"></i></div>
+        <h2>Ask anything in this vault</h2>
+        <p>Hospital reports, a credit-card month, spend by category, expiring IDs — answered from your private data, using the default provider.</p>
+        <div class="ask-hints" id="ask-hints"></div>
+      </div>
+      <div class="ask-msgs" id="ask-msgs" hidden></div>
+    </div>
+
+    <form class="ask-composer" id="ask-form" autocomplete="off">
+      <label class="visually-hidden" for="ask-input">Message</label>
+      <div class="ask-box">
+        <textarea id="ask-input" rows="1" maxlength="8000"
+          placeholder="Ask about a hospital, a card statement, spend…"
+          {% if not summary.has_default %}disabled{% endif %}></textarea>
+        <button class="ask-send" type="submit" id="ask-send" aria-label="Send"
+          {% if not summary.has_default %}disabled{% endif %}>
+          <i class="bi bi-arrow-up"></i>
+        </button>
+      </div>
+      <div class="ask-hint">
+        {% if summary.has_default %}
+        Uses {{ summary.default_name }} · answers stay on this vault · Enter to send
+        {% else %}
+        <a href="/admin/ai/providers">Save a provider</a> to start chatting. Heuristics still tag SMS and mail without a key.
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</div>
+<div class="ask-rail-mask" id="ask-rail-mask" hidden></div>
+<script id="ask-ai-boot" type="application/json">{{ boot|safe }}</script>
+<script src="/static/ask-ai.js?v=2"></script>
+{% endblock %}
