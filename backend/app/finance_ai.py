@@ -81,22 +81,47 @@ _AMOUNT_ALT_RE = re.compile(
     r"\b([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]+\.[0-9]{2})\s*(?:rs|inr|debited|credited)",
     re.I,
 )
-_DEBIT_RE = re.compile(r"\b(debited|debit|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to)\b", re.I)
-_CREDIT_RE = re.compile(
-    r"\b(credited|received|refund(?:ed)?|deposited|cr\b|added to)\b|(?<!\w)credit(?!\s*card)\b",
+_DEBIT_RE = re.compile(
+    r"\b(debited|debit|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to|"
+    r"used for a (?:transaction|purchase|payment)|txn of|transaction of)\b",
     re.I,
 )
+_CREDIT_RE = re.compile(
+    r"\b(credited|received|refund(?:ed)?|deposited|cr\b|added to)\b",
+    re.I,
+)
+# Bare "credit" (as in Available Credit Limit) must NOT count as income.
+_CREDIT_LIMIT_RE = re.compile(r"\b(?:available\s+)?credit\s+limit\b|\bcredit\s+balanc", re.I)
 _ATM_RE = re.compile(r"\batm\b|atm\s*wdl|cash withdraw|withdrawn (?:at|from) atm|atm withdrawal", re.I)
-_CC_RE = re.compile(r"credit\s*card|\bcc\s*(?:xx|ending|no\.?)|on your credit card", re.I)
+_CC_RE = re.compile(
+    r"credit\s*card|\bcc\s*(?:xx|ending|no\.?)|on your credit card|"
+    r"card\s+xx\d{2,4}|card\s+ending",
+    re.I,
+)
+_CC_SPEND_RE = re.compile(
+    r"credit\s*card.{0,80}(?:used for|spent|purchase|txn|transaction|payment)|"
+    r"(?:used for|spent|purchase).{0,40}credit\s*card|"
+    r"has been used for a transaction",
+    re.I | re.S,
+)
 _DC_RE = re.compile(r"debit\s*card|\bdc\s*(?:xx|ending)|pos\s+(?:purchase|txn)", re.I)
 _UPI_RE = re.compile(r"\bupi\b|vpa|upi[\s-]?ref|upi-?id|@oksbi|@okaxis|@ybl|@paytm|@ibl", re.I)
 _NB_RE = re.compile(r"\bneft\b|\bimps\b|\brtgs\b|net\s*banking|internet banking", re.I)
 _PAYEE_RE = re.compile(
-    r"(?:to|from|at|via u?pi(?:/.*?|id)?(?:\s+to)?)\s+([A-Z0-9][A-Za-z0-9 .&@_-]{2,40})",
+    r"(?:to|from|via u?pi(?:/.*?|id)?(?:\s+to)?)\s+([A-Z0-9][A-Za-z0-9 .&@_-]{2,40})",
+    re.I,
+)
+_INFO_PAYEE_RE = re.compile(
+    r"(?:info|merchant|at)\s*:\s*([A-Z0-9][A-Za-z0-9 .&@/_-]{2,50})",
     re.I,
 )
 _DATE_RE = re.compile(r"\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b")
-
+_DATE_NAMED_RE = re.compile(
+    r"\b(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*,?\s+\d{2,4})"
+    r"|"
+    r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{2,4})\b",
+    re.I,
+)
 
 def split_messages(raw: str) -> list[str]:
     text = (raw or "").strip()
@@ -122,39 +147,61 @@ def _parse_amount(text: str) -> float | None:
 
 def _parse_date(text: str) -> str | None:
     m = _DATE_RE.search(text)
-    if not m:
-        return datetime.utcnow().strftime("%Y-%m-%d")
-    raw = m.group(1).replace("/", "-")
-    parts = raw.split("-")
-    if len(parts) != 3:
-        return datetime.utcnow().strftime("%Y-%m-%d")
-    d, mo, y = parts
-    if len(y) == 2:
-        y = "20" + y
-    try:
-        return datetime(int(y), int(mo), int(d)).strftime("%Y-%m-%d")
-    except ValueError:
-        try:
-            return datetime(int(y), int(d), int(mo)).strftime("%Y-%m-%d")
-        except ValueError:
-            return datetime.utcnow().strftime("%Y-%m-%d")
+    if m:
+        raw = m.group(1).replace("/", "-")
+        parts = raw.split("-")
+        if len(parts) == 3:
+            d, mo, y = parts
+            if len(y) == 2:
+                y = "20" + y
+            try:
+                return datetime(int(y), int(mo), int(d)).strftime("%Y-%m-%d")
+            except ValueError:
+                try:
+                    return datetime(int(y), int(d), int(mo)).strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+    m = _DATE_NAMED_RE.search(text or "")
+    if m:
+        raw = (m.group(1) or m.group(2) or "").replace(",", " ")
+        raw = re.sub(r"\s+", " ", raw).strip()
+        for fmt in (
+            "%d %b %Y", "%d %B %Y", "%d %b %y", "%d %B %y",
+            "%b %d %Y", "%B %d %Y", "%b %d %y", "%B %d %y",
+        ):
+            try:
+                return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                continue
+    return datetime.utcnow().strftime("%Y-%m-%d")
 
 
 def _guess_payee(text: str) -> str | None:
-    m = _PAYEE_RE.search(text)
+    m = _INFO_PAYEE_RE.search(text or "")
+    if m:
+        payee = re.sub(r"\s+", " ", m.group(1)).strip(" .-_")
+        # Drop trailing noise like "The Available..."
+        payee = re.split(r"\b(?:The|Available|Credit|Limit|Info)\b", payee, maxsplit=1)[0].strip(" .-_")
+        if len(payee) >= 3:
+            return payee[:80]
+    m = _PAYEE_RE.search(text or "")
     if not m:
         return None
     payee = re.sub(r"\s+", " ", m.group(1)).strip(" .-")
     if payee.lower() in {"your", "a/c", "account", "upi", "imps", "neft"}:
         return None
+    # Skip times like 04:56:03
+    if re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", payee):
+        return None
     return payee[:80]
 
 
 def detect_payment_method(text: str) -> tuple[str, float]:
+    # Credit-card spend alerts must never be tagged ATM just because of odd AI guesses later.
+    if _CC_RE.search(text) or _CC_SPEND_RE.search(text):
+        return "credit_card", 0.93
     if _ATM_RE.search(text):
         return "atm", 0.92
-    if _CC_RE.search(text):
-        return "credit_card", 0.9
     if _DC_RE.search(text):
         return "debit_card", 0.9
     if _UPI_RE.search(text):
@@ -202,17 +249,25 @@ def _keyword_category(text: str, direction: str) -> tuple[str, float]:
 def classify_heuristic(text: str) -> dict[str, Any]:
     debit = bool(_DEBIT_RE.search(text))
     credit = bool(_CREDIT_RE.search(text))
+    # Ignore "Available Credit Limit" style wording for income detection.
+    if _CREDIT_LIMIT_RE.search(text) and not re.search(
+        r"\b(credited|received|refund(?:ed)?|deposited)\b", text or "", re.I
+    ):
+        credit = False
+    if _CC_SPEND_RE.search(text):
+        debit = True
     if credit and not debit:
         direction = "credit"
     elif debit and not credit:
         direction = "debit"
     elif credit and debit:
-        # "debited ... available balance credited" style — first verb wins
         dpos = _DEBIT_RE.search(text)
         cpos = _CREDIT_RE.search(text)
         direction = "debit" if (dpos and cpos and dpos.start() <= cpos.start()) else "credit"
     else:
         direction = "unknown"
+    if _CC_SPEND_RE.search(text) or (_CC_RE.search(text) and debit):
+        direction = "debit"
     amount = _parse_amount(text)
     payee = _guess_payee(text)
     category, conf = _keyword_category(text, direction)
@@ -221,6 +276,9 @@ def classify_heuristic(text: str) -> dict[str, Any]:
         category = "ATM / cash"
         conf = max(conf, 0.84)
         payee = payee or "ATM"
+    if method == "credit_card" and direction == "debit" and category in {"Other income", "ATM / cash"}:
+        category, conf = _keyword_category(text, "debit")
+        conf = max(conf, 0.75)
     if direction == "unknown":
         conf = min(conf, 0.35)
     if amount is None:
@@ -239,6 +297,39 @@ def classify_heuristic(text: str) -> dict[str, Any]:
         "description": build_description(method, payee, category),
         "provider": "heuristic",
     }
+
+
+def hard_correct(text: str, result: dict[str, Any]) -> dict[str, Any]:
+    """Sanity-fix AI/heuristic output against clear bank-alert signals."""
+    out = dict(result or {})
+    method, mconf = detect_payment_method(text)
+    if method == "credit_card":
+        out["payment_method"] = "credit_card"
+        if _CC_SPEND_RE.search(text) or _DEBIT_RE.search(text):
+            out["direction"] = "debit"
+        if out.get("category") in {"ATM / cash", "Other income", None, ""}:
+            cat, conf = _keyword_category(text, "debit")
+            out["category"] = cat
+            out["confidence"] = max(float(out.get("confidence") or 0), conf, mconf)
+        if not out.get("payee") or str(out.get("payee")).lower() in {
+            "atm", "the primary card holder", "primary card holder", "card holder",
+        }:
+            payee = _guess_payee(text)
+            if payee:
+                out["payee"] = payee
+    elif method == "atm" and out.get("payment_method") not in {"credit_card", "debit_card", "upi"}:
+        out["payment_method"] = "atm"
+    # Never keep ATM category on an obvious Amazon / merchant card spend.
+    lower = (text or "").lower()
+    if "amazon" in lower and out.get("payment_method") == "credit_card":
+        out["category"] = "Shopping"
+        out["payee"] = out.get("payee") or _guess_payee(text) or "AMAZON"
+        out["direction"] = "debit"
+        out["confidence"] = max(float(out.get("confidence") or 0), 0.9)
+    out["description"] = build_description(
+        out.get("payment_method"), out.get("payee"), out.get("category"), out.get("notes"),
+    )
+    return out
 
 
 def apply_rules(text: str, result: dict[str, Any], rules: list[dict[str, Any]]) -> dict[str, Any]:
@@ -328,8 +419,11 @@ def classify_with_ai(
         f"category (one of {ALL_CATEGORIES}), "
         f"payment_method (one of {list(PAYMENT_METHODS)}), "
         "confidence (0-1), notes (short description). "
-        "debit = payment/expense/ATM withdrawal. credit = money received. "
-        "A credit-card spend is debit with payment_method credit_card, not income."
+        "debit = payment/expense/card spend/ATM withdrawal. credit = money received/refund. "
+        "IMPORTANT: A credit-card spend ('Credit Card … used for a transaction', Info: MERCHANT) "
+        "is direction=debit and payment_method=credit_card. Never call that income or atm. "
+        "Ignore phrases like Available Credit Limit when deciding direction. "
+        "Payee should be the merchant from Info:/at:, e.g. AMAZON PAY."
     )
     user = f"Message:\n{text}"
     if kind == "anthropic":
@@ -382,9 +476,9 @@ def classify_message(
     result = classify_heuristic(text)
     result = apply_rules(text, result, rules or [])
     if result.get("provider") == "rule":
-        return result
+        return hard_correct(text, result)
     if not ai:
-        return result
+        return hard_correct(text, result)
     try:
         ai_result = classify_with_ai(
             text,
@@ -394,10 +488,10 @@ def classify_message(
             base_url=ai.get("base_url"),
         )
         if float(ai_result.get("confidence") or 0) >= float(result.get("confidence") or 0):
-            return ai_result
+            result = ai_result
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, KeyError, json.JSONDecodeError):
         result["ai_error"] = True
-    return result
+    return hard_correct(text, result)
 
 
 def test_provider(kind: str, api_key: str | None, model: str | None, base_url: str | None) -> str:

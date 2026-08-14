@@ -159,3 +159,16 @@ def ensure_schema(engine: Engine) -> None:
                 conn.execute(text(f"CREATE INDEX {index_name} ON {table} ({column})"))
             except Exception:
                 pass
+
+        # One-time copy: Money Manager AI keys → shared ai_providers
+        if "finance_ai_providers" in tables and "ai_providers" in tables:
+            try:
+                conn.execute(text(
+                    "INSERT INTO ai_providers "
+                    "(id, user_id, name, kind, api_key_enc, base_url, model, is_default, enabled, created_at) "
+                    "SELECT id, user_id, name, kind, api_key_enc, base_url, model, is_default, enabled, created_at "
+                    "FROM finance_ai_providers "
+                    "WHERE id NOT IN (SELECT id FROM ai_providers)"
+                ))
+            except Exception:
+                pass

@@ -119,8 +119,36 @@ def sync(
     row = ea.get_or_create(db, current_user)
     if not row.refresh_token_enc:
         raise HTTPException(400, "Connect Gmail first")
-    result = ea.sync_gmail(db, current_user)
+    result = ea.sync_gmail(db, current_user, trigger="manual")
     return schemas.ExpenseAnalyserSyncOut(**result)
+
+
+@router.get("/sync-logs", response_model=list[schemas.ExpenseAnalyserSyncLogOut])
+def sync_logs(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = ea.list_sync_logs(db, current_user, limit=limit)
+    return [
+        schemas.ExpenseAnalyserSyncLogOut(
+            id=r.id, trigger=r.trigger, ok=bool(r.ok),
+            fetched=r.fetched or 0, created=r.created or 0, skipped=r.skipped or 0,
+            matched=r.matched or 0, missed=r.missed or 0, error=r.error,
+            started_at=r.started_at, finished_at=r.finished_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/retag")
+def retag(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    return ea.retag_pending_items(db, current_user, limit=120, use_ai=True)
 
 
 @router.post("/reconcile")

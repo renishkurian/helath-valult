@@ -673,12 +673,28 @@ class FinanceRecurring(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
-class FinanceAiProvider(Base):
-    __tablename__ = "finance_ai_providers"
+class AiProvider(Base):
+    """Vault-wide LLM provider keys — shared by Money Manager, Expense Analyser, etc."""
+    __tablename__ = "ai_providers"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(120), nullable=False)
     kind = Column(String(30), nullable=False)  # openai | anthropic | openrouter | kimi | groq | ollama | custom
+    api_key_enc = Column(Text, nullable=True)
+    base_url = Column(String(400), nullable=True)
+    model = Column(String(120), nullable=True)
+    is_default = Column(Boolean, default=False, nullable=False)
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceAiProvider(Base):
+    """Legacy table — rows are copied into ai_providers on upgrade. Prefer AiProvider."""
+    __tablename__ = "finance_ai_providers"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    kind = Column(String(30), nullable=False)
     api_key_enc = Column(Text, nullable=True)
     base_url = Column(String(400), nullable=True)
     model = Column(String(120), nullable=True)
@@ -910,3 +926,20 @@ class ExpenseAnalyserItem(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExpenseAnalyserSyncLog(Base):
+    """History of Gmail sync runs (manual or scheduled)."""
+    __tablename__ = "expense_analyser_sync_logs"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    trigger = Column(String(20), default="manual", nullable=False)  # manual | scheduled
+    ok = Column(Boolean, default=True, nullable=False)
+    fetched = Column(Integer, default=0, nullable=False)
+    created = Column(Integer, default=0, nullable=False)
+    skipped = Column(Integer, default=0, nullable=False)
+    matched = Column(Integer, default=0, nullable=False)
+    missed = Column(Integer, default=0, nullable=False)
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

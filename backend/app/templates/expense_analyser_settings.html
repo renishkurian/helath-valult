@@ -110,6 +110,44 @@
   </div>
 </div>
 
+<div class="card mt-3" id="sync-log">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-clock-history"></i></span>
+    <div>
+      <h2>Sync log</h2>
+      <div class="card-sub">Recent Gmail sync runs</div>
+    </div>
+  </div>
+  {% if sync_logs %}
+  <div class="list-rows">
+    {% for log in sync_logs %}
+    <div class="list-row flex-wrap">
+      <div class="row-body">
+        <div class="row-title">
+          {% if log.ok %}
+          <span class="badge badge-good">OK</span>
+          {% else %}
+          <span class="badge badge-bad">Failed</span>
+          {% endif %}
+          <span class="badge badge-soft">{{ log.trigger }}</span>
+          {{ log.finished_at.strftime('%Y-%m-%d %H:%M:%S') if log.finished_at else '—' }}
+        </div>
+        <div class="row-meta">
+          fetched {{ log.fetched }} · new {{ log.created }} · skipped {{ log.skipped }}
+          · matched {{ log.matched }} · missed {{ log.missed }}
+          {% if log.error %}<div class="text-danger mt-1">{{ log.error }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card-body">
+    <p class="text-muted mb-0">No sync history yet.</p>
+  </div>
+  {% endif %}
+</div>
+
 <div class="card mt-3">
   <div class="card-body">
     <h2 class="h5">How it stays separate</h2>
@@ -119,6 +157,7 @@
       <li>Missed bill lines are candidates to add; review before posting.</li>
     </ul>
     <div class="mt-2 small text-muted">OAuth redirect URI to allowlist: <code>{{ redirect_uri }}</code></div>
+    <div class="mt-2 small text-muted">Mail tagging uses the shared <a href="/admin/ai">AI providers</a> default key when set.</div>
   </div>
 </div>
 {% endblock %}

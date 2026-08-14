@@ -8,6 +8,7 @@
   {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#7FA6FF'},
   {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#4ADE9B'},
   {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#5EEAD4'},
+  {'key':'ai','name':'AI providers','kicker':'Shared keys','href':'/admin/ai','icon':'bi-robot','accent':'#94A3B8'},
   {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0C36A'},
   {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'}
 ] %}
@@ -39,6 +40,11 @@
     {'key':'ea_inbox','label':'Inbox','href':'/admin/expense-analyser','icon':'bi-inbox'},
     {'key':'ea_insights','label':'Insights','href':'/admin/expense-analyser/insights','icon':'bi-bar-chart'},
     {'key':'ea_settings','label':'Gmail & sync','href':'/admin/expense-analyser/settings','icon':'bi-gear'}
+  ] %}
+{% elif active_module == 'ai' %}
+  {% set mod_key = 'ai' %}
+  {% set nav_items = [
+    {'key':'ai_providers','label':'Providers','href':'/admin/ai','icon':'bi-robot'}
   ] %}
 {% elif active_module == 'locker' %}
   {% set mod_key = 'locker' %}

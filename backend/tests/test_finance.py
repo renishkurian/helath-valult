@@ -22,6 +22,32 @@ def test_heuristic_debit_upi():
     assert "UPI" in (out["description"] or "")
 
 
+def test_heuristic_icici_credit_card_amazon():
+    from app.finance_ai import classify_message, hard_correct
+    text = (
+        "Dear Customer, Your ICICI Bank Credit Card XX2006 has been used for a transaction "
+        "of INR 636.00 on Aug 10, 2026 at 04:56:03. Info: AMAZON PAY IN RECHARGE. "
+        "The Available Credit Limit on your card is INR 50000"
+    )
+    out = classify_heuristic(text)
+    assert out["direction"] == "debit"
+    assert out["payment_method"] == "credit_card"
+    assert out["amount"] == 636
+    assert out["category"] == "Shopping"
+    assert "AMAZON" in (out["payee"] or "").upper()
+    # Simulate a bad AI result and ensure hard_correct fixes it.
+    bad = {
+        "direction": "credit", "amount": 636, "payee": "the primary card holder",
+        "category": "ATM / cash", "payment_method": "atm", "confidence": 0.99,
+    }
+    fixed = hard_correct(text, bad)
+    assert fixed["direction"] == "debit"
+    assert fixed["payment_method"] == "credit_card"
+    assert fixed["category"] == "Shopping"
+    assert "AMAZON" in (fixed["payee"] or "").upper()
+    assert classify_message(text)["payment_method"] == "credit_card"
+
+
 def test_heuristic_credit_salary():
     out = classify_heuristic("INR 25,000.00 credited to your account from ACME PAYROLL on 01-08-2026")
     assert out["direction"] == "credit"

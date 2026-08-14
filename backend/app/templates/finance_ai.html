@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}AI &amp; SMS{% endblock %}
+{% block title %}SMS inbox{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -8,13 +8,29 @@
       <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
       Money Manager
     </div>
-    <h1 class="page-title">AI &amp; SMS inbox</h1>
+    <h1 class="page-title">SMS inbox</h1>
     <p class="page-lead">
       Paste bank, UPI, or wallet messages. The vault detects debit vs credit, picks a category, then you accept into the ledger.
-      Add ChatGPT, Claude, OpenRouter, Kimi, Groq, or a custom OpenAI-compatible key for better tagging.
+      AI keys live in the shared <a href="/admin/ai">AI providers</a> module.
     </p>
   </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-secondary" href="/admin/ai"><i class="bi bi-robot"></i> AI providers</a>
+  </div>
 </div>
+
+{% if not ai_summary.has_default %}
+<div class="alert alert-info" role="alert">
+  <i class="bi bi-info-circle"></i>
+  No default AI provider — heuristic tagging still works.
+  <a href="/admin/ai">Add a shared key</a> for better results across modules.
+</div>
+{% else %}
+<div class="alert alert-success" role="alert">
+  Using shared AI: <strong>{{ ai_summary.default_name }}</strong> ({{ ai_summary.default_kind }}).
+  <a href="/admin/ai">Manage</a>
+</div>
+{% endif %}
 
 <div class="row g-3">
   <div class="col-lg-5">
@@ -49,88 +65,6 @@
             </div>
             <div class="d-flex gap-2 mt-4">
               <button class="btn btn-primary" type="submit"><i class="bi bi-magic"></i> Read &amp; tag</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="card-header">
-          <span class="card-ico info"><i class="bi bi-key"></i></span>
-          <div>
-            <h2>API keys</h2>
-            <div class="card-sub">Optional — heuristics work without one</div>
-          </div>
-          <span class="badge badge-soft ms-auto">{{ keys | length }}</span>
-        </div>
-        {% if keys %}
-        <div class="list-rows">
-          {% for k in keys %}
-          <div class="list-row flex-wrap">
-            <div class="row-body">
-              <div class="row-title">
-                {{ k.name }}
-                {% if k.is_default %}<span class="badge badge-gold"><i class="bi bi-star"></i> Default</span>{% endif %}
-              </div>
-              <div class="row-meta">{{ k.kind }} &middot; {{ k.model or 'default model' }}</div>
-            </div>
-            <div class="row-side">
-              {% if k.has_key %}
-              <span class="badge badge-good"><i class="bi bi-shield-lock"></i> Key saved</span>
-              {% else %}
-              <span class="badge badge-soft"><i class="bi bi-slash-circle"></i> No key</span>
-              {% endif %}
-            </div>
-            <form class="row-actions" method="post" action="/admin/finance/ai/keys/{{ k.id }}/delete">
-              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
-            </form>
-          </div>
-          {% endfor %}
-        </div>
-        {% endif %}
-        <div class="card-body">
-          {% if not keys %}
-          <p class="text-muted">No keys yet — heuristic tagging still works for Indian bank SMS.</p>
-          {% endif %}
-          <form method="post" action="/admin/finance/ai/keys">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label" for="k-name">Label <span class="req">*</span></label>
-                <input class="form-control" id="k-name" name="name" required placeholder="Home OpenRouter">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="k-kind">Provider</label>
-                <select class="form-select" id="k-kind" name="kind">
-                  <option value="openai">ChatGPT / OpenAI</option>
-                  <option value="anthropic">Claude / Anthropic</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="kimi">Kimi / Moonshot</option>
-                  <option value="groq">Groq</option>
-                  <option value="ollama">Ollama (local)</option>
-                  <option value="custom">Custom OpenAI-compatible</option>
-                </select>
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="k-key">API key</label>
-                <input class="form-control js-secret" id="k-key" type="password" name="api_key" autocomplete="off">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label" for="k-model">Model</label>
-                <input class="form-control" id="k-model" name="model" placeholder="gpt-4o-mini">
-              </div>
-              <div class="col-12">
-                <label class="form-label" for="k-base">Base URL (custom / Ollama)</label>
-                <input class="form-control" id="k-base" name="base_url" placeholder="https://openrouter.ai/api/v1">
-              </div>
-              <div class="col-12">
-                <div class="form-check">
-                  <input class="form-check-input" id="k-default" type="checkbox" name="is_default" value="1" checked>
-                  <label class="form-check-label" for="k-default">Use as default</label>
-                </div>
-              </div>
-            </div>
-            <div class="d-flex gap-2 mt-4">
-              <button class="btn btn-outline-light" type="submit"><i class="bi bi-check2"></i> Save key</button>
             </div>
           </form>
         </div>

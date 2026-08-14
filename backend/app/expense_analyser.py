@@ -139,8 +139,8 @@ def _parse_bill_lines(text: str) -> list[dict[str, Any]]:
     return lines
 
 
-def _classify_alert(text: str) -> dict[str, Any]:
-    return finance_ai.classify_heuristic(text or "")
+def _classify_alert(text: str, ai: dict[str, Any] | None = None) -> dict[str, Any]:
+    return finance_ai.classify_message(text or "", ai=ai)
 
 
 def _find_ledger_match(
@@ -239,15 +239,24 @@ def _item_from_mail(
     return item
 
 
-def sync_gmail(db: Session, user: models.User, *, max_messages: int = 40) -> dict[str, Any]:
+def sync_gmail(
+    db: Session,
+    user: models.User,
+    *,
+    max_messages: int = 40,
+    trigger: str = "manual",
+) -> dict[str, Any]:
     row = get_or_create(db, user)
     uid = vault_id(user)
+    started = datetime.utcnow()
     out = {"fetched": 0, "created": 0, "skipped": 0, "matched": 0, "missed": 0, "error": None}
     try:
         token = _access_token(db, row)
         query = (row.sync_query or "").strip() or gmail.DEFAULT_SYNC_QUERY
         ids, _next = gmail.list_message_ids(token, query, max_results=max_messages)
         out["fetched"] = len(ids)
+        from app.ai_providers import get_default_bundle
+        ai_bundle = get_default_bundle(db, user)
         for mid in ids:
             try:
                 raw = gmail.get_message(token, mid)
@@ -284,7 +293,7 @@ def sync_gmail(db: Session, user: models.User, *, max_messages: int = 40) -> dic
                         elif item.status == "missed":
                             out["missed"] += 1
             else:
-                parsed = _classify_alert(text)
+                parsed = _classify_alert(text, ai=ai_bundle)
                 if parsed.get("amount") is None and not (parsed.get("direction") in ("debit", "credit")):
                     out["skipped"] += 1
                     continue
@@ -305,18 +314,123 @@ def sync_gmail(db: Session, user: models.User, *, max_messages: int = 40) -> dic
         row.last_sync_at = datetime.utcnow()
         row.last_ok = True
         row.last_error = None
+        _record_sync_log(db, uid, trigger=trigger, started=started, out=out, ok=True)
         db.commit()
+        # Auto-correct open items with improved rules + shared AI (if configured).
+        try:
+            fix = retag_pending_items(db, user, limit=max(40, int(out.get("created") or 0) + 20))
+            out["retagged"] = fix.get("updated", 0)
+        except Exception:  # noqa: BLE001
+            log.exception("expense analyser retag after sync failed")
+            out["retagged"] = 0
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         row = get_or_create(db, user)
         row.last_sync_at = datetime.utcnow()
         row.last_ok = False
         row.last_error = str(exc)[:500]
-        db.commit()
         out["error"] = str(exc)
+        _record_sync_log(db, vault_id(user), trigger=trigger, started=started, out=out, ok=False)
+        db.commit()
         log.exception("expense analyser sync failed")
     return out
 
+
+def _record_sync_log(
+    db: Session,
+    uid: str,
+    *,
+    trigger: str,
+    started: datetime,
+    out: dict[str, Any],
+    ok: bool,
+) -> None:
+    db.add(models.ExpenseAnalyserSyncLog(
+        user_id=uid,
+        trigger=(trigger if trigger in ("manual", "scheduled") else "manual"),
+        ok=ok,
+        fetched=int(out.get("fetched") or 0),
+        created=int(out.get("created") or 0),
+        skipped=int(out.get("skipped") or 0),
+        matched=int(out.get("matched") or 0),
+        missed=int(out.get("missed") or 0),
+        error=(out.get("error") or None),
+        started_at=started,
+        finished_at=datetime.utcnow(),
+    ))
+
+
+def list_sync_logs(
+    db: Session,
+    user: models.User,
+    *,
+    limit: int = 30,
+) -> list[models.ExpenseAnalyserSyncLog]:
+    return (
+        db.query(models.ExpenseAnalyserSyncLog)
+        .filter(models.ExpenseAnalyserSyncLog.user_id == vault_id(user))
+        .order_by(models.ExpenseAnalyserSyncLog.finished_at.desc())
+        .limit(max(1, min(100, limit)))
+        .all()
+    )
+
+
+def retag_pending_items(
+    db: Session,
+    user: models.User,
+    *,
+    limit: int = 80,
+    use_ai: bool = True,
+) -> dict[str, int]:
+    """Re-run classify + hard_correct on open inbox rows (fixes bad ATM/credit tags)."""
+    from app.ai_providers import get_default_bundle
+
+    uid = vault_id(user)
+    ai = get_default_bundle(db, user) if use_ai else None
+    rows = (
+        db.query(models.ExpenseAnalyserItem)
+        .filter(
+            models.ExpenseAnalyserItem.user_id == uid,
+            models.ExpenseAnalyserItem.status.in_(("pending", "missed", "matched", "corrected")),
+            models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
+        )
+        .order_by(models.ExpenseAnalyserItem.created_at.desc())
+        .limit(max(1, min(200, limit)))
+        .all()
+    )
+    updated = 0
+    for item in rows:
+        text = crypto.decrypt_text(item.raw_text_enc) or item.raw_snippet or item.subject or ""
+        if not text.strip():
+            continue
+        parsed = finance_ai.classify_message(text, ai=ai)
+        before = (
+            item.direction, _f(item.amount), item.payee, item.txn_date,
+            item.payment_method, item.suggested_category,
+        )
+        item.direction = parsed.get("direction") or item.direction
+        if parsed.get("amount") is not None:
+            item.amount = _dec(parsed.get("amount"))
+        if parsed.get("payee"):
+            item.payee = parsed.get("payee")
+        if parsed.get("date") or parsed.get("txn_date"):
+            item.txn_date = parsed.get("date") or parsed.get("txn_date")
+        if parsed.get("payment_method"):
+            item.payment_method = parsed.get("payment_method")
+        if parsed.get("category") or parsed.get("suggested_category"):
+            item.suggested_category = parsed.get("category") or parsed.get("suggested_category")
+        if parsed.get("confidence") is not None:
+            item.confidence = _dec(parsed.get("confidence"))
+        after = (
+            item.direction, _f(item.amount), item.payee, item.txn_date,
+            item.payment_method, item.suggested_category,
+        )
+        if before != after:
+            if item.status in ("pending", "missed", "matched"):
+                item.status = "corrected"
+            updated += 1
+    db.commit()
+    return {"scanned": len(rows), "updated": updated}
 
 def list_items(
     db: Session,
@@ -562,7 +676,7 @@ def run_due_syncs() -> None:
             if not user:
                 continue
             try:
-                result = sync_gmail(db, user)
+                result = sync_gmail(db, user, trigger="scheduled")
                 log.info(
                     "Expense Analyser sync for %s: created=%s error=%s",
                     user.email, result.get("created"), result.get("error"),

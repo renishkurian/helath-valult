@@ -43,7 +43,7 @@
 {% if summary.pending_messages %}
 <div class="alert alert-info mb-4" role="alert">
   <i class="bi bi-info-circle"></i>
-  <span>{{ summary.pending_messages }} SMS waiting to be tagged in <a href="/admin/finance/ai">AI &amp; SMS</a>.</span>
+  <span>{{ summary.pending_messages }} SMS waiting to be tagged in <a href="/admin/finance/ai">SMS inbox</a>.</span>
 </div>
 {% endif %}
 
@@ -54,8 +54,12 @@
     <span>Recurring</span>
   </a>
   <a class="tile" href="/admin/finance/ai">
+    <span class="ico"><i class="bi bi-chat-left-text"></i></span>
+    <span>SMS inbox</span>
+  </a>
+  <a class="tile" href="/admin/ai">
     <span class="ico"><i class="bi bi-robot"></i></span>
-    <span>AI &amp; SMS</span>
+    <span>AI providers</span>
   </a>
   <a class="tile" href="/admin/finance/accounts">
     <span class="ico"><i class="bi bi-wallet2"></i></span>

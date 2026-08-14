@@ -18,9 +18,9 @@ from app import models, schemas, crypto
 from app.deps import get_current_user, require_owner, vault_id
 from app.extract import enhance_scan
 from app.finance_ai import (
-    DEFAULT_BASES, DEFAULT_MODELS, EXPENSE_CATEGORIES,
+    EXPENSE_CATEGORIES,
     INCOME_CATEGORIES, PAYMENT_METHODS,
-    build_description, classify_message, split_messages, test_provider,
+    build_description, classify_message, split_messages,
 )
 
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -430,31 +430,8 @@ def save_txn_image(
 
 
 def _ai_bundle(db: Session, user: models.User) -> dict | None:
-    uid = _owned(db, user)
-    row = (
-        db.query(models.FinanceAiProvider)
-        .filter(
-            models.FinanceAiProvider.user_id == uid,
-            models.FinanceAiProvider.enabled.is_(True),
-            models.FinanceAiProvider.is_default.is_(True),
-        )
-        .first()
-    )
-    if not row:
-        row = (
-            db.query(models.FinanceAiProvider)
-            .filter(models.FinanceAiProvider.user_id == uid, models.FinanceAiProvider.enabled.is_(True))
-            .first()
-        )
-    if not row:
-        return None
-    return {
-        "kind": row.kind,
-        "api_key": crypto.decrypt_text(row.api_key_enc) if row.api_key_enc else None,
-        "model": row.model,
-        "base_url": row.base_url,
-        "name": row.name,
-    }
+    from app.ai_providers import get_default_bundle
+    return get_default_bundle(db, user)
 
 
 def _rule_dicts(db: Session, user: models.User, categories) -> list[dict]:
@@ -1098,19 +1075,12 @@ def reports(
     return {"year_month": ym, "kind": want, "total": _f(sum(buckets.values(), Decimal("0"))), "rows": rows}
 
 
-# ---------- AI keys ----------
+# ---------- AI keys (compat aliases → shared /ai/providers) ----------
 @router.get("/ai-keys", response_model=list[schemas.FinanceAiKeyOut])
 def list_ai_keys(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    rows = db.query(models.FinanceAiProvider).filter(
-        models.FinanceAiProvider.user_id == _owned(db, current_user),
-    ).order_by(models.FinanceAiProvider.created_at.desc()).all()
-    return [
-        schemas.FinanceAiKeyOut(
-            id=r.id, name=r.name, kind=r.kind, base_url=r.base_url, model=r.model,
-            is_default=bool(r.is_default), enabled=bool(r.enabled), has_key=bool(r.api_key_enc),
-        )
-        for r in rows
-    ]
+    from app import ai_providers as ap
+    require_owner(current_user)
+    return [schemas.FinanceAiKeyOut(**ap.provider_out(r)) for r in ap.list_providers(db, current_user)]
 
 
 @router.post("/ai-keys", response_model=schemas.FinanceAiKeyOut)
@@ -1119,51 +1089,34 @@ def create_ai_key(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    from app import ai_providers as ap
     require_owner(current_user)
-    uid = _owned(db, current_user)
-    if body.is_default:
-        db.query(models.FinanceAiProvider).filter(models.FinanceAiProvider.user_id == uid).update({"is_default": False})
-    row = models.FinanceAiProvider(
-        user_id=uid, name=body.name.strip(), kind=body.kind,
-        api_key_enc=crypto.encrypt_text(body.api_key) if body.api_key else None,
-        base_url=body.base_url or DEFAULT_BASES.get(body.kind),
-        model=body.model or DEFAULT_MODELS.get(body.kind),
-        is_default=body.is_default, enabled=True,
+    row = ap.create_provider(
+        db, current_user,
+        name=body.name, kind=body.kind, api_key=body.api_key,
+        base_url=body.base_url, model=body.model, is_default=body.is_default,
     )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return schemas.FinanceAiKeyOut(
-        id=row.id, name=row.name, kind=row.kind, base_url=row.base_url, model=row.model,
-        is_default=row.is_default, enabled=True, has_key=bool(row.api_key_enc),
-    )
+    return schemas.FinanceAiKeyOut(**ap.provider_out(row))
 
 
 @router.delete("/ai-keys/{key_id}")
 def delete_ai_key(key_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    from app import ai_providers as ap
     require_owner(current_user)
-    row = db.query(models.FinanceAiProvider).filter(
-        models.FinanceAiProvider.id == key_id, models.FinanceAiProvider.user_id == _owned(db, current_user),
-    ).first()
-    if not row:
+    if not ap.delete_provider(db, current_user, key_id):
         raise HTTPException(404, "Provider not found")
-    db.delete(row)
-    db.commit()
     return {"ok": True}
 
 
 @router.post("/ai-keys/{key_id}/test")
 def test_ai_key(key_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    row = db.query(models.FinanceAiProvider).filter(
-        models.FinanceAiProvider.id == key_id, models.FinanceAiProvider.user_id == _owned(db, current_user),
-    ).first()
-    if not row:
-        raise HTTPException(404, "Provider not found")
+    from app import ai_providers as ap
+    require_owner(current_user)
     try:
-        sample = test_provider(
-            row.kind, crypto.decrypt_text(row.api_key_enc) if row.api_key_enc else None, row.model, row.base_url,
-        )
+        sample = ap.test_provider_row(db, current_user, key_id)
         return {"ok": True, "sample": sample}
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(400, f"Provider test failed: {exc}") from exc
 

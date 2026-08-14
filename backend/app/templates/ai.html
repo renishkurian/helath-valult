@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}AI providers{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Shared configuration</div>
+    <h1 class="page-title">AI providers</h1>
+    <p class="page-lead">
+      One vault-wide key store for Money Manager SMS tagging, Expense Analyser mail, and future modules.
+      Heuristics still work without a key.
+    </p>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') == 'saved' %}
+<div class="alert alert-success" role="alert">Provider saved.</div>
+{% elif request.query_params.get('ok') == 'tested' %}
+<div class="alert alert-success" role="alert">Test ok: {{ request.query_params.get('sample') }}</div>
+{% elif request.query_params.get('err') %}
+<div class="alert alert-danger" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-robot"></i> Providers</div>
+      <div class="val">{{ summary.count }}</div>
+      <div class="sub">saved for this vault</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-star"></i> Default</div>
+      <div class="val truncate">{{ summary.default_name or 'None' }}</div>
+      <div class="sub">{{ summary.default_kind or 'heuristics only' }}</div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-boxes"></i> Used by</div>
+      <div class="val" style="font-size:1rem;">Money · Mail</div>
+      <div class="sub">Money Manager &amp; Expense Analyser</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-plus-lg"></i></span>
+        <div>
+          <h2>Add provider</h2>
+          <div class="card-sub">ChatGPT, Claude, OpenRouter, Kimi, Groq, Ollama, or custom</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/ai/providers">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="k-name">Label <span class="req">*</span></label>
+              <input class="form-control" id="k-name" name="name" required placeholder="Home OpenRouter">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="k-kind">Provider</label>
+              <select class="form-select" id="k-kind" name="kind">
+                <option value="openai">ChatGPT / OpenAI</option>
+                <option value="anthropic">Claude / Anthropic</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="kimi">Kimi / Moonshot</option>
+                <option value="groq">Groq</option>
+                <option value="ollama">Ollama (local)</option>
+                <option value="custom">Custom OpenAI-compatible</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="k-key">API key</label>
+              <input class="form-control js-secret" id="k-key" type="password" name="api_key" autocomplete="off">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="k-model">Model</label>
+              <input class="form-control" id="k-model" name="model" placeholder="gpt-4o-mini">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="k-base">Base URL (custom / Ollama)</label>
+              <input class="form-control" id="k-base" name="base_url" placeholder="https://openrouter.ai/api/v1">
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" id="k-default" type="checkbox" name="is_default" value="1" checked>
+                <label class="form-check-label" for="k-default">Use as default for all modules</label>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save provider</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-key"></i></span>
+        <div>
+          <h2>Saved providers</h2>
+          <div class="card-sub">Encrypted at rest with MASTER_KEY</div>
+        </div>
+        <span class="badge badge-soft ms-auto">{{ providers | length }}</span>
+      </div>
+      {% if providers %}
+      <div class="list-rows">
+        {% for k in providers %}
+        <div class="list-row flex-wrap">
+          <div class="row-body">
+            <div class="row-title">
+              {{ k.name }}
+              {% if k.is_default %}<span class="badge badge-gold"><i class="bi bi-star"></i> Default</span>{% endif %}
+            </div>
+            <div class="row-meta">{{ k.kind }} &middot; {{ k.model or 'default model' }}</div>
+          </div>
+          <div class="row-side">
+            {% if k.has_key %}
+            <span class="badge badge-good"><i class="bi bi-shield-lock"></i> Key saved</span>
+            {% else %}
+            <span class="badge badge-soft"><i class="bi bi-slash-circle"></i> No key</span>
+            {% endif %}
+          </div>
+          <div class="row-actions flex-wrap">
+            <form method="post" action="/admin/ai/providers/{{ k.id }}/test">
+              <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-lightning"></i> Test</button>
+            </form>
+            <form method="post" action="/admin/ai/providers/{{ k.id }}/delete" onsubmit="return confirm('Remove this provider?');">
+              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
+            </form>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-robot"></i></div>
+        <div class="empty-title">No providers yet</div>
+        <p>Add a key on the left, or keep using offline heuristics in Money Manager and Expense Analyser.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="card mt-3">
+      <div class="card-body">
+        <h2 class="h5 mb-2">Where this is used</h2>
+        <ul class="mb-0 text-muted">
+          <li><a href="/admin/finance/ai">Money Manager → SMS inbox</a> — classify paste/SMS</li>
+          <li><a href="/admin/expense-analyser">Expense Analyser</a> — classify Gmail bank alerts on sync</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

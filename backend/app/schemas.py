@@ -958,6 +958,7 @@ class FinanceRecurringOut(BaseModel):
 
 
 class FinanceAiKeyIn(BaseModel):
+    """Deprecated alias — use AiProviderIn. Kept for Android /finance/ai-keys."""
     name: str
     kind: str
     api_key: Optional[str] = None
@@ -975,6 +976,33 @@ class FinanceAiKeyOut(BaseModel):
     is_default: bool = False
     enabled: bool = True
     has_key: bool = False
+
+
+class AiProviderIn(BaseModel):
+    name: str
+    kind: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    is_default: bool = False
+
+
+class AiProviderOut(BaseModel):
+    id: str
+    name: str
+    kind: str
+    base_url: Optional[str] = None
+    model: Optional[str] = None
+    is_default: bool = False
+    enabled: bool = True
+    has_key: bool = False
+
+
+class AiStatusOut(BaseModel):
+    count: int = 0
+    has_default: bool = False
+    default_name: Optional[str] = None
+    default_kind: Optional[str] = None
 
 
 class FinanceRuleIn(BaseModel):
@@ -1256,6 +1284,20 @@ class ExpenseAnalyserSyncOut(BaseModel):
     matched: int = 0
     missed: int = 0
     error: Optional[str] = None
+
+
+class ExpenseAnalyserSyncLogOut(BaseModel):
+    id: str
+    trigger: str
+    ok: bool
+    fetched: int = 0
+    created: int = 0
+    skipped: int = 0
+    matched: int = 0
+    missed: int = 0
+    error: Optional[str] = None
+    started_at: datetime
+    finished_at: datetime
 
 
 class ExpenseAnalyserPostIn(BaseModel):

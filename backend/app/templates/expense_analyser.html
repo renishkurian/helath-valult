@@ -17,6 +17,9 @@
     <form method="post" action="/admin/expense-analyser/reconcile">
       <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-shuffle"></i> Re-match ledger</button>
     </form>
+    <form method="post" action="/admin/expense-analyser/retag">
+      <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-magic"></i> AI re-tag</button>
+    </form>
     {% endif %}
     <a class="btn btn-outline-secondary" href="/admin/expense-analyser/insights"><i class="bi bi-bar-chart"></i> Insights</a>
     <a class="btn btn-outline-secondary" href="/admin/expense-analyser/settings"><i class="bi bi-gear"></i> Settings</a>
@@ -25,6 +28,8 @@
 
 {% if request.query_params.get('ok') == 'synced' %}
 <div class="alert alert-success" role="alert">Gmail sync finished — {{ request.query_params.get('created', '0') }} new item(s).</div>
+{% elif request.query_params.get('ok') == 'retagged' %}
+<div class="alert alert-success" role="alert">Re-tagged {{ request.query_params.get('updated', '0') }} item(s) with AI / corrected rules.</div>
 {% elif request.query_params.get('ok') == 'posted' %}
 <div class="alert alert-success" role="alert">Posted to Money Manager.</div>
 {% elif request.query_params.get('err') %}
@@ -64,6 +69,45 @@
       <div class="sub">sent to Money Manager</div>
     </div>
   </div>
+</div>
+
+<div class="card mb-4" id="sync-log">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-clock-history"></i></span>
+    <div>
+      <h2>Sync log</h2>
+      <div class="card-sub">Manual and daily Gmail pulls</div>
+    </div>
+    <a class="btn btn-sm btn-outline-secondary ms-auto" href="/admin/expense-analyser/settings#sync-log">Full history</a>
+  </div>
+  {% if sync_logs %}
+  <div class="list-rows">
+    {% for log in sync_logs[:8] %}
+    <div class="list-row flex-wrap">
+      <div class="row-body">
+        <div class="row-title">
+          {% if log.ok %}
+          <span class="badge badge-good">OK</span>
+          {% else %}
+          <span class="badge badge-bad">Failed</span>
+          {% endif %}
+          <span class="badge badge-soft">{{ log.trigger }}</span>
+          {{ log.finished_at.strftime('%Y-%m-%d %H:%M') if log.finished_at else '—' }}
+        </div>
+        <div class="row-meta">
+          fetched {{ log.fetched }} · new {{ log.created }} · skipped {{ log.skipped }}
+          · matched {{ log.matched }} · missed {{ log.missed }}
+          {% if log.error %} · {{ log.error[:120] }}{% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card-body">
+    <p class="text-muted mb-0">No syncs yet. Press <strong>Sync Gmail</strong> to start the log.</p>
+  </div>
+  {% endif %}
 </div>
 
 {% if not status.connected %}

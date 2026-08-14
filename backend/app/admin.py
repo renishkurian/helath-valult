@@ -1792,6 +1792,7 @@ def finance_more(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/finance/ai", response_class=HTMLResponse)
 def finance_ai_page(request: Request, db: Session = Depends(get_db)):
+    from app import ai_providers as ap
     from app.routers import finance as fn
     from app.routers.finance import inr
     user = _fn_user(request, db)
@@ -1799,11 +1800,11 @@ def finance_ai_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/admin/login", status_code=302)
     return templates.TemplateResponse("finance_ai.html", _fn_ctx(
         request, user, "fn_more",
-        keys=fn.list_ai_keys(db=db, current_user=user),
         messages=fn.list_messages(status="pending", db=db, current_user=user),
         rules=fn.list_rules(db=db, current_user=user),
         categories=fn.list_categories(db=db, current_user=user),
         accounts=fn.list_accounts(db=db, current_user=user),
+        ai_summary=ap.status_summary(db, user),
         inr=inr,
     ))
 
@@ -1819,26 +1820,27 @@ def finance_ai_add(
     is_default: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    from app.routers.finance import create_ai_key
-    from app import schemas as sc
+    """Compat: old form posts redirect into the shared AI module."""
+    from app import ai_providers as ap
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    create_ai_key(sc.FinanceAiKeyIn(
+    ap.create_provider(
+        db, user,
         name=name, kind=kind, api_key=api_key or None, model=model or None,
         base_url=base_url or None, is_default=bool(is_default),
-    ), db=db, current_user=user)
-    return RedirectResponse("/admin/finance/ai", status_code=302)
+    )
+    return RedirectResponse("/admin/ai?ok=saved", status_code=302)
 
 
 @router.post("/finance/ai/keys/{key_id}/delete")
 def finance_ai_delete(key_id: str, request: Request, db: Session = Depends(get_db)):
-    from app.routers.finance import delete_ai_key
+    from app import ai_providers as ap
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    delete_ai_key(key_id, db=db, current_user=user)
-    return RedirectResponse("/admin/finance/ai", status_code=302)
+    ap.delete_provider(db, user, key_id)
+    return RedirectResponse("/admin/ai", status_code=302)
 
 
 @router.post("/finance/ai/ingest")
@@ -2522,6 +2524,78 @@ def urls_item_delete(item_id: str, request: Request, db: Session = Depends(get_d
     return RedirectResponse("/admin/urls", status_code=302)
 
 
+# ---------- Shared AI providers ----------
+def _ai_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "ai", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/ai", response_class=HTMLResponse)
+def ai_home(request: Request, db: Session = Depends(get_db)):
+    from app import ai_providers as ap
+    from app.routers import ai as ai_api
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    providers = ai_api.list_providers(db=db, current_user=user)
+    return templates.TemplateResponse("ai.html", _ai_ctx(
+        request, user, "ai_providers",
+        providers=providers,
+        summary=ap.status_summary(db, user),
+    ))
+
+
+@router.post("/ai/providers")
+def ai_provider_add(
+    request: Request,
+    name: str = Form(...),
+    kind: str = Form(...),
+    api_key: str = Form(""),
+    model: str = Form(""),
+    base_url: str = Form(""),
+    is_default: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app import ai_providers as ap
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ap.create_provider(
+        db, user,
+        name=name, kind=kind, api_key=api_key or None, model=model or None,
+        base_url=base_url or None, is_default=bool(is_default),
+    )
+    return RedirectResponse("/admin/ai?ok=saved", status_code=302)
+
+
+@router.post("/ai/providers/{provider_id}/delete")
+def ai_provider_delete(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import ai_providers as ap
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ap.delete_provider(db, user, provider_id)
+    return RedirectResponse("/admin/ai", status_code=302)
+
+
+@router.post("/ai/providers/{provider_id}/test")
+def ai_provider_test(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import ai_providers as ap
+    from urllib.parse import quote
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        sample = ap.test_provider_row(db, user, provider_id)
+        return RedirectResponse(f"/admin/ai?ok=tested&sample={quote(sample[:120])}", status_code=302)
+    except Exception as exc:
+        return RedirectResponse(f"/admin/ai?err={quote(str(exc)[:160])}", status_code=302)
+
+
 # ---------- Expense Analyser ----------
 def _ea_ctx(request, user, active_nav, **extra):
     ctx = {
@@ -2562,10 +2636,11 @@ def expense_analyser_home(
             if i.status in ("pending", "missed", "matched", "corrected")
         ]
     accounts = list_accounts(db=db, current_user=user)
+    sync_logs = ea.list_sync_logs(db, user, limit=15)
     return templates.TemplateResponse("expense_analyser.html", _ea_ctx(
         request, user, "ea_inbox",
         status=st, items=items, accounts=accounts,
-        filter_status=filter_status, inr=inr,
+        filter_status=filter_status, inr=inr, sync_logs=sync_logs,
     ))
 
 
@@ -2576,9 +2651,10 @@ def expense_analyser_settings(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     st = ea.status_dict(db, user)
+    sync_logs = ea.list_sync_logs(db, user, limit=25)
     return templates.TemplateResponse("expense_analyser_settings.html", _ea_ctx(
         request, user, "ea_settings",
-        status=st, redirect_uri=_ea_redirect_uri(request),
+        status=st, redirect_uri=_ea_redirect_uri(request), sync_logs=sync_logs,
     ))
 
 
@@ -2691,6 +2767,19 @@ def expense_analyser_reconcile(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/admin/login", status_code=302)
     ea.reconnect_matches(db, user)
     return RedirectResponse("/admin/expense-analyser?ok=reconciled", status_code=302)
+
+
+@router.post("/expense-analyser/retag")
+def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    result = ea.retag_pending_items(db, user, limit=120, use_ai=True)
+    return RedirectResponse(
+        f"/admin/expense-analyser?ok=retagged&updated={result.get('updated', 0)}",
+        status_code=302,
+    )
 
 
 @router.post("/expense-analyser/disconnect")
