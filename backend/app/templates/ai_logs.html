@@ -61,9 +61,10 @@
       <h2>Call history</h2>
       <div class="card-sub">Newest first · tokens from the provider when reported</div>
     </div>
-    <span class="badge badge-soft ms-auto">{{ logs | length }}</span>
+    <span class="badge badge-soft ms-auto">{% if pager %}{{ "{:,}".format(pager.total) }}{% else %}{{ logs | length }}{% endif %}</span>
   </div>
   {% if logs %}
+  {% include "_pager.html" %}
   <div class="table-responsive">
     <table class="table table-hover mb-0">
       <thead>
@@ -110,6 +111,7 @@
       </tbody>
     </table>
   </div>
+  {% include "_pager.html" %}
   {% else %}
   <div class="empty-state">
     <div class="empty-ico"><i class="bi bi-journal-text"></i></div>

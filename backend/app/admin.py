@@ -17,6 +17,19 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 templates = setup_templates()
 
 
+def _pager_urls(path: str, pager: dict, **query) -> tuple[str | None, str | None]:
+    from urllib.parse import urlencode
+
+    def _url(page: int) -> str:
+        params = {k: v for k, v in query.items() if v not in (None, "")}
+        params["page"] = page
+        return f"{path}?{urlencode(params)}"
+
+    prev_url = _url(pager["page"] - 1) if pager.get("has_prev") else None
+    next_url = _url(pager["page"] + 1) if pager.get("has_next") else None
+    return prev_url, next_url
+
+
 # ---------- Session auth helpers ----------
 def get_session_user(request: Request, db: Session = Depends(get_db)) -> Optional[models.User]:
     user_id = request.session.get("user_id")
@@ -2661,23 +2674,37 @@ def ai_providers_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/ai/logs", response_class=HTMLResponse)
-def ai_logs_page(request: Request, client: str = "", db: Session = Depends(get_db)):
+def ai_logs_page(
+    request: Request,
+    client: str = "",
+    page: int = 1,
+    db: Session = Depends(get_db),
+):
     from app import ai_usage
+    from app.paging import paginate
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     client_key = (client or "").strip() or None
     if client_key and client_key not in ai_usage.CLIENT_LABELS:
         client_key = None
-    rows = ai_usage.list_logs(db, user, limit=150, client=client_key)
+    total = ai_usage.count_logs(db, user, client=client_key)
+    pager = paginate(page=page, per_page=50, total=total)
+    rows = ai_usage.list_logs(
+        db, user, limit=pager["per_page"], offset=pager["offset"], client=client_key,
+    )
     logs = [ai_usage.log_out(r) for r in rows]
     stats = ai_usage.summary(db, user, days=30)
+    pager_prev, pager_next = _pager_urls("/admin/ai/logs", pager, client=client_key)
     return templates.TemplateResponse("ai_logs.html", _ai_ctx(
         request, user, "ai_logs",
         logs=logs,
         stats=stats,
         client_filter=client_key or "",
         client_labels=ai_usage.CLIENT_LABELS,
+        pager=pager,
+        pager_prev=pager_prev,
+        pager_next=pager_next,
     ))
 
 
@@ -2750,9 +2777,11 @@ def _ea_redirect_uri(request: Request) -> str:
 def expense_analyser_home(
     request: Request,
     status: str = "",
+    page: int = 1,
     db: Session = Depends(get_db),
 ):
     from app import expense_analyser as ea
+    from app.paging import paginate
     from app.routers.finance import ensure_defaults, inr, list_accounts
     user = _ea_user(request, db)
     if not user:
@@ -2760,20 +2789,31 @@ def expense_analyser_home(
     ensure_defaults(db, user)
     st = ea.status_dict(db, user)
     filter_status = status if status in ("pending", "missed", "matched", "posted", "ignored", "corrected") else ""
+    open_statuses = ("pending", "missed", "matched", "corrected")
     if filter_status:
-        items = ea.list_items(db, user, status=filter_status, limit=200)
-    else:
+        total = ea.count_items(db, user, status=filter_status)
+        pager = paginate(page=page, per_page=25, total=total)
         items = ea.list_items(
-            db, user,
-            statuses=("pending", "missed", "matched", "corrected"),
-            limit=200,
+            db, user, status=filter_status,
+            limit=pager["per_page"], offset=pager["offset"],
+        )
+    else:
+        total = ea.count_items(db, user, statuses=open_statuses)
+        pager = paginate(page=page, per_page=25, total=total)
+        items = ea.list_items(
+            db, user, statuses=open_statuses,
+            limit=pager["per_page"], offset=pager["offset"],
         )
     accounts = list_accounts(db=db, current_user=user)
     sync_logs = ea.list_sync_logs(db, user, limit=15)
+    pager_prev, pager_next = _pager_urls(
+        "/admin/expense-analyser", pager, status=filter_status or None,
+    )
     return templates.TemplateResponse("expense_analyser.html", _ea_ctx(
         request, user, "ea_inbox",
         status=st, items=items, accounts=accounts,
         filter_status=filter_status, inr=inr, sync_logs=sync_logs,
+        pager=pager, pager_prev=pager_prev, pager_next=pager_next,
     ))
 
 
@@ -2911,6 +2951,19 @@ def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
     result = ea.retag_pending_items(db, user, limit=120, use_ai=True)
     return RedirectResponse(
         f"/admin/expense-analyser?ok=retagged&updated={result.get('updated', 0)}",
+        status_code=302,
+    )
+
+
+@router.post("/expense-analyser/clear")
+def expense_analyser_clear(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    result = ea.clear_inbox(db, user)
+    return RedirectResponse(
+        f"/admin/expense-analyser?ok=cleared&deleted={result.get('deleted', 0)}",
         status_code=302,
     )
 

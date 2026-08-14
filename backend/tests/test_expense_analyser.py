@@ -209,3 +209,47 @@ def test_bill_line_parse_and_post_bridge():
     r = client.get("/expense-analyser/items?status=posted", headers=headers)
     assert r.status_code == 200
     assert any(i["payee"] == "AMAZON PAY" for i in r.json())
+
+
+def test_clear_inbox_removes_all_items():
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        for i, status in enumerate(("pending", "corrected", "posted", "ignored")):
+            db.add(models.ExpenseAnalyserItem(
+                user_id=uid,
+                gmail_message_id=f"clear-{i}",
+                kind="alert",
+                direction="debit",
+                amount=Decimal("10.00"),
+                payee=f"Payee {i}",
+                txn_date="2026-08-14",
+                status=status,
+            ))
+        db.commit()
+        assert db.query(models.ExpenseAnalyserItem).filter_by(user_id=uid).count() == 4
+    finally:
+        db.close()
+
+    r = client.post("/expense-analyser/clear", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == 4
+    assert client.get("/expense-analyser/items", headers=headers).json() == []
+    assert client.get("/expense-analyser/status", headers=headers).json()["pending"] == 0
+
+
+def test_paginate_helper():
+    from app.paging import paginate
+    p = paginate(page=2, per_page=25, total=124)
+    assert p["page"] == 2
+    assert p["pages"] == 5
+    assert p["offset"] == 25
+    assert p["start"] == 26
+    assert p["end"] == 50
+    assert p["has_prev"] and p["has_next"]
+    p = paginate(page=99, per_page=25, total=10)
+    assert p["page"] == 1
+    assert p["has_prev"] is False
+    assert p["has_next"] is False

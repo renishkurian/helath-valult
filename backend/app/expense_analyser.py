@@ -518,6 +518,7 @@ def list_items(
     statuses: list[str] | tuple[str, ...] | None = None,
     kind: str | None = None,
     limit: int = 100,
+    offset: int = 0,
 ) -> list[models.ExpenseAnalyserItem]:
     from sqlalchemy import func
 
@@ -537,9 +538,29 @@ def list_items(
             ).desc(),
             models.ExpenseAnalyserItem.created_at.desc(),
         )
+        .offset(max(0, offset))
         .limit(max(1, min(300, limit)))
         .all()
     )
+
+
+def count_items(
+    db: Session,
+    user: models.User,
+    *,
+    status: str | None = None,
+    statuses: list[str] | tuple[str, ...] | None = None,
+    kind: str | None = None,
+) -> int:
+    uid = vault_id(user)
+    q = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
+    if status:
+        q = q.filter(models.ExpenseAnalyserItem.status == status)
+    elif statuses:
+        q = q.filter(models.ExpenseAnalyserItem.status.in_(list(statuses)))
+    if kind:
+        q = q.filter(models.ExpenseAnalyserItem.kind == kind)
+    return int(q.count() or 0)
 
 
 def get_item(db: Session, user: models.User, item_id: str) -> models.ExpenseAnalyserItem:
@@ -585,6 +606,18 @@ def ignore_item(db: Session, user: models.User, item_id: str) -> models.ExpenseA
     db.commit()
     db.refresh(row)
     return row
+
+
+def clear_inbox(db: Session, user: models.User) -> dict[str, int]:
+    """Delete every Expense Analyser inbox row for this vault (not Money Manager)."""
+    uid = vault_id(user)
+    deleted = (
+        db.query(models.ExpenseAnalyserItem)
+        .filter(models.ExpenseAnalyserItem.user_id == uid)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return {"deleted": int(deleted or 0)}
 
 
 def reconnect_matches(db: Session, user: models.User) -> int:

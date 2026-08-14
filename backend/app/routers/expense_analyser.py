@@ -51,11 +51,16 @@ def list_items(
     status: str | None = None,
     kind: str | None = None,
     limit: int = 100,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
-    rows = ea.list_items(db, current_user, status=status or None, kind=kind or None, limit=limit)
+    rows = ea.list_items(
+        db, current_user,
+        status=status or None, kind=kind or None,
+        limit=limit, offset=offset,
+    )
     return [_item_out(r) for r in rows]
 
 
@@ -149,6 +154,16 @@ def retag(
 ):
     require_owner(current_user)
     return ea.retag_pending_items(db, current_user, limit=120, use_ai=True)
+
+
+@router.post("/clear")
+def clear_inbox(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Delete every analyser inbox row for this vault (ledger untouched)."""
+    require_owner(current_user)
+    return ea.clear_inbox(db, current_user)
 
 
 @router.post("/reconcile")

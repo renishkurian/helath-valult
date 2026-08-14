@@ -127,11 +127,30 @@ def maybe_log_from_ai_result(ai: dict | None, result: dict, *, latency_ms: int |
     )
 
 
-def list_logs(db: Session, user: models.User, *, limit: int = 100, client: str | None = None) -> list[models.AiUsageLog]:
+def list_logs(
+    db: Session,
+    user: models.User,
+    *,
+    limit: int = 100,
+    offset: int = 0,
+    client: str | None = None,
+) -> list[models.AiUsageLog]:
     q = db.query(models.AiUsageLog).filter(models.AiUsageLog.user_id == _uid(user))
     if client:
         q = q.filter(models.AiUsageLog.client == client)
-    return q.order_by(models.AiUsageLog.created_at.desc()).limit(max(1, min(500, limit))).all()
+    return (
+        q.order_by(models.AiUsageLog.created_at.desc())
+        .offset(max(0, offset))
+        .limit(max(1, min(500, limit)))
+        .all()
+    )
+
+
+def count_logs(db: Session, user: models.User, *, client: str | None = None) -> int:
+    q = db.query(models.AiUsageLog).filter(models.AiUsageLog.user_id == _uid(user))
+    if client:
+        q = q.filter(models.AiUsageLog.client == client)
+    return int(q.count() or 0)
 
 
 def summary(db: Session, user: models.User, *, days: int = 30) -> dict:

@@ -148,6 +148,7 @@ def chat(
 def list_usage(
     client: str | None = None,
     limit: int = 100,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -156,7 +157,7 @@ def list_usage(
     client_key = (client or "").strip() or None
     if client_key and client_key not in ai_usage.CLIENT_LABELS:
         client_key = None
-    rows = ai_usage.list_logs(db, current_user, limit=limit, client=client_key)
+    rows = ai_usage.list_logs(db, current_user, limit=limit, offset=offset, client=client_key)
     return [schemas.AiUsageLogOut(**ai_usage.log_out(r)) for r in rows]
 
 

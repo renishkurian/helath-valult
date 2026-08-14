@@ -1,0 +1,23 @@
+{# Expects: pager dict from app.paging.paginate, plus pager_prev / pager_next URLs (or empty). #}
+{% if pager and pager.total %}
+<nav class="d-flex flex-wrap gap-2 align-items-center justify-content-between mt-3 mb-1" aria-label="Pagination">
+  <div class="text-muted small">
+    Showing {{ pager.start }}–{{ pager.end }} of {{ "{:,}".format(pager.total) }}
+  </div>
+  {% if pager.pages > 1 %}
+  <div class="d-flex gap-2 align-items-center">
+    {% if pager_prev %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ pager_prev }}"><i class="bi bi-chevron-left"></i> Prev</a>
+    {% else %}
+    <button class="btn btn-sm btn-outline-secondary" type="button" disabled><i class="bi bi-chevron-left"></i> Prev</button>
+    {% endif %}
+    <span class="text-muted small">Page {{ pager.page }} / {{ pager.pages }}</span>
+    {% if pager_next %}
+    <a class="btn btn-sm btn-outline-secondary" href="{{ pager_next }}">Next <i class="bi bi-chevron-right"></i></a>
+    {% else %}
+    <button class="btn btn-sm btn-outline-secondary" type="button" disabled>Next <i class="bi bi-chevron-right"></i></button>
+    {% endif %}
+  </div>
+  {% endif %}
+</nav>
+{% endif %}
