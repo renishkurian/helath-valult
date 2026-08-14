@@ -1200,6 +1200,8 @@ class ExpenseAnalyserStatusOut(BaseModel):
     email: Optional[str] = None
     server_oauth: bool = False
     sync_query: Optional[str] = None
+    enabled: bool = False
+    hour: int = 6
     last_sync_at: Optional[str] = None
     last_ok: Optional[bool] = None
     last_error: Optional[str] = None
@@ -1207,6 +1209,11 @@ class ExpenseAnalyserStatusOut(BaseModel):
     matched: int = 0
     missed: int = 0
     posted: int = 0
+
+
+class ExpenseAnalyserScheduleIn(BaseModel):
+    enabled: bool = False
+    hour: int = Field(default=6, ge=0, le=23)
 
 
 class ExpenseAnalyserItemOut(BaseModel):

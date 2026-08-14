@@ -144,6 +144,27 @@ def save_query(
     return schemas.ExpenseAnalyserStatusOut(**ea.status_dict(db, current_user))
 
 
+@router.put("/schedule", response_model=schemas.ExpenseAnalyserStatusOut)
+def save_schedule(
+    body: schemas.ExpenseAnalyserScheduleIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    ea.save_schedule(db, current_user, enabled=body.enabled, hour=body.hour)
+    return schemas.ExpenseAnalyserStatusOut(**ea.status_dict(db, current_user))
+
+
+@router.get("/insights")
+def insights(
+    month: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    return ea.insights(db, current_user, month)
+
+
 @router.post("/disconnect", response_model=schemas.ExpenseAnalyserStatusOut)
 def disconnect(
     db: Session = Depends(get_db),

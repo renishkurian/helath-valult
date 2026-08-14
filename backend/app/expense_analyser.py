@@ -74,6 +74,8 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
         "email": row.connected_email if row else None,
         "server_oauth": oauth_ready(db),
         "sync_query": (row.sync_query if row and row.sync_query else gmail.DEFAULT_SYNC_QUERY),
+        "enabled": bool(row.enabled) if row else False,
+        "hour": int(row.hour if row and row.hour is not None else 6),
         "last_sync_at": row.last_sync_at.isoformat() if row and row.last_sync_at else None,
         "last_ok": row.last_ok if row else None,
         "last_error": row.last_error if row else None,
@@ -496,6 +498,7 @@ def disconnect(db: Session, user: models.User) -> None:
     row = get_or_create(db, user)
     row.refresh_token_enc = None
     row.connected_email = None
+    row.enabled = False
     row.last_ok = None
     row.last_error = None
     row.last_history_id = None
@@ -509,3 +512,194 @@ def save_query(db: Session, user: models.User, sync_query: str | None) -> models
     db.commit()
     db.refresh(row)
     return row
+
+
+def save_schedule(
+    db: Session,
+    user: models.User,
+    *,
+    enabled: bool,
+    hour: int,
+) -> models.ExpenseAnalyserConnection:
+    row = get_or_create(db, user)
+    row.hour = max(0, min(23, int(hour)))
+    row.enabled = bool(enabled) and bool(row.refresh_token_enc)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def should_run_now(row: models.ExpenseAnalyserConnection, now: datetime | None = None) -> bool:
+    if not row.enabled or not row.refresh_token_enc:
+        return False
+    now = now or datetime.now()
+    if now.hour < int(row.hour or 6):
+        return False
+    if row.last_sync_at and row.last_ok and row.last_sync_at.date() == now.date():
+        return False
+    return True
+
+
+def run_due_syncs() -> None:
+    """Daily Gmail sync for vaults with auto-sync enabled (called from scheduler)."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(models.ExpenseAnalyserConnection)
+            .filter(
+                models.ExpenseAnalyserConnection.enabled.is_(True),
+                models.ExpenseAnalyserConnection.refresh_token_enc.isnot(None),
+            )
+            .all()
+        )
+        now = datetime.now()
+        for row in rows:
+            if not should_run_now(row, now):
+                continue
+            user = db.query(models.User).filter(models.User.id == row.user_id).first()
+            if not user:
+                continue
+            try:
+                result = sync_gmail(db, user)
+                log.info(
+                    "Expense Analyser sync for %s: created=%s error=%s",
+                    user.email, result.get("created"), result.get("error"),
+                )
+            except Exception:
+                log.exception("Expense Analyser sync failed for %s", user.email)
+    finally:
+        db.close()
+
+
+_CHART_COLORS = [
+    "#5EEAD4", "#F87171", "#FBBF24", "#60A5FA", "#A78BFA",
+    "#34D399", "#FB7185", "#F0C36A", "#38BDF8", "#C0A8FF",
+    "#4ADE9B", "#F97316", "#22D3EE", "#E879F9", "#94A3B8",
+]
+
+
+def _month_bounds(year_month: str) -> tuple[str, str, str, str]:
+    """Return ym, label, prev, next for a YYYY-MM string."""
+    try:
+        year, month = [int(x) for x in year_month.split("-", 1)]
+        base = datetime(year, month, 1)
+    except (ValueError, TypeError):
+        now = datetime.utcnow()
+        base = datetime(now.year, now.month, 1)
+        year_month = base.strftime("%Y-%m")
+    if base.month == 1:
+        prev = datetime(base.year - 1, 12, 1)
+    else:
+        prev = datetime(base.year, base.month - 1, 1)
+    if base.month == 12:
+        nxt = datetime(base.year + 1, 1, 1)
+    else:
+        nxt = datetime(base.year, base.month + 1, 1)
+    label = base.strftime("%B %Y")
+    return year_month, label, prev.strftime("%Y-%m"), nxt.strftime("%Y-%m")
+
+
+def _item_day(item: models.ExpenseAnalyserItem) -> str | None:
+    if item.txn_date and len(item.txn_date) >= 10:
+        return item.txn_date[:10]
+    if item.received_at:
+        return item.received_at.strftime("%Y-%m-%d")
+    return None
+
+
+def insights(db: Session, user: models.User, year_month: str | None = None) -> dict[str, Any]:
+    """Chart-ready spend summary from analyser inbox (not Money Manager ledger)."""
+    ym = year_month or datetime.utcnow().strftime("%Y-%m")
+    ym, label, prev, nxt = _month_bounds(ym)
+    uid = vault_id(user)
+    rows = (
+        db.query(models.ExpenseAnalyserItem)
+        .filter(
+            models.ExpenseAnalyserItem.user_id == uid,
+            models.ExpenseAnalyserItem.kind != "bill",
+            models.ExpenseAnalyserItem.status != "ignored",
+            models.ExpenseAnalyserItem.amount.isnot(None),
+        )
+        .all()
+    )
+    month_rows: list[models.ExpenseAnalyserItem] = []
+    for item in rows:
+        day = _item_day(item)
+        if day and day.startswith(ym):
+            month_rows.append(item)
+
+    debit_total = 0.0
+    credit_total = 0.0
+    by_cat: dict[str, float] = {}
+    by_method: dict[str, float] = {}
+    by_day: dict[str, float] = {}
+    by_payee: dict[str, float] = {}
+    cat_count: dict[str, int] = {}
+    method_count: dict[str, int] = {}
+    payee_count: dict[str, int] = {}
+    status_count: dict[str, int] = {}
+
+    for item in month_rows:
+        amt = float(item.amount or 0)
+        status_count[item.status] = status_count.get(item.status, 0) + 1
+        if item.direction == "credit":
+            credit_total += amt
+            continue
+        debit_total += amt
+        cat = (item.suggested_category or "Other").strip() or "Other"
+        method = (item.payment_method or "other").strip() or "other"
+        payee = (item.payee or item.subject or "Unknown").strip() or "Unknown"
+        day = _item_day(item) or ym + "-01"
+        by_cat[cat] = by_cat.get(cat, 0) + amt
+        cat_count[cat] = cat_count.get(cat, 0) + 1
+        by_method[method] = by_method.get(method, 0) + amt
+        method_count[method] = method_count.get(method, 0) + 1
+        by_day[day] = by_day.get(day, 0) + amt
+        by_payee[payee] = by_payee.get(payee, 0) + amt
+        payee_count[payee] = payee_count.get(payee, 0) + 1
+
+    def _slices(mapping: dict[str, float], counts: dict[str, int] | None = None) -> list[dict]:
+        total = sum(mapping.values()) or 1.0
+        ordered = sorted(mapping.items(), key=lambda x: x[1], reverse=True)
+        out = []
+        for i, (name, amount) in enumerate(ordered):
+            out.append({
+                "name": name,
+                "amount": round(amount, 2),
+                "count": (counts or {}).get(name, 0),
+                "pct": round(100.0 * amount / total, 1),
+                "color": _CHART_COLORS[i % len(_CHART_COLORS)],
+            })
+        return out
+
+    days_sorted = sorted(by_day.items())
+    day_max = max((v for _, v in days_sorted), default=0) or 1.0
+    day_bars = [
+        {
+            "date": d,
+            "label": d[8:10],
+            "amount": round(v, 2),
+            "pct": round(100.0 * v / day_max, 1),
+        }
+        for d, v in days_sorted
+    ]
+
+    return {
+        "year_month": ym,
+        "label": label,
+        "prev": prev,
+        "next": nxt,
+        "debit_total": round(debit_total, 2),
+        "credit_total": round(credit_total, 2),
+        "item_count": len(month_rows),
+        "by_category": _slices(by_cat, cat_count),
+        "by_method": _slices(by_method, method_count),
+        "by_day": day_bars,
+        "by_status": [
+            {"name": k, "count": v, "color": _CHART_COLORS[i % len(_CHART_COLORS)]}
+            for i, (k, v) in enumerate(sorted(status_count.items(), key=lambda x: -x[1]))
+        ],
+        "top_payees": _slices(by_payee, payee_count)[:10],
+    }

@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block title %}Insights{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Expense Analyser</div>
+    <h1 class="page-title">{{ report.label }}</h1>
+    <p class="page-lead">Spend from Gmail alerts this month — before posting to Money Manager.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light btn-icon" href="/admin/expense-analyser/insights?month={{ report.prev }}" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <a class="btn btn-outline-light btn-icon" href="/admin/expense-analyser/insights?month={{ report.next }}" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Debits</div>
+      <div class="val mm-expense">{{ inr(report.debit_total) }}</div>
+      <div class="sub">{{ report.label }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Credits</div>
+      <div class="val mm-income">{{ inr(report.credit_total) }}</div>
+      <div class="sub">alerts detected</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-envelope"></i> Items</div>
+      <div class="val">{{ report.item_count }}</div>
+      <div class="sub">excluding ignored</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-tags"></i> Categories</div>
+      <div class="val">{{ report.by_category | length }}</div>
+      <div class="sub">with spend</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico bad"><i class="bi bi-bar-chart"></i></span>
+        <div>
+          <h2>By category</h2>
+          <div class="card-sub">Debit share for {{ report.label }}</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for s in report.by_category %}
+        <div class="bar-row">
+          <div class="bar-head">
+            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+            <span class="b-val">{{ inr(s.amount) }} · {{ '%d'|format(s.pct|round(0)) }}%</span>
+          </div>
+          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+          <div class="empty-ico"><i class="bi bi-pie-chart"></i></div>
+          <div class="empty-title">No spend this month</div>
+          <p>Sync Gmail or pick another month.</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-credit-card"></i></span>
+        <div>
+          <h2>By payment method</h2>
+          <div class="card-sub">UPI, card, and more</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for s in report.by_method %}
+        <div class="bar-row">
+          <div class="bar-head">
+            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+            <span class="b-val">{{ inr(s.amount) }} · {{ s.count }}</span>
+          </div>
+          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No method data yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-calendar3"></i></span>
+        <div>
+          <h2>Daily spend</h2>
+          <div class="card-sub">Debits by day</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if report.by_day %}
+        <div class="ea-day-chart" role="img" aria-label="Daily spend bars">
+          {% for d in report.by_day %}
+          <div class="ea-day-col" title="{{ d.date }}: {{ inr(d.amount) }}">
+            <div class="ea-day-bar-wrap">
+              <span class="ea-day-bar" style="height:{{ d.pct }}%;"></span>
+            </div>
+            <div class="ea-day-lbl">{{ d.label }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No daily amounts for this month.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico good"><i class="bi bi-inbox"></i></span>
+        <div>
+          <h2>Inbox status</h2>
+          <div class="card-sub">Review pipeline</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for s in report.by_status %}
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+          <strong>{{ s.count }}</strong>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Empty inbox for this month.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-ico"><i class="bi bi-shop"></i></span>
+    <div>
+      <h2>Top payees</h2>
+      <div class="card-sub">Largest debit counterparts</div>
+    </div>
+  </div>
+  <div class="card-body">
+    {% for s in report.top_payees %}
+    <div class="bar-row">
+      <div class="bar-head">
+        <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+        <span class="b-val">{{ inr(s.amount) }} · {{ s.count }} txns</span>
+      </div>
+      <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+    </div>
+    {% else %}
+    <p class="text-muted mb-0">No payees yet — sync Gmail first.</p>
+    {% endfor %}
+  </div>
+</div>
+
+<style>
+.ea-day-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: .35rem;
+  min-height: 10rem;
+  overflow-x: auto;
+  padding-top: .5rem;
+}
+.ea-day-col {
+  flex: 1 0 1.1rem;
+  max-width: 2rem;
+  text-align: center;
+}
+.ea-day-bar-wrap {
+  height: 8rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.ea-day-bar {
+  display: block;
+  width: 70%;
+  min-height: 2px;
+  border-radius: .25rem .25rem 0 0;
+  background: linear-gradient(180deg, #5EEAD4, #2dd4bf88);
+}
+.ea-day-lbl {
+  font-size: .65rem;
+  color: var(--text-muted, #94a3b8);
+  margin-top: .25rem;
+}
+</style>
+{% endblock %}

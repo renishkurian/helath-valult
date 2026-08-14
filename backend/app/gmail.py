@@ -21,7 +21,7 @@ GMAIL_API = "https://gmail.googleapis.com/gmail/v1/users/me"
 # Bank / card / UPI alerts + statement-ish subjects (India-focused starter set).
 DEFAULT_SYNC_QUERY = (
     "("
-    "from:(hdfcbank.net OR alerts.hdfcbank.net OR sbi.co.in OR onlinesbi.com "
+    "from:(hdfcbank.net OR alerts.hdfcbank.net OR hdfcbank.bank.in OR sbi.co.in OR onlinesbi.com "
     "OR icicibank.com OR axisbank.com OR kotak.com OR yesbank.in OR indusind.com "
     "OR citibank.com OR americanexpress.com OR amex OR rblbank.com OR idfcfirstbank.com "
     "OR phonepe.com OR googlepay OR paytm.com OR amazonpay)"

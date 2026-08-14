@@ -2582,6 +2582,35 @@ def expense_analyser_settings(request: Request, db: Session = Depends(get_db)):
     ))
 
 
+@router.get("/expense-analyser/insights", response_class=HTMLResponse)
+def expense_analyser_insights(
+    request: Request,
+    month: str = "",
+    db: Session = Depends(get_db),
+):
+    from app import expense_analyser as ea
+    from app.routers.finance import inr
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    report = ea.insights(db, user, month or None)
+    return templates.TemplateResponse("expense_analyser_insights.html", _ea_ctx(
+        request, user, "ea_insights", report=report, inr=inr,
+    ))
+
+
+@router.post("/expense-analyser/schedule")
+async def expense_analyser_schedule(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    hour = int(str(form.get("hour") or "6") or "6")
+    ea.save_schedule(db, user, enabled=bool(form.get("enabled")), hour=hour)
+    return RedirectResponse("/admin/expense-analyser/settings?ok=schedule", status_code=302)
+
+
 @router.get("/expense-analyser/google/connect")
 def expense_analyser_google_connect(request: Request, db: Session = Depends(get_db)):
     import secrets

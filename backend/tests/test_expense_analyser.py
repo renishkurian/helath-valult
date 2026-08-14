@@ -31,6 +31,61 @@ def test_status_endpoint_unconnected():
     assert body["connected"] is False
     assert body["pending"] == 0
     assert "sync_query" in body
+    assert body["enabled"] is False
+    assert body["hour"] == 6
+
+
+def test_schedule_and_insights():
+    from app.expense_analyser import should_run_now, insights
+    from datetime import datetime
+
+    headers, email = _headers()
+    r = client.put("/expense-analyser/schedule", headers=headers, json={"enabled": True, "hour": 7})
+    assert r.status_code == 200, r.text
+    # Without Gmail connected, enabled stays false
+    assert r.json()["enabled"] is False
+    assert r.json()["hour"] == 7
+
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="g-ins", kind="alert",
+            direction="debit", amount=Decimal("250.00"), payee="SWIGGY",
+            txn_date=datetime.utcnow().strftime("%Y-%m-%d"),
+            payment_method="upi", suggested_category="Food & dining",
+            status="pending",
+        ))
+        db.commit()
+        report = insights(db, user)
+        assert report["debit_total"] >= 250
+        assert any(s["name"] == "Food & dining" for s in report["by_category"])
+
+        row = models.ExpenseAnalyserConnection(
+            user_id=uid, refresh_token_enc="x", enabled=True, hour=0,
+            last_sync_at=None, last_ok=None,
+        )
+        # may already exist from schedule call
+        existing = db.query(models.ExpenseAnalyserConnection).filter_by(user_id=uid).first()
+        if existing:
+            existing.refresh_token_enc = "x"
+            existing.enabled = True
+            existing.hour = 0
+            existing.last_sync_at = None
+            existing.last_ok = None
+            db.commit()
+            row = existing
+        else:
+            db.add(row)
+            db.commit()
+        assert should_run_now(row, datetime.now()) is True
+    finally:
+        db.close()
+
+    r = client.get("/expense-analyser/insights", headers=headers)
+    assert r.status_code == 200
+    assert "debit_total" in r.json()
 
 
 def test_html_to_text_and_statement_detect():

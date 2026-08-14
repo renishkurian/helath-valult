@@ -1,4 +1,4 @@
-"""Lightweight in-process jobs. Drive backup and EMI auto-post check once a minute."""
+"""Lightweight in-process jobs. Drive backup, EMI auto-post, and Gmail sync check once a minute."""
 from __future__ import annotations
 
 import asyncio
@@ -23,6 +23,11 @@ async def _loop(stop: asyncio.Event) -> None:
             await asyncio.to_thread(run_due_emis)
         except Exception:
             log.exception("emi job failed")
+        try:
+            from app.expense_analyser import run_due_syncs
+            await asyncio.to_thread(run_due_syncs)
+        except Exception:
+            log.exception("expense analyser sync job failed")
         try:
             await asyncio.wait_for(stop.wait(), timeout=60)
         except asyncio.TimeoutError:

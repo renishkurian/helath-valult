@@ -73,6 +73,10 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "login_challenges": [
         ("kind", "VARCHAR(20) NOT NULL DEFAULT 'app'"),
     ],
+    "expense_analyser_connections": [
+        ("enabled", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("hour", "INTEGER NOT NULL DEFAULT 6"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [
