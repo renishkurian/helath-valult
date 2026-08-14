@@ -2520,3 +2520,196 @@ def urls_item_delete(item_id: str, request: Request, db: Session = Depends(get_d
         return RedirectResponse("/admin/login", status_code=302)
     uv.delete_item(item_id, db=db, current_user=user)
     return RedirectResponse("/admin/urls", status_code=302)
+
+
+# ---------- Expense Analyser ----------
+def _ea_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "expense", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _ea_user(request, db):
+    return require_login(request, db)
+
+
+def _ea_redirect_uri(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + "/admin/expense-analyser/google/callback"
+
+
+@router.get("/expense-analyser", response_class=HTMLResponse)
+def expense_analyser_home(
+    request: Request,
+    status: str = "",
+    db: Session = Depends(get_db),
+):
+    from app import expense_analyser as ea
+    from app.routers.finance import ensure_defaults, inr, list_accounts
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ensure_defaults(db, user)
+    st = ea.status_dict(db, user)
+    filter_status = status if status in ("pending", "missed", "matched", "posted", "ignored", "corrected") else ""
+    if filter_status:
+        items = ea.list_items(db, user, status=filter_status, limit=150)
+    else:
+        items = [
+            i for i in ea.list_items(db, user, limit=150)
+            if i.status in ("pending", "missed", "matched", "corrected")
+        ]
+    accounts = list_accounts(db=db, current_user=user)
+    return templates.TemplateResponse("expense_analyser.html", _ea_ctx(
+        request, user, "ea_inbox",
+        status=st, items=items, accounts=accounts,
+        filter_status=filter_status, inr=inr,
+    ))
+
+
+@router.get("/expense-analyser/settings", response_class=HTMLResponse)
+def expense_analyser_settings(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    st = ea.status_dict(db, user)
+    return templates.TemplateResponse("expense_analyser_settings.html", _ea_ctx(
+        request, user, "ea_settings",
+        status=st, redirect_uri=_ea_redirect_uri(request),
+    ))
+
+
+@router.get("/expense-analyser/google/connect")
+def expense_analyser_google_connect(request: Request, db: Session = Depends(get_db)):
+    import secrets
+    from app import expense_analyser as ea, gmail
+    from app.drive_backup import oauth_creds, oauth_ready
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if not oauth_ready(db):
+        return RedirectResponse("/admin/expense-analyser/settings?err=client", status_code=302)
+    client_id, _secret = oauth_creds(db)
+    state = secrets.token_urlsafe(16)
+    request.session["ea_gmail_oauth_state"] = state
+    url = gmail.auth_url(client_id, _ea_redirect_uri(request), state)
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/expense-analyser/google/callback")
+def expense_analyser_google_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    db: Session = Depends(get_db),
+):
+    from app import expense_analyser as ea, gmail, crypto
+    from app.drive_backup import oauth_creds, oauth_ready
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if error:
+        return RedirectResponse("/admin/expense-analyser/settings?err=denied", status_code=302)
+    if not code or state != request.session.get("ea_gmail_oauth_state"):
+        return RedirectResponse("/admin/expense-analyser/settings?err=state", status_code=302)
+    if not oauth_ready(db):
+        return RedirectResponse("/admin/expense-analyser/settings?err=client", status_code=302)
+    client_id, secret = oauth_creds(db)
+    row = ea.get_or_create(db, user)
+    try:
+        tokens = gmail.exchange_code(client_id, secret, code, _ea_redirect_uri(request))
+        refresh = tokens.get("refresh_token")
+        access = tokens.get("access_token")
+        if not refresh:
+            return RedirectResponse("/admin/expense-analyser/settings?err=token", status_code=302)
+        row.refresh_token_enc = crypto.encrypt_text(refresh)
+        if access:
+            row.connected_email = gmail.user_email(access)
+        db.commit()
+    except Exception:
+        return RedirectResponse("/admin/expense-analyser/settings?err=token", status_code=302)
+    request.session.pop("ea_gmail_oauth_state", None)
+    return RedirectResponse("/admin/expense-analyser/settings?ok=connected", status_code=302)
+
+
+@router.post("/expense-analyser/sync")
+def expense_analyser_sync(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = ea.get_or_create(db, user)
+    if not row.refresh_token_enc:
+        return RedirectResponse("/admin/expense-analyser/settings?err=client", status_code=302)
+    result = ea.sync_gmail(db, user)
+    if result.get("error"):
+        return RedirectResponse(f"/admin/expense-analyser?err={result['error'][:80]}", status_code=302)
+    return RedirectResponse(
+        f"/admin/expense-analyser?ok=synced&created={result.get('created', 0)}",
+        status_code=302,
+    )
+
+
+@router.post("/expense-analyser/reconcile")
+def expense_analyser_reconcile(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ea.reconnect_matches(db, user)
+    return RedirectResponse("/admin/expense-analyser?ok=reconciled", status_code=302)
+
+
+@router.post("/expense-analyser/disconnect")
+def expense_analyser_disconnect(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ea.disconnect(db, user)
+    return RedirectResponse("/admin/expense-analyser/settings", status_code=302)
+
+
+@router.post("/expense-analyser/query")
+async def expense_analyser_query(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    ea.save_query(db, user, str(form.get("sync_query") or ""))
+    return RedirectResponse("/admin/expense-analyser/settings", status_code=302)
+
+
+@router.post("/expense-analyser/items/{item_id}/post")
+async def expense_analyser_post_item(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    try:
+        ea.post_to_finance(
+            db, user, item_id,
+            account_id=str(form.get("account_id") or "") or None,
+        )
+    except (LookupError, RuntimeError) as exc:
+        return RedirectResponse(f"/admin/expense-analyser?err={exc}", status_code=302)
+    return RedirectResponse("/admin/expense-analyser?ok=posted", status_code=302)
+
+
+@router.post("/expense-analyser/items/{item_id}/ignore")
+def expense_analyser_ignore_item(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        ea.ignore_item(db, user, item_id)
+    except LookupError:
+        pass
+    return RedirectResponse("/admin/expense-analyser", status_code=302)

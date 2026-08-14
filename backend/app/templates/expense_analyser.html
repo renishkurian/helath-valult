@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Expense Analyser{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Spend from mail</div>
+    <h1 class="page-title">Expense Analyser</h1>
+    <p class="page-lead">
+      Read bank and card alerts from Gmail, match them to Money Manager, fill gaps from statements — without mixing into the ledger until you post.
+    </p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if status.connected %}
+    <form method="post" action="/admin/expense-analyser/sync">
+      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-repeat"></i> Sync Gmail</button>
+    </form>
+    <form method="post" action="/admin/expense-analyser/reconcile">
+      <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-shuffle"></i> Re-match ledger</button>
+    </form>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="/admin/expense-analyser/settings"><i class="bi bi-gear"></i> Settings</a>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') == 'synced' %}
+<div class="alert alert-success" role="alert">Gmail sync finished — {{ request.query_params.get('created', '0') }} new item(s).</div>
+{% elif request.query_params.get('ok') == 'posted' %}
+<div class="alert alert-success" role="alert">Posted to Money Manager.</div>
+{% elif request.query_params.get('err') %}
+<div class="alert alert-danger" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+{% if status.last_error and status.last_ok is sameas false %}
+<div class="alert alert-warning" role="alert"><i class="bi bi-exclamation-triangle"></i> Last sync error: {{ status.last_error }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-inbox"></i> Pending</div>
+      <div class="val">{{ status.pending }}</div>
+      <div class="sub">needs review</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-check2-circle"></i> Matched</div>
+      <div class="val">{{ status.matched }}</div>
+      <div class="sub">already in ledger</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-plus-circle"></i> Missed</div>
+      <div class="val">{{ status.missed }}</div>
+      <div class="sub">on bill, not in ledger</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-wallet2"></i> Posted</div>
+      <div class="val">{{ status.posted }}</div>
+      <div class="sub">sent to Money Manager</div>
+    </div>
+  </div>
+</div>
+
+{% if not status.connected %}
+<div class="card mb-4">
+  <div class="card-body">
+    <h2 class="h5 mb-2">Connect Gmail to start</h2>
+    <p class="text-muted mb-3">Uses read-only Gmail access. Tokens stay encrypted on this server — separate from Google Drive backup.</p>
+    <a class="btn btn-primary" href="/admin/expense-analyser/settings"><i class="bi bi-google"></i> Open settings</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="section-head d-flex flex-wrap gap-2 align-items-center justify-content-between">
+  <h2>Inbox</h2>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser">All open</a>
+    <a class="btn btn-sm {% if filter_status == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=pending">Pending</a>
+    <a class="btn btn-sm {% if filter_status == 'missed' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=missed">Missed</a>
+    <a class="btn btn-sm {% if filter_status == 'matched' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=matched">Matched</a>
+    <a class="btn btn-sm {% if filter_status == 'posted' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=posted">Posted</a>
+  </div>
+</div>
+
+{% if not items %}
+<p class="text-muted">No items yet. Connect Gmail and sync, or widen the search query in settings.</p>
+{% else %}
+<div class="stack">
+  {% for item in items %}
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
+        <div>
+          <span class="badge text-bg-secondary">{{ item.kind }}</span>
+          <span class="badge text-bg-{% if item.status == 'missed' %}warning{% elif item.status == 'matched' %}success{% elif item.status == 'posted' %}primary{% else %}light{% endif %}">{{ item.status }}</span>
+          {% if item.payment_method %}<span class="badge text-bg-light">{{ item.payment_method }}</span>{% endif %}
+        </div>
+        <div class="text-muted small">
+          {% if item.txn_date %}{{ item.txn_date }}{% elif item.received_at %}{{ item.received_at.strftime('%Y-%m-%d') }}{% endif %}
+        </div>
+      </div>
+      <div class="d-flex flex-wrap justify-content-between gap-3">
+        <div>
+          <div class="fw-semibold">{{ item.payee or item.subject or 'Untitled' }}</div>
+          <div class="text-muted small">{{ item.from_addr or '' }}</div>
+          {% if item.suggested_category %}<div class="small mt-1">Category: {{ item.suggested_category }}</div>{% endif %}
+          {% if item.raw_snippet %}<div class="small text-muted mt-2" style="max-width:42rem;">{{ item.raw_snippet }}</div>{% endif %}
+        </div>
+        <div class="text-end">
+          {% if item.amount is not none %}
+          <div class="fs-5 fw-semibold {% if item.direction == 'credit' %}mm-income{% else %}mm-expense{% endif %}">
+            {% if item.direction == 'credit' %}+{% else %}−{% endif %}{{ inr(item.amount) }}
+          </div>
+          {% endif %}
+          {% if item.match_txn_id %}<div class="small text-muted">Ledger match</div>{% endif %}
+        </div>
+      </div>
+      {% if item.status not in ('posted', 'ignored') and item.kind != 'bill' %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/post" class="d-flex flex-wrap gap-2 align-items-center">
+          <select class="form-select form-select-sm" name="account_id" style="width:auto;min-width:10rem;">
+            {% for a in accounts %}
+            <option value="{{ a.id }}">{{ a.name }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-wallet2"></i> Post to Money Manager</button>
+        </form>
+        <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/ignore">
+          <button class="btn btn-sm btn-outline-secondary" type="submit">Ignore</button>
+        </form>
+      </div>
+      {% elif item.kind == 'bill' %}
+      <div class="small text-muted mt-3">Statement header — review bill lines below (same message).</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

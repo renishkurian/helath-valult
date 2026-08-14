@@ -862,3 +862,49 @@ class UrlShare(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     item = relationship("UrlItem", back_populates="shares")
+
+
+class ExpenseAnalyserConnection(Base):
+    """Per-vault Gmail OAuth for Expense Analyser (separate from Drive backup)."""
+    __tablename__ = "expense_analyser_connections"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    refresh_token_enc = Column(Text, nullable=True)
+    connected_email = Column(String(255), nullable=True)
+    sync_query = Column(Text, nullable=True)
+    last_sync_at = Column(DateTime, nullable=True)
+    last_ok = Column(Boolean, nullable=True)
+    last_error = Column(Text, nullable=True)
+    last_history_id = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExpenseAnalyserItem(Base):
+    """Parsed spend from Gmail alerts or credit-card bills — review before Money Manager."""
+    __tablename__ = "expense_analyser_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    gmail_message_id = Column(String(64), nullable=False, index=True)
+    gmail_thread_id = Column(String(64), nullable=True)
+    kind = Column(String(20), default="alert", nullable=False)  # alert | bill | bill_line
+    subject = Column(String(500), nullable=True)
+    from_addr = Column(String(255), nullable=True)
+    received_at = Column(DateTime, nullable=True, index=True)
+    raw_snippet = Column(Text, nullable=True)
+    raw_text_enc = Column(Text, nullable=True)
+    direction = Column(String(20), default="unknown", nullable=False)  # debit | credit | unknown
+    amount = Column(Numeric(14, 2), nullable=True)
+    currency = Column(String(8), default="INR", nullable=False)
+    payee = Column(String(255), nullable=True)
+    txn_date = Column(String(20), nullable=True, index=True)
+    payment_method = Column(String(30), nullable=True)
+    suggested_category = Column(String(120), nullable=True)
+    confidence = Column(Numeric(4, 3), nullable=True)
+    # pending | matched | corrected | posted | ignored | missed
+    status = Column(String(20), default="pending", nullable=False, index=True)
+    match_txn_id = Column(String(32), nullable=True, index=True)
+    finance_txn_id = Column(String(32), nullable=True, index=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

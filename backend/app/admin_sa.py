@@ -278,6 +278,7 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
     if not user:
         return _deny(require_login(request, db))
     redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
+    gmail_redirect_uri = str(request.base_url).rstrip("/") + "/admin/expense-analyser/google/callback"
     fcm = fcm_service_account(db)
     return templates.TemplateResponse("sa_settings.html", _sa_ctx(
         request, user, "sa_settings",
@@ -285,6 +286,7 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
         google_has_secret=bool(get_secret(db, GOOGLE_CLIENT_SECRET_KEY) or (settings.GOOGLE_CLIENT_SECRET or "").strip()),
         google_ready=oauth_ready(db),
         redirect_uri=redirect_uri,
+        gmail_redirect_uri=gmail_redirect_uri,
         saved=saved or None,
         err=err or None,
         env_fallback=bool((settings.GOOGLE_CLIENT_ID or "").strip() and (settings.GOOGLE_CLIENT_SECRET or "").strip()),

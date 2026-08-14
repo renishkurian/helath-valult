@@ -54,11 +54,15 @@
         <span class="badge {% if google_ready %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if google_ready %}Ready{% else %}Not set{% endif %}</span>
       </div>
       <div class="card-body">
-        <p class="text-muted mb-3">Create one Web client in Google Cloud, enable Drive API, then paste it here. Do not ask family members to do this.</p>
+        <p class="text-muted mb-3">Create one Web client in Google Cloud, enable Drive API and Gmail API, then paste it here. Do not ask family members to do this.</p>
         <div class="mb-3">
-          <label class="form-label" for="drive-redirect">Authorized redirect URI</label>
+          <label class="form-label" for="drive-redirect">Drive redirect URI</label>
           <input class="form-control js-copyable" id="drive-redirect" type="text" readonly value="{{ redirect_uri }}">
-          <div class="form-text">Add this exact URI (and any other hostname you use) on the Google client.</div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label" for="gmail-redirect">Expense Analyser (Gmail) redirect URI</label>
+          <input class="form-control js-copyable" id="gmail-redirect" type="text" readonly value="{{ gmail_redirect_uri }}">
+          <div class="form-text">Add both exact URIs (and any other hostname you use) on the Google client.</div>
         </div>
         <form method="post" action="/admin/sa/settings/google" class="stack">
           <div>

@@ -7,6 +7,7 @@
   {'key':'health','name':'Health Vault','kicker':'Medical records','href':'/admin','icon':'bi-heart-pulse','accent':'#FF8095'},
   {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#7FA6FF'},
   {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#4ADE9B'},
+  {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#5EEAD4'},
   {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0C36A'},
   {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'}
 ] %}
@@ -31,6 +32,12 @@
     {'key':'fn_stats','label':'Stats','href':'/admin/finance/stats','icon':'bi-bar-chart'},
     {'key':'fn_accounts','label':'Accounts','href':'/admin/finance/accounts','icon':'bi-wallet2'},
     {'key':'fn_more','label':'More','href':'/admin/finance/more','icon':'bi-grid'}
+  ] %}
+{% elif active_module == 'expense' %}
+  {% set mod_key = 'expense' %}
+  {% set nav_items = [
+    {'key':'ea_inbox','label':'Inbox','href':'/admin/expense-analyser','icon':'bi-inbox'},
+    {'key':'ea_settings','label':'Gmail & sync','href':'/admin/expense-analyser/settings','icon':'bi-gear'}
   ] %}
 {% elif active_module == 'locker' %}
   {% set mod_key = 'locker' %}

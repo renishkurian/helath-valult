@@ -4,7 +4,7 @@
 <div class="page-head">
   <div>
     <div class="eyebrow">Workspace</div>
-    <h1 class="page-title">Your five vaults</h1>
+    <h1 class="page-title">Your vaults</h1>
     <p class="page-lead">One key opens the house. Open only the room you need.</p>
   </div>
 </div>
@@ -43,8 +43,19 @@
     <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
 
-  <a class="module-card" href="/admin/locker" style="--mod-accent:#F0C36A;">
+  <a class="module-card" href="/admin/expense-analyser" style="--mod-accent:#5EEAD4;">
     <span class="mod-num">04</span>
+    <span class="mod-ico"><i class="bi bi-envelope-open"></i></span>
+    <div>
+      <div class="eyebrow mb-1">Spend from mail</div>
+      <h2>Expense Analyser</h2>
+      <p class="mt-1">Gmail bank alerts and credit-card bills — match, fill gaps, then post to Money Manager.</p>
+    </div>
+    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
+  </a>
+
+  <a class="module-card" href="/admin/locker" style="--mod-accent:#F0C36A;">
+    <span class="mod-num">05</span>
     <span class="mod-ico"><i class="bi bi-safe2"></i></span>
     <div>
       <div class="eyebrow mb-1">IDs &amp; papers</div>
@@ -55,7 +66,7 @@
   </a>
 
   <a class="module-card" href="/admin/urls" style="--mod-accent:#C0A8FF;">
-    <span class="mod-num">05</span>
+    <span class="mod-num">06</span>
     <span class="mod-ico"><i class="bi bi-link-45deg"></i></span>
     <div>
       <div class="eyebrow mb-1">Bookmarks</div>
@@ -67,7 +78,7 @@
 
   {% if session_user.role == 'superadmin' %}
   <a class="module-card" href="/admin/sa" style="--mod-accent:#D9B978;">
-    <span class="mod-num">06</span>
+    <span class="mod-num">07</span>
     <span class="mod-ico"><i class="bi bi-shield-check"></i></span>
     <div>
       <div class="eyebrow mb-1">Control plane</div>

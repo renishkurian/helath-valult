@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Expense Analyser settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/expense-analyser">Expense Analyser</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Settings
+    </div>
+    <h1 class="page-title">Gmail &amp; sync</h1>
+    <p class="page-lead">Read-only Gmail for bank alerts and credit-card statements. Posting to Money Manager stays a separate, explicit step.</p>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') == 'connected' %}
+<div class="alert alert-success" role="alert">Gmail connected.</div>
+{% elif request.query_params.get('err') == 'client' %}
+<div class="alert alert-danger" role="alert">Google OAuth client is not configured. Ask Super Admin to set it under Server settings (same client as Drive backup).</div>
+{% elif request.query_params.get('err') %}
+<div class="alert alert-danger" role="alert">Could not connect Gmail ({{ request.query_params.get('err') }}).</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-envelope"></i></span>
+        <div>
+          <h2>Gmail</h2>
+          <div class="card-sub">Separate connection from Drive backup</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if status.connected %}
+        <p class="mb-1"><strong>Connected as</strong> {{ status.email or 'Gmail account' }}</p>
+        {% if status.last_sync_at %}<p class="text-muted small mb-3">Last sync: {{ status.last_sync_at }}</p>{% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+          <form method="post" action="/admin/expense-analyser/sync">
+            <button class="btn btn-primary" type="submit">Sync now</button>
+          </form>
+          <form method="post" action="/admin/expense-analyser/disconnect" onsubmit="return confirm('Disconnect Gmail from Expense Analyser?');">
+            <button class="btn btn-outline-danger" type="submit">Disconnect</button>
+          </form>
+        </div>
+        {% else %}
+        <p class="text-muted mb-3">
+          {% if status.server_oauth %}
+          Server Google client is ready. Connect your mailbox with read-only access.
+          {% else %}
+          Super Admin must configure the Google OAuth client first (Server settings → Google app).
+          {% endif %}
+        </p>
+        {% if status.server_oauth %}
+        <a class="btn btn-primary" href="/admin/expense-analyser/google/connect"><i class="bi bi-google"></i> Connect Gmail</a>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-funnel"></i></span>
+        <div>
+          <h2>Search query</h2>
+          <div class="card-sub">Gmail search used on each sync</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/expense-analyser/query">
+          <label class="form-label" for="sync-query">Query</label>
+          <textarea class="form-control font-monospace" id="sync-query" name="sync_query" rows="8">{{ status.sync_query }}</textarea>
+          <div class="form-text mt-2">Leave blank and save to restore the default bank/UPI/statement filter.</div>
+          <button class="btn btn-primary mt-3" type="submit">Save query</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-body">
+    <h2 class="h5">How it stays separate</h2>
+    <ul class="mb-0 text-muted">
+      <li>Expense Analyser stores its own inbox rows — Money Manager is unchanged until you press <em>Post</em>.</li>
+      <li>Matched items mean a similar amount/date already exists in the ledger (no double entry).</li>
+      <li>Missed bill lines are candidates to add; review before posting.</li>
+    </ul>
+    <div class="mt-2 small text-muted">OAuth redirect URI to allowlist: <code>{{ redirect_uri }}</code></div>
+  </div>
+</div>
+{% endblock %}

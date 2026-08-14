@@ -1192,3 +1192,69 @@ class UrlSummaryOut(BaseModel):
     favorites: int = 0
     categories: List[UrlCategoryOut] = []
     tags: List[UrlTagOut] = []
+
+
+# ---------- Expense Analyser ----------
+class ExpenseAnalyserStatusOut(BaseModel):
+    connected: bool = False
+    email: Optional[str] = None
+    server_oauth: bool = False
+    sync_query: Optional[str] = None
+    last_sync_at: Optional[str] = None
+    last_ok: Optional[bool] = None
+    last_error: Optional[str] = None
+    pending: int = 0
+    matched: int = 0
+    missed: int = 0
+    posted: int = 0
+
+
+class ExpenseAnalyserItemOut(BaseModel):
+    id: str
+    gmail_message_id: str
+    kind: str
+    subject: Optional[str] = None
+    from_addr: Optional[str] = None
+    received_at: Optional[datetime] = None
+    raw_snippet: Optional[str] = None
+    direction: str
+    amount: Optional[float] = None
+    currency: str = "INR"
+    payee: Optional[str] = None
+    txn_date: Optional[str] = None
+    payment_method: Optional[str] = None
+    suggested_category: Optional[str] = None
+    confidence: Optional[float] = None
+    status: str
+    match_txn_id: Optional[str] = None
+    finance_txn_id: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+
+
+class ExpenseAnalyserItemUpdate(BaseModel):
+    direction: Optional[str] = None
+    amount: Optional[float] = None
+    payee: Optional[str] = None
+    txn_date: Optional[str] = None
+    payment_method: Optional[str] = None
+    suggested_category: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class ExpenseAnalyserSyncOut(BaseModel):
+    fetched: int = 0
+    created: int = 0
+    skipped: int = 0
+    matched: int = 0
+    missed: int = 0
+    error: Optional[str] = None
+
+
+class ExpenseAnalyserPostIn(BaseModel):
+    account_id: Optional[str] = None
+    category_id: Optional[str] = None
+
+
+class ExpenseAnalyserQueryIn(BaseModel):
+    sync_query: Optional[str] = Field(default=None, max_length=2000)
