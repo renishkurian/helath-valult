@@ -1392,5 +1392,10 @@ class ExpenseAnalyserPostIn(BaseModel):
     new_subcategory: Optional[str] = None
 
 
+class ExpenseAnalyserRetagIn(BaseModel):
+    item_ids: Optional[List[str]] = None
+    limit: Optional[int] = Field(default=None, ge=1, le=20)
+
+
 class ExpenseAnalyserQueryIn(BaseModel):
     sync_query: Optional[str] = Field(default=None, max_length=2000)

@@ -112,12 +112,18 @@ def start_retag_background(
     *,
     limit: int = _RETAG_AI_LIMIT,
     use_ai: bool = True,
+    item_ids: list[str] | None = None,
 ) -> bool:
     """Re-tag open inbox rows on a worker thread (small AI batch for Pi safety)."""
     if _is_heavy_job(user_id):
         return False
     _mark_retagging(user_id, True)
-    batch = max(1, min(_RETAG_AI_LIMIT, int(limit or _RETAG_AI_LIMIT)))
+    ids = [str(i).strip() for i in (item_ids or []) if str(i).strip()]
+    if ids:
+        ids = ids[:_RETAG_AI_LIMIT]
+        batch = len(ids)
+    else:
+        batch = max(1, min(_RETAG_AI_LIMIT, int(limit or _RETAG_AI_LIMIT)))
 
     def _run() -> None:
         from app.database import SessionLocal
@@ -126,7 +132,9 @@ def start_retag_background(
         try:
             user = db.query(models.User).filter(models.User.id == user_id).first()
             if user:
-                retag_pending_items(db, user, limit=batch, use_ai=use_ai)
+                retag_pending_items(
+                    db, user, limit=batch, use_ai=use_ai, item_ids=ids or None,
+                )
         except Exception:
             log.exception("background expense analyser retag failed")
         finally:
@@ -592,6 +600,7 @@ def retag_pending_items(
     *,
     limit: int = _RETAG_AI_LIMIT,
     use_ai: bool = True,
+    item_ids: list[str] | None = None,
 ) -> dict[str, int]:
     """Re-run classify + hard_correct on open inbox rows (fixes bad ATM/credit tags)."""
     from app.ai_providers import get_default_bundle
@@ -599,18 +608,35 @@ def retag_pending_items(
 
     uid = vault_id(user)
     ai = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser") if use_ai else None
-    batch = max(1, min(_RETAG_AI_LIMIT if use_ai else 80, int(limit or _RETAG_AI_LIMIT)))
-    rows = (
-        db.query(models.ExpenseAnalyserItem)
-        .filter(
-            models.ExpenseAnalyserItem.user_id == uid,
-            models.ExpenseAnalyserItem.status.in_(("pending", "missed", "matched", "corrected")),
-            models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
+    ids = [str(i).strip() for i in (item_ids or []) if str(i).strip()]
+    if ids:
+        ids = ids[:_RETAG_AI_LIMIT]
+        rows = (
+            db.query(models.ExpenseAnalyserItem)
+            .filter(
+                models.ExpenseAnalyserItem.user_id == uid,
+                models.ExpenseAnalyserItem.id.in_(ids),
+                models.ExpenseAnalyserItem.status.in_(("pending", "missed", "matched", "corrected")),
+                models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
+            )
+            .all()
         )
-        .order_by(models.ExpenseAnalyserItem.created_at.desc())
-        .limit(batch)
-        .all()
-    )
+        # Keep the caller's selection order when possible.
+        by_id = {r.id: r for r in rows}
+        rows = [by_id[i] for i in ids if i in by_id]
+    else:
+        batch = max(1, min(_RETAG_AI_LIMIT if use_ai else 80, int(limit or _RETAG_AI_LIMIT)))
+        rows = (
+            db.query(models.ExpenseAnalyserItem)
+            .filter(
+                models.ExpenseAnalyserItem.user_id == uid,
+                models.ExpenseAnalyserItem.status.in_(("pending", "missed", "matched", "corrected")),
+                models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
+            )
+            .order_by(models.ExpenseAnalyserItem.created_at.desc())
+            .limit(batch)
+            .all()
+        )
     updated = 0
     scanned = 0
     for i, item in enumerate(rows):

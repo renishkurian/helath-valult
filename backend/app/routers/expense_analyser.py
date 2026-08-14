@@ -154,16 +154,42 @@ def sync_logs(
 
 @router.post("/retag")
 def retag(
+    body: schemas.ExpenseAnalyserRetagIn | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    body = body or schemas.ExpenseAnalyserRetagIn()
+    ids = [str(i).strip() for i in (body.item_ids or []) if str(i).strip()]
+    started = ea.start_retag_background(
+        vault_id(current_user),
+        limit=body.limit or ea._RETAG_AI_LIMIT,
+        use_ai=True,
+        item_ids=ids or None,
+    )
+    if not started:
+        raise HTTPException(409, "Sync or re-tag already running")
+    return {
+        "ok": True,
+        "started": True,
+        "limit": len(ids) if ids else (body.limit or ea._RETAG_AI_LIMIT),
+        "item_ids": ids or None,
+    }
+
+
+@router.post("/items/{item_id}/retag")
+def retag_item(
+    item_id: str,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
     started = ea.start_retag_background(
-        vault_id(current_user), limit=ea._RETAG_AI_LIMIT, use_ai=True,
+        vault_id(current_user), use_ai=True, item_ids=[item_id],
     )
     if not started:
         raise HTTPException(409, "Sync or re-tag already running")
-    return {"ok": True, "started": True, "limit": ea._RETAG_AI_LIMIT}
+    return {"ok": True, "started": True, "item_ids": [item_id]}
 
 
 @router.post("/clear")

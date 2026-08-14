@@ -2995,6 +2995,45 @@ def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/admin/expense-analyser?ok=retag_started", status_code=303)
 
 
+@router.post("/expense-analyser/retag-selected")
+async def expense_analyser_retag_selected(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    raw_ids = form.getlist("item_id") if hasattr(form, "getlist") else []
+    if not raw_ids:
+        single = str(form.get("item_id") or "").strip()
+        raw_ids = [single] if single else []
+    ids = [str(v).strip() for v in raw_ids if str(v).strip()]
+    if not ids:
+        return RedirectResponse("/admin/expense-analyser?err=Select+at+least+one+item", status_code=303)
+    started = ea.start_retag_background(
+        vault_id(user), use_ai=True, item_ids=ids[: ea._RETAG_AI_LIMIT],
+    )
+    if not started:
+        return RedirectResponse("/admin/expense-analyser?ok=retag_busy", status_code=303)
+    return RedirectResponse(
+        f"/admin/expense-analyser?ok=retag_started&count={min(len(ids), ea._RETAG_AI_LIMIT)}",
+        status_code=303,
+    )
+
+
+@router.post("/expense-analyser/items/{item_id}/retag")
+def expense_analyser_retag_item(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    started = ea.start_retag_background(
+        vault_id(user), use_ai=True, item_ids=[item_id],
+    )
+    if not started:
+        return RedirectResponse("/admin/expense-analyser?ok=retag_busy", status_code=303)
+    return RedirectResponse("/admin/expense-analyser?ok=retag_started&count=1", status_code=303)
+
+
 @router.get("/expense-analyser/clear", response_class=HTMLResponse)
 def expense_analyser_clear_page(request: Request, db: Session = Depends(get_db)):
     from app import expense_analyser as ea

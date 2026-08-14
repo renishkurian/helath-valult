@@ -39,7 +39,11 @@
 {% elif request.query_params.get('ok') == 'sync_busy' %}
 <div class="alert alert-warning" role="alert">A Gmail sync or AI re-tag is already running. Wait a moment, then refresh.</div>
 {% elif request.query_params.get('ok') == 'retag_started' %}
-<div class="alert alert-success" role="alert">AI re-tag started in the background (up to 20 items). This page will refresh until it finishes.</div>
+<div class="alert alert-success" role="alert">
+  AI re-tag started in the background
+  {% if request.query_params.get('count') %}( {{ request.query_params.get('count') }} item(s) ){% else %}(up to 20 items){% endif %}.
+  This page will refresh until it finishes.
+</div>
 {% elif request.query_params.get('ok') == 'retag_busy' %}
 <div class="alert alert-warning" role="alert">A sync or AI re-tag is already running. Wait a moment, then refresh.</div>
 {% elif request.query_params.get('ok') == 'retagged' %}
@@ -123,12 +127,26 @@
 <p class="text-muted">No items yet. Connect Gmail and sync, or widen the search query in settings.</p>
 {% else %}
 {% include "_pager.html" %}
+<form method="post" action="/admin/expense-analyser/retag-selected" id="ea-bulk-retag" class="d-flex flex-wrap gap-2 align-items-center mb-3 p-2 rounded border" style="border-color:rgba(255,255,255,.08)!important;background:rgba(255,255,255,.03);">
+  <label class="small mb-0 d-flex align-items-center gap-2">
+    <input type="checkbox" id="ea-select-all" class="form-check-input m-0">
+    Select page
+  </label>
+  <span class="small text-muted" id="ea-selected-count">0 selected</span>
+  <button class="btn btn-sm btn-outline-secondary" type="submit" id="ea-fix-selected" {% if status.syncing or status.retagging %}disabled{% endif %}>
+    <i class="bi bi-magic"></i> Fix selected with AI
+  </button>
+  <span class="small text-muted">Max 20 per run</span>
+</form>
 <div class="stack">
   {% for item in items %}
   <div class="card">
     <div class="card-body">
       <div class="d-flex flex-wrap justify-content-between gap-2 mb-2">
-        <div>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          {% if item.status not in ('posted', 'ignored') and item.kind != 'bill' %}
+          <input type="checkbox" class="form-check-input ea-item-check m-0" name="item_id" value="{{ item.id }}" form="ea-bulk-retag" {% if status.syncing or status.retagging %}disabled{% endif %}>
+          {% endif %}
           <span class="badge text-bg-secondary">{{ item.kind | labelize }}</span>
           <span class="badge text-bg-{% if item.status == 'missed' %}warning{% elif item.status == 'matched' %}success{% elif item.status == 'posted' %}primary{% else %}light{% endif %}">{{ item.status | labelize }}</span>
           {% if item.payment_method %}<span class="badge text-bg-light">{{ item.payment_method | labelize }}</span>{% endif %}
@@ -193,9 +211,16 @@
             </div>
           </details>
         </form>
-        <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/ignore">
-          <button class="btn btn-sm btn-outline-secondary" type="submit">Ignore</button>
-        </form>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+          <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/retag">
+            <button class="btn btn-sm btn-outline-secondary" type="submit" {% if status.syncing or status.retagging %}disabled{% endif %} title="Re-run AI tagging for this item only">
+              <i class="bi bi-magic"></i> Correct with AI
+            </button>
+          </form>
+          <form method="post" action="/admin/expense-analyser/items/{{ item.id }}/ignore">
+            <button class="btn btn-sm btn-outline-secondary" type="submit">Ignore</button>
+          </form>
+        </div>
       </div>
       {% elif item.kind == 'bill' %}
       <div class="small text-muted mt-3">Statement header — review bill lines below (same message).</div>
@@ -233,6 +258,37 @@
   document.querySelectorAll("select.ea-parent").forEach(function(sel){
     sel.addEventListener("change", function(){ fillSubs(sel); });
   });
+
+  var all = document.getElementById("ea-select-all");
+  var checks = Array.prototype.slice.call(document.querySelectorAll(".ea-item-check"));
+  var countEl = document.getElementById("ea-selected-count");
+  var fixBtn = document.getElementById("ea-fix-selected");
+  var bulk = document.getElementById("ea-bulk-retag");
+  function refreshCount(){
+    var n = checks.filter(function(c){ return c.checked; }).length;
+    if (countEl) countEl.textContent = n + " selected";
+    if (all && checks.length) {
+      all.checked = n === checks.length;
+      all.indeterminate = n > 0 && n < checks.length;
+    }
+  }
+  if (all) {
+    all.addEventListener("change", function(){
+      checks.forEach(function(c){ if (!c.disabled) c.checked = all.checked; });
+      refreshCount();
+    });
+  }
+  checks.forEach(function(c){ c.addEventListener("change", refreshCount); });
+  if (bulk) {
+    bulk.addEventListener("submit", function(ev){
+      var n = checks.filter(function(c){ return c.checked; }).length;
+      if (!n) {
+        ev.preventDefault();
+        alert("Select at least one inbox item to fix.");
+      }
+    });
+  }
+  refreshCount();
 })();
 </script>
 {% endblock %}

@@ -335,6 +335,41 @@ def test_known_gmail_ids_and_sync_busy_flag():
         db.close()
 
 
+def test_retag_accepts_item_ids():
+    from app.expense_analyser import retag_pending_items
+    from decimal import Decimal
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        keep = models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="retag-keep", kind="alert",
+            direction="debit", amount=Decimal("30.00"), payee="VJ BIJI",
+            suggested_category="Insurance", status="pending",
+            raw_snippet="Rs.30.00 debited towards VPA sviji795@oksbi (VJ BIJI). Please click here.",
+        )
+        skip = models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="retag-skip", kind="alert",
+            direction="debit", amount=Decimal("99.00"), payee="OTHER",
+            suggested_category="Insurance", status="pending",
+            raw_snippet="Rs.99.00 debited towards VPA otherperson@oksbi (OTHER). click here.",
+        )
+        db.add_all([keep, skip])
+        db.commit()
+        db.refresh(keep)
+        db.refresh(skip)
+        result = retag_pending_items(db, user, use_ai=False, item_ids=[keep.id])
+        assert result["scanned"] == 1
+        db.refresh(keep)
+        db.refresh(skip)
+        assert keep.suggested_category == "UPI / transfers"
+        assert skip.suggested_category == "Insurance"
+    finally:
+        db.close()
+
+
 def test_status_includes_retagging_flag():
     headers, _ = _headers()
     r = client.get("/expense-analyser/status", headers=headers)
