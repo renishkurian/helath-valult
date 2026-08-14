@@ -2955,6 +2955,19 @@ def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@router.get("/expense-analyser/clear", response_class=HTMLResponse)
+def expense_analyser_clear_page(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    st = ea.status_dict(db, user)
+    return templates.TemplateResponse(
+        "expense_analyser_clear.html",
+        _ea_ctx(request, user, "ea_inbox", status=st),
+    )
+
+
 @router.post("/expense-analyser/clear")
 def expense_analyser_clear(request: Request, db: Session = Depends(get_db)):
     from app import expense_analyser as ea
@@ -2964,7 +2977,7 @@ def expense_analyser_clear(request: Request, db: Session = Depends(get_db)):
     result = ea.clear_inbox(db, user)
     return RedirectResponse(
         f"/admin/expense-analyser?ok=cleared&deleted={result.get('deleted', 0)}",
-        status_code=302,
+        status_code=303,
     )
 
 

@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Clear inbox{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/expense-analyser">Expense Analyser</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Clear inbox
+    </div>
+    <h1 class="page-title">Clear the inbox?</h1>
+    <p class="page-lead">
+      This deletes analyser mail items only. Money Manager transactions stay as they are.
+      Sync Gmail afterwards to rebuild from mail.
+    </p>
+  </div>
+</div>
+
+<div class="card" style="max-width:36rem;">
+  <div class="card-body">
+    <p class="mb-3">About to remove:</p>
+    <ul class="mb-4">
+      <li><strong>{{ status.pending + (status.corrected or 0) }}</strong> pending / corrected</li>
+      <li><strong>{{ status.matched }}</strong> matched</li>
+      <li><strong>{{ status.missed }}</strong> missed</li>
+      <li><strong>{{ status.posted }}</strong> posted (analyser copy only — ledger kept)</li>
+    </ul>
+    <div class="d-flex gap-2 flex-wrap">
+      <form method="post" action="/admin/expense-analyser/clear">
+        <button class="btn btn-danger" type="submit"><i class="bi bi-trash"></i> Yes, clear inbox</button>
+      </form>
+      <a class="btn btn-outline-secondary" href="/admin/expense-analyser">Cancel</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

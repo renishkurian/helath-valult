@@ -21,9 +21,7 @@
       <button class="btn btn-outline-secondary" type="submit"><i class="bi bi-magic"></i> AI re-tag</button>
     </form>
     {% endif %}
-    <form method="post" action="/admin/expense-analyser/clear" onsubmit="return confirm('Clear the entire Expense Analyser inbox? This removes all pending, corrected, matched, posted, and ignored mail items. Money Manager ledger is not touched. Sync can recreate them from Gmail.');">
-      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash"></i> Clear inbox</button>
-    </form>
+    <a class="btn btn-outline-danger" href="/admin/expense-analyser/clear"><i class="bi bi-trash"></i> Clear inbox</a>
     <a class="btn btn-outline-secondary" href="/admin/expense-analyser/insights"><i class="bi bi-bar-chart"></i> Insights</a>
     <a class="btn btn-outline-secondary" href="/admin/expense-analyser/settings"><i class="bi bi-gear"></i> Settings</a>
   </div>
