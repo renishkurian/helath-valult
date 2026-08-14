@@ -1,0 +1,1052 @@
+"""Expense Tracker — shopping lists, PDF statements, friends, grocery dictionary."""
+from __future__ import annotations
+
+import json
+import secrets
+from datetime import datetime
+from decimal import Decimal
+from typing import Optional
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy.orm import Session
+from app.templating import setup_templates
+
+from app import crypto, models, schemas
+from app.database import get_db
+from app.deps import get_current_user, require_owner, vault_id
+from app.grocery import grouped_quick_add, money, PARSER_TO_FINANCE, recognize, seed_dictionary
+
+router = APIRouter(prefix="/tracker", tags=["tracker"])
+templates = setup_templates()
+
+MAX_PDF = 10 * 1024 * 1024
+
+
+def _uid(user: models.User) -> str:
+    return vault_id(user)
+
+
+def _json_list(raw: Optional[str]) -> list:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+
+def _recompute_total(lst: models.ShopList) -> None:
+    total = Decimal("0")
+    for item in lst.items or []:
+        if item.price is None:
+            continue
+        qty = item.quantity if item.quantity is not None else Decimal("1")
+        total += Decimal(str(item.price)) * Decimal(str(qty))
+    lst.total_amount = total
+    lst.updated_at = datetime.utcnow()
+
+
+def _share_token(db: Session, lst: models.ShopList) -> Optional[str]:
+    share = (
+        db.query(models.ShopShare)
+        .filter(models.ShopShare.list_id == lst.id)
+        .order_by(models.ShopShare.created_at.desc())
+        .first()
+    )
+    return share.token if share else None
+
+
+def _item_out(item: models.ShopItem) -> schemas.ShopItemOut:
+    return schemas.ShopItemOut(
+        id=item.id, list_id=item.list_id, name=item.name,
+        quantity=money(item.quantity) or 1, unit=item.unit,
+        price=money(item.price) if item.price is not None else None,
+        checked=bool(item.checked), emoji=item.emoji, category=item.category,
+        notes=item.notes, added_by=item.added_by, guest_name=item.guest_name,
+        status=item.status or "approved", created_at=item.created_at,
+    )
+
+
+def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) -> schemas.ShopListOut:
+    items = list(lst.items or [])
+    return schemas.ShopListOut(
+        id=lst.id, name=lst.name, description=lst.description,
+        completed=bool(lst.completed), total_amount=money(lst.total_amount),
+        item_count=len(items),
+        checked_count=sum(1 for i in items if i.checked),
+        pending_count=sum(1 for i in items if i.status == "pending"),
+        share_token=_share_token(db, lst),
+        created_at=lst.created_at, updated_at=lst.updated_at,
+        completed_at=lst.completed_at,
+        items=[_item_out(i) for i in items] if with_items else None,
+    )
+
+
+def _owned_list(db: Session, user: models.User, list_id: str) -> models.ShopList:
+    lst = (
+        db.query(models.ShopList)
+        .filter(models.ShopList.id == list_id, models.ShopList.user_id == _uid(user))
+        .first()
+    )
+    if not lst:
+        raise HTTPException(404, "List not found")
+    return lst
+
+
+def _stmt_out(row: models.ShopStatementTxn) -> schemas.ShopStatementTxnOut:
+    return schemas.ShopStatementTxnOut(
+        id=row.id, txn_date=row.txn_date, description=row.description,
+        amount=money(row.amount) if row.amount is not None else None,
+        direction=row.direction, category=row.category, bank_name=row.bank_name,
+        account_number=row.account_number, account_type=row.account_type,
+        source_file=row.source_file, status=row.status,
+        finance_txn_id=row.finance_txn_id, created_at=row.created_at,
+    )
+
+
+def _contact_out(row: models.ShopContact) -> schemas.ShopContactOut:
+    return schemas.ShopContactOut(
+        id=row.id, name=row.name, email=row.email, phone=row.phone,
+        relation=row.relation, created_at=row.created_at,
+    )
+
+
+def _send_out(db: Session, row: models.ShopSend) -> schemas.ShopSendOut:
+    sender = db.query(models.User).filter(models.User.id == row.sender_id).first()
+    receiver = db.query(models.User).filter(models.User.id == row.receiver_id).first()
+    snap = {}
+    if row.list_data:
+        try:
+            snap = json.loads(row.list_data) or {}
+        except json.JSONDecodeError:
+            snap = {}
+    return schemas.ShopSendOut(
+        id=row.id, sender_id=row.sender_id, receiver_id=row.receiver_id,
+        sender_name=sender.full_name if sender else None,
+        receiver_name=receiver.full_name if receiver else None,
+        list_name=snap.get("name"), status=row.status, message=row.message,
+        sent_at=row.sent_at,
+    )
+
+
+def _list_snapshot(lst: models.ShopList) -> dict:
+    return {
+        "name": lst.name,
+        "description": lst.description,
+        "items": [
+            {
+                "name": i.name, "quantity": money(i.quantity) or 1, "unit": i.unit,
+                "price": money(i.price) if i.price is not None else None,
+                "emoji": i.emoji, "category": i.category, "notes": i.notes,
+            }
+            for i in (lst.items or [])
+        ],
+    }
+
+
+def _public_payload(db: Session, lst: models.ShopList) -> dict:
+    items = [_item_out(i).model_dump() for i in (lst.items or []) if i.status != "rejected"]
+    for row in items:
+        if isinstance(row.get("created_at"), datetime):
+            row["created_at"] = row["created_at"].isoformat()
+    return {
+        "id": lst.id,
+        "name": lst.name,
+        "description": lst.description,
+        "completed": bool(lst.completed),
+        "total_amount": money(lst.total_amount),
+        "items": items,
+    }
+
+
+# ---------- Summary ----------
+
+@router.get("/summary", response_model=schemas.ShopSummaryOut)
+def tracker_summary(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    uid = _uid(current_user)
+    lists = db.query(models.ShopList).filter(models.ShopList.user_id == uid).all()
+    pending_items = (
+        db.query(models.ShopItem)
+        .join(models.ShopList)
+        .filter(models.ShopList.user_id == uid, models.ShopItem.status == "pending")
+        .count()
+    )
+    pending_stmt = (
+        db.query(models.ShopStatementTxn)
+        .filter(models.ShopStatementTxn.user_id == uid, models.ShopStatementTxn.status == "pending")
+        .count()
+    )
+    friends = db.query(models.ShopContact).filter(models.ShopContact.user_id == uid).count()
+    inbox = (
+        db.query(models.ShopSend)
+        .filter(models.ShopSend.receiver_id == uid, models.ShopSend.status == "pending")
+        .count()
+    )
+    return schemas.ShopSummaryOut(
+        lists=len(lists),
+        open_lists=sum(1 for x in lists if not x.completed),
+        pending_items=pending_items,
+        pending_statements=pending_stmt,
+        friends=friends,
+        inbox=inbox,
+    )
+
+
+# ---------- Lists ----------
+
+@router.get("/lists", response_model=list[schemas.ShopListOut])
+def list_lists(
+    completed: Optional[bool] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    q = db.query(models.ShopList).filter(models.ShopList.user_id == _uid(current_user))
+    if completed is not None:
+        q = q.filter(models.ShopList.completed.is_(completed))
+    rows = q.order_by(models.ShopList.updated_at.desc()).all()
+    return [_list_out(db, r) for r in rows]
+
+
+@router.post("/lists", response_model=schemas.ShopListOut, status_code=201)
+def create_list(
+    body: schemas.ShopListIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    name = body.name.strip().title()
+    lst = models.ShopList(
+        user_id=_uid(current_user), name=name,
+        description=(body.description or "").strip() or None,
+    )
+    db.add(lst)
+    db.commit()
+    db.refresh(lst)
+    return _list_out(db, lst, with_items=True)
+
+
+@router.get("/lists/{list_id}", response_model=schemas.ShopListOut)
+def get_list(
+    list_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return _list_out(db, _owned_list(db, current_user, list_id), with_items=True)
+
+
+@router.patch("/lists/{list_id}", response_model=schemas.ShopListOut)
+def update_list(
+    list_id: str,
+    body: schemas.ShopListUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    if body.name is not None:
+        lst.name = body.name.strip().title()
+    if body.description is not None:
+        lst.description = body.description.strip() or None
+    if body.completed is not None:
+        lst.completed = body.completed
+        lst.completed_at = datetime.utcnow() if body.completed else None
+    lst.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(lst)
+    return _list_out(db, lst, with_items=True)
+
+
+@router.delete("/lists/{list_id}", status_code=204)
+def delete_list(
+    list_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    db.delete(lst)
+    db.commit()
+    return None
+
+
+@router.post("/lists/{list_id}/share", response_model=schemas.ShopShareOut)
+def share_list(
+    list_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    existing = (
+        db.query(models.ShopShare)
+        .filter(models.ShopShare.list_id == lst.id)
+        .order_by(models.ShopShare.created_at.desc())
+        .first()
+    )
+    if existing:
+        share = existing
+    else:
+        share = models.ShopShare(
+            list_id=lst.id, token=secrets.token_urlsafe(24),
+            created_by=current_user.id,
+        )
+        db.add(share)
+        db.commit()
+        db.refresh(share)
+    origin = str(request.base_url).rstrip("/")
+    return schemas.ShopShareOut(token=share.token, url=f"{origin}/shop/{share.token}", list_id=lst.id)
+
+
+# ---------- Items ----------
+
+def _add_item_row(db: Session, lst: models.ShopList, body: schemas.ShopItemIn, *, added_by: str, status: str) -> models.ShopItem:
+    hint = recognize(db, body.name)
+    item = models.ShopItem(
+        list_id=lst.id,
+        name=(body.name or hint["english"]).strip(),
+        quantity=Decimal(str(body.quantity if body.quantity not in (None, 0) else 1)),
+        unit=(body.unit or "").strip() or None,
+        price=Decimal(str(body.price)) if body.price not in (None, "") else None,
+        emoji=(body.emoji or hint.get("emoji") or "🛒"),
+        category=(body.category or hint.get("category")),
+        notes=(body.notes or "").strip() or None,
+        added_by=added_by,
+        guest_name=(body.guest_name or "").strip() or None,
+        status=status,
+    )
+    db.add(item)
+    db.flush()
+    _recompute_total(lst)
+    return item
+
+
+@router.post("/lists/{list_id}/items", response_model=schemas.ShopItemOut, status_code=201)
+def add_item(
+    list_id: str,
+    body: schemas.ShopItemIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    item = _add_item_row(db, lst, body, added_by=current_user.id, status="approved")
+    db.commit()
+    db.refresh(item)
+    return _item_out(item)
+
+
+@router.patch("/lists/{list_id}/items/{item_id}", response_model=schemas.ShopItemOut)
+def update_item(
+    list_id: str,
+    item_id: str,
+    body: schemas.ShopItemUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item:
+        raise HTTPException(404, "Item not found")
+    data = body.model_dump(exclude_unset=True)
+    for key, val in data.items():
+        if key == "quantity" and val is not None:
+            item.quantity = Decimal(str(val))
+        elif key == "price":
+            item.price = Decimal(str(val)) if val is not None else None
+        elif key == "name" and val:
+            item.name = val.strip()
+        elif hasattr(item, key):
+            setattr(item, key, val)
+    _recompute_total(lst)
+    db.commit()
+    db.refresh(item)
+    return _item_out(item)
+
+
+@router.post("/lists/{list_id}/items/{item_id}/toggle", response_model=schemas.ShopItemOut)
+def toggle_item(
+    list_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item:
+        raise HTTPException(404, "Item not found")
+    item.checked = not bool(item.checked)
+    lst.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    return _item_out(item)
+
+
+@router.post("/lists/{list_id}/items/{item_id}/approve", response_model=schemas.ShopItemOut)
+def approve_item(
+    list_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item:
+        raise HTTPException(404, "Item not found")
+    item.status = "approved"
+    _recompute_total(lst)
+    db.commit()
+    db.refresh(item)
+    return _item_out(item)
+
+
+@router.post("/lists/{list_id}/items/{item_id}/reject", status_code=204)
+def reject_item(
+    list_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item:
+        raise HTTPException(404, "Item not found")
+    db.delete(item)
+    db.flush()
+    _recompute_total(lst)
+    db.commit()
+    return None
+
+
+@router.delete("/lists/{list_id}/items/{item_id}", status_code=204)
+def delete_item(
+    list_id: str,
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item:
+        raise HTTPException(404, "Item not found")
+    db.delete(item)
+    db.flush()
+    _recompute_total(lst)
+    db.commit()
+    return None
+
+
+# ---------- Public share ----------
+
+def _list_by_token(db: Session, token: str) -> tuple[models.ShopShare, models.ShopList]:
+    share = db.query(models.ShopShare).filter(models.ShopShare.token == token).first()
+    if not share:
+        raise HTTPException(404, "Share not found")
+    lst = db.query(models.ShopList).filter(models.ShopList.id == share.list_id).first()
+    if not lst:
+        raise HTTPException(404, "List not found")
+    share.use_count = (share.use_count or 0) + 1
+    return share, lst
+
+
+@router.get("/shared/{token}")
+def get_shared(token: str, db: Session = Depends(get_db)):
+    share, lst = _list_by_token(db, token)
+    db.commit()
+    return _public_payload(db, lst)
+
+
+@router.post("/shared/{token}/items", status_code=201)
+def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(get_db)):
+    share, lst = _list_by_token(db, token)
+    guest = (body.guest_name or "Guest").strip() or "Guest"
+    blocked = {str(x).lower() for x in _json_list(lst.blocked_uids)}
+    if guest.lower() in blocked:
+        raise HTTPException(403, "You are blocked from this list")
+    item = _add_item_row(db, lst, body, added_by="guest", status="pending")
+    item.guest_name = guest
+    db.commit()
+    db.refresh(item)
+    return _item_out(item)
+
+
+@router.post("/shared/{token}/items/{item_id}/toggle")
+def guest_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
+    share, lst = _list_by_token(db, token)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item or item.status != "approved":
+        raise HTTPException(404, "Item not found")
+    item.checked = not bool(item.checked)
+    db.commit()
+    db.refresh(item)
+    return _item_out(item)
+
+
+# ---------- Friends ----------
+
+@router.get("/friends", response_model=list[schemas.ShopContactOut])
+def list_friends(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.ShopContact)
+        .filter(models.ShopContact.user_id == _uid(current_user))
+        .order_by(models.ShopContact.name)
+        .all()
+    )
+    return [_contact_out(r) for r in rows]
+
+
+@router.post("/friends", response_model=schemas.ShopContactOut, status_code=201)
+def add_friend(
+    body: schemas.ShopContactIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = models.ShopContact(
+        user_id=_uid(current_user), name=body.name.strip(),
+        email=str(body.email).lower() if body.email else None,
+        phone=(body.phone or "").strip() or None,
+        relation=(body.relation or "").strip() or None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _contact_out(row)
+
+
+@router.delete("/friends/{contact_id}", status_code=204)
+def delete_friend(
+    contact_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.ShopContact)
+        .filter(models.ShopContact.id == contact_id, models.ShopContact.user_id == _uid(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Contact not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+@router.post("/lists/{list_id}/send", response_model=schemas.ShopSendOut)
+def send_list(
+    list_id: str,
+    body: schemas.ShopSendIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id)
+    receiver = db.query(models.User).filter(models.User.email == str(body.email).lower()).first()
+    if not receiver:
+        raise HTTPException(404, "No vault user with that email")
+    rid = vault_id(receiver)
+    if rid == _uid(current_user):
+        raise HTTPException(400, "You already own this list")
+    row = models.ShopSend(
+        sender_id=_uid(current_user), receiver_id=rid, list_id=lst.id,
+        list_data=json.dumps(_list_snapshot(lst)),
+        message=(body.message or "").strip() or None,
+        status="pending",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _send_out(db, row)
+
+
+@router.get("/inbox", response_model=list[schemas.ShopSendOut])
+def inbox(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.ShopSend)
+        .filter(models.ShopSend.receiver_id == _uid(current_user))
+        .order_by(models.ShopSend.sent_at.desc())
+        .all()
+    )
+    return [_send_out(db, r) for r in rows]
+
+
+@router.get("/sent", response_model=list[schemas.ShopSendOut])
+def sent(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.ShopSend)
+        .filter(models.ShopSend.sender_id == _uid(current_user))
+        .order_by(models.ShopSend.sent_at.desc())
+        .all()
+    )
+    return [_send_out(db, r) for r in rows]
+
+
+@router.post("/inbox/{send_id}/accept", response_model=schemas.ShopListOut)
+def accept_send(
+    send_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    uid = _uid(current_user)
+    row = (
+        db.query(models.ShopSend)
+        .filter(models.ShopSend.id == send_id, models.ShopSend.receiver_id == uid)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Invite not found")
+    if row.status != "pending":
+        raise HTTPException(400, "Already responded")
+    snap = {}
+    if row.list_data:
+        try:
+            snap = json.loads(row.list_data) or {}
+        except json.JSONDecodeError:
+            snap = {}
+    lst = models.ShopList(
+        user_id=uid, name=(snap.get("name") or "Shared list").title(),
+        description=snap.get("description"),
+    )
+    db.add(lst)
+    db.flush()
+    for raw in snap.get("items") or []:
+        db.add(models.ShopItem(
+            list_id=lst.id, name=raw.get("name") or "Item",
+            quantity=Decimal(str(raw.get("quantity") or 1)),
+            unit=raw.get("unit"), price=Decimal(str(raw["price"])) if raw.get("price") is not None else None,
+            emoji=raw.get("emoji") or "🛒", category=raw.get("category"),
+            notes=raw.get("notes"), added_by=row.sender_id, status="approved",
+        ))
+    db.flush()
+    _recompute_total(lst)
+    row.status = "accepted"
+    row.responded_at = datetime.utcnow()
+    db.commit()
+    db.refresh(lst)
+    return _list_out(db, lst, with_items=True)
+
+
+@router.post("/inbox/{send_id}/reject", status_code=204)
+def reject_send(
+    send_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.ShopSend)
+        .filter(models.ShopSend.id == send_id, models.ShopSend.receiver_id == _uid(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Invite not found")
+    row.status = "rejected"
+    row.responded_at = datetime.utcnow()
+    db.commit()
+    return None
+
+
+@router.delete("/sent/{send_id}", status_code=204)
+def recall_send(
+    send_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.ShopSend)
+        .filter(models.ShopSend.id == send_id, models.ShopSend.sender_id == _uid(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Send not found")
+    if row.status != "pending":
+        raise HTTPException(400, "Can only recall a pending send")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+# ---------- Grocery ----------
+
+@router.get("/quick-add")
+def quick_add(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    seed_dictionary(db)
+    return {"groups": grouped_quick_add()}
+
+
+@router.post("/recognize", response_model=schemas.ShopGroceryItemOut)
+def recognize_item(
+    body: schemas.ShopRecognizeIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return schemas.ShopGroceryItemOut(**recognize(db, body.name))
+
+
+# ---------- PDF passwords ----------
+
+@router.get("/passwords", response_model=list[schemas.ShopPdfPasswordOut])
+def list_passwords(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.ShopPdfPassword)
+        .filter(models.ShopPdfPassword.user_id == _uid(current_user))
+        .order_by(models.ShopPdfPassword.created_at.desc())
+        .all()
+    )
+    return [
+        schemas.ShopPdfPasswordOut(
+            id=r.id, identifier=r.identifier, account_type=r.account_type,
+            last_4_digits=r.last_4_digits, created_at=r.created_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/passwords", response_model=schemas.ShopPdfPasswordOut, status_code=201)
+def save_password(
+    body: schemas.ShopPdfPasswordIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    kind = body.account_type if body.account_type in ("bank", "credit_card") else "bank"
+    row = models.ShopPdfPassword(
+        user_id=_uid(current_user), identifier=body.identifier.strip(),
+        password_enc=crypto.encrypt_text(body.password),
+        account_type=kind,
+        last_4_digits=(body.last_4_digits or "").strip() or None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return schemas.ShopPdfPasswordOut(
+        id=row.id, identifier=row.identifier, account_type=row.account_type,
+        last_4_digits=row.last_4_digits, created_at=row.created_at,
+    )
+
+
+@router.delete("/passwords/{password_id}", status_code=204)
+def delete_password(
+    password_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.ShopPdfPassword)
+        .filter(models.ShopPdfPassword.id == password_id, models.ShopPdfPassword.user_id == _uid(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Password not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
+def _saved_passwords(db: Session, user: models.User) -> list[str]:
+    rows = db.query(models.ShopPdfPassword).filter(models.ShopPdfPassword.user_id == _uid(user)).all()
+    out = []
+    for r in rows:
+        try:
+            plain = crypto.decrypt_text(r.password_enc)
+            if plain:
+                out.append(plain)
+        except Exception:
+            continue
+    return out
+
+
+# ---------- Statements ----------
+
+@router.get("/statements", response_model=list[schemas.ShopStatementTxnOut])
+def list_statements(
+    status: Optional[str] = "pending",
+    category: Optional[str] = None,
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    query = db.query(models.ShopStatementTxn).filter(models.ShopStatementTxn.user_id == _uid(current_user))
+    if status:
+        query = query.filter(models.ShopStatementTxn.status == status)
+    if category:
+        query = query.filter(models.ShopStatementTxn.category == category)
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.filter(models.ShopStatementTxn.description.ilike(like))
+    rows = query.order_by(models.ShopStatementTxn.txn_date.desc(), models.ShopStatementTxn.created_at.desc()).limit(500).all()
+    return [_stmt_out(r) for r in rows]
+
+
+@router.post("/statements/upload")
+async def upload_statement(
+    file: UploadFile = File(...),
+    password: str = Form(""),
+    identifier: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    if len(raw) > MAX_PDF:
+        raise HTTPException(400, "PDF is larger than 10 MB")
+    from app.statement_parsers import is_pdf_encrypted, parse_statement_file, test_pdf_password
+
+    pwd = (password or "").strip() or None
+    if is_pdf_encrypted(raw) and not pwd:
+        for saved in _saved_passwords(db, current_user):
+            if test_pdf_password(raw, saved):
+                pwd = saved
+                break
+        if not pwd:
+            raise HTTPException(400, "This PDF is password protected")
+    try:
+        parsed = parse_statement_file(raw, file.filename or "statement.pdf", password=pwd)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(400, f"Could not parse this PDF: {exc}") from exc
+
+    uid = _uid(current_user)
+    existing = {
+        r[0]
+        for r in db.query(models.ShopStatementTxn.transaction_id)
+        .filter(models.ShopStatementTxn.user_id == uid, models.ShopStatementTxn.transaction_id.isnot(None))
+        .all()
+    }
+    created = 0
+    skipped = 0
+    filename = file.filename or "statement.pdf"
+    for txn in parsed.get("transactions") or []:
+        tid = txn.get("transaction_id")
+        if tid and tid in existing:
+            skipped += 1
+            continue
+        db.add(models.ShopStatementTxn(
+            user_id=uid,
+            txn_date=txn.get("date"),
+            description=txn.get("description"),
+            amount=Decimal(str(txn.get("amount") or 0)),
+            direction=txn.get("type") if txn.get("type") in ("debit", "credit") else "debit",
+            category=txn.get("category") or "other",
+            bank_name=txn.get("bank_name"),
+            account_number=txn.get("account_number"),
+            account_type=txn.get("account_type"),
+            source_file=filename,
+            transaction_id=tid,
+            reference_number=txn.get("reference_number"),
+            status="pending",
+        ))
+        if tid:
+            existing.add(tid)
+        created += 1
+    if pwd and identifier.strip():
+        already = (
+            db.query(models.ShopPdfPassword)
+            .filter(
+                models.ShopPdfPassword.user_id == uid,
+                models.ShopPdfPassword.identifier == identifier.strip(),
+            )
+            .first()
+        )
+        if not already:
+            db.add(models.ShopPdfPassword(
+                user_id=uid, identifier=identifier.strip(),
+                password_enc=crypto.encrypt_text(pwd),
+                account_type="credit_card" if "card" in identifier.lower() else "bank",
+            ))
+    db.commit()
+    return {
+        "created": created,
+        "skipped": skipped,
+        "parser_used": parsed.get("parser_used"),
+        "account_info": parsed.get("account_info"),
+        "summary": parsed.get("summary"),
+    }
+
+
+def post_statement_txn(
+    db: Session,
+    user: models.User,
+    txn_id: str,
+    account_id: Optional[str] = None,
+) -> models.FinanceTransaction:
+    from app.routers import finance as fn
+
+    uid = _uid(user)
+    row = (
+        db.query(models.ShopStatementTxn)
+        .filter(models.ShopStatementTxn.id == txn_id, models.ShopStatementTxn.user_id == uid)
+        .first()
+    )
+    if not row:
+        raise LookupError("Statement row not found")
+    if row.status == "posted" and row.finance_txn_id:
+        raise RuntimeError("Already posted to Money Manager")
+    if not row.amount or float(row.amount) <= 0:
+        raise RuntimeError("Row needs an amount")
+
+    fn.ensure_defaults(db, user)
+    accounts = db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid).all()
+    acc = None
+    if account_id:
+        acc = next((a for a in accounts if a.id == account_id), None)
+        if not acc:
+            raise RuntimeError("Account not found")
+    if acc is None:
+        want = (row.account_type or "").lower()
+        if "card" in want:
+            acc = next((a for a in accounts if a.account_type in ("card", "credit_card")), None)
+        elif "cash" in want:
+            acc = next((a for a in accounts if a.account_type == "cash"), None)
+        else:
+            acc = next((a for a in accounts if a.account_type == "bank"), None)
+        acc = acc or (accounts[0] if accounts else None)
+    if not acc:
+        raise RuntimeError("Create a Money Manager account first")
+
+    mapped_name, mapped_kind = PARSER_TO_FINANCE.get(row.category or "other", ("Other", "expense"))
+    if row.direction == "credit" and mapped_kind == "expense":
+        mapped_kind = "income"
+        if mapped_name == "Other":
+            mapped_name = "Other income"
+    cats = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).all()
+    cat = next((c for c in cats if c.name == mapped_name and c.kind == mapped_kind), None)
+    txn_type = "income" if row.direction == "credit" else "expense"
+    method = "credit_card" if (row.account_type or "").lower().find("card") >= 0 else "other"
+    desc = (row.description or "").strip() or None
+    payee = (desc or "Statement")[:255]
+    ft = models.FinanceTransaction(
+        user_id=uid, account_id=acc.id, category_id=cat.id if cat else None,
+        txn_type=txn_type, amount=row.amount, txn_date=row.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
+        payee=payee, description=desc, payment_method=method,
+        source="statement", notes=f"PDF · {row.source_file or ''} · {row.bank_name or ''}".strip(" ·"),
+    )
+    db.add(ft)
+    db.flush()
+    row.status = "posted"
+    row.finance_txn_id = ft.id
+    db.commit()
+    db.refresh(ft)
+    return ft
+
+
+@router.post("/statements/{txn_id}/post")
+def post_one(
+    txn_id: str,
+    body: schemas.ShopStatementPostIn | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        ft = post_statement_txn(db, current_user, txn_id, account_id=(body.account_id if body else None))
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"ok": True, "finance_txn_id": ft.id}
+
+
+@router.post("/statements/{txn_id}/ignore", status_code=204)
+def ignore_one(
+    txn_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.ShopStatementTxn)
+        .filter(models.ShopStatementTxn.id == txn_id, models.ShopStatementTxn.user_id == _uid(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Row not found")
+    row.status = "ignored"
+    db.commit()
+    return None
+
+
+@router.get("/public/{token}/page", response_class=HTMLResponse)
+def public_page(token: str, request: Request, db: Session = Depends(get_db), err: str = "", ok: str = ""):
+    try:
+        share, lst = _list_by_token(db, token)
+        db.commit()
+    except HTTPException:
+        return HTMLResponse("<h1>List not found</h1>", status_code=404)
+    return templates.TemplateResponse(request, "tracker_share_public.html", {
+        "list": lst,
+        "items": [i for i in (lst.items or [])],
+        "token": token,
+        "err": err,
+        "ok": ok,
+    })
+
+
+@router.post("/public/{token}/items")
+async def public_add_item(token: str, request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    try:
+        share, lst = _list_by_token(db, token)
+    except HTTPException:
+        return HTMLResponse("<h1>List not found</h1>", status_code=404)
+    guest = str(form.get("guest_name") or "Guest").strip() or "Guest"
+    blocked = {str(x).lower() for x in _json_list(lst.blocked_uids)}
+    if guest.lower() in blocked:
+        return RedirectResponse(f"/shop/{token}?err=blocked", status_code=302)
+    name = str(form.get("name") or "").strip()
+    if not name:
+        return RedirectResponse(f"/shop/{token}?err=name", status_code=302)
+    body = schemas.ShopItemIn(
+        name=name,
+        quantity=float(form.get("quantity") or 1),
+        unit=str(form.get("unit") or "") or None,
+        guest_name=guest,
+    )
+    _add_item_row(db, lst, body, added_by="guest", status="pending")
+    db.commit()
+    return RedirectResponse(f"/shop/{token}?ok=added", status_code=302)
+
+
+@router.post("/public/{token}/items/{item_id}/toggle")
+def public_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
+    try:
+        share, lst = _list_by_token(db, token)
+    except HTTPException:
+        return HTMLResponse("<h1>List not found</h1>", status_code=404)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if item and item.status == "approved":
+        item.checked = not bool(item.checked)
+        db.commit()
+    return RedirectResponse(f"/shop/{token}", status_code=302)

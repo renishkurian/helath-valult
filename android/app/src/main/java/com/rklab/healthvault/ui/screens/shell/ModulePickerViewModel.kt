@@ -37,6 +37,7 @@ data class HubUiState(
     val lockerExpiring: Int = 0,
     val urlCount: Int = 0,
     val urlFavorites: Int = 0,
+    val trackerOpen: Int = 0,
     val eaPending: Int = 0,
     val eaConnected: Boolean = false
 )
@@ -57,6 +58,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                     val financeDef = async { runCatching { repository.financeSummary() }.getOrNull() }
                     val lockerDef = async { runCatching { repository.lockerSummary() }.getOrNull() }
                     val urlsDef = async { runCatching { repository.urlSummary() }.getOrNull() }
+                    val trackerDef = async { runCatching { repository.trackerSummary() }.getOrNull() }
                     val eaDef = async { runCatching { repository.expenseAnalyserStatus() }.getOrNull() }
                     val remindersDef = async {
                         runCatching { repository.listReminders(upcomingOnly = true) }.getOrDefault(emptyList())
@@ -68,6 +70,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                     val finance = financeDef.await()
                     val locker = lockerDef.await()
                     val urls = urlsDef.await()
+                    val tracker = trackerDef.await()
                     val ea = eaDef.await()
                     val reminders = remindersDef.await().sortedBy { it.remind_at }
 
@@ -98,6 +101,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                         lockerExpiring = locker?.expiring ?: 0,
                         urlCount = urls?.total ?: 0,
                         urlFavorites = urls?.favorites ?: 0,
+                        trackerOpen = tracker?.open_lists ?: 0,
                         eaPending = (ea?.pending ?: 0) + (ea?.corrected ?: 0) + (ea?.missed ?: 0),
                         eaConnected = ea?.connected == true
                     )

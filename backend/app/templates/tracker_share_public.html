@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ list.name }} — shared list</title>
+<meta name="theme-color" content="#0A0C11">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css?v=10">
+</head>
+<body>
+<div class="public-wrap">
+  <div class="public-card" style="max-width:40rem;">
+    <div class="public-brand">
+      <span class="brand-mark">V</span>
+      <span class="brand-name">Vault</span>
+    </div>
+
+    <div class="eyebrow">Shared shopping list</div>
+    <h1 class="page-title">{{ list.name }}</h1>
+    {% if list.description %}<p class="page-lead">{{ list.description }}</p>{% endif %}
+
+    {% if err == 'blocked' %}
+    <div class="alert alert-danger">You are blocked from this list.</div>
+    {% elif err %}
+    <div class="alert alert-danger">Could not add that item.</div>
+    {% endif %}
+    {% if ok %}
+    <div class="alert alert-success">Added — waiting for the owner to approve.</div>
+    {% endif %}
+
+    <form class="surface mb-4" method="post" action="/tracker/public/{{ token }}/items">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label" for="guest">Your name</label>
+          <input class="form-control" id="guest" name="guest_name" required placeholder="Guest">
+        </div>
+        <div class="col-md-5">
+          <label class="form-label" for="name">Item</label>
+          <input class="form-control" id="name" name="name" required placeholder="Milk">
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-primary w-100" type="submit">Suggest</button>
+        </div>
+      </div>
+    </form>
+
+    {% if items %}
+    <div class="list-rows">
+      {% for item in items %}
+      <div class="list-row shop-item {% if item.checked %}checked{% endif %}">
+        {% if item.status == 'approved' %}
+        <form method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/toggle">
+          <button class="btn btn-ghost p-0" type="submit" aria-label="Toggle">
+            <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
+          </button>
+        </form>
+        {% endif %}
+        <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
+        <span class="row-body">
+          <span class="row-title shop-name">{{ item.name }}</span>
+          <span class="row-meta">
+            {% if item.status == 'pending' %}pending{% else %}{{ item.quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% endif %}
+            {% if item.guest_name %} · {{ item.guest_name }}{% endif %}
+          </span>
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted">Nothing on this list yet.</p>
+    {% endif %}
+
+    <div class="public-foot">
+      Collaborative list from Expense Tracker. New items wait for the owner.
+    </div>
+  </div>
+</div>
+</body>
+</html>

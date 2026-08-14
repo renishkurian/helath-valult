@@ -166,6 +166,7 @@ def retag(
         limit=body.limit or ea._RETAG_AI_LIMIT,
         use_ai=True,
         item_ids=ids or None,
+        force=bool(body.force),
     )
     if not started:
         raise HTTPException(409, "Sync or re-tag already running")

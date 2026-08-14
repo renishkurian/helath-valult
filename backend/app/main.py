@@ -9,7 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import engine, SessionLocal
 from app.config import settings
 from app.schema import ensure_schema
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker
 from app.scheduler import lifespan
 from app import admin, admin_sa, models
 from app.templating import setup_templates
@@ -21,7 +21,7 @@ ensure_superadmin()
 
 app = FastAPI(
     title="Vault API",
-    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, AI, Documents, and URLs.",
+    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, Expense Tracker, AI, Documents, and URLs.",
     version="1.1.0",
     lifespan=lifespan,
 )
@@ -56,6 +56,7 @@ app.include_router(finance.router)
 app.include_router(expense_analyser.router)
 app.include_router(ai.router)
 app.include_router(locker.router)
+app.include_router(tracker.router)
 app.include_router(urls.router)
 app.include_router(admin.router)
 app.include_router(admin_sa.router)
@@ -96,6 +97,11 @@ def short_vault_send(token: str):
 @app.get("/u/{token}")
 def short_url_share(token: str):
     return RedirectResponse(f"/urls/public/{token}/page", status_code=302)
+
+
+@app.get("/shop/{token}")
+def short_shop_share(token: str):
+    return RedirectResponse(f"/tracker/public/{token}/page", status_code=302)
 
 
 @app.get("/ice/{token}", response_class=HTMLResponse)

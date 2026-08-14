@@ -44,6 +44,7 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
@@ -112,6 +113,7 @@ fun ModulePickerScreen(
     onExpense: () -> Unit,
     onAi: () -> Unit,
     onLocker: () -> Unit,
+    onTracker: () -> Unit,
     onUrls: () -> Unit,
     onSettings: () -> Unit,
     onScanQr: () -> Unit = {},
@@ -329,6 +331,47 @@ fun ModulePickerScreen(
                     Spacer(Modifier.height(3.dp))
                     Text(
                         "Chat across vault modules, manage providers, and review usage",
+                        color = HubTextDim,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            HubTile(
+                glow = HubAmber,
+                onClick = onTracker,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(132.dp),
+                contentDescription = "Open Expense Tracker, ${state.trackerOpen} open lists"
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    TileIcon(Icons.Outlined.ShoppingCart, HubAmber)
+                    Text(
+                        "Lists · PDFs",
+                        color = HubAmber,
+                        fontFamily = MonoFont,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(ChipShape)
+                            .background(HubAmber.copy(alpha = 0.12f))
+                            .border(1.dp, HubAmber.copy(alpha = 0.25f), ChipShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Column {
+                    Text("Expense Tracker", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        if (state.trackerOpen == 0) "Shopping lists, shared carts, bank PDFs"
+                        else "${state.trackerOpen} open lists",
                         color = HubTextDim,
                         fontSize = 11.5.sp,
                         lineHeight = 16.sp,

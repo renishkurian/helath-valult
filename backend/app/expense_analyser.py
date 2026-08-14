@@ -113,6 +113,7 @@ def start_retag_background(
     limit: int = _RETAG_AI_LIMIT,
     use_ai: bool = True,
     item_ids: list[str] | None = None,
+    force: bool = False,
 ) -> bool:
     """Re-tag open inbox rows on a worker thread (small AI batch for Pi safety)."""
     if _is_heavy_job(user_id):
@@ -133,7 +134,7 @@ def start_retag_background(
             user = db.query(models.User).filter(models.User.id == user_id).first()
             if user:
                 retag_pending_items(
-                    db, user, limit=batch, use_ai=use_ai, item_ids=ids or None,
+                    db, user, limit=batch, use_ai=use_ai, item_ids=ids or None, force=force,
                 )
         except Exception:
             log.exception("background expense analyser retag failed")
@@ -601,14 +602,25 @@ def retag_pending_items(
     limit: int = _RETAG_AI_LIMIT,
     use_ai: bool = True,
     item_ids: list[str] | None = None,
+    force: bool = False,
 ) -> dict[str, int]:
-    """Re-run classify + hard_correct on open inbox rows (fixes bad ATM/credit tags)."""
+    """Re-run classify + hard_correct on open inbox rows (fixes bad ATM/credit tags).
+
+    Already-tagged (`corrected`) rows are skipped unless `force` is set or the
+    caller passed explicit `item_ids` (selected / per-item re-tag).
+    """
     from app.ai_providers import get_default_bundle
     from app.ai_usage import attach_log_context
 
     uid = vault_id(user)
     ai = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser") if use_ai else None
     ids = [str(i).strip() for i in (item_ids or []) if str(i).strip()]
+    include_corrected = bool(force or ids)
+    open_statuses = (
+        ("pending", "missed", "matched", "corrected")
+        if include_corrected
+        else ("pending", "missed", "matched")
+    )
     if ids:
         ids = ids[:_RETAG_AI_LIMIT]
         rows = (
@@ -616,7 +628,7 @@ def retag_pending_items(
             .filter(
                 models.ExpenseAnalyserItem.user_id == uid,
                 models.ExpenseAnalyserItem.id.in_(ids),
-                models.ExpenseAnalyserItem.status.in_(("pending", "missed", "matched", "corrected")),
+                models.ExpenseAnalyserItem.status.in_(open_statuses),
                 models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
             )
             .all()
@@ -630,7 +642,7 @@ def retag_pending_items(
             db.query(models.ExpenseAnalyserItem)
             .filter(
                 models.ExpenseAnalyserItem.user_id == uid,
-                models.ExpenseAnalyserItem.status.in_(("pending", "missed", "matched", "corrected")),
+                models.ExpenseAnalyserItem.status.in_(open_statuses),
                 models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
             )
             .order_by(models.ExpenseAnalyserItem.created_at.desc())

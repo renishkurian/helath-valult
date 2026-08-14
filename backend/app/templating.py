@@ -26,6 +26,10 @@ _TAG_LABELS = {
     "missed": "Missed",
     "manual": "Manual",
     "scheduled": "Scheduled",
+    "approved": "Approved",
+    "pending": "Pending",
+    "debit": "Debit",
+    "credit": "Credit",
     **PAYMENT_LABELS,
 }
 

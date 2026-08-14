@@ -1395,7 +1395,170 @@ class ExpenseAnalyserPostIn(BaseModel):
 class ExpenseAnalyserRetagIn(BaseModel):
     item_ids: Optional[List[str]] = None
     limit: Optional[int] = Field(default=None, ge=1, le=20)
+    force: bool = False
 
 
 class ExpenseAnalyserQueryIn(BaseModel):
     sync_query: Optional[str] = Field(default=None, max_length=2000)
+
+
+# ---------- Expense Tracker ----------
+class ShopListIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: Optional[str] = None
+
+
+class ShopListUpdate(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = None
+    completed: Optional[bool] = None
+
+
+class ShopItemIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    quantity: Optional[float] = 1
+    unit: Optional[str] = None
+    price: Optional[float] = None
+    emoji: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
+    guest_name: Optional[str] = None
+
+
+class ShopItemUpdate(BaseModel):
+    name: Optional[str] = None
+    quantity: Optional[float] = None
+    unit: Optional[str] = None
+    price: Optional[float] = None
+    emoji: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
+    checked: Optional[bool] = None
+    status: Optional[str] = None
+
+
+class ShopItemOut(BaseModel):
+    id: str
+    list_id: str
+    name: str
+    quantity: float = 1
+    unit: Optional[str] = None
+    price: Optional[float] = None
+    checked: bool = False
+    emoji: Optional[str] = None
+    category: Optional[str] = None
+    notes: Optional[str] = None
+    added_by: Optional[str] = None
+    guest_name: Optional[str] = None
+    status: str = "approved"
+    created_at: datetime
+
+
+class ShopListOut(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    completed: bool = False
+    total_amount: float = 0
+    item_count: int = 0
+    checked_count: int = 0
+    pending_count: int = 0
+    share_token: Optional[str] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    items: Optional[List[ShopItemOut]] = None
+
+
+class ShopShareOut(BaseModel):
+    token: str
+    url: str
+    list_id: str
+
+
+class ShopContactIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    relation: Optional[str] = None
+
+
+class ShopContactOut(BaseModel):
+    id: str
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    relation: Optional[str] = None
+    created_at: datetime
+
+
+class ShopSendIn(BaseModel):
+    email: EmailStr
+    message: Optional[str] = None
+
+
+class ShopSendOut(BaseModel):
+    id: str
+    sender_id: str
+    receiver_id: str
+    sender_name: Optional[str] = None
+    receiver_name: Optional[str] = None
+    list_name: Optional[str] = None
+    status: str
+    message: Optional[str] = None
+    sent_at: datetime
+
+
+class ShopPdfPasswordIn(BaseModel):
+    identifier: str = Field(min_length=1, max_length=255)
+    password: str = Field(min_length=1)
+    account_type: str = "bank"
+    last_4_digits: Optional[str] = None
+
+
+class ShopPdfPasswordOut(BaseModel):
+    id: str
+    identifier: str
+    account_type: str
+    last_4_digits: Optional[str] = None
+    created_at: datetime
+
+
+class ShopStatementTxnOut(BaseModel):
+    id: str
+    txn_date: Optional[str] = None
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    direction: str
+    category: Optional[str] = None
+    bank_name: Optional[str] = None
+    account_number: Optional[str] = None
+    account_type: Optional[str] = None
+    source_file: Optional[str] = None
+    status: str
+    finance_txn_id: Optional[str] = None
+    created_at: datetime
+
+
+class ShopStatementPostIn(BaseModel):
+    account_id: Optional[str] = None
+
+
+class ShopRecognizeIn(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+
+class ShopGroceryItemOut(BaseModel):
+    english: str
+    malayalam: Optional[str] = None
+    emoji: str = "🛒"
+    category: Optional[str] = None
+
+
+class ShopSummaryOut(BaseModel):
+    lists: int = 0
+    open_lists: int = 0
+    pending_items: int = 0
+    pending_statements: int = 0
+    friends: int = 0
+    inbox: int = 0

@@ -2984,15 +2984,22 @@ def expense_analyser_reconcile(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/expense-analyser/retag")
-def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
+async def expense_analyser_retag(request: Request, db: Session = Depends(get_db)):
     from app import expense_analyser as ea
     user = _ea_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    started = ea.start_retag_background(vault_id(user), limit=ea._RETAG_AI_LIMIT, use_ai=True)
+    form = await request.form()
+    force = str(form.get("force") or "") in ("1", "on", "true", "yes")
+    started = ea.start_retag_background(
+        vault_id(user), limit=ea._RETAG_AI_LIMIT, use_ai=True, force=force,
+    )
     if not started:
         return RedirectResponse("/admin/expense-analyser?ok=retag_busy", status_code=303)
-    return RedirectResponse("/admin/expense-analyser?ok=retag_started", status_code=303)
+    return RedirectResponse(
+        "/admin/expense-analyser?ok=retag_started" + ("&force=1" if force else ""),
+        status_code=303,
+    )
 
 
 @router.post("/expense-analyser/retag-selected")
@@ -3113,3 +3120,352 @@ def expense_analyser_ignore_item(item_id: str, request: Request, db: Session = D
     except LookupError:
         pass
     return RedirectResponse("/admin/expense-analyser", status_code=302)
+
+
+# ---------- Expense Tracker ----------
+def _tr_ctx(request, user, active_nav, **extra):
+    from app.routers.finance import inr
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "tracker", "people": [], "active_person_id": None,
+        "inr": inr,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _tr_user(request, db):
+    return require_login(request, db)
+
+
+@router.get("/tracker", response_class=HTMLResponse)
+def tracker_home(request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = tr.tracker_summary(db=db, current_user=user)
+    lists = tr.list_lists(completed=None, db=db, current_user=user)
+    return templates.TemplateResponse("tracker_lists.html", _tr_ctx(
+        request, user, "tr_lists", summary=summary, lists=lists,
+    ))
+
+
+@router.post("/tracker/lists")
+def tracker_create_list(request: Request, name: str = Form(...), description: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    created = tr.create_list(sc.ShopListIn(name=name, description=description or None), db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{created.id}", status_code=302)
+
+
+@router.get("/tracker/lists/{list_id}", response_class=HTMLResponse)
+def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app.grocery import grouped_quick_add
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    lst = tr.get_list(list_id, db=db, current_user=user)
+    items = lst.items or []
+    friends = tr.list_friends(db=db, current_user=user)
+    return templates.TemplateResponse("tracker_list.html", _tr_ctx(
+        request, user, "tr_lists", lst=lst,
+        pending=[i for i in items if i.status == "pending"],
+        approved=[i for i in items if i.status != "pending"],
+        friends=friends, groups=grouped_quick_add(),
+    ))
+
+
+@router.post("/tracker/lists/{list_id}/items")
+def tracker_add_item(
+    list_id: str, request: Request, name: str = Form(...),
+    quantity: str = Form("1"), unit: str = Form(""), price: str = Form(""),
+    emoji: str = Form(""), category: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    qty = float(quantity or 1)
+    pr = float(price) if price.strip() else None
+    tr.add_item(list_id, sc.ShopItemIn(
+        name=name, quantity=qty, unit=unit or None, price=pr,
+        emoji=emoji or None, category=category or None,
+    ), db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/items/{item_id}/toggle")
+def tracker_toggle_item(list_id: str, item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.toggle_item(list_id, item_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/items/{item_id}/approve")
+def tracker_approve_item(list_id: str, item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.approve_item(list_id, item_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/items/{item_id}/reject")
+def tracker_reject_item(list_id: str, item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.reject_item(list_id, item_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/items/{item_id}/delete")
+def tracker_delete_item(list_id: str, item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.delete_item(list_id, item_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/share")
+def tracker_share_list(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    share = tr.share_list(list_id, request, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}?share={share.token}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/complete")
+def tracker_complete_list(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    lst = tr.get_list(list_id, db=db, current_user=user)
+    tr.update_list(list_id, sc.ShopListUpdate(completed=not lst.completed), db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/delete")
+def tracker_delete_list(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.delete_list(list_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/send")
+def tracker_send_list(list_id: str, request: Request, email: str = Form(...), message: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    from fastapi import HTTPException
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.send_list(list_id, sc.ShopSendIn(email=email, message=message or None), db=db, current_user=user)
+    except HTTPException as exc:
+        return RedirectResponse(f"/admin/tracker/lists/{list_id}?err={exc.detail}", status_code=302)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}?ok=sent", status_code=302)
+
+
+@router.get("/tracker/statements", response_class=HTMLResponse)
+def tracker_statements(request: Request, status: str = "pending", db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app.routers import finance as fn
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    rows = tr.list_statements(status=status or "pending", category=None, q=None, db=db, current_user=user)
+    passwords = tr.list_passwords(db=db, current_user=user)
+    fn.ensure_defaults(db, user)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    return templates.TemplateResponse("tracker_statements.html", _tr_ctx(
+        request, user, "tr_statements", rows=rows, passwords=passwords,
+        accounts=accounts, status=status or "pending",
+    ))
+
+
+@router.post("/tracker/statements/upload")
+async def tracker_upload_statement(request: Request, file: UploadFile = File(...), password: str = Form(""), identifier: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from fastapi import HTTPException
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        result = await tr.upload_statement(file=file, password=password, identifier=identifier, db=db, current_user=user)
+    except HTTPException as exc:
+        return RedirectResponse(f"/admin/tracker/statements?err={exc.detail}", status_code=302)
+    return RedirectResponse(
+        f"/admin/tracker/statements?ok=1&created={result.get('created', 0)}&skipped={result.get('skipped', 0)}",
+        status_code=302,
+    )
+
+
+@router.post("/tracker/statements/post-all")
+def tracker_post_all(request: Request, account_id: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    rows = tr.list_statements(status="pending", category=None, q=None, db=db, current_user=user)
+    for row in rows:
+        try:
+            tr.post_statement_txn(db, user, row.id, account_id or None)
+        except (LookupError, RuntimeError):
+            continue
+    return RedirectResponse("/admin/tracker/statements?ok=posted", status_code=302)
+
+
+@router.post("/tracker/statements/{txn_id}/post")
+def tracker_post_statement(txn_id: str, request: Request, account_id: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.post_statement_txn(db, user, txn_id, account_id or None)
+    except (LookupError, RuntimeError) as exc:
+        return RedirectResponse(f"/admin/tracker/statements?err={exc}", status_code=302)
+    return RedirectResponse("/admin/tracker/statements?ok=posted", status_code=302)
+
+
+@router.post("/tracker/statements/{txn_id}/ignore")
+def tracker_ignore_statement(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.ignore_one(txn_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/statements", status_code=302)
+
+
+@router.post("/tracker/passwords")
+def tracker_save_password(
+    request: Request, identifier: str = Form(...), password: str = Form(...),
+    account_type: str = Form("bank"), last_4_digits: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.save_password(sc.ShopPdfPasswordIn(
+        identifier=identifier, password=password, account_type=account_type,
+        last_4_digits=last_4_digits or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/statements?ok=1", status_code=302)
+
+
+@router.post("/tracker/passwords/{password_id}/delete")
+def tracker_delete_password(password_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.delete_password(password_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/statements", status_code=302)
+
+
+@router.get("/tracker/friends", response_class=HTMLResponse)
+def tracker_friends(request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    friends = tr.list_friends(db=db, current_user=user)
+    return templates.TemplateResponse("tracker_friends.html", _tr_ctx(
+        request, user, "tr_friends", friends=friends,
+    ))
+
+
+@router.post("/tracker/friends")
+def tracker_add_friend(
+    request: Request, name: str = Form(...), email: str = Form(""),
+    phone: str = Form(""), relation: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.add_friend(sc.ShopContactIn(
+        name=name, email=email or None, phone=phone or None, relation=relation or None,
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/friends?ok=1", status_code=302)
+
+
+@router.post("/tracker/friends/{contact_id}/delete")
+def tracker_delete_friend(contact_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.delete_friend(contact_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/friends", status_code=302)
+
+
+@router.get("/tracker/more", response_class=HTMLResponse)
+def tracker_more(request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = tr.tracker_summary(db=db, current_user=user)
+    inbox = tr.inbox(db=db, current_user=user)
+    sent = tr.sent(db=db, current_user=user)
+    return templates.TemplateResponse("tracker_more.html", _tr_ctx(
+        request, user, "tr_more", summary=summary, inbox=inbox, sent=sent,
+    ))
+
+
+@router.post("/tracker/inbox/{send_id}/accept")
+def tracker_accept_send(send_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    lst = tr.accept_send(send_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{lst.id}", status_code=302)
+
+
+@router.post("/tracker/inbox/{send_id}/reject")
+def tracker_reject_send(send_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.reject_send(send_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/more", status_code=302)
+
+
+@router.post("/tracker/sent/{send_id}/recall")
+def tracker_recall_send(send_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.recall_send(send_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/more", status_code=302)

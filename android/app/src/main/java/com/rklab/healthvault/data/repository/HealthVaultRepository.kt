@@ -721,4 +721,23 @@ class HealthVaultRepository(
         api.saveExpenseAnalyserSchedule(ExpenseAnalyserScheduleIn(enabled, hour))
     suspend fun expenseAnalyserInsights(month: String? = null) = api.expenseAnalyserInsights(month)
     suspend fun disconnectExpenseAnalyser() = api.disconnectExpenseAnalyser()
+
+    // ---------- Expense Tracker ----------
+    suspend fun trackerSummary() = api.trackerSummary()
+    suspend fun listShopLists(completed: Boolean? = null) = api.listShopLists(completed)
+    suspend fun createShopList(body: ShopListIn) = api.createShopList(body)
+    suspend fun getShopList(id: String) = api.getShopList(id)
+    suspend fun deleteShopList(id: String) { api.deleteShopList(id) }
+    suspend fun addShopItem(listId: String, body: ShopItemIn) = api.addShopItem(listId, body)
+    suspend fun toggleShopItem(listId: String, itemId: String) = api.toggleShopItem(listId, itemId)
+    suspend fun approveShopItem(listId: String, itemId: String) = api.approveShopItem(listId, itemId)
+    suspend fun rejectShopItem(listId: String, itemId: String) { api.rejectShopItem(listId, itemId) }
+    suspend fun deleteShopItem(listId: String, itemId: String) { api.deleteShopItem(listId, itemId) }
+    suspend fun shareShopList(id: String) = api.shareShopList(id)
+    suspend fun listShopFriends() = api.listShopFriends()
+    suspend fun addShopFriend(body: ShopContactIn) = api.addShopFriend(body)
+    suspend fun deleteShopFriend(id: String) { api.deleteShopFriend(id) }
+    suspend fun shopInbox() = api.shopInbox()
+    suspend fun acceptShopSend(id: String) = api.acceptShopSend(id)
+    suspend fun rejectShopSend(id: String) { api.rejectShopSend(id) }
 }

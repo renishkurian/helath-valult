@@ -19,10 +19,14 @@
     <form method="post" action="/admin/expense-analyser/reconcile">
       <button class="btn btn-outline-secondary" type="submit" {% if status.syncing or status.retagging %}disabled{% endif %}><i class="bi bi-shuffle"></i> Re-match ledger</button>
     </form>
-    <form method="post" action="/admin/expense-analyser/retag">
+    <form method="post" action="/admin/expense-analyser/retag" class="d-flex gap-2 align-items-center flex-wrap">
       <button class="btn btn-outline-secondary" type="submit" {% if status.syncing or status.retagging %}disabled{% endif %}>
         <i class="bi bi-magic"></i> {% if status.retagging %}Re-tagging…{% else %}AI re-tag{% endif %}
       </button>
+      <label class="small text-muted mb-0 d-flex align-items-center gap-1">
+        <input type="checkbox" name="force" value="1" class="form-check-input m-0" {% if status.syncing or status.retagging %}disabled{% endif %}>
+        Force already-tagged
+      </label>
     </form>
     {% endif %}
     <a class="btn btn-outline-danger" href="/admin/expense-analyser/clear"><i class="bi bi-trash"></i> Clear inbox</a>
@@ -41,7 +45,7 @@
 {% elif request.query_params.get('ok') == 'retag_started' %}
 <div class="alert alert-success" role="alert">
   AI re-tag started in the background
-  {% if request.query_params.get('count') %}( {{ request.query_params.get('count') }} item(s) ){% else %}(up to 20 items){% endif %}.
+  {% if request.query_params.get('count') %}( {{ request.query_params.get('count') }} item(s) ){% elif request.query_params.get('force') %}(including already-tagged){% else %}(untagged items only, up to 20){% endif %}.
   This page will refresh until it finishes.
 </div>
 {% elif request.query_params.get('ok') == 'retag_busy' %}

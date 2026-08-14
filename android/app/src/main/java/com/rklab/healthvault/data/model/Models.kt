@@ -1137,3 +1137,95 @@ data class ExpenseAnalyserInsightsOut(
     val by_status: List<ExpenseAnalyserStatusSlice> = emptyList(),
     val top_payees: List<ExpenseAnalyserSlice> = emptyList()
 )
+
+// ---------- Expense Tracker ----------
+data class ShopSummaryOut(
+    val lists: Int = 0,
+    val open_lists: Int = 0,
+    val pending_items: Int = 0,
+    val pending_statements: Int = 0,
+    val friends: Int = 0,
+    val inbox: Int = 0
+)
+
+data class ShopListOut(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val completed: Boolean = false,
+    val total_amount: Double = 0.0,
+    val item_count: Int = 0,
+    val checked_count: Int = 0,
+    val pending_count: Int = 0,
+    val share_token: String? = null,
+    val created_at: String = "",
+    val updated_at: String? = null,
+    val completed_at: String? = null,
+    val items: List<ShopItemOut>? = null
+)
+
+data class ShopListIn(
+    val name: String,
+    val description: String? = null
+)
+
+data class ShopItemOut(
+    val id: String,
+    val list_id: String,
+    val name: String,
+    val quantity: Double = 1.0,
+    val unit: String? = null,
+    val price: Double? = null,
+    val checked: Boolean = false,
+    val emoji: String? = null,
+    val category: String? = null,
+    val notes: String? = null,
+    val added_by: String? = null,
+    val guest_name: String? = null,
+    val status: String = "approved",
+    val created_at: String = ""
+)
+
+data class ShopItemIn(
+    val name: String,
+    val quantity: Double? = 1.0,
+    val unit: String? = null,
+    val price: Double? = null,
+    val emoji: String? = null,
+    val category: String? = null,
+    val notes: String? = null
+)
+
+data class ShopShareOut(
+    val token: String,
+    val url: String,
+    val list_id: String
+)
+
+data class ShopContactOut(
+    val id: String,
+    val name: String,
+    val email: String? = null,
+    val phone: String? = null,
+    val relation: String? = null,
+    val created_at: String = ""
+)
+
+data class ShopContactIn(
+    val name: String,
+    val email: String? = null,
+    val phone: String? = null,
+    val relation: String? = null
+)
+
+data class ShopSendOut(
+    val id: String,
+    val sender_id: String,
+    val receiver_id: String,
+    val sender_name: String? = null,
+    val receiver_name: String? = null,
+    val list_name: String? = null,
+    val status: String,
+    val message: String? = null,
+    val sent_at: String = ""
+)

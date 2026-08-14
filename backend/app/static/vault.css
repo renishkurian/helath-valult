@@ -1488,3 +1488,18 @@ body.ask-ai .app-main{
 @media (prefers-reduced-motion:reduce){
   .ask-typing i{ animation:none; opacity:.7; }
 }
+
+.shop-emoji{ font-size:1.2rem; width:1.75rem; text-align:center; flex-shrink:0; }
+.shop-item.checked .shop-name{ text-decoration:line-through; opacity:.55; }
+.shop-group{
+  cursor:pointer; list-style:none; font-weight:600; padding:.75rem 1rem;
+}
+.shop-group::-webkit-details-marker{ display:none; }
+.shop-chips{
+  display:flex; flex-wrap:wrap; gap:.5rem; padding:0 1rem 1rem;
+}
+.shop-chips .chip, .shop-chips button.chip{
+  border:1px solid var(--v-line); background:var(--v-surface-2, var(--v-surface));
+  color:var(--v-ink); border-radius:999px; padding:.35rem .75rem; font-size:.8125rem;
+}
+.shop-chips button.chip:hover{ background:var(--v-hover); }

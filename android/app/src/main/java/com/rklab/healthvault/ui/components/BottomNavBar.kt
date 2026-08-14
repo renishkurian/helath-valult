@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.VpnKey
@@ -49,6 +50,8 @@ enum class AiTab { ASK, PROVIDERS, LOGS }
 
 enum class ExpenseTab { INBOX, INSIGHTS, LOG, SETTINGS }
 
+enum class TrackerTab { LISTS, FRIENDS }
+
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
         selectedIconColor = VaultGold,
@@ -57,6 +60,26 @@ private val navColors
         unselectedTextColor = HubTextDim,
         indicatorColor = VaultGoldSoft
     )
+
+@Composable
+fun TrackerBottomNav(current: TrackerTab, onSelect: (TrackerTab) -> Unit) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
+        NavigationBarItem(
+            selected = current == TrackerTab.LISTS,
+            onClick = { onSelect(TrackerTab.LISTS) },
+            icon = { Icon(Icons.Filled.ShoppingCart, contentDescription = "Lists") },
+            label = { Text("Lists") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == TrackerTab.FRIENDS,
+            onClick = { onSelect(TrackerTab.FRIENDS) },
+            icon = { Icon(Icons.Filled.People, contentDescription = "Friends") },
+            label = { Text("Friends") },
+            colors = navColors
+        )
+    }
+}
 
 @Composable
 fun AiBottomNav(current: AiTab, onSelect: (AiTab) -> Unit) {

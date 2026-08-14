@@ -989,3 +989,134 @@ class ExpenseAnalyserSyncLog(Base):
     error = Column(Text, nullable=True)
     started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     finished_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+# ---------- Expense Tracker (shopping lists, PDF statements, friends) ----------
+
+class ShopList(Base):
+    """A shopping list (purchase bucket) owned by a vault."""
+    __tablename__ = "shop_lists"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    completed = Column(Boolean, default=False, nullable=False, index=True)
+    total_amount = Column(Numeric(14, 2), default=0, nullable=False)
+    image_path = Column(String(500), nullable=True)
+    blocked_uids = Column(Text, nullable=True)  # JSON list of guest names / user ids
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+    items = relationship(
+        "ShopItem", back_populates="lst", cascade="all, delete-orphan",
+        order_by="ShopItem.created_at",
+    )
+    shares = relationship("ShopShare", back_populates="lst", cascade="all, delete-orphan")
+
+
+class ShopItem(Base):
+    __tablename__ = "shop_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    list_id = Column(String(32), ForeignKey("shop_lists.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    quantity = Column(Numeric(12, 3), default=1, nullable=False)
+    unit = Column(String(40), nullable=True)
+    price = Column(Numeric(14, 2), nullable=True)
+    checked = Column(Boolean, default=False, nullable=False, index=True)
+    emoji = Column(String(16), nullable=True)
+    category = Column(String(80), nullable=True)
+    notes = Column(Text, nullable=True)
+    added_by = Column(String(32), nullable=True)  # user id or "guest"
+    guest_name = Column(String(120), nullable=True)
+    status = Column(String(20), default="approved", nullable=False, index=True)  # approved | pending
+    changes_requested = Column(Text, nullable=True)  # JSON
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    lst = relationship("ShopList", back_populates="items")
+
+
+class ShopShare(Base):
+    """Public collaborative link for a shopping list (no login)."""
+    __tablename__ = "shop_shares"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    list_id = Column(String(32), ForeignKey("shop_lists.id"), nullable=False, index=True)
+    token = Column(String(64), unique=True, index=True, nullable=False)
+    created_by = Column(String(32), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    use_count = Column(Integer, default=0, nullable=False)
+
+    lst = relationship("ShopList", back_populates="shares")
+
+
+class ShopContact(Base):
+    """Friends & family used as shopping-list recipients."""
+    __tablename__ = "shop_contacts"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True, index=True)
+    phone = Column(String(40), nullable=True)
+    relation = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShopSend(Base):
+    """A shopping list sent to another vault user."""
+    __tablename__ = "shop_sends"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    sender_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    receiver_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    list_id = Column(String(32), nullable=True)
+    list_data = Column(Text, nullable=True)  # JSON snapshot
+    status = Column(String(20), default="pending", nullable=False, index=True)  # pending | accepted | rejected
+    message = Column(Text, nullable=True)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    responded_at = Column(DateTime, nullable=True)
+
+
+class ShopPdfPassword(Base):
+    """Saved bank/credit-card PDF passwords (encrypted at rest)."""
+    __tablename__ = "shop_pdf_passwords"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    identifier = Column(String(255), nullable=False)
+    password_enc = Column(Text, nullable=False)
+    account_type = Column(String(50), default="bank", nullable=False)  # bank | credit_card
+    last_4_digits = Column(String(8), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShopStatementTxn(Base):
+    """A row parsed from a bank/credit-card PDF, reviewed before Money Manager."""
+    __tablename__ = "shop_statement_txns"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    txn_date = Column(String(20), nullable=True, index=True)
+    description = Column(Text, nullable=True)
+    amount = Column(Numeric(14, 2), nullable=True)
+    direction = Column(String(20), default="debit", nullable=False)  # debit | credit
+    category = Column(String(50), nullable=True, index=True)
+    bank_name = Column(String(100), nullable=True)
+    account_number = Column(String(50), nullable=True)
+    account_type = Column(String(50), nullable=True)
+    source_file = Column(String(255), nullable=True)
+    transaction_id = Column(String(64), nullable=True, index=True)
+    reference_number = Column(String(255), nullable=True)
+    status = Column(String(20), default="pending", nullable=False, index=True)  # pending | posted | ignored
+    finance_txn_id = Column(String(32), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ShopDictItem(Base):
+    """Grocery dictionary: English + Malayalam + emoji for quick-add and recognition."""
+    __tablename__ = "shop_dict_items"
+    key = Column(String(255), primary_key=True)
+    english = Column(String(255), nullable=False)
+    malayalam = Column(String(255), nullable=True)
+    emoji = Column(String(16), default="🛒")
+    source = Column(String(20), default="seed", nullable=False)  # seed | user
+    category = Column(String(80), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

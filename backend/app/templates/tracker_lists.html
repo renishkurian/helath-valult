@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Shopping lists{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Expense Tracker
+    </div>
+    <h1 class="page-title">Lists</h1>
+    <p class="page-lead">Shared grocery lists with Malayalam quick-add — then post the bill into Money Manager.</p>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') %}
+<div class="alert alert-success mb-4" role="status">Saved.</div>
+{% endif %}
+{% if request.query_params.get('err') %}
+<div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-cart3"></i> Open lists</div>
+      <div class="val">{{ summary.open_lists }}</div>
+      <div class="sub">of {{ summary.lists }} total</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-hourglass-split"></i> Guest items</div>
+      <div class="val">{{ summary.pending_items }}</div>
+      <div class="sub">waiting for approval</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-file-earmark-pdf"></i> Statements</div>
+      <div class="val">{{ summary.pending_statements }}</div>
+      <div class="sub">PDF rows to post</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-inbox"></i> Inbox</div>
+      <div class="val">{{ summary.inbox }}</div>
+      <div class="sub">lists sent to you</div>
+    </div>
+  </div>
+</div>
+
+<div class="surface mb-4">
+  <div class="section-head"><h2>New list</h2></div>
+  <form method="post" action="/admin/tracker/lists" class="row g-2 align-items-end">
+    <div class="col-md-5">
+      <label class="form-label" for="list-name">Name</label>
+      <input class="form-control" id="list-name" name="name" required maxlength="255" placeholder="Saturday market">
+    </div>
+    <div class="col-md-5">
+      <label class="form-label" for="list-desc">Note</label>
+      <input class="form-control" id="list-desc" name="description" maxlength="500" placeholder="Optional">
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i> Create</button>
+    </div>
+  </form>
+</div>
+
+{% if lists %}
+<div class="list-rows">
+  {% for lst in lists %}
+  <a class="list-row" href="/admin/tracker/lists/{{ lst.id }}">
+    <span class="row-body">
+      <span class="row-title">{{ lst.name }}</span>
+      <span class="row-meta">
+        {{ lst.item_count }} items
+        {% if lst.checked_count %} · {{ lst.checked_count }} done{% endif %}
+        {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
+        {% if lst.completed %}<span class="badge badge-soft ms-1">Done</span>{% endif %}
+      </span>
+    </span>
+    <span class="row-side">
+      {% if lst.total_amount %}{{ inr(lst.total_amount) }}{% endif %}
+      <i class="bi bi-chevron-right text-faint"></i>
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-cart3"></i>
+  <p>No shopping lists yet. Create one for this week’s market run.</p>
+</div>
+{% endif %}
+{% endblock %}

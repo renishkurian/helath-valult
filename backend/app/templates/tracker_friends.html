@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Friends{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Expense Tracker</div>
+    <h1 class="page-title">Friends &amp; family</h1>
+    <p class="page-lead">People you send shopping lists to. They need a vault login on the same server.</p>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') %}
+<div class="alert alert-success mb-4" role="status">Saved.</div>
+{% endif %}
+{% if request.query_params.get('err') %}
+<div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+<div class="surface mb-4">
+  <div class="section-head"><h2>Add contact</h2></div>
+  <form method="post" action="/admin/tracker/friends" class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label" for="f-name">Name</label>
+      <input class="form-control" id="f-name" name="name" required>
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" for="f-email">Email</label>
+      <input class="form-control" id="f-email" name="email" type="email">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label" for="f-phone">Phone</label>
+      <input class="form-control" id="f-phone" name="phone">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label" for="f-rel">Relation</label>
+      <select class="form-select" id="f-rel" name="relation">
+        <option value="family">Family</option>
+        <option value="friend">Friend</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" type="submit">Add</button>
+    </div>
+  </form>
+</div>
+
+{% if friends %}
+<div class="list-rows">
+  {% for f in friends %}
+  <div class="list-row">
+    <span class="row-body">
+      <span class="row-title">{{ f.name }}</span>
+      <span class="row-meta">{{ f.email or 'no email' }}{% if f.phone %} · {{ f.phone }}{% endif %}{% if f.relation %} · {{ f.relation }}{% endif %}</span>
+    </span>
+    <form method="post" action="/admin/tracker/friends/{{ f.id }}/delete">
+      <button class="btn btn-ghost" type="submit" aria-label="Remove"><i class="bi bi-trash3"></i></button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-people"></i>
+  <p>No contacts yet. Add someone you shop with.</p>
+</div>
+{% endif %}
+{% endblock %}

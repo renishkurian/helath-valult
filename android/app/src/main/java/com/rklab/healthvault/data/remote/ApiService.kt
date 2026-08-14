@@ -668,4 +668,56 @@ interface ApiService {
 
     @POST("expense-analyser/disconnect")
     suspend fun disconnectExpenseAnalyser(): ExpenseAnalyserStatusOut
+
+    // ---------- Expense Tracker ----------
+    @GET("tracker/summary")
+    suspend fun trackerSummary(): ShopSummaryOut
+
+    @GET("tracker/lists")
+    suspend fun listShopLists(@Query("completed") completed: Boolean? = null): List<ShopListOut>
+
+    @POST("tracker/lists")
+    suspend fun createShopList(@Body body: ShopListIn): ShopListOut
+
+    @GET("tracker/lists/{id}")
+    suspend fun getShopList(@Path("id") id: String): ShopListOut
+
+    @DELETE("tracker/lists/{id}")
+    suspend fun deleteShopList(@Path("id") id: String): Response<Unit>
+
+    @POST("tracker/lists/{id}/items")
+    suspend fun addShopItem(@Path("id") id: String, @Body body: ShopItemIn): ShopItemOut
+
+    @POST("tracker/lists/{id}/items/{itemId}/toggle")
+    suspend fun toggleShopItem(@Path("id") id: String, @Path("itemId") itemId: String): ShopItemOut
+
+    @POST("tracker/lists/{id}/items/{itemId}/approve")
+    suspend fun approveShopItem(@Path("id") id: String, @Path("itemId") itemId: String): ShopItemOut
+
+    @POST("tracker/lists/{id}/items/{itemId}/reject")
+    suspend fun rejectShopItem(@Path("id") id: String, @Path("itemId") itemId: String): Response<Unit>
+
+    @DELETE("tracker/lists/{id}/items/{itemId}")
+    suspend fun deleteShopItem(@Path("id") id: String, @Path("itemId") itemId: String): Response<Unit>
+
+    @POST("tracker/lists/{id}/share")
+    suspend fun shareShopList(@Path("id") id: String): ShopShareOut
+
+    @GET("tracker/friends")
+    suspend fun listShopFriends(): List<ShopContactOut>
+
+    @POST("tracker/friends")
+    suspend fun addShopFriend(@Body body: ShopContactIn): ShopContactOut
+
+    @DELETE("tracker/friends/{id}")
+    suspend fun deleteShopFriend(@Path("id") id: String): Response<Unit>
+
+    @GET("tracker/inbox")
+    suspend fun shopInbox(): List<ShopSendOut>
+
+    @POST("tracker/inbox/{id}/accept")
+    suspend fun acceptShopSend(@Path("id") id: String): ShopListOut
+
+    @POST("tracker/inbox/{id}/reject")
+    suspend fun rejectShopSend(@Path("id") id: String): Response<Unit>
 }

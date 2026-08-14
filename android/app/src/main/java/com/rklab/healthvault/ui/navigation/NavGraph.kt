@@ -32,12 +32,17 @@ import com.rklab.healthvault.ui.screens.ai.AiProvidersScreen
 import com.rklab.healthvault.ui.screens.ai.AiUsageLogsScreen
 import com.rklab.healthvault.ui.components.ExpenseTab
 import com.rklab.healthvault.ui.components.ExpenseAnalyserBottomNav
+import com.rklab.healthvault.ui.components.TrackerTab
+import com.rklab.healthvault.ui.components.TrackerBottomNav
 import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserInboxScreen
 import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserInsightsScreen
 import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserSettingsScreen
 import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserSyncLogScreen
 import com.rklab.healthvault.ui.screens.finance.*
 import com.rklab.healthvault.ui.screens.locker.*
+import com.rklab.healthvault.ui.screens.tracker.ShopDetailScreen
+import com.rklab.healthvault.ui.screens.tracker.ShopFriendsScreen
+import com.rklab.healthvault.ui.screens.tracker.ShopListScreen
 import com.rklab.healthvault.ui.screens.urls.*
 import com.rklab.healthvault.ui.screens.passwords.*
 import com.rklab.healthvault.ui.screens.shell.ModulePickerScreen
@@ -94,11 +99,15 @@ private object Routes {
     const val EXPENSE_INSIGHTS = "expense_insights"
     const val EXPENSE_LOG = "expense_log"
     const val EXPENSE_SETTINGS = "expense_settings"
+    const val TRACKER = "tracker"
+    const val TRACKER_FRIENDS = "tracker_friends"
+    const val TRACKER_LIST = "tracker_list/{listId}"
 
     fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
     fun lockerItem(itemId: String) = "locker_item/$itemId"
     fun urlsAdd(categoryId: String? = null) = "urls_add?categoryId=${categoryId ?: ""}"
     fun urlsItem(itemId: String) = "urls_item/$itemId"
+    fun trackerList(listId: String) = "tracker_list/$listId"
 
     fun financeAdd(accountId: String? = null) = "finance_add?accountId=${accountId ?: ""}"
     fun financeAccount(accountId: String) = "finance_account/$accountId"
@@ -194,16 +203,28 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
     val aiTabs = setOf(Routes.AI, Routes.AI_PROVIDERS, Routes.AI_LOGS)
     val expenseTabs = setOf(Routes.EXPENSE, Routes.EXPENSE_INSIGHTS, Routes.EXPENSE_LOG, Routes.EXPENSE_SETTINGS)
+    val trackerTabs = setOf(Routes.TRACKER, Routes.TRACKER_FRIENDS)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
     val onLockerItem = currentRoute?.startsWith("locker_item/") == true
     val onLockerAdd = currentRoute?.startsWith("locker_add") == true
     val onUrlItem = currentRoute?.startsWith("urls_item/") == true
     val onUrlAdd = currentRoute?.startsWith("urls_add") == true
+    val onTrackerList = currentRoute?.startsWith("tracker_list/") == true
 
     Scaffold(
         containerColor = HubBg,
         bottomBar = {
-            if (currentRoute in lockerTabs || onLockerItem || onLockerAdd) {
+            if (currentRoute in trackerTabs || onTrackerList) {
+                val current = if (currentRoute == Routes.TRACKER_FRIENDS) TrackerTab.FRIENDS else TrackerTab.LISTS
+                TrackerBottomNav(current = current) { tab ->
+                    val route = if (tab == TrackerTab.FRIENDS) Routes.TRACKER_FRIENDS else Routes.TRACKER
+                    navController.navigate(route) {
+                        popUpTo(Routes.TRACKER) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in lockerTabs || onLockerItem || onLockerAdd) {
                 val current = if (currentRoute == Routes.LOCKER_EXPIRING) LockerTab.EXPIRING else LockerTab.LOCKER
                 LockerBottomNav(current = current) { tab ->
                     val route = if (tab == LockerTab.EXPIRING) Routes.LOCKER_EXPIRING else Routes.LOCKER
@@ -419,6 +440,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onTracker = {
+                        navController.navigate(Routes.TRACKER) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onUrls = {
                         navController.navigate(Routes.URLS) {
                             popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
@@ -433,6 +460,32 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     }
+                )
+            }
+
+            composable(Routes.TRACKER) {
+                ShopListScreen(
+                    repository = repository,
+                    onOpenList = { navController.navigate(Routes.trackerList(it)) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.TRACKER_FRIENDS) {
+                ShopFriendsScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    onOpenList = { navController.navigate(Routes.trackerList(it)) }
+                )
+            }
+            composable(
+                Routes.TRACKER_LIST,
+                arguments = listOf(navArgument("listId") { type = NavType.StringType })
+            ) { entry ->
+                val listId = entry.arguments?.getString("listId") ?: return@composable
+                ShopDetailScreen(
+                    repository = repository,
+                    listId = listId,
+                    onBack = { navController.popBackStack() }
                 )
             }
 

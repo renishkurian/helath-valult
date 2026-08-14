@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}More{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Expense Tracker</div>
+    <h1 class="page-title">More</h1>
+    <p class="page-lead">Inbox of lists others sent you, plus the ledger this module feeds.</p>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl">Inbox</div>
+      <div class="val">{{ summary.inbox }}</div>
+      <div class="sub">waiting for you</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl">Friends</div>
+      <div class="val">{{ summary.friends }}</div>
+      <div class="sub">on your list</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl">Open lists</div>
+      <div class="val">{{ summary.open_lists }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl">PDF rows</div>
+      <div class="val">{{ summary.pending_statements }}</div>
+      <div class="sub">to post</div>
+    </div>
+  </div>
+</div>
+
+{% if inbox %}
+<div class="section-head"><h2>Received lists</h2></div>
+<div class="list-rows mb-4">
+  {% for s in inbox %}
+  <div class="list-row">
+    <span class="row-body">
+      <span class="row-title">{{ s.list_name or 'Shopping list' }}</span>
+      <span class="row-meta">from {{ s.sender_name or 'someone' }} · {{ s.status }}{% if s.message %} · {{ s.message }}{% endif %}</span>
+    </span>
+    {% if s.status == 'pending' %}
+    <span class="row-actions">
+      <form method="post" action="/admin/tracker/inbox/{{ s.id }}/accept">
+        <button class="btn btn-sm btn-primary" type="submit">Accept</button>
+      </form>
+      <form method="post" action="/admin/tracker/inbox/{{ s.id }}/reject">
+        <button class="btn btn-sm btn-ghost" type="submit">Reject</button>
+      </form>
+    </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if sent %}
+<div class="section-head"><h2>Sent</h2></div>
+<div class="list-rows mb-4">
+  {% for s in sent %}
+  <div class="list-row">
+    <span class="row-body">
+      <span class="row-title">{{ s.list_name or 'Shopping list' }}</span>
+      <span class="row-meta">to {{ s.receiver_name or 'someone' }} · {{ s.status }}</span>
+    </span>
+    {% if s.status == 'pending' %}
+    <form method="post" action="/admin/tracker/sent/{{ s.id }}/recall">
+      <button class="btn btn-sm btn-ghost" type="submit">Recall</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="section-head"><h2>Elsewhere in the vault</h2></div>
+<div class="tile-grid">
+  <a class="tile" href="/admin/finance">
+    <span class="ico"><i class="bi bi-wallet2"></i></span>
+    <span>Money Manager</span>
+  </a>
+  <a class="tile" href="/admin/finance/plan">
+    <span class="ico"><i class="bi bi-piggy-bank"></i></span>
+    <span>Budgets</span>
+  </a>
+  <a class="tile" href="/admin/finance/recurring">
+    <span class="ico"><i class="bi bi-arrow-repeat"></i></span>
+    <span>Recurring</span>
+  </a>
+  <a class="tile" href="/admin/expense-analyser">
+    <span class="ico"><i class="bi bi-envelope-open"></i></span>
+    <span>Gmail analyser</span>
+  </a>
+  <a class="tile" href="/admin/ai">
+    <span class="ico"><i class="bi bi-robot"></i></span>
+    <span>Ask AI</span>
+  </a>
+  <a class="tile" href="/admin/modules">
+    <span class="ico"><i class="bi bi-columns-gap"></i></span>
+    <span>Modules</span>
+  </a>
+</div>
+{% endblock %}

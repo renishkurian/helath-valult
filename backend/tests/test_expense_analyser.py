@@ -370,6 +370,44 @@ def test_retag_accepts_item_ids():
         db.close()
 
 
+def test_retag_skips_corrected_unless_forced():
+    from app.expense_analyser import retag_pending_items
+    from decimal import Decimal
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        pending = models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="retag-new", kind="alert",
+            direction="debit", amount=Decimal("30.00"), payee="VJ BIJI",
+            suggested_category="Insurance", status="pending",
+            raw_snippet="Rs.30.00 debited towards VPA sviji795@oksbi (VJ BIJI). Please click here.",
+        )
+        already = models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="retag-done", kind="alert",
+            direction="debit", amount=Decimal("30.00"), payee="VJ BIJI",
+            suggested_category="UPI / transfers", status="corrected",
+            raw_snippet="Rs.30.00 debited towards VPA sviji795@oksbi (VJ BIJI). Please click here.",
+        )
+        db.add_all([pending, already])
+        db.commit()
+        db.refresh(pending)
+        db.refresh(already)
+
+        skipped = retag_pending_items(db, user, use_ai=False, force=False)
+        assert skipped["scanned"] == 1
+        db.refresh(already)
+        assert already.status == "corrected"
+        assert already.suggested_category == "UPI / transfers"
+
+        forced = retag_pending_items(db, user, use_ai=False, force=True)
+        assert forced["scanned"] == 2
+    finally:
+        db.close()
+
+
 def test_status_includes_retagging_flag():
     headers, _ = _headers()
     r = client.get("/expense-analyser/status", headers=headers)
