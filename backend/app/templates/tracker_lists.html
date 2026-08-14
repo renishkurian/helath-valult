@@ -81,6 +81,7 @@
       <span class="row-title">{{ lst.name }}</span>
       <span class="row-meta">
         {{ c }}/{{ n }} items
+        {% if lst.receipt_count %} · {{ lst.receipt_count }} bill{% if lst.receipt_count != 1 %}s{% endif %}{% endif %}
         {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
       </span>
     </span>

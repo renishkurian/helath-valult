@@ -34,7 +34,17 @@ def test_tracker_list_item_toggle_and_share():
     assert "Onion" in body["name"]
     assert "ഉള്ളി" in body["name"]
     assert body["emoji"]
+    assert body.get("added_by_name") == "Shop User"
     item_id = body["id"]
+
+    edited = client.patch(
+        f"/tracker/lists/{list_id}/items/{item_id}",
+        headers=headers,
+        json={"quantity": 2, "unit": "kg"},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["quantity"] == 2
+    assert edited.json()["unit"] == "kg"
 
     toggled = client.post(f"/tracker/lists/{list_id}/items/{item_id}/toggle", headers=headers)
     assert toggled.status_code == 200
@@ -130,6 +140,21 @@ def test_tracker_pdf_password_roundtrip():
     assert gone.status_code == 204
     assert client.get("/tracker/passwords", headers=headers).json() == []
 
+    again = client.post("/tracker/passwords", headers=headers, json={
+        "identifier": "HDFC", "password": "first", "account_type": "bank",
+    })
+    assert again.status_code == 201
+    updated = client.post("/tracker/passwords", headers=headers, json={
+        "identifier": "HDFC", "password": "second", "account_type": "credit_card",
+        "last_4_digits": "8899",
+    })
+    assert updated.status_code == 201
+    listed = client.get("/tracker/passwords", headers=headers).json()
+    assert len(listed) == 1
+    assert listed[0]["identifier"] == "HDFC"
+    assert listed[0]["account_type"] == "credit_card"
+    assert listed[0]["last_4_digits"] == "8899"
+
 
 def test_admin_list_detail_renders_quick_add():
     email = "shop-admin@example.com"
@@ -153,6 +178,9 @@ def test_admin_list_detail_renders_quick_add():
     assert "Live" in page.text
     assert "app-tabbar" in page.text
     assert "has-composer" in page.text
+    assert "Add bill copy" in page.text
+    assert "Open statements" not in page.text
+    assert "Family on this list" not in page.text
 
 
 def test_family_share_auto_approves_and_polls_revision():
@@ -189,6 +217,8 @@ def test_family_share_auto_approves_and_polls_revision():
     assert "Sunday Market" in page.text
     assert "public-app" in page.text
     assert "shop-composer" in page.text
+    assert "shop-member-bar" not in page.text
+    assert "js-shop-edit" in page.text
     assert "Internal Server Error" not in page.text
 
 
@@ -209,4 +239,33 @@ def test_admin_statements_moved_to_expense_analyser():
     assert page.status_code == 200, page.text[:500]
     assert "Bank statements" in page.text
     assert "Expense Analyser" in page.text
+    assert "Bank PDF passwords" in page.text
+    assert "Bank / label" in page.text
+    assert "Load PDFs from Gmail" not in page.text  # Gmail not connected
     assert "Internal Server Error" not in page.text
+
+
+def test_shop_list_bill_copy_upload():
+    headers = _headers("bill-copy@example.com")
+    lst = client.post("/tracker/lists", headers=headers, json={"name": "Market"}).json()
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc\xf8\x0f\x00"
+        b"\x00\x01\x01\x00\x05\x18\xd8N\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    up = client.post(
+        f"/tracker/lists/{lst['id']}/receipts",
+        headers=headers,
+        files={"file": ("bill.png", png, "image/png")},
+    )
+    assert up.status_code == 201, up.text
+    rec = up.json()
+    assert rec["is_image"] is True
+    detail = client.get(f"/tracker/lists/{lst['id']}", headers=headers).json()
+    assert detail["receipt_count"] == 1
+    img = client.get(f"/tracker/lists/{lst['id']}/receipts/{rec['id']}/image", headers=headers)
+    assert img.status_code == 200
+    assert img.content
+    gone = client.delete(f"/tracker/lists/{lst['id']}/receipts/{rec['id']}", headers=headers)
+    assert gone.status_code == 204
+    assert client.get(f"/tracker/lists/{lst['id']}", headers=headers).json()["receipt_count"] == 0

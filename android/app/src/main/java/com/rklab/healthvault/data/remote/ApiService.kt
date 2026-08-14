@@ -669,6 +669,18 @@ interface ApiService {
     @POST("expense-analyser/disconnect")
     suspend fun disconnectExpenseAnalyser(): ExpenseAnalyserStatusOut
 
+    @POST("expense-analyser/import-pdfs")
+    suspend fun importExpenseAnalyserPdfs(): ExpenseAnalyserPdfImportOut
+
+    @GET("expense-analyser/mail-pdfs")
+    suspend fun listExpenseAnalyserMailPdfs(
+        @Query("status") status: String? = null,
+        @Query("limit") limit: Int = 50
+    ): List<ShopStatementPdfOut>
+
+    @POST("expense-analyser/mail-pdfs/{id}/ignore")
+    suspend fun ignoreExpenseAnalyserMailPdf(@Path("id") id: String): ShopStatementPdfOut
+
     // ---------- Shopping List ----------
     @GET("tracker/summary")
     suspend fun trackerSummary(): ShopSummaryOut
@@ -694,6 +706,13 @@ interface ApiService {
     @POST("tracker/lists/{id}/items/{itemId}/toggle")
     suspend fun toggleShopItem(@Path("id") id: String, @Path("itemId") itemId: String): ShopItemOut
 
+    @PATCH("tracker/lists/{id}/items/{itemId}")
+    suspend fun updateShopItem(
+        @Path("id") id: String,
+        @Path("itemId") itemId: String,
+        @Body body: ShopItemUpdate
+    ): ShopItemOut
+
     @POST("tracker/lists/{id}/items/{itemId}/approve")
     suspend fun approveShopItem(@Path("id") id: String, @Path("itemId") itemId: String): ShopItemOut
 
@@ -705,6 +724,26 @@ interface ApiService {
 
     @POST("tracker/lists/{id}/share")
     suspend fun shareShopList(@Path("id") id: String): ShopShareOut
+
+    @Multipart
+    @POST("tracker/lists/{id}/receipts")
+    suspend fun uploadShopReceipt(
+        @Path("id") id: String,
+        @Part file: MultipartBody.Part
+    ): ShopReceiptOut
+
+    @Streaming
+    @GET("tracker/lists/{id}/receipts/{receiptId}/image")
+    suspend fun downloadShopReceipt(
+        @Path("id") id: String,
+        @Path("receiptId") receiptId: String
+    ): ResponseBody
+
+    @DELETE("tracker/lists/{id}/receipts/{receiptId}")
+    suspend fun deleteShopReceipt(
+        @Path("id") id: String,
+        @Path("receiptId") receiptId: String
+    ): Response<Unit>
 
     @GET("tracker/friends")
     suspend fun listShopFriends(): List<ShopContactOut>
@@ -723,4 +762,13 @@ interface ApiService {
 
     @POST("tracker/inbox/{id}/reject")
     suspend fun rejectShopSend(@Path("id") id: String): Response<Unit>
+
+    @GET("tracker/passwords")
+    suspend fun listShopPdfPasswords(): List<ShopPdfPasswordOut>
+
+    @POST("tracker/passwords")
+    suspend fun saveShopPdfPassword(@Body body: ShopPdfPasswordIn): ShopPdfPasswordOut
+
+    @DELETE("tracker/passwords/{id}")
+    suspend fun deleteShopPdfPassword(@Path("id") id: String): Response<Unit>
 }

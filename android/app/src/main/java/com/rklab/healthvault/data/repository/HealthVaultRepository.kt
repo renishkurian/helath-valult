@@ -721,6 +721,12 @@ class HealthVaultRepository(
         api.saveExpenseAnalyserSchedule(ExpenseAnalyserScheduleIn(enabled, hour))
     suspend fun expenseAnalyserInsights(month: String? = null) = api.expenseAnalyserInsights(month)
     suspend fun disconnectExpenseAnalyser() = api.disconnectExpenseAnalyser()
+    suspend fun importExpenseAnalyserPdfs() = api.importExpenseAnalyserPdfs()
+    suspend fun listExpenseAnalyserMailPdfs(status: String? = null) = api.listExpenseAnalyserMailPdfs(status)
+    suspend fun ignoreExpenseAnalyserMailPdf(id: String) = api.ignoreExpenseAnalyserMailPdf(id)
+    suspend fun listShopPdfPasswords() = api.listShopPdfPasswords()
+    suspend fun saveShopPdfPassword(body: ShopPdfPasswordIn) = api.saveShopPdfPassword(body)
+    suspend fun deleteShopPdfPassword(id: String) { api.deleteShopPdfPassword(id) }
 
     // ---------- Shopping List ----------
     suspend fun trackerSummary() = api.trackerSummary()
@@ -729,12 +735,25 @@ class HealthVaultRepository(
     suspend fun getShopList(id: String) = api.getShopList(id)
     suspend fun deleteShopList(id: String) { api.deleteShopList(id) }
     suspend fun addShopItem(listId: String, body: ShopItemIn) = api.addShopItem(listId, body)
+    suspend fun updateShopItem(listId: String, itemId: String, body: ShopItemUpdate) =
+        api.updateShopItem(listId, itemId, body)
     suspend fun suggestShopItems(q: String, limit: Int = 8) = api.suggestShopItems(q, limit)
     suspend fun toggleShopItem(listId: String, itemId: String) = api.toggleShopItem(listId, itemId)
     suspend fun approveShopItem(listId: String, itemId: String) = api.approveShopItem(listId, itemId)
     suspend fun rejectShopItem(listId: String, itemId: String) { api.rejectShopItem(listId, itemId) }
     suspend fun deleteShopItem(listId: String, itemId: String) { api.deleteShopItem(listId, itemId) }
     suspend fun shareShopList(id: String) = api.shareShopList(id)
+    suspend fun uploadShopReceipt(listId: String, file: File, mime: String = "image/jpeg"): ShopReceiptOut {
+        val part = MultipartBody.Part.createFormData(
+            "file",
+            file.name,
+            file.asRequestBody(mime.toMediaTypeOrNull())
+        )
+        return api.uploadShopReceipt(listId, part)
+    }
+    suspend fun deleteShopReceipt(listId: String, receiptId: String) {
+        api.deleteShopReceipt(listId, receiptId)
+    }
     suspend fun listShopFriends() = api.listShopFriends()
     suspend fun addShopFriend(body: ShopContactIn) = api.addShopFriend(body)
     suspend fun deleteShopFriend(id: String) { api.deleteShopFriend(id) }

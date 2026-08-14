@@ -1012,6 +1012,10 @@ class ShopList(Base):
         "ShopItem", back_populates="lst", cascade="all, delete-orphan",
         order_by="ShopItem.created_at",
     )
+    receipts = relationship(
+        "ShopReceipt", back_populates="lst", cascade="all, delete-orphan",
+        order_by="ShopReceipt.created_at",
+    )
     shares = relationship("ShopShare", back_populates="lst", cascade="all, delete-orphan")
 
 
@@ -1035,6 +1039,20 @@ class ShopItem(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     lst = relationship("ShopList", back_populates="items")
+
+
+class ShopReceipt(Base):
+    """A photo or PDF of the shop bill, attached to one shopping list."""
+    __tablename__ = "shop_receipts"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    list_id = Column(String(32), ForeignKey("shop_lists.id"), nullable=False, index=True)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    image_path = Column(String(500), nullable=False)
+    image_mime = Column(String(80), nullable=True)
+    original_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    lst = relationship("ShopList", back_populates="receipts")
 
 
 class ShopShare(Base):
@@ -1087,6 +1105,27 @@ class ShopPdfPassword(Base):
     account_type = Column(String(50), default="bank", nullable=False)  # bank | credit_card
     last_4_digits = Column(String(8), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShopStatementPdf(Base):
+    """A Gmail PDF statement tracked for import (password retry without re-search)."""
+    __tablename__ = "shop_statement_pdfs"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    gmail_message_id = Column(String(128), nullable=False, index=True)
+    gmail_attachment_id = Column(String(255), nullable=True)
+    filename = Column(String(255), nullable=True)
+    subject = Column(String(500), nullable=True)
+    from_addr = Column(String(255), nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    status = Column(String(30), default="parsed", nullable=False, index=True)
+    # parsed | needs_password | failed | ignored
+    error = Column(String(500), nullable=True)
+    bank_hint = Column(String(80), nullable=True)
+    created_count = Column(Integer, default=0, nullable=False)
+    skipped_count = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ShopStatementTxn(Base):

@@ -1321,6 +1321,7 @@ class ExpenseAnalyserStatusOut(BaseModel):
     missed: int = 0
     posted: int = 0
     corrected: int = 0
+    pending_pdfs: int = 0
 
 
 class ExpenseAnalyserScheduleIn(BaseModel):
@@ -1368,6 +1369,35 @@ class ExpenseAnalyserSyncOut(BaseModel):
     matched: int = 0
     missed: int = 0
     error: Optional[str] = None
+    pdfs: int = 0
+    pdf_rows: int = 0
+    pdf_locked: int = 0
+
+
+class ExpenseAnalyserPdfImportOut(BaseModel):
+    ok: bool = True
+    started: bool = True
+    fetched: int = 0
+    pdfs: int = 0
+    created_rows: int = 0
+    skipped: int = 0
+    needs_password: int = 0
+    failed: int = 0
+    parsed: int = 0
+
+
+class ShopStatementPdfOut(BaseModel):
+    id: str
+    filename: Optional[str] = None
+    subject: Optional[str] = None
+    from_addr: Optional[str] = None
+    received_at: Optional[datetime] = None
+    status: str
+    error: Optional[str] = None
+    bank_hint: Optional[str] = None
+    created_count: int = 0
+    skipped_count: int = 0
+    created_at: datetime
 
 
 class ExpenseAnalyserSyncLogOut(BaseModel):
@@ -1450,7 +1480,17 @@ class ShopItemOut(BaseModel):
     notes: Optional[str] = None
     added_by: Optional[str] = None
     guest_name: Optional[str] = None
+    added_by_name: Optional[str] = None
     status: str = "approved"
+    created_at: datetime
+
+
+class ShopReceiptOut(BaseModel):
+    id: str
+    list_id: str
+    original_name: Optional[str] = None
+    image_mime: Optional[str] = None
+    is_image: bool = True
     created_at: datetime
 
 
@@ -1463,12 +1503,14 @@ class ShopListOut(BaseModel):
     item_count: int = 0
     checked_count: int = 0
     pending_count: int = 0
+    receipt_count: int = 0
     share_token: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     revision: Optional[str] = None
     items: Optional[List[ShopItemOut]] = None
+    receipts: Optional[List[ShopReceiptOut]] = None
 
 
 class ShopShareOut(BaseModel):

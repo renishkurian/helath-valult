@@ -253,3 +253,53 @@ def disconnect(
     require_owner(current_user)
     ea.disconnect(db, current_user)
     return schemas.ExpenseAnalyserStatusOut(**ea.status_dict(db, current_user))
+
+
+def _pdf_out(row: models.ShopStatementPdf) -> schemas.ShopStatementPdfOut:
+    return schemas.ShopStatementPdfOut(
+        id=row.id, filename=row.filename, subject=row.subject, from_addr=row.from_addr,
+        received_at=row.received_at, status=row.status, error=row.error,
+        bank_hint=row.bank_hint, created_count=row.created_count or 0,
+        skipped_count=row.skipped_count or 0, created_at=row.created_at,
+    )
+
+
+@router.post("/import-pdfs", response_model=schemas.ExpenseAnalyserPdfImportOut)
+def import_pdfs(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = ea.get_or_create(db, current_user)
+    if not row.refresh_token_enc:
+        raise HTTPException(400, "Connect Gmail first")
+    started = ea.start_pdf_import_background(vault_id(current_user))
+    if not started:
+        raise HTTPException(409, "Sync or import already running")
+    return schemas.ExpenseAnalyserPdfImportOut(ok=True, started=True)
+
+
+@router.get("/mail-pdfs", response_model=list[schemas.ShopStatementPdfOut])
+def list_mail_pdfs(
+    status: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = ea.list_mail_pdfs(db, current_user, status=status or None, limit=limit)
+    return [_pdf_out(r) for r in rows]
+
+
+@router.post("/mail-pdfs/{pdf_id}/ignore", response_model=schemas.ShopStatementPdfOut)
+def ignore_mail_pdf(
+    pdf_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        row = ea.ignore_mail_pdf(db, current_user, pdf_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    return _pdf_out(row)

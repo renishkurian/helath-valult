@@ -12,7 +12,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=12">
+<link rel="stylesheet" href="/static/vault.css?v=13">
 </head>
 <body class="has-composer public-app">
 <div class="public-wrap" id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-live="/tracker/shared/{{ token }}" data-revision="{{ revision or '' }}">
@@ -36,41 +36,45 @@
     <div class="alert alert-danger">Could not add that item.</div>
     {% endif %}
     {% if ok %}
-    <div class="alert alert-success">Added. Family names show immediately; guests wait for approval.</div>
+    <div class="alert alert-success">Added.</div>
     {% endif %}
 
     <label class="shop-ai-toggle mb-3">
       <input type="checkbox" id="shop-use-ai" checked>
       <span>Use AI (Malayalam &amp; misspellings)</span>
     </label>
-    {% if members %}
-    <div class="shop-cat-bar mb-3" id="shop-member-bar">
-      {% for name in members %}
-      <button type="button" class="chip" data-name="{{ name }}">{{ name }}</button>
-      {% endfor %}
-    </div>
-    {% endif %}
 
     <div class="public-scroll">
     {% if items %}
     <div class="list-rows">
       {% for item in items %}
-      <div class="list-row shop-item {% if item.checked %}checked{% endif %}">
-        {% if item.status == 'approved' %}
-        <form method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/toggle">
-          <button class="btn btn-ghost p-0" type="submit" aria-label="Toggle">
-            <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
-          </button>
-        </form>
-        {% endif %}
-        <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
-        <span class="row-body">
-          <span class="row-title shop-name">{{ item.name }}</span>
-          <span class="row-meta">
-            {% if item.status == 'pending' %}pending{% else %}{{ item.quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% endif %}
-            {% if item.guest_name %} · {{ item.guest_name }}{% endif %}
+      <div class="shop-item-block shop-item {% if item.checked %}checked{% endif %}">
+        <div class="list-row">
+          {% if item.status == 'approved' %}
+          <form method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/toggle">
+            <button class="btn btn-ghost p-0" type="submit" aria-label="Toggle">
+              <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
+            </button>
+          </form>
+          {% endif %}
+          <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
+          <span class="row-body">
+            <span class="row-title shop-name">{{ item.name }}</span>
+            <span class="row-meta">
+              {% if item.status == 'pending' %}pending{% else %}{{ item.quantity }}{% if item.unit %} {{ item.unit }}{% endif %}{% endif %}
+              · {{ item.added_by_name or item.guest_name or 'Someone' }}
+            </span>
           </span>
-        </span>
+          <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+        </div>
+        <form class="shop-edit-form" id="edit-{{ item.id }}" hidden method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/edit">
+          <div class="row g-2 align-items-end">
+            <div class="col-6"><label class="form-label">Name</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+            <div class="col-3"><label class="form-label">Qty</label><input class="form-control" name="quantity" type="number" step="0.01" min="0" value="{{ item.quantity }}"></div>
+            <div class="col-3"><label class="form-label">Unit</label><input class="form-control" name="unit" value="{{ item.unit or '' }}"></div>
+            <div class="col-12"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+          </div>
+        </form>
       </div>
       {% endfor %}
     </div>
@@ -80,7 +84,7 @@
       <p>Nothing on this list yet.</p>
     </div>
     {% endif %}
-    <div class="public-foot">Family names skip the pending queue. Guests wait for the owner.</div>
+    <div class="public-foot">Type your name when you add. Family names skip the pending queue.</div>
     </div>
 
     <form class="shop-composer surface mb-0" method="post" action="/tracker/public/{{ token }}/items">
@@ -101,23 +105,15 @@
     </form>
   </div>
 </div>
-<script src="/static/shop-list.js?v=2"></script>
+<script src="/static/shop-list.js?v=3"></script>
 <script>
 (function(){
   var guest = document.getElementById("guest");
   var key = "shop-guest-{{ token }}";
-  var params = new URLSearchParams(location.search);
-  var asName = params.get("as");
   if (guest) {
-    guest.value = asName || localStorage.getItem(key) || guest.value;
+    guest.value = localStorage.getItem(key) || guest.value;
     guest.addEventListener("change", function(){ localStorage.setItem(key, guest.value); });
   }
-  document.getElementById("shop-member-bar") && document.getElementById("shop-member-bar").addEventListener("click", function(e){
-    var btn = e.target.closest("[data-name]");
-    if (!btn || !guest) return;
-    guest.value = btn.getAttribute("data-name") || "";
-    localStorage.setItem(key, guest.value);
-  });
 })();
 </script>
 </body>

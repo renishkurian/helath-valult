@@ -3,7 +3,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, Request, UploadFile, File
+from fastapi import APIRouter, Depends, Form, Request, UploadFile, File, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
 from sqlalchemy.orm import Session
 
@@ -2840,13 +2840,17 @@ def expense_analyser_home(
 @router.get("/expense-analyser/settings", response_class=HTMLResponse)
 def expense_analyser_settings(request: Request, db: Session = Depends(get_db)):
     from app import expense_analyser as ea
+    from app.routers import tracker as tr
     user = _ea_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     st = ea.status_dict(db, user)
+    passwords = tr.list_passwords(db=db, current_user=user)
     return templates.TemplateResponse("expense_analyser_settings.html", _ea_ctx(
         request, user, "ea_settings",
         status=st, redirect_uri=_ea_redirect_uri(request),
+        passwords=passwords, bank_labels=tr.BANK_LABELS,
+        password_next="/admin/expense-analyser/settings",
     ))
 
 
@@ -2894,6 +2898,7 @@ def expense_analyser_insights(
 
 @router.get("/expense-analyser/statements", response_class=HTMLResponse)
 def ea_statements(request: Request, status: str = "pending", db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
     from app.routers import tracker as tr
     from app.routers import finance as fn
     user = _ea_user(request, db)
@@ -2903,9 +2908,13 @@ def ea_statements(request: Request, status: str = "pending", db: Session = Depen
     passwords = tr.list_passwords(db=db, current_user=user)
     fn.ensure_defaults(db, user)
     accounts = fn.list_accounts(db=db, current_user=user)
+    st = ea.status_dict(db, user)
+    mail_pdfs = ea.list_mail_pdfs(db, user, limit=40)
     return templates.TemplateResponse("tracker_statements.html", _ea_ctx(
         request, user, "ea_statements", rows=rows, passwords=passwords,
         accounts=accounts, status=status or "pending", inr=fn.inr,
+        ea_status=st, mail_pdfs=mail_pdfs, bank_labels=tr.BANK_LABELS,
+        password_next="/admin/expense-analyser/statements",
     ))
 
 
@@ -3205,17 +3214,14 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
     lst = tr.get_list(list_id, db=db, current_user=user)
     items = lst.items or []
     friends = tr.list_friends(db=db, current_user=user)
-    summary = tr.tracker_summary(db=db, current_user=user)
     catalog = catalog_payload()
-    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     return templates.TemplateResponse("tracker_list.html", _tr_ctx(
         request, user, "tr_lists", lst=lst,
         pending=[i for i in items if i.status == "pending"],
         approved=[i for i in items if i.status != "pending"],
         friends=friends, groups=catalog["groups"],
         catalog_json=json.dumps(catalog, ensure_ascii=False),
-        pending_statements=summary.pending_statements,
-        people=people,
+        receipts=lst.receipts or [],
         revision=lst.revision,
     ))
 
@@ -3281,6 +3287,25 @@ def tracker_delete_item(list_id: str, item_id: str, request: Request, db: Sessio
     return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
 
 
+@router.post("/tracker/lists/{list_id}/items/{item_id}/edit")
+def tracker_edit_item(
+    list_id: str, item_id: str, request: Request,
+    name: str = Form(...), quantity: str = Form("1"), unit: str = Form(""), price: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    qty = float(quantity or 1)
+    pr = float(price) if str(price).strip() else None
+    tr.update_item(list_id, item_id, sc.ShopItemUpdate(
+        name=name, quantity=qty, unit=unit or None, price=pr,
+    ), db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
 @router.post("/tracker/lists/{list_id}/share")
 def tracker_share_list(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3289,6 +3314,44 @@ def tracker_share_list(list_id: str, request: Request, db: Session = Depends(get
         return RedirectResponse("/admin/login", status_code=302)
     share = tr.share_list(list_id, request, db=db, current_user=user)
     return RedirectResponse(f"/admin/tracker/lists/{list_id}?share={share.token}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/receipts")
+async def tracker_upload_receipt(
+    list_id: str, request: Request, file: UploadFile = File(...), db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if not file.filename:
+        return RedirectResponse(f"/admin/tracker/lists/{list_id}?err=Pick+a+photo+or+PDF", status_code=302)
+    raw = await file.read()
+    try:
+        tr.save_receipt(db, user, list_id, raw, file.content_type, file.filename)
+    except HTTPException as exc:
+        from urllib.parse import quote
+        return RedirectResponse(f"/admin/tracker/lists/{list_id}?err={quote(str(exc.detail))}", status_code=302)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}?ok=1", status_code=302)
+
+
+@router.get("/tracker/lists/{list_id}/receipts/{receipt_id}/image")
+def tracker_receipt_image(list_id: str, receipt_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return tr.get_receipt_image(list_id, receipt_id, db=db, current_user=user)
+
+
+@router.post("/tracker/lists/{list_id}/receipts/{receipt_id}/delete")
+def tracker_delete_receipt(list_id: str, receipt_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.delete_receipt(list_id, receipt_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}?ok=1", status_code=302)
 
 
 @router.post("/tracker/lists/{list_id}/whatsapp")
@@ -3419,21 +3482,27 @@ def tracker_ignore_statement(txn_id: str, request: Request, db: Session = Depend
 
 @router.post("/expense-analyser/passwords")
 @router.post("/tracker/passwords")
-def tracker_save_password(
-    request: Request, identifier: str = Form(...), password: str = Form(...),
-    account_type: str = Form("bank"), last_4_digits: str = Form(""),
-    db: Session = Depends(get_db),
-):
+async def tracker_save_password(request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
     from app import schemas as sc
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    identifier = str(form.get("identifier") or "").strip()
+    password = str(form.get("password") or "")
+    account_type = str(form.get("account_type") or "bank")
+    last_4_digits = str(form.get("last_4_digits") or "")
+    nxt = str(form.get("next") or "/admin/expense-analyser/statements")
+    if nxt not in ("/admin/expense-analyser/statements", "/admin/expense-analyser/settings"):
+        nxt = "/admin/expense-analyser/statements"
+    if not identifier or not password:
+        return RedirectResponse(f"{nxt}?err=Bank+name+and+password+are+required", status_code=302)
     tr.save_password(sc.ShopPdfPasswordIn(
         identifier=identifier, password=password, account_type=account_type,
         last_4_digits=last_4_digits or None,
     ), db=db, current_user=user)
-    return RedirectResponse("/admin/expense-analyser/statements?ok=1", status_code=302)
+    return RedirectResponse(f"{nxt}?ok=password", status_code=302)
 
 
 @router.post("/expense-analyser/passwords/{password_id}/delete")
@@ -3444,6 +3513,37 @@ def tracker_delete_password(password_id: str, request: Request, db: Session = De
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     tr.delete_password(password_id, db=db, current_user=user)
+    nxt = request.query_params.get("next") or "/admin/expense-analyser/statements"
+    if nxt not in ("/admin/expense-analyser/statements", "/admin/expense-analyser/settings"):
+        nxt = "/admin/expense-analyser/statements"
+    return RedirectResponse(nxt, status_code=302)
+
+
+@router.post("/expense-analyser/statements/from-mail")
+def ea_import_pdfs_from_mail(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = ea.get_or_create(db, user)
+    if not row.refresh_token_enc:
+        return RedirectResponse("/admin/expense-analyser/settings?err=gmail", status_code=302)
+    started = ea.start_pdf_import_background(vault_id(user))
+    if not started:
+        return RedirectResponse("/admin/expense-analyser/statements?ok=sync_busy", status_code=303)
+    return RedirectResponse("/admin/expense-analyser/statements?ok=pdf_started", status_code=303)
+
+
+@router.post("/expense-analyser/mail-pdfs/{pdf_id}/ignore")
+def ea_ignore_mail_pdf(pdf_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        ea.ignore_mail_pdf(db, user, pdf_id)
+    except LookupError:
+        pass
     return RedirectResponse("/admin/expense-analyser/statements", status_code=302)
 
 

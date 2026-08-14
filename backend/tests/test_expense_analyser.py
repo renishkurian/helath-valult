@@ -413,3 +413,209 @@ def test_status_includes_retagging_flag():
     r = client.get("/expense-analyser/status", headers=headers)
     assert r.status_code == 200
     assert r.json().get("retagging") is False
+    assert r.json().get("pending_pdfs") == 0
+
+
+def _encrypted_pdf(password: str = "secret12") -> bytes:
+    from io import BytesIO
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    writer.encrypt(password)
+    buf = BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def test_extract_pdf_parts_from_gmail_payload():
+    from app.gmail import extract_pdf_parts
+
+    payload = {
+        "id": "m-pdf",
+        "payload": {
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {"mimeType": "text/plain", "body": {"data": "SGVsbG8="}},
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "HDFC_eStatement.pdf",
+                    "body": {"attachmentId": "att-9", "size": 1200},
+                },
+            ],
+        },
+    }
+    parts = extract_pdf_parts(payload)
+    assert len(parts) == 1
+    assert parts[0]["filename"] == "HDFC_eStatement.pdf"
+    assert parts[0]["attachment_id"] == "att-9"
+
+
+def test_gmail_pdf_import_unlocks_with_saved_bank_password(monkeypatch):
+    from app import expense_analyser as ea
+    from app.database import SessionLocal
+
+    headers, email = _headers()
+    saved = client.post("/tracker/passwords", headers=headers, json={
+        "identifier": "HDFC", "password": "dob1960", "account_type": "bank",
+    })
+    assert saved.status_code == 201, saved.text
+    raw_pdf = _encrypted_pdf("dob1960")
+    payload = {
+        "id": "m-pdf-1",
+        "threadId": "t-pdf",
+        "snippet": "Your e-statement",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "HDFC Bank e-Statement"},
+                {"name": "From", "value": "statements@hdfcbank.com"},
+            ],
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "HDFC_eStatement.pdf",
+                    "body": {"attachmentId": "att-pdf", "size": len(raw_pdf)},
+                },
+            ],
+        },
+    }
+
+    monkeypatch.setattr("app.gmail.list_message_ids_paged", lambda *a, **k: ["m-pdf-1"])
+    monkeypatch.setattr("app.gmail.get_message", lambda *a, **k: payload)
+    monkeypatch.setattr("app.gmail.get_attachment_bytes", lambda *a, **k: raw_pdf)
+
+    def fake_parse(file_bytes, filename, password=None):
+        assert password == "dob1960"
+        return {
+            "transactions": [{
+                "date": "2026-08-01", "description": "UPI SWIGGY", "amount": 120,
+                "type": "debit", "category": "food", "bank_name": "HDFC",
+                "account_number": "4521", "account_type": "bank",
+                "transaction_id": "gmail-pdf-tx1", "reference_number": None,
+            }],
+            "parser_used": "FakeParser",
+            "account_info": {},
+            "summary": {},
+        }
+
+    monkeypatch.setattr("app.statement_parsers.parse_statement_file", fake_parse)
+
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        row = ea.get_or_create(db, user)
+        row.refresh_token_enc = "x"
+        db.commit()
+        result = ea.import_gmail_pdfs(db, user, token="tok")
+        assert result["parsed"] == 1
+        assert result["created_rows"] == 1
+        assert result["needs_password"] == 0
+        pdfs = ea.list_mail_pdfs(db, user)
+        assert pdfs[0].status == "parsed"
+        rows = (
+            db.query(models.ShopStatementTxn)
+            .filter(models.ShopStatementTxn.user_id == vault_id(user))
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].source_file.startswith("mail ·")
+        assert rows[0].description == "UPI SWIGGY"
+    finally:
+        db.close()
+
+
+def test_gmail_pdf_import_marks_needs_password(monkeypatch):
+    from app import expense_analyser as ea
+    from app.database import SessionLocal
+
+    headers, email = _headers()
+    raw_pdf = _encrypted_pdf("unknown")
+    payload = {
+        "id": "m-pdf-2",
+        "threadId": "t-pdf",
+        "snippet": "statement",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "SBI e-Statement"},
+                {"name": "From", "value": "estatement@sbi.co.in"},
+            ],
+            "mimeType": "multipart/mixed",
+            "parts": [
+                {
+                    "mimeType": "application/pdf",
+                    "filename": "SBI.pdf",
+                    "body": {"attachmentId": "att-2", "size": len(raw_pdf)},
+                },
+            ],
+        },
+    }
+    monkeypatch.setattr("app.gmail.list_message_ids_paged", lambda *a, **k: ["m-pdf-2"])
+    monkeypatch.setattr("app.gmail.get_message", lambda *a, **k: payload)
+    monkeypatch.setattr("app.gmail.get_attachment_bytes", lambda *a, **k: raw_pdf)
+
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        row = ea.get_or_create(db, user)
+        row.refresh_token_enc = "x"
+        db.commit()
+        result = ea.import_gmail_pdfs(db, user, token="tok")
+        assert result["needs_password"] == 1
+        pdfs = ea.list_mail_pdfs(db, user)
+        assert pdfs[0].status == "needs_password"
+        st = client.get("/expense-analyser/status", headers=headers).json()
+        assert st["pending_pdfs"] == 1
+
+        client.post("/tracker/passwords", headers=headers, json={
+            "identifier": "SBI", "password": "unknown", "account_type": "bank",
+        })
+
+        def fake_parse(file_bytes, filename, password=None):
+            assert password == "unknown"
+            return {
+                "transactions": [{
+                    "date": "2026-08-02", "description": "ATM WDL", "amount": 500,
+                    "type": "debit", "category": "cash", "bank_name": "SBI",
+                    "account_number": "1001", "account_type": "bank",
+                    "transaction_id": "gmail-pdf-tx2", "reference_number": None,
+                }],
+                "parser_used": "FakeParser",
+                "account_info": {},
+                "summary": {},
+            }
+
+        monkeypatch.setattr("app.statement_parsers.parse_statement_file", fake_parse)
+        monkeypatch.setattr("app.expense_analyser._access_token", lambda *a, **k: "tok")
+        retried = ea.retry_locked_pdfs(db, user)
+        assert retried["parsed"] == 1
+        db.refresh(pdfs[0])
+        assert pdfs[0].status == "parsed"
+    finally:
+        db.close()
+
+
+def test_admin_settings_shows_bank_passwords():
+    email = "ea-settings-pdf@example.com"
+    _headers(email)
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    page = session.get("/admin/expense-analyser/settings")
+    assert page.status_code == 200, page.text[:500]
+    assert "Bank PDF passwords" in page.text
+    assert "Bank / label" in page.text
+    assert "Internal Server Error" not in page.text
+
+
+def test_import_pdfs_requires_gmail():
+    headers, _ = _headers()
+    r = client.post("/expense-analyser/import-pdfs", headers=headers)
+    assert r.status_code == 400
+    empty = client.get("/expense-analyser/mail-pdfs", headers=headers)
+    assert empty.status_code == 200
+    assert empty.json() == []

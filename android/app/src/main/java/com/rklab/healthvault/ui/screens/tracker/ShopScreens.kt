@@ -2,6 +2,8 @@ package com.rklab.healthvault.ui.screens.tracker
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -33,6 +35,7 @@ import com.rklab.healthvault.ui.theme.Navy
 import com.rklab.healthvault.ui.theme.StampRed
 import com.rklab.healthvault.ui.theme.TextDark
 import com.rklab.healthvault.ui.theme.VaultGold
+import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -163,6 +166,7 @@ fun ShopDetailScreen(
     var newItem by remember { mutableStateOf("") }
     var useAi by remember { mutableStateOf(true) }
     var suggestions by remember { mutableStateOf<List<ShopGroceryItemOut>>(emptyList()) }
+    var editing by remember { mutableStateOf<ShopItemOut?>(null) }
 
     fun reload() {
         scope.launch {
@@ -189,6 +193,25 @@ fun ShopDetailScreen(
             .onFailure { suggestions = emptyList() }
     }
     val items = lst?.items.orEmpty()
+    val receipts = lst?.receipts.orEmpty()
+    val pickBill = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val copied = FileUtil.copyUriToCacheFile(context, uri, "shop_${System.currentTimeMillis()}")
+                val mime = FileUtil.mimeTypeOf(context, uri)
+                val file = if (mime.startsWith("image/")) FileUtil.enhanceImageFile(copied) else copied
+                repository.uploadShopReceipt(
+                    listId,
+                    file,
+                    if (mime.startsWith("image/")) "image/jpeg" else mime
+                )
+            }.onSuccess { reload() }
+                .onFailure {
+                    Toast.makeText(context, it.message ?: "Could not save bill copy", Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(HubBg)) {
         Row(
@@ -299,6 +322,45 @@ fun ShopDetailScreen(
                 contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                item {
+                    Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Bills & receipts", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { pickBill.launch("image/*") }) {
+                                    Text("Add copy", color = VaultGold)
+                                }
+                            }
+                            Text(
+                                if (receipts.isEmpty()) "Attach a photo of the shop bill to this list."
+                                else "${receipts.size} attached",
+                                color = InkSoft,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            receipts.forEach { rec ->
+                                Row(
+                                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        rec.original_name ?: "Bill copy",
+                                        color = Ink,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            runCatching { repository.deleteShopReceipt(listId, rec.id) }
+                                            reload()
+                                        }
+                                    }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Remove bill", tint = InkSoft)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 items(items, key = { it.id }) { item ->
                     Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth()) {
                         Row(
@@ -329,10 +391,22 @@ fun ShopDetailScreen(
                                     textDecoration = if (item.checked) TextDecoration.LineThrough else null
                                 )
                                 val meta = buildString {
-                                    if (item.status == "pending") append("pending")
-                                    item.guest_name?.let { if (isNotEmpty()) append(" · "); append(it) }
+                                    append(item.quantity)
+                                    item.unit?.takeIf { it.isNotBlank() }?.let { append(" $it") }
+                                    if (item.status == "pending") {
+                                        if (isNotEmpty()) append(" · ")
+                                        append("pending")
+                                    }
+                                    val who = item.added_by_name ?: item.guest_name
+                                    who?.takeIf { it.isNotBlank() }?.let {
+                                        if (isNotEmpty()) append(" · ")
+                                        append(it)
+                                    }
                                 }
                                 if (meta.isNotBlank()) Text(meta, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                            }
+                            TextButton(onClick = { editing = item }) {
+                                Text("Edit", color = VaultGold)
                             }
                             IconButton(onClick = {
                                 scope.launch {
@@ -346,6 +420,49 @@ fun ShopDetailScreen(
                     }
                 }
             }
+        }
+        editing?.let { item ->
+            var name by remember(item.id) { mutableStateOf(item.name) }
+            var qty by remember(item.id) { mutableStateOf(item.quantity.toString()) }
+            var unit by remember(item.id) { mutableStateOf(item.unit ?: "") }
+            var price by remember(item.id) { mutableStateOf(item.price?.toString() ?: "") }
+            AlertDialog(
+                onDismissRequest = { editing = null },
+                title = { Text("Edit item") },
+                text = {
+                    Column {
+                        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = qty, onValueChange = { qty = it }, label = { Text("Qty") }, singleLine = true)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, singleLine = true)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Price") }, singleLine = true)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        scope.launch {
+                            runCatching {
+                                repository.updateShopItem(
+                                    listId,
+                                    item.id,
+                                    ShopItemUpdate(
+                                        name = name.trim(),
+                                        quantity = qty.toDoubleOrNull(),
+                                        unit = unit.trim().ifBlank { null },
+                                        price = price.toDoubleOrNull()
+                                    )
+                                )
+                            }.onSuccess {
+                                editing = null
+                                reload()
+                            }
+                        }
+                    }) { Text("Save") }
+                },
+                dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } }
+            )
         }
     }
 }

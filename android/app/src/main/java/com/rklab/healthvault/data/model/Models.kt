@@ -1012,7 +1012,8 @@ data class ExpenseAnalyserStatusOut(
     val matched: Int = 0,
     val missed: Int = 0,
     val posted: Int = 0,
-    val corrected: Int = 0
+    val corrected: Int = 0,
+    val pending_pdfs: Int = 0
 )
 
 data class ExpenseAnalyserItemOut(
@@ -1054,7 +1055,51 @@ data class ExpenseAnalyserSyncOut(
     val skipped: Int = 0,
     val matched: Int = 0,
     val missed: Int = 0,
-    val error: String? = null
+    val error: String? = null,
+    val pdfs: Int = 0,
+    val pdf_rows: Int = 0,
+    val pdf_locked: Int = 0
+)
+
+data class ExpenseAnalyserPdfImportOut(
+    val ok: Boolean = true,
+    val started: Boolean = true,
+    val fetched: Int = 0,
+    val pdfs: Int = 0,
+    val created_rows: Int = 0,
+    val skipped: Int = 0,
+    val needs_password: Int = 0,
+    val failed: Int = 0,
+    val parsed: Int = 0
+)
+
+data class ShopPdfPasswordIn(
+    val identifier: String,
+    val password: String,
+    val account_type: String = "bank",
+    val last_4_digits: String? = null
+)
+
+data class ShopPdfPasswordOut(
+    val id: String,
+    val identifier: String,
+    val account_type: String = "bank",
+    val last_4_digits: String? = null,
+    val created_at: String = ""
+)
+
+data class ShopStatementPdfOut(
+    val id: String,
+    val filename: String? = null,
+    val subject: String? = null,
+    val from_addr: String? = null,
+    val received_at: String? = null,
+    val status: String = "parsed",
+    val error: String? = null,
+    val bank_hint: String? = null,
+    val created_count: Int = 0,
+    val skipped_count: Int = 0,
+    val created_at: String = ""
 )
 
 data class ExpenseAnalyserSyncLogOut(
@@ -1157,12 +1202,23 @@ data class ShopListOut(
     val item_count: Int = 0,
     val checked_count: Int = 0,
     val pending_count: Int = 0,
+    val receipt_count: Int = 0,
     val share_token: String? = null,
     val created_at: String = "",
     val updated_at: String? = null,
     val completed_at: String? = null,
     val revision: String? = null,
-    val items: List<ShopItemOut>? = null
+    val items: List<ShopItemOut>? = null,
+    val receipts: List<ShopReceiptOut>? = null
+)
+
+data class ShopReceiptOut(
+    val id: String,
+    val list_id: String = "",
+    val original_name: String? = null,
+    val image_mime: String? = null,
+    val is_image: Boolean = true,
+    val created_at: String = ""
 )
 
 data class ShopListIn(
@@ -1183,6 +1239,7 @@ data class ShopItemOut(
     val notes: String? = null,
     val added_by: String? = null,
     val guest_name: String? = null,
+    val added_by_name: String? = null,
     val status: String = "approved",
     val created_at: String = ""
 )
@@ -1203,6 +1260,13 @@ data class ShopItemIn(
     val emoji: String? = null,
     val category: String? = null,
     val notes: String? = null
+)
+
+data class ShopItemUpdate(
+    val name: String? = null,
+    val quantity: Double? = null,
+    val unit: String? = null,
+    val price: Double? = null
 )
 
 data class ShopShareOut(

@@ -107,6 +107,30 @@ def start_sync_background(user_id: str, *, trigger: str = "manual") -> bool:
     return True
 
 
+def start_pdf_import_background(user_id: str) -> bool:
+    """Download statement PDFs from Gmail on a worker thread."""
+    if _is_heavy_job(user_id):
+        return False
+    _mark_syncing(user_id, True)
+
+    def _run() -> None:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if user:
+                import_gmail_pdfs(db, user)
+        except Exception:
+            log.exception("background expense analyser pdf import failed")
+        finally:
+            _mark_syncing(user_id, False)
+            db.close()
+
+    threading.Thread(target=_run, name=f"ea-pdfs-{user_id[:8]}", daemon=True).start()
+    return True
+
+
 def start_retag_background(
     user_id: str,
     *,
@@ -193,6 +217,14 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
     for status, n in rows:
         if status in counts:
             counts[status] = int(n)
+    pending_pdfs = (
+        db.query(models.ShopStatementPdf)
+        .filter(
+            models.ShopStatementPdf.user_id == uid,
+            models.ShopStatementPdf.status == "needs_password",
+        )
+        .count()
+    )
     return {
         "connected": bool(row and row.refresh_token_enc),
         "email": row.connected_email if row else None,
@@ -205,6 +237,7 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
         "last_error": row.last_error if row else None,
         "syncing": _is_syncing(uid),
         "retagging": _is_retagging(uid),
+        "pending_pdfs": int(pending_pdfs),
         **counts,
     }
 
@@ -525,6 +558,16 @@ def sync_gmail(
         row.last_sync_at = datetime.utcnow()
         row.last_ok = True
         row.last_error = None
+        try:
+            pdf_out = import_gmail_pdfs(db, user, token=token)
+            out["pdfs"] = pdf_out.get("pdfs", 0)
+            out["pdf_rows"] = pdf_out.get("created_rows", 0)
+            out["pdf_locked"] = pdf_out.get("needs_password", 0)
+        except Exception:  # noqa: BLE001
+            log.exception("gmail pdf import after sync failed")
+            out["pdfs"] = 0
+            out["pdf_rows"] = 0
+            out["pdf_locked"] = 0
         _record_sync_log(db, uid, trigger=trigger, started=started, out=out, ok=True)
         db.commit()
         try:
@@ -568,6 +611,289 @@ def _record_sync_log(
         started_at=started,
         finished_at=datetime.utcnow(),
     ))
+
+
+_PDF_IMPORT_LIMIT = 20
+_BANK_HINTS = (
+    ("HDFC", ("hdfc",)),
+    ("SBI", ("sbi", "state bank", "onlinesbi")),
+    ("ICICI", ("icici",)),
+    ("Axis", ("axisbank", "axis bank")),
+    ("Kotak", ("kotak",)),
+    ("Yes Bank", ("yesbank", "yes bank")),
+    ("IndusInd", ("indusind",)),
+    ("RBL", ("rblbank", "rbl")),
+    ("IDFC", ("idfc",)),
+    ("Amex", ("americanexpress", "amex")),
+)
+
+
+def bank_hint_from_text(*parts: str | None) -> str | None:
+    blob = " ".join(p or "" for p in parts).lower()
+    for name, keys in _BANK_HINTS:
+        if any(k in blob for k in keys):
+            return name
+    return None
+
+
+def _pdf_part_key(part: dict[str, Any]) -> str:
+    aid = (part.get("attachment_id") or "").strip()
+    if aid:
+        return aid[:255]
+    name = (part.get("filename") or "statement.pdf").strip() or "statement.pdf"
+    return f"inline:{name}"[:255]
+
+
+def _mail_pdf_row(
+    db: Session, uid: str, message_id: str, attachment_id: str,
+) -> models.ShopStatementPdf | None:
+    return (
+        db.query(models.ShopStatementPdf)
+        .filter(
+            models.ShopStatementPdf.user_id == uid,
+            models.ShopStatementPdf.gmail_message_id == message_id,
+            models.ShopStatementPdf.gmail_attachment_id == attachment_id,
+        )
+        .first()
+    )
+
+
+def _upsert_mail_pdf(
+    db: Session,
+    user: models.User,
+    mail: dict[str, Any],
+    part: dict[str, Any],
+    *,
+    status: str,
+    error: str | None = None,
+    created_count: int = 0,
+    skipped_count: int = 0,
+) -> models.ShopStatementPdf:
+    uid = vault_id(user)
+    mid = str(mail.get("id") or "")
+    key = _pdf_part_key(part)
+    filename = (part.get("filename") or "statement.pdf")[:255]
+    hint = bank_hint_from_text(mail.get("subject"), mail.get("from_addr"), filename)
+    row = _mail_pdf_row(db, uid, mid, key)
+    if row is None:
+        row = models.ShopStatementPdf(
+            user_id=uid, gmail_message_id=mid, gmail_attachment_id=key,
+        )
+        db.add(row)
+    row.filename = filename
+    row.subject = (mail.get("subject") or None)
+    row.from_addr = (mail.get("from_addr") or None)
+    row.received_at = mail.get("received_at")
+    row.status = status
+    row.error = (error or None)
+    row.bank_hint = hint
+    row.created_count = int(created_count)
+    row.skipped_count = int(skipped_count)
+    row.updated_at = datetime.utcnow()
+    db.flush()
+    return row
+
+
+def _download_pdf_bytes(token: str, mail: dict[str, Any], part: dict[str, Any]) -> bytes:
+    from app.routers.tracker import MAX_PDF
+
+    raw = part.get("data")
+    if raw:
+        return raw
+    aid = part.get("attachment_id")
+    mid = mail.get("id")
+    if not aid or not mid or str(aid).startswith("inline:"):
+        return b""
+    data = gmail.get_attachment_bytes(token, str(mid), str(aid))
+    if len(data) > MAX_PDF:
+        raise ValueError("PDF is larger than 10 MB")
+    return data
+
+
+def _ingest_mail_pdf(
+    db: Session,
+    user: models.User,
+    token: str,
+    mail: dict[str, Any],
+    part: dict[str, Any],
+) -> dict[str, Any]:
+    from app.routers.tracker import ingest_statement_bytes, resolve_pdf_password
+    from app.statement_parsers import is_pdf_encrypted
+
+    uid = vault_id(user)
+    mid = str(mail.get("id") or "")
+    key = _pdf_part_key(part)
+    existing = _mail_pdf_row(db, uid, mid, key)
+    if existing and existing.status in ("parsed", "ignored"):
+        return {"status": existing.status, "created": 0, "skipped": 1}
+
+    filename = (part.get("filename") or "statement.pdf")
+    try:
+        raw = _download_pdf_bytes(token, mail, part)
+    except Exception as exc:  # noqa: BLE001
+        _upsert_mail_pdf(db, user, mail, part, status="failed", error=str(exc)[:500])
+        return {"status": "failed", "created": 0, "skipped": 0, "error": str(exc)}
+    if not raw:
+        _upsert_mail_pdf(db, user, mail, part, status="failed", error="Empty PDF attachment")
+        return {"status": "failed", "created": 0, "skipped": 0}
+
+    hint = " ".join(filter(None, [
+        mail.get("subject"), mail.get("from_addr"), filename,
+        bank_hint_from_text(mail.get("subject"), mail.get("from_addr"), filename),
+    ]))
+    try:
+        pwd = resolve_pdf_password(db, user, raw, hint=hint)
+        if is_pdf_encrypted(raw) and not pwd:
+            _upsert_mail_pdf(
+                db, user, mail, part, status="needs_password",
+                error="Password-protected PDF. Add this bank's password, then load again.",
+            )
+            return {"status": "needs_password", "created": 0, "skipped": 0}
+        result = ingest_statement_bytes(
+            db, user, raw, filename, password=pwd,
+            source_label=f"mail · {filename}",
+        )
+        _upsert_mail_pdf(
+            db, user, mail, part, status="parsed",
+            created_count=result.get("created", 0),
+            skipped_count=result.get("skipped", 0),
+        )
+        return {
+            "status": "parsed",
+            "created": result.get("created", 0),
+            "skipped": result.get("skipped", 0),
+        }
+    except ValueError as exc:
+        msg = str(exc)
+        status = "needs_password" if "password" in msg.lower() else "failed"
+        _upsert_mail_pdf(db, user, mail, part, status=status, error=msg[:500])
+        return {"status": status, "created": 0, "skipped": 0, "error": msg}
+    except Exception as exc:  # noqa: BLE001
+        _upsert_mail_pdf(db, user, mail, part, status="failed", error=str(exc)[:500])
+        return {"status": "failed", "created": 0, "skipped": 0, "error": str(exc)}
+
+
+def import_gmail_pdfs(
+    db: Session,
+    user: models.User,
+    *,
+    token: str | None = None,
+    limit: int = _PDF_IMPORT_LIMIT,
+) -> dict[str, Any]:
+    """Find statement PDFs in Gmail and parse them with saved bank passwords."""
+    row = get_or_create(db, user)
+    if not row.refresh_token_enc:
+        raise RuntimeError("Connect Gmail first")
+    access = token or _access_token(db, row)
+    ids = gmail.list_message_ids_paged(access, gmail.DEFAULT_PDF_QUERY, limit=limit)
+    out = {
+        "fetched": len(ids), "pdfs": 0, "created_rows": 0, "skipped": 0,
+        "needs_password": 0, "failed": 0, "parsed": 0,
+    }
+    for mid in ids:
+        try:
+            raw_msg = gmail.get_message(access, mid)
+            mail = gmail.extract_message(raw_msg)
+            parts = gmail.extract_pdf_parts(raw_msg)
+            raw_msg = None
+        except Exception as exc:  # noqa: BLE001
+            log.warning("gmail pdf message %s failed: %s", mid, exc)
+            out["skipped"] += 1
+            continue
+        if not parts:
+            out["skipped"] += 1
+            continue
+        for part in parts:
+            result = _ingest_mail_pdf(db, user, access, mail, part)
+            out["pdfs"] += 1
+            status = result.get("status")
+            out["created_rows"] += int(result.get("created") or 0)
+            if status == "parsed":
+                out["parsed"] += 1
+            elif status == "needs_password":
+                out["needs_password"] += 1
+            elif status == "failed":
+                out["failed"] += 1
+            else:
+                out["skipped"] += int(result.get("skipped") or 1)
+        db.commit()
+    return out
+
+
+def retry_locked_pdfs(db: Session, user: models.User) -> dict[str, Any]:
+    """Re-download PDFs that needed a password after the user saved a bank password."""
+    row = _row(db, user)
+    if not row or not row.refresh_token_enc:
+        return {"retried": 0, "parsed": 0, "created_rows": 0, "needs_password": 0}
+    try:
+        token = _access_token(db, row)
+    except Exception:
+        return {"retried": 0, "parsed": 0, "created_rows": 0, "needs_password": 0}
+    uid = vault_id(user)
+    locked = (
+        db.query(models.ShopStatementPdf)
+        .filter(
+            models.ShopStatementPdf.user_id == uid,
+            models.ShopStatementPdf.status.in_(("needs_password", "failed")),
+        )
+        .all()
+    )
+    out = {"retried": 0, "parsed": 0, "created_rows": 0, "needs_password": 0}
+    for rec in locked:
+        aid = rec.gmail_attachment_id or ""
+        if not rec.gmail_message_id or aid.startswith("inline:"):
+            continue
+        mail = {
+            "id": rec.gmail_message_id,
+            "subject": rec.subject,
+            "from_addr": rec.from_addr,
+            "received_at": rec.received_at,
+        }
+        part = {"filename": rec.filename or "statement.pdf", "attachment_id": aid}
+        result = _ingest_mail_pdf(db, user, token, mail, part)
+        out["retried"] += 1
+        out["created_rows"] += int(result.get("created") or 0)
+        if result.get("status") == "parsed":
+            out["parsed"] += 1
+        elif result.get("status") == "needs_password":
+            out["needs_password"] += 1
+    db.commit()
+    return out
+
+
+def list_mail_pdfs(
+    db: Session,
+    user: models.User,
+    *,
+    status: str | None = None,
+    limit: int = 50,
+) -> list[models.ShopStatementPdf]:
+    q = db.query(models.ShopStatementPdf).filter(models.ShopStatementPdf.user_id == vault_id(user))
+    if status:
+        q = q.filter(models.ShopStatementPdf.status == status)
+    return (
+        q.order_by(models.ShopStatementPdf.created_at.desc())
+        .limit(max(1, min(100, limit)))
+        .all()
+    )
+
+
+def ignore_mail_pdf(db: Session, user: models.User, pdf_id: str) -> models.ShopStatementPdf:
+    row = (
+        db.query(models.ShopStatementPdf)
+        .filter(
+            models.ShopStatementPdf.id == pdf_id,
+            models.ShopStatementPdf.user_id == vault_id(user),
+        )
+        .first()
+    )
+    if not row:
+        raise LookupError("PDF not found")
+    row.status = "ignored"
+    row.error = None
+    db.commit()
+    db.refresh(row)
+    return row
 
 
 def count_sync_logs(db: Session, user: models.User) -> int:

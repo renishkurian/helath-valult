@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.rklab.healthvault.data.model.ExpenseAnalyserInsightsOut
 import com.rklab.healthvault.data.model.ExpenseAnalyserItemOut
 import com.rklab.healthvault.data.model.ExpenseAnalyserPostIn
@@ -58,6 +59,9 @@ import com.rklab.healthvault.data.model.ExpenseAnalyserStatusOut
 import com.rklab.healthvault.data.model.ExpenseAnalyserSyncLogOut
 import com.rklab.healthvault.data.model.FinanceAccountOut
 import com.rklab.healthvault.data.model.FinanceCategoryOut
+import com.rklab.healthvault.data.model.ShopPdfPasswordIn
+import com.rklab.healthvault.data.model.ShopPdfPasswordOut
+import com.rklab.healthvault.data.model.ShopStatementPdfOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.screens.finance.ExpenseRed
 import com.rklab.healthvault.ui.screens.finance.IncomeBlue
@@ -557,6 +561,12 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
     var status by remember { mutableStateOf<ExpenseAnalyserStatusOut?>(null) }
     var query by remember { mutableStateOf("") }
     var hourOpen by remember { mutableStateOf(false) }
+    var passwords by remember { mutableStateOf<List<ShopPdfPasswordOut>>(emptyList()) }
+    var mailPdfs by remember { mutableStateOf<List<ShopStatementPdfOut>>(emptyList()) }
+    var bankLabel by remember { mutableStateOf("") }
+    var bankPassword by remember { mutableStateOf("") }
+    var bankLast4 by remember { mutableStateOf("") }
+    var bankIsCard by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
@@ -566,6 +576,10 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                     query = it.sync_query.orEmpty()
                 }
                 .onFailure { Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show() }
+            runCatching { repository.listShopPdfPasswords() }
+                .onSuccess { passwords = it }
+            runCatching { repository.listExpenseAnalyserMailPdfs() }
+                .onSuccess { mailPdfs = it.filter { p -> p.status == "needs_password" || p.status == "failed" } }
         }
     }
     LaunchedEffect(Unit) { reload() }
@@ -598,7 +612,10 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                         Text("Last sync ${it.replace('T', ' ').take(19)}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
                     }
                     Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Button(
                             onClick = {
                                 scope.launch {
@@ -613,6 +630,19 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                             colors = ButtonDefaults.buttonColors(containerColor = Navy),
                             enabled = st.syncing != true
                         ) { Text(if (st.syncing) "Syncing…" else "Sync now") }
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    runCatching { repository.importExpenseAnalyserPdfs() }
+                                        .onSuccess {
+                                            Toast.makeText(context, "Loading PDFs from Gmail…", Toast.LENGTH_SHORT).show()
+                                            reload()
+                                        }
+                                        .onFailure { Toast.makeText(context, errMessage(it), Toast.LENGTH_LONG).show() }
+                                }
+                            },
+                            enabled = st.syncing != true
+                        ) { Text("Load PDFs") }
                         OutlinedButton(onClick = {
                             scope.launch {
                                 runCatching { repository.disconnectExpenseAnalyser() }
@@ -719,6 +749,118 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                     colors = ButtonDefaults.buttonColors(containerColor = Navy),
                     modifier = Modifier.padding(top = 8.dp)
                 ) { Text("Save query") }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(HubGlass)
+                .border(1.dp, LineColor, CardShape)
+                .padding(16.dp)
+        ) {
+            Column {
+                Text("Bank PDF passwords", color = Ink, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Add each bank and the password printed on the statement so Gmail PDFs unlock automatically.",
+                    color = InkSoft,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 6.dp, bottom = 8.dp)
+                )
+                passwords.forEach { row ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(row.identifier, color = Ink)
+                            Text(
+                                listOfNotNull(
+                                    row.account_type.replace('_', ' '),
+                                    row.last_4_digits
+                                ).joinToString(" · "),
+                                color = InkSoft,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                runCatching { repository.deleteShopPdfPassword(row.id) }
+                                    .onSuccess { reload() }
+                                    .onFailure { Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show() }
+                            }
+                        }) { Text("Remove", color = StampRed) }
+                    }
+                }
+                OutlinedTextField(
+                    value = bankLabel,
+                    onValueChange = { bankLabel = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("Bank / label") },
+                    placeholder = { Text("HDFC 4521") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = bankPassword,
+                    onValueChange = { bankPassword = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("PDF password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation()
+                )
+                OutlinedTextField(
+                    value = bankLast4,
+                    onValueChange = { bankLast4 = it.take(8) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    label = { Text("Last 4 (optional)") },
+                    singleLine = true
+                )
+                Row(
+                    Modifier.padding(top = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Credit card", color = Ink, modifier = Modifier.weight(1f))
+                    Switch(checked = bankIsCard, onCheckedChange = { bankIsCard = it })
+                }
+                Button(
+                    onClick = {
+                        if (bankLabel.isBlank() || bankPassword.isBlank()) {
+                            Toast.makeText(context, "Bank name and password are required", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        scope.launch {
+                            runCatching {
+                                repository.saveShopPdfPassword(
+                                    ShopPdfPasswordIn(
+                                        identifier = bankLabel.trim(),
+                                        password = bankPassword,
+                                        account_type = if (bankIsCard) "credit_card" else "bank",
+                                        last_4_digits = bankLast4.trim().ifBlank { null }
+                                    )
+                                )
+                            }.onSuccess {
+                                bankLabel = ""
+                                bankPassword = ""
+                                bankLast4 = ""
+                                bankIsCard = false
+                                Toast.makeText(context, "Bank password saved", Toast.LENGTH_SHORT).show()
+                                reload()
+                            }.onFailure { Toast.makeText(context, errMessage(it), Toast.LENGTH_LONG).show() }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Navy),
+                    modifier = Modifier.padding(top = 8.dp)
+                ) { Text("Save bank") }
+                mailPdfs.takeIf { it.isNotEmpty() }?.let { locked ->
+                    Text(
+                        "${locked.size} Gmail PDF(s) still need a password or failed to parse.",
+                        color = InkSoft,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
             }
         }
         Spacer(Modifier.height(12.dp))

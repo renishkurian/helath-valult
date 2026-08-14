@@ -8,13 +8,15 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from app.templating import setup_templates
 
 from app import crypto, models, schemas
+from app.config import settings
 from app.database import get_db
 from app.deps import get_current_user, require_owner, vault_id
+from app.extract import enhance_scan
 from app.grocery import (
     catalog_payload, format_item_name, grouped_quick_add, money, PARSER_TO_FINANCE,
     recognize, seed_dictionary, suggest,
@@ -24,6 +26,9 @@ router = APIRouter(prefix="/tracker", tags=["tracker"])
 templates = setup_templates()
 
 MAX_PDF = 10 * 1024 * 1024
+BANK_LABELS = (
+    "SBI", "HDFC", "ICICI", "Axis", "Kotak", "Yes Bank", "IndusInd", "RBL", "IDFC", "Amex",
+)
 
 
 def _uid(user: models.User) -> str:
@@ -119,29 +124,65 @@ def _share_token(db: Session, lst: models.ShopList) -> Optional[str]:
     return share.token if share else None
 
 
-def _item_out(item: models.ShopItem) -> schemas.ShopItemOut:
+def _adder_name(db: Session, item: models.ShopItem, cache: dict[str, str]) -> Optional[str]:
+    guest = (item.guest_name or "").strip()
+    if guest:
+        return guest
+    uid = (item.added_by or "").strip()
+    if uid and uid != "guest":
+        if uid not in cache:
+            user = db.query(models.User).filter(models.User.id == uid).first()
+            cache[uid] = ((user.full_name or user.email or "").strip() if user else "")
+        if cache[uid]:
+            return cache[uid]
+    lst = item.lst
+    owner_id = lst.user_id if lst else ""
+    if owner_id:
+        if owner_id not in cache:
+            owner = db.query(models.User).filter(models.User.id == owner_id).first()
+            cache[owner_id] = ((owner.full_name or owner.email or "").strip() if owner else "")
+        return cache[owner_id] or None
+    return None
+
+
+def _item_out(db: Session, item: models.ShopItem, cache: dict[str, str] | None = None) -> schemas.ShopItemOut:
+    names = cache if cache is not None else {}
     return schemas.ShopItemOut(
         id=item.id, list_id=item.list_id, name=item.name,
         quantity=money(item.quantity) or 1, unit=item.unit,
         price=money(item.price) if item.price is not None else None,
         checked=bool(item.checked), emoji=item.emoji, category=item.category,
         notes=item.notes, added_by=item.added_by, guest_name=item.guest_name,
+        added_by_name=_adder_name(db, item, names),
         status=item.status or "approved", created_at=item.created_at,
+    )
+
+
+def _receipt_out(row: models.ShopReceipt) -> schemas.ShopReceiptOut:
+    mime = (row.image_mime or "").lower()
+    return schemas.ShopReceiptOut(
+        id=row.id, list_id=row.list_id, original_name=row.original_name,
+        image_mime=row.image_mime, is_image=mime.startswith("image/"),
+        created_at=row.created_at,
     )
 
 
 def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) -> schemas.ShopListOut:
     items = list(lst.items or [])
+    receipts = list(lst.receipts or [])
+    names: dict[str, str] = {}
     return schemas.ShopListOut(
         id=lst.id, name=lst.name, description=lst.description,
         completed=bool(lst.completed), total_amount=money(lst.total_amount),
         item_count=len(items),
         checked_count=sum(1 for i in items if i.checked),
         pending_count=sum(1 for i in items if i.status == "pending"),
+        receipt_count=len(receipts),
         share_token=_share_token(db, lst),
         created_at=lst.created_at, updated_at=lst.updated_at,
         completed_at=lst.completed_at, revision=_list_revision(lst),
-        items=[_item_out(i) for i in items] if with_items else None,
+        items=[_item_out(db, i, names) for i in items] if with_items else None,
+        receipts=[_receipt_out(r) for r in receipts] if with_items else None,
     )
 
 
@@ -208,7 +249,8 @@ def _list_snapshot(lst: models.ShopList) -> dict:
 
 
 def _public_payload(db: Session, lst: models.ShopList) -> dict:
-    items = [_item_out(i).model_dump() for i in (lst.items or []) if i.status != "rejected"]
+    names: dict[str, str] = {}
+    items = [_item_out(db, i, names).model_dump() for i in (lst.items or []) if i.status != "rejected"]
     for row in items:
         if isinstance(row.get("created_at"), datetime):
             row["created_at"] = row["created_at"].isoformat()
@@ -332,6 +374,8 @@ def delete_list(
 ):
     require_owner(current_user)
     lst = _owned_list(db, current_user, list_id)
+    for rec in list(lst.receipts or []):
+        _drop_receipt_file(rec)
     db.delete(lst)
     db.commit()
     return None
@@ -364,6 +408,127 @@ def share_list(
         db.refresh(share)
     origin = str(request.base_url).rstrip("/")
     return schemas.ShopShareOut(token=share.token, url=f"{origin}/shop/{share.token}", list_id=lst.id)
+
+
+# ---------- Bill copies ----------
+
+def _drop_receipt_file(row: models.ShopReceipt) -> None:
+    if not row.image_path:
+        return
+    path = settings.STORAGE_DIR / row.image_path
+    try:
+        if path.exists():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _owned_receipt(db: Session, user: models.User, list_id: str, receipt_id: str) -> models.ShopReceipt:
+    lst = _owned_list(db, user, list_id)
+    row = (
+        db.query(models.ShopReceipt)
+        .filter(
+            models.ShopReceipt.id == receipt_id,
+            models.ShopReceipt.list_id == lst.id,
+            models.ShopReceipt.user_id == _uid(user),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Bill copy not found")
+    return row
+
+
+def save_receipt(
+    db: Session,
+    user: models.User,
+    list_id: str,
+    raw: bytes,
+    mime: str | None,
+    filename: str | None,
+) -> models.ShopReceipt:
+    lst = _owned_list(db, user, list_id)
+    mime = (mime or "").split(";")[0].strip().lower()
+    name = (filename or "").lower()
+    is_pdf = mime == "application/pdf" or name.endswith(".pdf")
+    is_image = mime.startswith("image/") or name.endswith((".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif"))
+    if not is_pdf and not is_image:
+        raise HTTPException(400, "Upload a photo or PDF of the bill")
+    if is_image and not is_pdf:
+        raw = enhance_scan(raw, mime or "image/jpeg")
+        mime = "image/jpeg"
+    elif is_pdf:
+        mime = "application/pdf"
+    if not raw:
+        raise HTTPException(400, "Empty file")
+    size_mb = len(raw) / (1024 * 1024)
+    if size_mb > settings.MAX_UPLOAD_MB:
+        raise HTTPException(413, f"File exceeds {settings.MAX_UPLOAD_MB} MB")
+    if len(list(lst.receipts or [])) >= 20:
+        raise HTTPException(400, "This list already has 20 bill copies")
+    uid = _uid(user)
+    dest_dir = settings.STORAGE_DIR / uid / "shop"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    rec = models.ShopReceipt(
+        list_id=lst.id, user_id=uid,
+        image_path="", image_mime=mime,
+        original_name=(filename or "")[:255] or None,
+    )
+    db.add(rec)
+    db.flush()
+    rel = f"{uid}/shop/{rec.id}.enc"
+    (settings.STORAGE_DIR / rel).write_bytes(crypto.encrypt_bytes(raw))
+    rec.image_path = rel
+    _touch_list(lst)
+    db.commit()
+    db.refresh(rec)
+    return rec
+
+
+@router.post("/lists/{list_id}/receipts", response_model=schemas.ShopReceiptOut, status_code=201)
+async def upload_receipt(
+    list_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    raw = await file.read()
+    row = save_receipt(db, current_user, list_id, raw, file.content_type, file.filename)
+    return _receipt_out(row)
+
+
+@router.get("/lists/{list_id}/receipts/{receipt_id}/image")
+def get_receipt_image(
+    list_id: str,
+    receipt_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    row = _owned_receipt(db, current_user, list_id, receipt_id)
+    path = settings.STORAGE_DIR / row.image_path
+    if not path.exists():
+        raise HTTPException(404, "Bill copy missing on disk")
+    plain = crypto.decrypt_bytes(path.read_bytes())
+    return Response(content=plain, media_type=row.image_mime or "image/jpeg")
+
+
+@router.delete("/lists/{list_id}/receipts/{receipt_id}", status_code=204)
+def delete_receipt(
+    list_id: str,
+    receipt_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_receipt(db, current_user, list_id, receipt_id)
+    lst = row.lst
+    _drop_receipt_file(row)
+    db.delete(row)
+    if lst:
+        _touch_list(lst)
+    db.commit()
+    return None
 
 
 # ---------- Items ----------
@@ -405,7 +570,7 @@ def add_item(
     item = _add_item_row(db, lst, body, added_by=current_user.id, status="approved")
     db.commit()
     db.refresh(item)
-    return _item_out(item)
+    return _item_out(db, item)
 
 
 @router.patch("/lists/{list_id}/items/{item_id}", response_model=schemas.ShopItemOut)
@@ -429,12 +594,13 @@ def update_item(
             item.price = Decimal(str(val)) if val is not None else None
         elif key == "name" and val:
             item.name = val.strip()
-        elif hasattr(item, key):
+        elif hasattr(item, key) and key not in ("id", "list_id", "added_by"):
             setattr(item, key, val)
     _recompute_total(lst)
+    _touch_list(lst)
     db.commit()
     db.refresh(item)
-    return _item_out(item)
+    return _item_out(db, item)
 
 
 @router.post("/lists/{list_id}/items/{item_id}/toggle", response_model=schemas.ShopItemOut)
@@ -453,7 +619,7 @@ def toggle_item(
     lst.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
-    return _item_out(item)
+    return _item_out(db, item)
 
 
 @router.post("/lists/{list_id}/items/{item_id}/approve", response_model=schemas.ShopItemOut)
@@ -472,7 +638,7 @@ def approve_item(
     _recompute_total(lst)
     db.commit()
     db.refresh(item)
-    return _item_out(item)
+    return _item_out(db, item)
 
 
 @router.post("/lists/{list_id}/items/{item_id}/reject", status_code=204)
@@ -546,7 +712,7 @@ def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(g
     _touch_list(lst)
     db.commit()
     db.refresh(item)
-    return _item_out(item)
+    return _item_out(db, item)
 
 
 @router.post("/shared/{token}/items/{item_id}/toggle")
@@ -559,7 +725,7 @@ def guest_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
     _touch_list(lst)
     db.commit()
     db.refresh(item)
-    return _item_out(item)
+    return _item_out(db, item)
 
 
 # ---------- Friends ----------
@@ -817,16 +983,20 @@ def save_password(
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
-    kind = body.account_type if body.account_type in ("bank", "credit_card") else "bank"
-    row = models.ShopPdfPassword(
-        user_id=_uid(current_user), identifier=body.identifier.strip(),
-        password_enc=crypto.encrypt_text(body.password),
-        account_type=kind,
-        last_4_digits=(body.last_4_digits or "").strip() or None,
+    row = upsert_pdf_password(
+        db, current_user,
+        identifier=body.identifier,
+        password=body.password,
+        account_type=body.account_type,
+        last_4_digits=body.last_4_digits,
     )
-    db.add(row)
     db.commit()
     db.refresh(row)
+    try:
+        from app import expense_analyser as ea
+        ea.retry_locked_pdfs(db, current_user)
+    except Exception:
+        pass
     return schemas.ShopPdfPasswordOut(
         id=row.id, identifier=row.identifier, account_type=row.account_type,
         last_4_digits=row.last_4_digits, created_at=row.created_at,
@@ -852,17 +1022,150 @@ def delete_password(
     return None
 
 
-def _saved_passwords(db: Session, user: models.User) -> list[str]:
+def upsert_pdf_password(
+    db: Session,
+    user: models.User,
+    *,
+    identifier: str,
+    password: str,
+    account_type: str = "bank",
+    last_4_digits: str | None = None,
+) -> models.ShopPdfPassword:
+    ident = (identifier or "").strip()
+    kind = account_type if account_type in ("bank", "credit_card") else "bank"
+    digits = (last_4_digits or "").strip() or None
+    uid = _uid(user)
+    row = (
+        db.query(models.ShopPdfPassword)
+        .filter(models.ShopPdfPassword.user_id == uid, models.ShopPdfPassword.identifier == ident)
+        .first()
+    )
+    if row:
+        row.password_enc = crypto.encrypt_text(password)
+        row.account_type = kind
+        if digits:
+            row.last_4_digits = digits
+        return row
+    row = models.ShopPdfPassword(
+        user_id=uid, identifier=ident,
+        password_enc=crypto.encrypt_text(password),
+        account_type=kind, last_4_digits=digits,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _saved_password_rows(db: Session, user: models.User) -> list[tuple[str, str, str]]:
+    """Return (identifier, last_4, password) for saved bank PDF passwords."""
     rows = db.query(models.ShopPdfPassword).filter(models.ShopPdfPassword.user_id == _uid(user)).all()
-    out = []
+    out: list[tuple[str, str, str]] = []
     for r in rows:
         try:
             plain = crypto.decrypt_text(r.password_enc)
-            if plain:
-                out.append(plain)
         except Exception:
             continue
+        if plain:
+            out.append((r.identifier or "", r.last_4_digits or "", plain))
     return out
+
+
+def _saved_passwords(db: Session, user: models.User) -> list[str]:
+    return [pwd for _ident, _digits, pwd in _saved_password_rows(db, user)]
+
+
+def resolve_pdf_password(
+    db: Session,
+    user: models.User,
+    raw: bytes,
+    *,
+    hint: str = "",
+    explicit: str | None = None,
+) -> str | None:
+    """Pick a working PDF password: typed first, then saved banks matching the hint."""
+    from app.statement_parsers import is_pdf_encrypted, test_pdf_password
+
+    typed = (explicit or "").strip() or None
+    if not is_pdf_encrypted(raw):
+        return typed
+    if typed and test_pdf_password(raw, typed):
+        return typed
+    blob = (hint or "").lower()
+    matched: list[str] = []
+    rest: list[str] = []
+    for ident, digits, pwd in _saved_password_rows(db, user):
+        tokens = [t for t in f"{ident} {digits}".lower().split() if t]
+        hit = bool(blob) and any((len(t) >= 3 or t.isdigit()) and t in blob for t in tokens)
+        (matched if hit else rest).append(pwd)
+    seen: set[str] = set()
+    for pwd in matched + rest:
+        if pwd in seen:
+            continue
+        seen.add(pwd)
+        if test_pdf_password(raw, pwd):
+            return pwd
+    return None
+
+
+def ingest_statement_bytes(
+    db: Session,
+    user: models.User,
+    raw: bytes,
+    filename: str,
+    *,
+    password: str | None = None,
+    identifier: str = "",
+    source_label: str | None = None,
+) -> dict:
+    """Parse a statement PDF and insert pending rows. Caller commits."""
+    from app.statement_parsers import parse_statement_file
+
+    parsed = parse_statement_file(raw, filename or "statement.pdf", password=password)
+    uid = _uid(user)
+    existing = {
+        r[0]
+        for r in db.query(models.ShopStatementTxn.transaction_id)
+        .filter(models.ShopStatementTxn.user_id == uid, models.ShopStatementTxn.transaction_id.isnot(None))
+        .all()
+    }
+    created = 0
+    skipped = 0
+    label = source_label or filename or "statement.pdf"
+    for txn in parsed.get("transactions") or []:
+        tid = txn.get("transaction_id")
+        if tid and tid in existing:
+            skipped += 1
+            continue
+        db.add(models.ShopStatementTxn(
+            user_id=uid,
+            txn_date=txn.get("date"),
+            description=txn.get("description"),
+            amount=Decimal(str(txn.get("amount") or 0)),
+            direction=txn.get("type") if txn.get("type") in ("debit", "credit") else "debit",
+            category=txn.get("category") or "other",
+            bank_name=txn.get("bank_name"),
+            account_number=txn.get("account_number"),
+            account_type=txn.get("account_type"),
+            source_file=label,
+            transaction_id=tid,
+            reference_number=txn.get("reference_number"),
+            status="pending",
+        ))
+        if tid:
+            existing.add(tid)
+        created += 1
+    pwd = (password or "").strip()
+    ident = (identifier or "").strip()
+    if pwd and ident:
+        upsert_pdf_password(db, user, identifier=ident, password=pwd)
+    db.flush()
+    return {
+        "created": created,
+        "skipped": skipped,
+        "parser_used": parsed.get("parser_used"),
+        "account_info": parsed.get("account_info"),
+        "summary": parsed.get("summary"),
+    }
 
 
 # ---------- Statements ----------
@@ -901,79 +1204,26 @@ async def upload_statement(
         raise HTTPException(400, "Empty file")
     if len(raw) > MAX_PDF:
         raise HTTPException(400, "PDF is larger than 10 MB")
-    from app.statement_parsers import is_pdf_encrypted, parse_statement_file, test_pdf_password
+    from app.statement_parsers import is_pdf_encrypted
 
-    pwd = (password or "").strip() or None
+    filename = file.filename or "statement.pdf"
+    hint = f"{filename} {identifier or ''}"
+    pwd = resolve_pdf_password(
+        db, current_user, raw, hint=hint, explicit=(password or "").strip() or None,
+    )
     if is_pdf_encrypted(raw) and not pwd:
-        for saved in _saved_passwords(db, current_user):
-            if test_pdf_password(raw, saved):
-                pwd = saved
-                break
-        if not pwd:
-            raise HTTPException(400, "This PDF is password protected")
+        raise HTTPException(400, "This PDF is password protected — add the bank password first")
     try:
-        parsed = parse_statement_file(raw, file.filename or "statement.pdf", password=pwd)
+        result = ingest_statement_bytes(
+            db, current_user, raw, filename,
+            password=pwd, identifier=identifier or "",
+        )
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
     except Exception as exc:
         raise HTTPException(400, f"Could not parse this PDF: {exc}") from exc
-
-    uid = _uid(current_user)
-    existing = {
-        r[0]
-        for r in db.query(models.ShopStatementTxn.transaction_id)
-        .filter(models.ShopStatementTxn.user_id == uid, models.ShopStatementTxn.transaction_id.isnot(None))
-        .all()
-    }
-    created = 0
-    skipped = 0
-    filename = file.filename or "statement.pdf"
-    for txn in parsed.get("transactions") or []:
-        tid = txn.get("transaction_id")
-        if tid and tid in existing:
-            skipped += 1
-            continue
-        db.add(models.ShopStatementTxn(
-            user_id=uid,
-            txn_date=txn.get("date"),
-            description=txn.get("description"),
-            amount=Decimal(str(txn.get("amount") or 0)),
-            direction=txn.get("type") if txn.get("type") in ("debit", "credit") else "debit",
-            category=txn.get("category") or "other",
-            bank_name=txn.get("bank_name"),
-            account_number=txn.get("account_number"),
-            account_type=txn.get("account_type"),
-            source_file=filename,
-            transaction_id=tid,
-            reference_number=txn.get("reference_number"),
-            status="pending",
-        ))
-        if tid:
-            existing.add(tid)
-        created += 1
-    if pwd and identifier.strip():
-        already = (
-            db.query(models.ShopPdfPassword)
-            .filter(
-                models.ShopPdfPassword.user_id == uid,
-                models.ShopPdfPassword.identifier == identifier.strip(),
-            )
-            .first()
-        )
-        if not already:
-            db.add(models.ShopPdfPassword(
-                user_id=uid, identifier=identifier.strip(),
-                password_enc=crypto.encrypt_text(pwd),
-                account_type="credit_card" if "card" in identifier.lower() else "bank",
-            ))
     db.commit()
-    return {
-        "created": created,
-        "skipped": skipped,
-        "parser_used": parsed.get("parser_used"),
-        "account_info": parsed.get("account_info"),
-        "summary": parsed.get("summary"),
-    }
+    return result
 
 
 def post_statement_txn(
@@ -1087,15 +1337,16 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
         db.commit()
     except HTTPException:
         return HTMLResponse("<h1>List not found</h1>", status_code=404)
+    catalog = catalog_payload()
+    names: dict[str, str] = {}
     return templates.TemplateResponse(request, "tracker_share_public.html", {
         "list": lst,
-        "items": [i for i in (lst.items or []) if i.status != "rejected"],
+        "items": [_item_out(db, i, names) for i in (lst.items or []) if i.status != "rejected"],
         "token": token,
         "err": err,
         "ok": ok,
-        "catalog_json": json.dumps(catalog_payload(), ensure_ascii=False),
-        "groups": catalog_payload()["groups"],
-        "members": _member_names(db, lst.user_id),
+        "catalog_json": json.dumps(catalog, ensure_ascii=False),
+        "groups": catalog["groups"],
         "revision": _list_revision(lst),
     })
 
@@ -1138,4 +1389,31 @@ def public_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
         item.checked = not bool(item.checked)
         _touch_list(lst)
         db.commit()
+    return RedirectResponse(f"/shop/{token}", status_code=302)
+
+
+@router.post("/public/{token}/items/{item_id}/edit")
+async def public_edit_item(token: str, item_id: str, request: Request, db: Session = Depends(get_db)):
+    form = await request.form()
+    try:
+        share, lst = _list_by_token(db, token)
+    except HTTPException:
+        return HTMLResponse("<h1>List not found</h1>", status_code=404)
+    item = next((i for i in lst.items if i.id == item_id), None)
+    if not item or item.status == "rejected":
+        return RedirectResponse(f"/shop/{token}", status_code=302)
+    name = str(form.get("name") or "").strip()
+    if name:
+        item.name = name
+    qty = str(form.get("quantity") or "").strip()
+    if qty:
+        try:
+            item.quantity = Decimal(qty)
+        except Exception:
+            pass
+    unit = str(form.get("unit") or "").strip()
+    item.unit = unit or None
+    _recompute_total(lst)
+    _touch_list(lst)
+    db.commit()
     return RedirectResponse(f"/shop/{token}", status_code=302)

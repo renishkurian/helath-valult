@@ -9,7 +9,7 @@
       Settings
     </div>
     <h1 class="page-title">Gmail &amp; sync</h1>
-    <p class="page-lead">Read-only Gmail for bank alerts and credit-card statements. Upload bank PDFs on the Statements tab. Posting to Money Manager stays a separate, explicit step.</p>
+    <p class="page-lead">Read-only Gmail for bank alerts and credit-card statements. Add each bank’s PDF password so encrypted attachments parse automatically. Posting to Money Manager stays a separate, explicit step.</p>
   </div>
 </div>
 
@@ -17,6 +17,8 @@
 <div class="alert alert-success" role="alert">Gmail connected.</div>
 {% elif request.query_params.get('ok') == 'schedule' %}
 <div class="alert alert-success" role="alert">Daily sync schedule saved.</div>
+{% elif request.query_params.get('ok') == 'password' %}
+<div class="alert alert-success" role="alert">Bank password saved. Locked Gmail PDFs will retry automatically.</div>
 {% elif request.query_params.get('err') == 'client' %}
 <div class="alert alert-danger" role="alert">Google OAuth client is not configured. Ask Super Admin to set it under Server settings (same client as Drive backup).</div>
 {% elif request.query_params.get('err') %}
@@ -107,6 +109,10 @@
         </form>
       </div>
     </div>
+
+    <div class="card mt-3">
+      {% include "_ea_bank_passwords.html" %}
+    </div>
   </div>
 </div>
 
@@ -114,6 +120,7 @@
   <div class="card-body">
     <h2 class="h5">How it stays separate</h2>
     <ul class="mb-0 text-muted">
+      <li>Encrypted bank PDFs from Gmail use the passwords saved under <em>Bank PDF passwords</em> — add SBI, HDFC, and so on once.</li>
       <li>Expense Analyser stores its own inbox rows — Money Manager is unchanged until you press <em>Post</em>.</li>
       <li>Matched items mean a similar amount/date already exists in the ledger (no double entry).</li>
       <li>Missed bill lines are candidates to add; review before posting.</li>

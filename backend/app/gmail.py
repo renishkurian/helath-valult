@@ -32,6 +32,20 @@ DEFAULT_SYNC_QUERY = (
     ") newer_than:45d"
 )
 
+# Password-protected e-statements attached as PDFs (separate from alert text).
+DEFAULT_PDF_QUERY = (
+    "has:attachment filename:pdf newer_than:90d "
+    "("
+    "subject:(statement OR e-statement OR estatement OR \"e statement\" "
+    "OR \"credit card\" OR \"account statement\" OR \"monthly statement\") "
+    "OR from:(hdfcbank OR sbi.co.in OR onlinesbi OR icicibank OR axisbank "
+    "OR kotak.com OR yesbank OR indusind OR rblbank OR idfcfirstbank "
+    "OR americanexpress OR amex)"
+    ")"
+)
+
+_PDF_MIMES = ("application/pdf", "application/x-pdf")
+
 
 def auth_url(client_id: str, redirect_uri: str, state: str) -> str:
     q = urllib.parse.urlencode({
@@ -117,7 +131,7 @@ def list_message_ids_paged(
     return ids
 
 
-def get_attachment(access_token: str, message_id: str, attachment_id: str) -> str:
+def get_attachment_bytes(access_token: str, message_id: str, attachment_id: str) -> bytes:
     url = (
         f"{GMAIL_API}/messages/{urllib.parse.quote(message_id)}"
         f"/attachments/{urllib.parse.quote(attachment_id)}"
@@ -125,8 +139,14 @@ def get_attachment(access_token: str, message_id: str, attachment_id: str) -> st
     data = _request_json(url, access_token)
     raw = data.get("data") or ""
     if not raw:
-        return ""
-    return _b64url_decode(raw).decode("utf-8", errors="replace")
+        return b""
+    return _b64url_decode(raw)
+
+
+def get_attachment(access_token: str, message_id: str, attachment_id: str) -> str:
+    return get_attachment_bytes(access_token, message_id, attachment_id).decode(
+        "utf-8", errors="replace",
+    )
 
 
 def get_message(access_token: str, message_id: str) -> dict[str, Any]:
@@ -248,6 +268,38 @@ def hydrate_message_text(access_token: str, mail: dict[str, Any]) -> dict[str, A
         mail["text"] = text
     mail["pending_attachments"] = []
     return mail
+
+
+def _walk_pdfs(part: dict[str, Any], out: list[dict[str, Any]]) -> None:
+    mime = (part.get("mimeType") or "").lower()
+    filename = (part.get("filename") or "").strip()
+    body = part.get("body") or {}
+    aid = body.get("attachmentId")
+    data = body.get("data")
+    is_pdf = mime in _PDF_MIMES or filename.lower().endswith(".pdf")
+    if is_pdf and (aid or data):
+        raw = None
+        if data and not aid:
+            try:
+                raw = _b64url_decode(data)
+            except (ValueError, UnicodeError):
+                raw = None
+        out.append({
+            "filename": filename or "statement.pdf",
+            "mime": mime or "application/pdf",
+            "attachment_id": aid,
+            "data": raw,
+            "size": int(body.get("size") or 0),
+        })
+    for child in part.get("parts") or []:
+        _walk_pdfs(child, out)
+
+
+def extract_pdf_parts(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect PDF attachments from a Gmail message resource."""
+    out: list[dict[str, Any]] = []
+    _walk_pdfs(payload.get("payload") or {}, out)
+    return out
 
 
 def looks_like_statement(subject: str | None, text: str | None = None) -> bool:

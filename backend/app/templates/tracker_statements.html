@@ -1,21 +1,50 @@
 {% extends "base.html" %}
 {% block title %}Statements{% endblock %}
 {% block content %}
+{% set ea_status = ea_status|default({}) %}
+{% set mail_pdfs = mail_pdfs|default([]) %}
 <div class="page-head">
   <div>
     <div class="eyebrow">Expense Analyser</div>
     <h1 class="page-title">Bank statements</h1>
-    <p class="page-lead">Upload SBI or HDFC PDFs. Review rows, then post them into Money Manager. Gmail bills stay in the inbox.</p>
+    <p class="page-lead">Load SBI or HDFC PDFs from Gmail, or upload one. Review rows, then post them into Money Manager.</p>
   </div>
+  {% if ea_status.connected %}
+  <form method="post" action="/admin/expense-analyser/statements/from-mail">
+    <button class="btn btn-primary" type="submit" {% if ea_status.syncing %}disabled{% endif %}>
+      <i class="bi bi-envelope-paper"></i>
+      {% if ea_status.syncing %}Loading PDFs…{% else %}Load PDFs from Gmail{% endif %}
+    </button>
+  </form>
+  {% endif %}
 </div>
 
-{% if request.query_params.get('ok') %}
+{% if request.query_params.get('ok') == 'pdf_started' %}
+<div class="alert alert-success mb-4" role="status">Loading statement PDFs from Gmail in the background. This page refreshes until it finishes.</div>
+{% elif request.query_params.get('ok') == 'sync_busy' %}
+<div class="alert alert-warning mb-4" role="alert">A Gmail sync or PDF import is already running. Wait a moment, then refresh.</div>
+{% elif request.query_params.get('ok') == 'password' %}
+<div class="alert alert-success mb-4" role="status">Bank password saved. Locked Gmail PDFs will retry automatically.</div>
+{% elif request.query_params.get('ok') %}
 <div class="alert alert-success mb-4" role="status">
   {% if request.query_params.get('created') %}Imported {{ request.query_params.get('created') }} rows{% if request.query_params.get('skipped') %}, skipped {{ request.query_params.get('skipped') }} duplicates{% endif %}.{% else %}Saved.{% endif %}
 </div>
 {% endif %}
 {% if request.query_params.get('err') %}
 <div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+{% if ea_status.syncing %}
+<div class="alert alert-info" role="alert">
+  <i class="bi bi-arrow-repeat"></i> Gmail PDF import is running. The site stays up — this list refreshes automatically.
+</div>
+<script>setTimeout(function () { window.location.href = "/admin/expense-analyser/statements"; }, 4000);</script>
+{% endif %}
+
+{% if not ea_status.connected %}
+<div class="alert alert-warning mb-4" role="status">
+  Connect Gmail under <a href="/admin/expense-analyser/settings">Gmail &amp; sync</a> to load statement PDFs from mail.
+</div>
 {% endif %}
 
 <div class="surface mb-4">
@@ -31,43 +60,77 @@
     </div>
     <div class="col-md-2">
       <label class="form-label" for="stmt-id">Label</label>
-      <input class="form-control" id="stmt-id" name="identifier" placeholder="SBI 4521">
+      <input class="form-control" id="stmt-id" name="identifier" placeholder="SBI 4521" list="bank-label-list">
     </div>
     <div class="col-md-2">
       <button class="btn btn-primary w-100" type="submit">Parse</button>
     </div>
   </form>
-  <p class="text-muted mt-2 mb-0">Encrypted PDFs try saved passwords first. Last 4 digits are enough as a label.</p>
+  <p class="text-muted mt-2 mb-0">Encrypted PDFs try saved bank passwords first. Last 4 digits are enough as a label.</p>
 </div>
 
-{% if passwords %}
+<div class="card mb-4">
+  {% include "_ea_bank_passwords.html" %}
+</div>
+
+{% set locked_pdfs = mail_pdfs | selectattr('status', 'equalto', 'needs_password') | list %}
+{% set failed_pdfs = mail_pdfs | selectattr('status', 'equalto', 'failed') | list %}
+{% set parsed_pdfs = mail_pdfs | selectattr('status', 'equalto', 'parsed') | list %}
+{% if locked_pdfs or failed_pdfs or parsed_pdfs %}
 <div class="surface mb-4">
-  <div class="section-head"><h2>Saved passwords</h2></div>
-  <div class="list-rows">
-    {% for p in passwords %}
+  <div class="section-head"><h2>From Gmail</h2></div>
+  {% if locked_pdfs %}
+  <p class="text-muted">These PDFs are password protected. Save the bank password above, then load from Gmail again.</p>
+  <div class="list-rows mb-3">
+    {% for p in locked_pdfs %}
     <div class="list-row">
       <span class="row-body">
-        <span class="row-title">{{ p.identifier }}</span>
-        <span class="row-meta">{{ p.account_type }}{% if p.last_4_digits %} · {{ p.last_4_digits }}{% endif %}</span>
+        <span class="row-title">{{ p.filename or 'statement.pdf' }}</span>
+        <span class="row-meta">
+          {% if p.bank_hint %}{{ p.bank_hint }} · {% endif %}
+          {{ p.subject or p.from_addr or '' }}
+          {% if p.error %} · {{ p.error }}{% endif %}
+        </span>
       </span>
-      <form method="post" action="/admin/expense-analyser/passwords/{{ p.id }}/delete">
-        <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
+      <form method="post" action="/admin/expense-analyser/mail-pdfs/{{ p.id }}/ignore">
+        <button class="btn btn-ghost" type="submit">Ignore</button>
       </form>
     </div>
     {% endfor %}
   </div>
-  <form method="post" action="/admin/expense-analyser/passwords" class="row g-2 align-items-end mt-3">
-    <div class="col-md-4"><input class="form-control" name="identifier" required placeholder="HDFC card"></div>
-    <div class="col-md-3"><input class="form-control js-secret" name="password" type="password" required placeholder="PDF password"></div>
-    <div class="col-md-2">
-      <select class="form-select" name="account_type">
-        <option value="bank">Bank</option>
-        <option value="credit_card">Credit card</option>
-      </select>
+  {% endif %}
+  {% if failed_pdfs %}
+  <div class="list-rows mb-3">
+    {% for p in failed_pdfs %}
+    <div class="list-row">
+      <span class="row-body">
+        <span class="row-title">{{ p.filename or 'statement.pdf' }}</span>
+        <span class="row-meta text-danger">{{ p.error or 'Could not parse' }}</span>
+      </span>
+      <form method="post" action="/admin/expense-analyser/mail-pdfs/{{ p.id }}/ignore">
+        <button class="btn btn-ghost" type="submit">Ignore</button>
+      </form>
     </div>
-    <div class="col-md-2"><input class="form-control" name="last_4_digits" maxlength="8" placeholder="Last 4"></div>
-    <div class="col-md-1"><button class="btn btn-outline-light w-100" type="submit">Save</button></div>
-  </form>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if parsed_pdfs %}
+  <p class="text-muted mb-2">Recently parsed from mail</p>
+  <div class="list-rows">
+    {% for p in parsed_pdfs[:8] %}
+    <div class="list-row">
+      <span class="row-body">
+        <span class="row-title">{{ p.filename or 'statement.pdf' }}</span>
+        <span class="row-meta">
+          {% if p.bank_hint %}{{ p.bank_hint }} · {% endif %}
+          {{ p.created_count }} row{% if p.created_count != 1 %}s{% endif %}
+          {% if p.skipped_count %} · {{ p.skipped_count }} duplicate{% if p.skipped_count != 1 %}s{% endif %}{% endif %}
+        </span>
+      </span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -93,6 +156,7 @@
         {{ row.txn_date or '' }}
         {% if row.category %} · {{ row.category }}{% endif %}
         {% if row.bank_name %} · {{ row.bank_name }}{% endif %}
+        {% if row.source_file %} · {{ row.source_file }}{% endif %}
         · {{ row.direction }}
       </span>
     </span>
@@ -116,7 +180,7 @@
 {% else %}
 <div class="empty-state">
   <i class="bi bi-file-earmark-pdf"></i>
-  <p>No {{ status }} statement rows. Upload a PDF to start.</p>
+  <p>No {{ status }} statement rows.{% if ea_status.connected %} Load PDFs from Gmail or upload one to start.{% else %} Upload a PDF to start.{% endif %}</p>
 </div>
 {% endif %}
 {% endblock %}

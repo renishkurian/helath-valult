@@ -159,12 +159,27 @@
   }
   filterChips();
 
+  root.addEventListener("click", function (e) {
+    var btn = e.target.closest(".js-shop-edit");
+    if (!btn) return;
+    var form = document.getElementById(btn.getAttribute("aria-controls") || "");
+    if (!form) return;
+    var open = form.hidden;
+    form.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) {
+      var first = form.querySelector("input");
+      if (first) first.focus();
+    }
+  });
+
   var liveUrl = root.getAttribute("data-live");
   var revision = root.getAttribute("data-revision") || "";
   if (liveUrl) {
     setInterval(function () {
       var active = document.activeElement;
       if (active && active.matches && active.matches("input, textarea, select")) return;
+      if (root.querySelector(".shop-edit-form:not([hidden])")) return;
       fetch(liveUrl, { headers: { Accept: "application/json" } })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (data) {

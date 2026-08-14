@@ -109,30 +109,71 @@
 <div class="section-head"><h2>Waiting for you</h2></div>
 <div class="list-rows mb-4">
   {% for item in pending %}
-  <div class="list-row">
-    <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
-    <span class="row-body">
-      <span class="row-title">{{ item.name }}</span>
-      <span class="row-meta">{{ item.guest_name or 'Guest' }} · pending</span>
-    </span>
-    <span class="row-actions">
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/approve">
-        <button class="btn btn-sm btn-primary" type="submit">Approve</button>
-      </form>
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/reject">
-        <button class="btn btn-sm btn-outline-danger" type="submit">Reject</button>
-      </form>
-    </span>
+  <div class="shop-item-block">
+    <div class="list-row">
+      <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
+      <span class="row-body">
+        <span class="row-title">{{ item.name }}</span>
+        <span class="row-meta">{{ item.added_by_name or item.guest_name or 'Guest' }} · pending</span>
+      </span>
+      <span class="row-actions">
+        <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/approve">
+          <button class="btn btn-sm btn-primary" type="submit">Approve</button>
+        </form>
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/reject">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Reject</button>
+        </form>
+      </span>
+    </div>
+    <form class="shop-edit-form" id="edit-{{ item.id }}" hidden method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/edit">
+      <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-4"><label class="form-label">Name</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+        <div class="col-3 col-md-2"><label class="form-label">Qty</label><input class="form-control" name="quantity" type="number" step="0.01" min="0" value="{{ item.quantity }}"></div>
+        <div class="col-3 col-md-2"><label class="form-label">Unit</label><input class="form-control" name="unit" value="{{ item.unit or '' }}"></div>
+        <div class="col-6 col-md-2"><label class="form-label">Price</label><input class="form-control" name="price" type="number" step="0.01" min="0" value="{{ item.price or '' }}"></div>
+        <div class="col-6 col-md-2"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+      </div>
+    </form>
   </div>
   {% endfor %}
 </div>
 {% endif %}
 
-<details class="surface mb-3">
-  <summary class="shop-group"><i class="bi bi-receipt"></i> Bills &amp; receipts</summary>
+<details class="surface mb-3"{% if receipts %} open{% endif %}>
+  <summary class="shop-group"><i class="bi bi-receipt"></i> Bills &amp; receipts{% if receipts %} · {{ receipts|length }}{% endif %}</summary>
   <div class="p-3 pt-0">
-    <p class="text-muted mb-2">Bank PDFs now parse in Expense Analyser. {{ pending_statements }} row(s) waiting.</p>
-    <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/statements"><i class="bi bi-file-earmark-pdf"></i> Open statements</a>
+    <p class="text-muted mb-3">Attach a photo or PDF of the shop bill to this list. Bank statement PDFs stay in Expense Analyser.</p>
+    {% if receipts %}
+    <div class="shop-bills mb-3">
+      {% for rec in receipts %}
+      <div class="shop-bill">
+        {% if rec.is_image %}
+        <a class="js-photo" href="/admin/tracker/lists/{{ lst.id }}/receipts/{{ rec.id }}/image" aria-label="{{ rec.original_name or 'Bill copy' }}">
+          <img src="/admin/tracker/lists/{{ lst.id }}/receipts/{{ rec.id }}/image" alt="{{ rec.original_name or 'Bill copy' }}">
+        </a>
+        {% else %}
+        <a href="/admin/tracker/lists/{{ lst.id }}/receipts/{{ rec.id }}/image" target="_blank" rel="noopener">
+          <i class="bi bi-file-earmark-pdf"></i>
+          <span>{{ rec.original_name or 'PDF' }}</span>
+        </a>
+        {% endif %}
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/receipts/{{ rec.id }}/delete" onsubmit="return confirm('Remove this bill copy?');">
+          <button class="shop-bill-x" type="submit" aria-label="Remove"><i class="bi bi-x"></i></button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <form method="post" action="/admin/tracker/lists/{{ lst.id }}/receipts" enctype="multipart/form-data" class="row g-2 align-items-end">
+      <div class="col-md-8">
+        <label class="form-label" for="bill-file">Bill copy</label>
+        <input class="form-control" id="bill-file" type="file" name="file" accept="image/*,application/pdf" required>
+      </div>
+      <div class="col-md-4">
+        <button class="btn btn-outline-light w-100" type="submit"><i class="bi bi-camera"></i> Add bill copy</button>
+      </div>
+    </form>
   </div>
 </details>
 
@@ -178,23 +219,35 @@
 </div>
 <div class="list-rows mb-4" id="shop-item-rows">
   {% for item in approved %}
-  <div class="list-row shop-item {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
-    <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/toggle">
-      <button class="btn btn-ghost p-0" type="submit" aria-label="{% if item.checked %}Uncheck{% else %}Check{% endif %}">
-        <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
-      </button>
-    </form>
-    <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
-    <span class="row-body">
-      <span class="row-title shop-name">{{ item.name }}</span>
-      <span class="row-meta">
-        {{ item.quantity }}{% if item.unit %} {{ item.unit }}{% endif %}
-        {% if item.guest_name %} · {{ item.guest_name }}{% endif %}
+  <div class="shop-item-block shop-item {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
+    <div class="list-row">
+      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/toggle">
+        <button class="btn btn-ghost p-0" type="submit" aria-label="{% if item.checked %}Uncheck{% else %}Check{% endif %}">
+          <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
+        </button>
+      </form>
+      <span class="shop-emoji">{{ item.emoji or '🛒' }}</span>
+      <span class="row-body">
+        <span class="row-title shop-name">{{ item.name }}</span>
+        <span class="row-meta">
+          {{ item.quantity }}{% if item.unit %} {{ item.unit }}{% endif %}
+          · {{ item.added_by_name or item.guest_name or 'You' }}
+        </span>
       </span>
-    </span>
-    <span class="row-side">{% if item.price %}{{ inr(item.price) }}{% endif %}</span>
-    <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this item?');">
-      <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
+      <span class="row-side">{% if item.price %}{{ inr(item.price) }}{% endif %}</span>
+      <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this item?');">
+        <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
+      </form>
+    </div>
+    <form class="shop-edit-form" id="edit-{{ item.id }}" hidden method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/edit">
+      <div class="row g-2 align-items-end">
+        <div class="col-6 col-md-4"><label class="form-label">Name</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
+        <div class="col-3 col-md-2"><label class="form-label">Qty</label><input class="form-control" name="quantity" type="number" step="0.01" min="0" value="{{ item.quantity }}"></div>
+        <div class="col-3 col-md-2"><label class="form-label">Unit</label><input class="form-control" name="unit" value="{{ item.unit or '' }}"></div>
+        <div class="col-6 col-md-2"><label class="form-label">Price</label><input class="form-control" name="price" type="number" step="0.01" min="0" value="{{ item.price or '' }}"></div>
+        <div class="col-6 col-md-2"><button class="btn btn-primary w-100" type="submit">Save</button></div>
+      </div>
     </form>
   </div>
   {% endfor %}
@@ -203,18 +256,6 @@
 <div class="empty-state mb-4">
   <i class="bi bi-bag"></i>
   <p>Nothing on the list yet. Type a Malayalam or English name, or pick from quick-add.</p>
-</div>
-{% endif %}
-
-{% if people %}
-<div class="surface mb-4">
-  <div class="section-head"><h2>Family on this list</h2></div>
-  <p class="text-muted small">Send the live share link. When they pick their name, adds show up instantly for everyone.</p>
-  <div class="shop-cat-bar mb-0">
-    {% for p in people %}
-    <span class="chip">{{ p.name }}</span>
-    {% endfor %}
-  </div>
 </div>
 {% endif %}
 
@@ -248,5 +289,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/shop-list.js?v=2"></script>
+<script src="/static/shop-list.js?v=3"></script>
 {% endblock %}
