@@ -1,10 +1,24 @@
 {% extends "base.html" %}
 {% block title %}{{ lst.name }}{% endblock %}
+{% block body_class %}has-composer{% endblock %}
+{% block topbar_end %}
+<form method="post" action="/admin/tracker/lists/{{ lst.id }}/share" class="d-lg-none">
+  <button class="icon-btn" type="submit" aria-label="Share"><i class="bi bi-share"></i></button>
+</form>
+<form method="post" action="/admin/tracker/lists/{{ lst.id }}/whatsapp" class="d-lg-none">
+  <button class="icon-btn" type="submit" aria-label="WhatsApp"><i class="bi bi-whatsapp"></i></button>
+</form>
+<form method="post" action="/admin/tracker/lists/{{ lst.id }}/complete" class="d-lg-none">
+  <button class="icon-btn" type="submit" aria-label="{% if lst.completed %}Reopen{% else %}Mark done{% endif %}">
+    <i class="bi {% if lst.completed %}bi-arrow-counterclockwise{% else %}bi-check2-all{% endif %}"></i>
+  </button>
+</form>
+{% endblock %}
 {% set item_n = lst.item_count or 0 %}
 {% set checked_n = lst.checked_count or 0 %}
 {% set pct = ((checked_n / item_n * 100)|round(0, 'floor')|int) if item_n else 0 %}
 {% block content %}
-<div id="shop-list-root" data-catalog="{{ catalog_json | e }}">
+<div id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-live="/admin/tracker/lists/{{ lst.id }}/live" data-revision="{{ revision or '' }}">
 <div class="page-head">
   <div>
     <div class="eyebrow">
@@ -12,10 +26,10 @@
       <i class="bi bi-chevron-right"></i>
       Shopping list
     </div>
-    <h1 class="page-title">{{ lst.name }}</h1>
-    <p class="page-lead">{{ lst.description or 'Check items off as you shop. Guests add pending rows until you approve them.' }}</p>
+    <h1 class="page-title">{{ lst.name }} <span class="shop-live" title="Guests and family see checks as they happen"><i class="bi bi-broadcast"></i> Live</span></h1>
+    <p class="page-lead">{{ lst.description or 'Check items off as you shop. Family names skip the pending queue. Guests add until you approve them.' }}</p>
   </div>
-  <div class="page-actions">
+  <div class="page-actions d-none d-lg-flex">
     <form method="post" action="/admin/tracker/lists/{{ lst.id }}/share">
       <button class="btn btn-outline-light" type="submit"><i class="bi bi-share"></i> Share</button>
     </form>
@@ -43,7 +57,7 @@
 <div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
 {% endif %}
 
-<div class="row g-3 mb-3">
+<div class="row g-3 mb-3 d-none d-lg-flex">
   <div class="col-6 col-lg-3">
     <div class="stat"><div class="lbl">Items</div><div class="val">{{ item_n }}</div></div>
   </div>
@@ -65,27 +79,27 @@
   <div class="shop-progress-bar"><span style="width:{{ pct }}%"></span></div>
 </div>
 
-<div class="surface mb-4">
+<div class="shop-composer surface mb-4">
   <div class="section-head"><h2>Add item</h2></div>
   <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items" class="row g-2 align-items-end" id="shop-add-form">
-    <div class="col-md-4 position-relative">
+    <div class="col-md-4 position-relative shop-composer-main">
       <label class="form-label" for="item-name">Name</label>
       <input class="form-control" id="item-name" name="name" required placeholder="vazhuth or ഉള്ളി or onion" autocomplete="off">
       <div id="shop-suggest" class="shop-suggest" hidden></div>
     </div>
-    <div class="col-4 col-md-2">
+    <div class="col-4 col-md-2 shop-composer-extra">
       <label class="form-label" for="item-qty">Qty</label>
       <input class="form-control" id="item-qty" name="quantity" type="number" step="0.01" min="0" value="1">
     </div>
-    <div class="col-4 col-md-2">
+    <div class="col-4 col-md-2 shop-composer-extra">
       <label class="form-label" for="item-unit">Unit</label>
       <input class="form-control" id="item-unit" name="unit" placeholder="kg">
     </div>
-    <div class="col-4 col-md-2">
+    <div class="col-4 col-md-2 shop-composer-extra">
       <label class="form-label" for="item-price">Price</label>
       <input class="form-control" id="item-price" name="price" type="number" step="0.01" min="0">
     </div>
-    <div class="col-md-2">
+    <div class="col-md-2 shop-composer-submit">
       <button class="btn btn-primary w-100" type="submit">Add</button>
     </div>
   </form>
@@ -117,8 +131,8 @@
 <details class="surface mb-3">
   <summary class="shop-group"><i class="bi bi-receipt"></i> Bills &amp; receipts</summary>
   <div class="p-3 pt-0">
-    <p class="text-muted mb-2">Bank PDFs post into Money Manager after you review them. {{ pending_statements }} row(s) waiting.</p>
-    <a class="btn btn-sm btn-outline-light" href="/admin/tracker/statements"><i class="bi bi-file-earmark-pdf"></i> Open statements</a>
+    <p class="text-muted mb-2">Bank PDFs now parse in Expense Analyser. {{ pending_statements }} row(s) waiting.</p>
+    <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/statements"><i class="bi bi-file-earmark-pdf"></i> Open statements</a>
   </div>
 </details>
 
@@ -192,6 +206,18 @@
 </div>
 {% endif %}
 
+{% if people %}
+<div class="surface mb-4">
+  <div class="section-head"><h2>Family on this list</h2></div>
+  <p class="text-muted small">Send the live share link. When they pick their name, adds show up instantly for everyone.</p>
+  <div class="shop-cat-bar mb-0">
+    {% for p in people %}
+    <span class="chip">{{ p.name }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 {% if friends %}
 <div class="surface mb-4">
   <div class="section-head"><h2>Contributors</h2></div>
@@ -222,5 +248,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/shop-list.js?v=1"></script>
+<script src="/static/shop-list.js?v=2"></script>
 {% endblock %}

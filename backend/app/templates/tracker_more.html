@@ -3,9 +3,9 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Expense Tracker</div>
+    <div class="eyebrow">Shopping List</div>
     <h1 class="page-title">More</h1>
-    <p class="page-lead">Inbox of lists others sent you, plus the ledger this module feeds.</p>
+    <p class="page-lead">Inbox of lists others sent you. Bank PDFs now live in Expense Analyser.</p>
   </div>
 </div>
 
@@ -34,7 +34,7 @@
     <div class="stat">
       <div class="lbl">PDF rows</div>
       <div class="val">{{ summary.pending_statements }}</div>
-      <div class="sub">to post</div>
+      <div class="sub"><a href="/admin/expense-analyser/statements">in Expense Analyser</a></div>
     </div>
   </div>
 </div>
@@ -99,6 +99,10 @@
   <a class="tile" href="/admin/expense-analyser">
     <span class="ico"><i class="bi bi-envelope-open"></i></span>
     <span>Gmail analyser</span>
+  </a>
+  <a class="tile" href="/admin/expense-analyser/statements">
+    <span class="ico"><i class="bi bi-file-earmark-pdf"></i></span>
+    <span>Bank PDFs</span>
   </a>
   <a class="tile" href="/admin/ai">
     <span class="ico"><i class="bi bi-robot"></i></span>

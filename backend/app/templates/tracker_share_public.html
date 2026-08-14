@@ -2,26 +2,33 @@
 <html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{{ list.name }} — shared list</title>
 <meta name="theme-color" content="#0A0C11">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=11">
+<link rel="stylesheet" href="/static/vault.css?v=12">
 </head>
-<body>
-<div class="public-wrap" id="shop-list-root" data-catalog="{{ catalog_json | e }}">
-  <div class="public-card" style="max-width:40rem;">
-    <div class="public-brand">
-      <span class="brand-mark">V</span>
-      <span class="brand-name">Vault</span>
-    </div>
+<body class="has-composer public-app">
+<div class="public-wrap" id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-live="/tracker/shared/{{ token }}" data-revision="{{ revision or '' }}">
+  <div class="public-card">
+    <header class="public-appbar">
+      <div class="public-brand mb-0">
+        <span class="brand-mark">V</span>
+        <span>
+          <span class="brand-name d-block">{{ list.name }}</span>
+          <span class="brand-sub">Live shopping list</span>
+        </span>
+      </div>
+      <span class="shop-live"><i class="bi bi-broadcast"></i> Live</span>
+    </header>
 
-    <div class="eyebrow">Shared shopping list</div>
-    <h1 class="page-title">{{ list.name }}</h1>
-    {% if list.description %}<p class="page-lead">{{ list.description }}</p>{% endif %}
+    {% if list.description %}<p class="page-lead d-none d-lg-block">{{ list.description }}</p>{% endif %}
 
     {% if err == 'blocked' %}
     <div class="alert alert-danger">You are blocked from this list.</div>
@@ -29,30 +36,22 @@
     <div class="alert alert-danger">Could not add that item.</div>
     {% endif %}
     {% if ok %}
-    <div class="alert alert-success">Added — waiting for the owner to approve.</div>
+    <div class="alert alert-success">Added. Family names show immediately; guests wait for approval.</div>
     {% endif %}
 
-    <form class="surface mb-4" method="post" action="/tracker/public/{{ token }}/items">
-      <label class="shop-ai-toggle mb-3">
-        <input type="checkbox" id="shop-use-ai" checked>
-        <span>Use AI (Malayalam &amp; misspellings)</span>
-      </label>
-      <div class="row g-2 align-items-end">
-        <div class="col-md-4">
-          <label class="form-label" for="guest">Your name</label>
-          <input class="form-control" id="guest" name="guest_name" required placeholder="Guest">
-        </div>
-        <div class="col-md-5 position-relative">
-          <label class="form-label" for="item-name">Item</label>
-          <input class="form-control" id="item-name" name="name" required placeholder="vazhuth or ഉള്ളി" autocomplete="off">
-          <div id="shop-suggest" class="shop-suggest" hidden></div>
-        </div>
-        <div class="col-md-3">
-          <button class="btn btn-primary w-100" type="submit">Suggest</button>
-        </div>
-      </div>
-    </form>
+    <label class="shop-ai-toggle mb-3">
+      <input type="checkbox" id="shop-use-ai" checked>
+      <span>Use AI (Malayalam &amp; misspellings)</span>
+    </label>
+    {% if members %}
+    <div class="shop-cat-bar mb-3" id="shop-member-bar">
+      {% for name in members %}
+      <button type="button" class="chip" data-name="{{ name }}">{{ name }}</button>
+      {% endfor %}
+    </div>
+    {% endif %}
 
+    <div class="public-scroll">
     {% if items %}
     <div class="list-rows">
       {% for item in items %}
@@ -76,14 +75,50 @@
       {% endfor %}
     </div>
     {% else %}
-    <p class="text-muted">Nothing on this list yet.</p>
-    {% endif %}
-
-    <div class="public-foot">
-      Collaborative list from Expense Tracker. New items wait for the owner.
+    <div class="empty-state">
+      <i class="bi bi-bag"></i>
+      <p>Nothing on this list yet.</p>
     </div>
+    {% endif %}
+    <div class="public-foot">Family names skip the pending queue. Guests wait for the owner.</div>
+    </div>
+
+    <form class="shop-composer surface mb-0" method="post" action="/tracker/public/{{ token }}/items">
+      <div class="row g-2 align-items-end">
+        <div class="col-4 col-md-4 shop-composer-guest">
+          <label class="form-label" for="guest">Your name</label>
+          <input class="form-control" id="guest" name="guest_name" required placeholder="You">
+        </div>
+        <div class="col-5 col-md-5 position-relative shop-composer-main">
+          <label class="form-label" for="item-name">Item</label>
+          <input class="form-control" id="item-name" name="name" required placeholder="vazhuth or ഉള്ളി" autocomplete="off">
+          <div id="shop-suggest" class="shop-suggest" hidden></div>
+        </div>
+        <div class="col-3 col-md-3 shop-composer-submit">
+          <button class="btn btn-primary w-100" type="submit">Add</button>
+        </div>
+      </div>
+    </form>
   </div>
 </div>
-<script src="/static/shop-list.js?v=1"></script>
+<script src="/static/shop-list.js?v=2"></script>
+<script>
+(function(){
+  var guest = document.getElementById("guest");
+  var key = "shop-guest-{{ token }}";
+  var params = new URLSearchParams(location.search);
+  var asName = params.get("as");
+  if (guest) {
+    guest.value = asName || localStorage.getItem(key) || guest.value;
+    guest.addEventListener("change", function(){ localStorage.setItem(key, guest.value); });
+  }
+  document.getElementById("shop-member-bar") && document.getElementById("shop-member-bar").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-name]");
+    if (!btn || !guest) return;
+    guest.value = btn.getAttribute("data-name") || "";
+    localStorage.setItem(key, guest.value);
+  });
+})();
+</script>
 </body>
 </html>

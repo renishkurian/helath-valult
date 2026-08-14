@@ -68,7 +68,7 @@ fun ShopListScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("EXPENSE TRACKER", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+                    Text("SHOPPING LIST", style = MaterialTheme.typography.labelMedium, color = VaultGold)
                     Text("Lists", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
                 }
                 IconButton(onClick = onOpenModules) {
@@ -172,6 +172,12 @@ fun ShopDetailScreen(
         }
     }
     LaunchedEffect(listId) { reload() }
+    LaunchedEffect(listId) {
+        while (true) {
+            delay(2500)
+            runCatching { lst = repository.getShopList(listId) }
+        }
+    }
     LaunchedEffect(newItem, useAi) {
         val q = newItem.trim()
         if (!useAi || q.length < 2) {
@@ -367,7 +373,7 @@ fun ShopFriendsScreen(
     Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp, 16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("EXPENSE TRACKER", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+                Text("SHOPPING LIST", style = MaterialTheme.typography.labelMedium, color = VaultGold)
                 Text("Friends", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
             }
             IconButton(onClick = onOpenModules) {

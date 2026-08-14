@@ -991,7 +991,7 @@ class ExpenseAnalyserSyncLog(Base):
     finished_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
-# ---------- Expense Tracker (shopping lists, PDF statements, friends) ----------
+# ---------- Shopping List (grocery lists, live sharing, friends) ----------
 
 class ShopList(Base):
     """A shopping list (purchase bucket) owned by a vault."""

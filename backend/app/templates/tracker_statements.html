@@ -3,9 +3,9 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow">Expense Tracker</div>
+    <div class="eyebrow">Expense Analyser</div>
     <h1 class="page-title">Bank statements</h1>
-    <p class="page-lead">Upload SBI or HDFC PDFs. Review rows, then post them into Money Manager.</p>
+    <p class="page-lead">Upload SBI or HDFC PDFs. Review rows, then post them into Money Manager. Gmail bills stay in the inbox.</p>
   </div>
 </div>
 
@@ -20,7 +20,7 @@
 
 <div class="surface mb-4">
   <div class="section-head"><h2>Upload PDF</h2></div>
-  <form method="post" action="/admin/tracker/statements/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
+  <form method="post" action="/admin/expense-analyser/statements/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
     <div class="col-md-5">
       <label class="form-label" for="stmt-file">Statement</label>
       <input class="form-control" id="stmt-file" name="file" type="file" accept="application/pdf" required>
@@ -50,13 +50,13 @@
         <span class="row-title">{{ p.identifier }}</span>
         <span class="row-meta">{{ p.account_type }}{% if p.last_4_digits %} · {{ p.last_4_digits }}{% endif %}</span>
       </span>
-      <form method="post" action="/admin/tracker/passwords/{{ p.id }}/delete">
+      <form method="post" action="/admin/expense-analyser/passwords/{{ p.id }}/delete">
         <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
       </form>
     </div>
     {% endfor %}
   </div>
-  <form method="post" action="/admin/tracker/passwords" class="row g-2 align-items-end mt-3">
+  <form method="post" action="/admin/expense-analyser/passwords" class="row g-2 align-items-end mt-3">
     <div class="col-md-4"><input class="form-control" name="identifier" required placeholder="HDFC card"></div>
     <div class="col-md-3"><input class="form-control js-secret" name="password" type="password" required placeholder="PDF password"></div>
     <div class="col-md-2">
@@ -72,14 +72,14 @@
 {% endif %}
 
 <div class="filter-bar mb-3">
-  <a class="seg {% if status == 'pending' %}active{% endif %}" href="/admin/tracker/statements">Pending</a>
-  <a class="seg {% if status == 'posted' %}active{% endif %}" href="/admin/tracker/statements?status=posted">Posted</a>
-  <a class="seg {% if status == 'ignored' %}active{% endif %}" href="/admin/tracker/statements?status=ignored">Ignored</a>
+  <a class="seg {% if status == 'pending' %}active{% endif %}" href="/admin/expense-analyser/statements">Pending</a>
+  <a class="seg {% if status == 'posted' %}active{% endif %}" href="/admin/expense-analyser/statements?status=posted">Posted</a>
+  <a class="seg {% if status == 'ignored' %}active{% endif %}" href="/admin/expense-analyser/statements?status=ignored">Ignored</a>
 </div>
 
 {% if rows %}
 {% if status == 'pending' and accounts %}
-<form method="post" action="/admin/tracker/statements/post-all" class="mb-3">
+<form method="post" action="/admin/expense-analyser/statements/post-all" class="mb-3">
   <input type="hidden" name="account_id" value="{{ accounts[0].id }}">
   <button class="btn btn-outline-light" type="submit">Post all pending to {{ accounts[0].name }}</button>
 </form>
@@ -101,11 +101,11 @@
     </span>
     {% if status == 'pending' %}
     <span class="row-actions">
-      <form method="post" action="/admin/tracker/statements/{{ row.id }}/post">
+      <form method="post" action="/admin/expense-analyser/statements/{{ row.id }}/post">
         {% if accounts %}<input type="hidden" name="account_id" value="{{ accounts[0].id }}">{% endif %}
         <button class="btn btn-sm btn-primary" type="submit">Post</button>
       </form>
-      <form method="post" action="/admin/tracker/statements/{{ row.id }}/ignore">
+      <form method="post" action="/admin/expense-analyser/statements/{{ row.id }}/ignore">
         <button class="btn btn-sm btn-ghost" type="submit">Ignore</button>
       </form>
     </span>

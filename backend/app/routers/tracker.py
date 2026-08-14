@@ -1,4 +1,4 @@
-"""Expense Tracker — shopping lists, PDF statements, friends, grocery dictionary."""
+"""Shopping List — grocery lists, live sharing, friends, grocery dictionary."""
 from __future__ import annotations
 
 import json
@@ -38,6 +38,64 @@ def _json_list(raw: Optional[str]) -> list:
         return data if isinstance(data, list) else []
     except (TypeError, json.JSONDecodeError):
         return []
+
+
+def _household_names(db: Session, user_id: str) -> set[str]:
+    names: set[str] = set()
+    owner = db.query(models.User).filter(models.User.id == user_id).first()
+    if owner and owner.full_name:
+        names.add(owner.full_name.strip().casefold())
+    for person in db.query(models.Person).filter(models.Person.user_id == user_id).all():
+        if person.name:
+            names.add(person.name.strip().casefold())
+    for contact in (
+        db.query(models.ShopContact)
+        .filter(models.ShopContact.user_id == user_id)
+        .all()
+    ):
+        rel = (contact.relation or "").strip().lower()
+        if rel in ("family", "spouse", "child", "parent") or rel.startswith("fam"):
+            if contact.name:
+                names.add(contact.name.strip().casefold())
+    return {n for n in names if n}
+
+
+def _is_household(db: Session, lst: models.ShopList, guest_name: str) -> bool:
+    return (guest_name or "").strip().casefold() in _household_names(db, lst.user_id)
+
+
+def _member_names(db: Session, user_id: str) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for person in db.query(models.Person).filter(models.Person.user_id == user_id).all():
+        name = (person.name or "").strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            out.append(name)
+    for contact in db.query(models.ShopContact).filter(models.ShopContact.user_id == user_id).all():
+        rel = (contact.relation or "").strip().lower()
+        if rel and rel not in ("family", "spouse", "child", "parent") and not rel.startswith("fam"):
+            continue
+        name = (contact.name or "").strip()
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            out.append(name)
+    return out
+
+
+def _list_revision(lst: models.ShopList) -> str:
+    stamps = [lst.updated_at, lst.created_at]
+    for item in lst.items or []:
+        stamps.append(item.updated_at)
+        stamps.append(item.created_at)
+    latest = max((s for s in stamps if s), default=None)
+    return latest.isoformat() if latest else ""
+
+
+def _touch_list(lst: models.ShopList) -> None:
+    lst.updated_at = datetime.utcnow()
 
 
 def _recompute_total(lst: models.ShopList) -> None:
@@ -82,7 +140,7 @@ def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) ->
         pending_count=sum(1 for i in items if i.status == "pending"),
         share_token=_share_token(db, lst),
         created_at=lst.created_at, updated_at=lst.updated_at,
-        completed_at=lst.completed_at,
+        completed_at=lst.completed_at, revision=_list_revision(lst),
         items=[_item_out(i) for i in items] if with_items else None,
     )
 
@@ -160,6 +218,8 @@ def _public_payload(db: Session, lst: models.ShopList) -> dict:
         "description": lst.description,
         "completed": bool(lst.completed),
         "total_amount": money(lst.total_amount),
+        "revision": _list_revision(lst),
+        "members": _member_names(db, lst.user_id),
         "items": items,
     }
 
@@ -455,21 +515,21 @@ def delete_item(
 
 # ---------- Public share ----------
 
-def _list_by_token(db: Session, token: str) -> tuple[models.ShopShare, models.ShopList]:
+def _list_by_token(db: Session, token: str, *, bump: bool = True) -> tuple[models.ShopShare, models.ShopList]:
     share = db.query(models.ShopShare).filter(models.ShopShare.token == token).first()
     if not share:
         raise HTTPException(404, "Share not found")
     lst = db.query(models.ShopList).filter(models.ShopList.id == share.list_id).first()
     if not lst:
         raise HTTPException(404, "List not found")
-    share.use_count = (share.use_count or 0) + 1
+    if bump:
+        share.use_count = (share.use_count or 0) + 1
     return share, lst
 
 
 @router.get("/shared/{token}")
 def get_shared(token: str, db: Session = Depends(get_db)):
-    share, lst = _list_by_token(db, token)
-    db.commit()
+    share, lst = _list_by_token(db, token, bump=False)
     return _public_payload(db, lst)
 
 
@@ -480,8 +540,10 @@ def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(g
     blocked = {str(x).lower() for x in _json_list(lst.blocked_uids)}
     if guest.lower() in blocked:
         raise HTTPException(403, "You are blocked from this list")
-    item = _add_item_row(db, lst, body, added_by="guest", status="pending")
+    status = "approved" if _is_household(db, lst, guest) else "pending"
+    item = _add_item_row(db, lst, body, added_by="guest", status=status)
     item.guest_name = guest
+    _touch_list(lst)
     db.commit()
     db.refresh(item)
     return _item_out(item)
@@ -489,11 +551,12 @@ def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(g
 
 @router.post("/shared/{token}/items/{item_id}/toggle")
 def guest_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
-    share, lst = _list_by_token(db, token)
+    share, lst = _list_by_token(db, token, bump=False)
     item = next((i for i in lst.items if i.id == item_id), None)
     if not item or item.status != "approved":
         raise HTTPException(404, "Item not found")
     item.checked = not bool(item.checked)
+    _touch_list(lst)
     db.commit()
     db.refresh(item)
     return _item_out(item)
@@ -1026,12 +1089,14 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
         return HTMLResponse("<h1>List not found</h1>", status_code=404)
     return templates.TemplateResponse(request, "tracker_share_public.html", {
         "list": lst,
-        "items": [i for i in (lst.items or [])],
+        "items": [i for i in (lst.items or []) if i.status != "rejected"],
         "token": token,
         "err": err,
         "ok": ok,
         "catalog_json": json.dumps(catalog_payload(), ensure_ascii=False),
         "groups": catalog_payload()["groups"],
+        "members": _member_names(db, lst.user_id),
+        "revision": _list_revision(lst),
     })
 
 
@@ -1049,13 +1114,15 @@ async def public_add_item(token: str, request: Request, db: Session = Depends(ge
     name = str(form.get("name") or "").strip()
     if not name:
         return RedirectResponse(f"/shop/{token}?err=name", status_code=302)
+    status = "approved" if _is_household(db, lst, guest) else "pending"
     body = schemas.ShopItemIn(
         name=name,
         quantity=float(form.get("quantity") or 1),
         unit=str(form.get("unit") or "") or None,
         guest_name=guest,
     )
-    _add_item_row(db, lst, body, added_by="guest", status="pending")
+    _add_item_row(db, lst, body, added_by="guest", status=status)
+    _touch_list(lst)
     db.commit()
     return RedirectResponse(f"/shop/{token}?ok=added", status_code=302)
 
@@ -1069,5 +1136,6 @@ def public_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
     item = next((i for i in lst.items if i.id == item_id), None)
     if item and item.status == "approved":
         item.checked = not bool(item.checked)
+        _touch_list(lst)
         db.commit()
     return RedirectResponse(f"/shop/{token}", status_code=302)

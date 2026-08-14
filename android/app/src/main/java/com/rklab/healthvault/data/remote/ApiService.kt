@@ -669,7 +669,7 @@ interface ApiService {
     @POST("expense-analyser/disconnect")
     suspend fun disconnectExpenseAnalyser(): ExpenseAnalyserStatusOut
 
-    // ---------- Expense Tracker ----------
+    // ---------- Shopping List ----------
     @GET("tracker/summary")
     suspend fun trackerSummary(): ShopSummaryOut
 

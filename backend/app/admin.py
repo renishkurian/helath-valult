@@ -2892,6 +2892,23 @@ def expense_analyser_insights(
     ))
 
 
+@router.get("/expense-analyser/statements", response_class=HTMLResponse)
+def ea_statements(request: Request, status: str = "pending", db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app.routers import finance as fn
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    rows = tr.list_statements(status=status or "pending", category=None, q=None, db=db, current_user=user)
+    passwords = tr.list_passwords(db=db, current_user=user)
+    fn.ensure_defaults(db, user)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    return templates.TemplateResponse("tracker_statements.html", _ea_ctx(
+        request, user, "ea_statements", rows=rows, passwords=passwords,
+        accounts=accounts, status=status or "pending", inr=fn.inr,
+    ))
+
+
 @router.post("/expense-analyser/schedule")
 async def expense_analyser_schedule(request: Request, db: Session = Depends(get_db)):
     from app import expense_analyser as ea
@@ -3122,7 +3139,7 @@ def expense_analyser_ignore_item(item_id: str, request: Request, db: Session = D
     return RedirectResponse("/admin/expense-analyser", status_code=302)
 
 
-# ---------- Expense Tracker ----------
+# ---------- Shopping List ----------
 def _tr_ctx(request, user, active_nav, **extra):
     from app.routers.finance import inr
     ctx = {
@@ -3162,6 +3179,21 @@ def tracker_create_list(request: Request, name: str = Form(...), description: st
     return RedirectResponse(f"/admin/tracker/lists/{created.id}", status_code=302)
 
 
+@router.get("/tracker/lists/{list_id}/live")
+def tracker_list_live(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    lst = tr.get_list(list_id, db=db, current_user=user)
+    return JSONResponse({
+        "revision": lst.revision,
+        "item_count": lst.item_count,
+        "checked_count": lst.checked_count,
+        "pending_count": lst.pending_count,
+    })
+
+
 @router.get("/tracker/lists/{list_id}", response_class=HTMLResponse)
 def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3175,6 +3207,7 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
     friends = tr.list_friends(db=db, current_user=user)
     summary = tr.tracker_summary(db=db, current_user=user)
     catalog = catalog_payload()
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     return templates.TemplateResponse("tracker_list.html", _tr_ctx(
         request, user, "tr_lists", lst=lst,
         pending=[i for i in items if i.status == "pending"],
@@ -3182,6 +3215,8 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
         friends=friends, groups=catalog["groups"],
         catalog_json=json.dumps(catalog, ensure_ascii=False),
         pending_statements=summary.pending_statements,
+        people=people,
+        revision=lst.revision,
     ))
 
 
@@ -3318,22 +3353,12 @@ def tracker_send_list(list_id: str, request: Request, email: str = Form(...), me
 
 
 @router.get("/tracker/statements", response_class=HTMLResponse)
-def tracker_statements(request: Request, status: str = "pending", db: Session = Depends(get_db)):
-    from app.routers import tracker as tr
-    from app.routers import finance as fn
-    user = _tr_user(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    rows = tr.list_statements(status=status or "pending", category=None, q=None, db=db, current_user=user)
-    passwords = tr.list_passwords(db=db, current_user=user)
-    fn.ensure_defaults(db, user)
-    accounts = fn.list_accounts(db=db, current_user=user)
-    return templates.TemplateResponse("tracker_statements.html", _tr_ctx(
-        request, user, "tr_statements", rows=rows, passwords=passwords,
-        accounts=accounts, status=status or "pending",
-    ))
+def tracker_statements(request: Request, status: str = "pending"):
+    qs = f"?status={status}" if status and status != "pending" else ""
+    return RedirectResponse(f"/admin/expense-analyser/statements{qs}", status_code=302)
 
 
+@router.post("/expense-analyser/statements/upload")
 @router.post("/tracker/statements/upload")
 async def tracker_upload_statement(request: Request, file: UploadFile = File(...), password: str = Form(""), identifier: str = Form(""), db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3344,13 +3369,14 @@ async def tracker_upload_statement(request: Request, file: UploadFile = File(...
     try:
         result = await tr.upload_statement(file=file, password=password, identifier=identifier, db=db, current_user=user)
     except HTTPException as exc:
-        return RedirectResponse(f"/admin/tracker/statements?err={exc.detail}", status_code=302)
+        return RedirectResponse(f"/admin/expense-analyser/statements?err={exc.detail}", status_code=302)
     return RedirectResponse(
-        f"/admin/tracker/statements?ok=1&created={result.get('created', 0)}&skipped={result.get('skipped', 0)}",
+        f"/admin/expense-analyser/statements?ok=1&created={result.get('created', 0)}&skipped={result.get('skipped', 0)}",
         status_code=302,
     )
 
 
+@router.post("/expense-analyser/statements/post-all")
 @router.post("/tracker/statements/post-all")
 def tracker_post_all(request: Request, account_id: str = Form(""), db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3363,9 +3389,10 @@ def tracker_post_all(request: Request, account_id: str = Form(""), db: Session =
             tr.post_statement_txn(db, user, row.id, account_id or None)
         except (LookupError, RuntimeError):
             continue
-    return RedirectResponse("/admin/tracker/statements?ok=posted", status_code=302)
+    return RedirectResponse("/admin/expense-analyser/statements?ok=posted", status_code=302)
 
 
+@router.post("/expense-analyser/statements/{txn_id}/post")
 @router.post("/tracker/statements/{txn_id}/post")
 def tracker_post_statement(txn_id: str, request: Request, account_id: str = Form(""), db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3375,10 +3402,11 @@ def tracker_post_statement(txn_id: str, request: Request, account_id: str = Form
     try:
         tr.post_statement_txn(db, user, txn_id, account_id or None)
     except (LookupError, RuntimeError) as exc:
-        return RedirectResponse(f"/admin/tracker/statements?err={exc}", status_code=302)
-    return RedirectResponse("/admin/tracker/statements?ok=posted", status_code=302)
+        return RedirectResponse(f"/admin/expense-analyser/statements?err={exc}", status_code=302)
+    return RedirectResponse("/admin/expense-analyser/statements?ok=posted", status_code=302)
 
 
+@router.post("/expense-analyser/statements/{txn_id}/ignore")
 @router.post("/tracker/statements/{txn_id}/ignore")
 def tracker_ignore_statement(txn_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3386,9 +3414,10 @@ def tracker_ignore_statement(txn_id: str, request: Request, db: Session = Depend
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     tr.ignore_one(txn_id, db=db, current_user=user)
-    return RedirectResponse("/admin/tracker/statements", status_code=302)
+    return RedirectResponse("/admin/expense-analyser/statements", status_code=302)
 
 
+@router.post("/expense-analyser/passwords")
 @router.post("/tracker/passwords")
 def tracker_save_password(
     request: Request, identifier: str = Form(...), password: str = Form(...),
@@ -3404,9 +3433,10 @@ def tracker_save_password(
         identifier=identifier, password=password, account_type=account_type,
         last_4_digits=last_4_digits or None,
     ), db=db, current_user=user)
-    return RedirectResponse("/admin/tracker/statements?ok=1", status_code=302)
+    return RedirectResponse("/admin/expense-analyser/statements?ok=1", status_code=302)
 
 
+@router.post("/expense-analyser/passwords/{password_id}/delete")
 @router.post("/tracker/passwords/{password_id}/delete")
 def tracker_delete_password(password_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3414,7 +3444,7 @@ def tracker_delete_password(password_id: str, request: Request, db: Session = De
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     tr.delete_password(password_id, db=db, current_user=user)
-    return RedirectResponse("/admin/tracker/statements", status_code=302)
+    return RedirectResponse("/admin/expense-analyser/statements", status_code=302)
 
 
 @router.get("/tracker/friends", response_class=HTMLResponse)

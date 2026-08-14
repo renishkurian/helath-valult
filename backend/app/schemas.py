@@ -1402,7 +1402,7 @@ class ExpenseAnalyserQueryIn(BaseModel):
     sync_query: Optional[str] = Field(default=None, max_length=2000)
 
 
-# ---------- Expense Tracker ----------
+# ---------- Shopping List ----------
 class ShopListIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
@@ -1467,6 +1467,7 @@ class ShopListOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    revision: Optional[str] = None
     items: Optional[List[ShopItemOut]] = None
 
 

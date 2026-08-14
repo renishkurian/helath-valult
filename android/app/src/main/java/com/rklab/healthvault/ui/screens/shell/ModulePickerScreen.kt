@@ -346,7 +346,7 @@ fun ModulePickerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(132.dp),
-                contentDescription = "Open Expense Tracker, ${state.trackerOpen} open lists"
+                contentDescription = "Open Shopping List, ${state.trackerOpen} open lists"
             ) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -355,7 +355,7 @@ fun ModulePickerScreen(
                 ) {
                     TileIcon(Icons.Outlined.ShoppingCart, HubAmber)
                     Text(
-                        "Lists · PDFs",
+                        "Live lists",
                         color = HubAmber,
                         fontFamily = MonoFont,
                         fontSize = 9.sp,
@@ -367,10 +367,10 @@ fun ModulePickerScreen(
                     )
                 }
                 Column {
-                    Text("Expense Tracker", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Shopping List", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(3.dp))
                     Text(
-                        if (state.trackerOpen == 0) "Shopping lists, shared carts, bank PDFs"
+                        if (state.trackerOpen == 0) "Shared carts with family and guests"
                         else "${state.trackerOpen} open lists",
                         color = HubTextDim,
                         fontSize = 11.5.sp,

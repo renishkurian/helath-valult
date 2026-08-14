@@ -722,7 +722,7 @@ class HealthVaultRepository(
     suspend fun expenseAnalyserInsights(month: String? = null) = api.expenseAnalyserInsights(month)
     suspend fun disconnectExpenseAnalyser() = api.disconnectExpenseAnalyser()
 
-    // ---------- Expense Tracker ----------
+    // ---------- Shopping List ----------
     suspend fun trackerSummary() = api.trackerSummary()
     suspend fun listShopLists(completed: Boolean? = null) = api.listShopLists(completed)
     suspend fun createShopList(body: ShopListIn) = api.createShopList(body)

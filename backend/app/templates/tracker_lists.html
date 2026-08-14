@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Shopping lists{% endblock %}
+{% block body_class %}has-composer{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <div class="eyebrow">
       <a href="/admin/modules">All modules</a>
       <i class="bi bi-chevron-right"></i>
-      Expense Tracker
+      Shopping List
     </div>
     <h1 class="page-title">Lists</h1>
-    <p class="page-lead">Shared grocery lists with Malayalam quick-add — then post the bill into Money Manager.</p>
+    <p class="page-lead">Shared grocery lists with Malayalam quick-add. Guests and family see checks in real time.</p>
   </div>
 </div>
 
@@ -37,9 +38,9 @@
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat">
-      <div class="lbl"><i class="bi bi-file-earmark-pdf"></i> Statements</div>
-      <div class="val">{{ summary.pending_statements }}</div>
-      <div class="sub">PDF rows to post</div>
+      <div class="lbl"><i class="bi bi-people"></i> People</div>
+      <div class="val">{{ summary.friends }}</div>
+      <div class="sub">friends &amp; family</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
@@ -51,18 +52,18 @@
   </div>
 </div>
 
-<div class="surface mb-4">
+<div class="shop-composer surface mb-4">
   <div class="section-head"><h2>New list</h2></div>
   <form method="post" action="/admin/tracker/lists" class="row g-2 align-items-end">
-    <div class="col-md-5">
+    <div class="col-md-5 shop-composer-main">
       <label class="form-label" for="list-name">Name</label>
-      <input class="form-control" id="list-name" name="name" required maxlength="255" placeholder="Saturday market">
+      <input class="form-control" id="list-name" name="name" required maxlength="255" placeholder="New list name">
     </div>
-    <div class="col-md-5">
+    <div class="col-md-5 shop-composer-extra">
       <label class="form-label" for="list-desc">Note</label>
       <input class="form-control" id="list-desc" name="description" maxlength="500" placeholder="Optional">
     </div>
-    <div class="col-md-2">
+    <div class="col-md-2 shop-composer-submit">
       <button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i> Create</button>
     </div>
   </form>

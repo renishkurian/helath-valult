@@ -1138,7 +1138,7 @@ data class ExpenseAnalyserInsightsOut(
     val top_payees: List<ExpenseAnalyserSlice> = emptyList()
 )
 
-// ---------- Expense Tracker ----------
+// ---------- Shopping List ----------
 data class ShopSummaryOut(
     val lists: Int = 0,
     val open_lists: Int = 0,
@@ -1161,6 +1161,7 @@ data class ShopListOut(
     val created_at: String = "",
     val updated_at: String? = null,
     val completed_at: String? = null,
+    val revision: String? = null,
     val items: List<ShopItemOut>? = null
 )
 

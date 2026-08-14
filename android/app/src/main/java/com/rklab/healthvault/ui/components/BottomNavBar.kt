@@ -74,8 +74,8 @@ fun TrackerBottomNav(current: TrackerTab, onSelect: (TrackerTab) -> Unit) {
         NavigationBarItem(
             selected = current == TrackerTab.FRIENDS,
             onClick = { onSelect(TrackerTab.FRIENDS) },
-            icon = { Icon(Icons.Filled.People, contentDescription = "Friends") },
-            label = { Text("Friends") },
+            icon = { Icon(Icons.Filled.People, contentDescription = "People") },
+            label = { Text("People") },
             colors = navColors
         )
     }

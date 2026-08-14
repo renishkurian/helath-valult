@@ -21,7 +21,7 @@ ensure_superadmin()
 
 app = FastAPI(
     title="Vault API",
-    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, Expense Tracker, AI, Documents, and URLs.",
+    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, Shopping List, AI, Documents, and URLs.",
     version="1.1.0",
     lifespan=lifespan,
 )

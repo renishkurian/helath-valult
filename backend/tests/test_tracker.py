@@ -150,3 +150,63 @@ def test_admin_list_detail_renders_quick_add():
     assert "ഉള്ളി" in page.text
     assert "Use AI (Malayalam" in page.text
     assert "Internal Server Error" not in page.text
+    assert "Live" in page.text
+    assert "app-tabbar" in page.text
+    assert "has-composer" in page.text
+
+
+def test_family_share_auto_approves_and_polls_revision():
+    headers = _headers("fam-live@example.com")
+    lst = client.post("/tracker/lists", headers=headers, json={"name": "Sunday market"}).json()
+    share = client.post(f"/tracker/lists/{lst['id']}/share", headers=headers)
+    assert share.status_code == 200, share.text
+    token = share.json()["token"]
+
+    family = client.post(
+        f"/tracker/shared/{token}/items",
+        json={"name": "Milk", "guest_name": "Shop User"},
+    )
+    assert family.status_code == 201, family.text
+    assert family.json()["status"] == "approved"
+
+    guest = client.post(
+        f"/tracker/shared/{token}/items",
+        json={"name": "Eggs", "guest_name": "Neighbour"},
+    )
+    assert guest.status_code == 201, guest.text
+    assert guest.json()["status"] == "pending"
+
+    live = client.get(f"/tracker/shared/{token}")
+    assert live.status_code == 200, live.text
+    body = live.json()
+    assert body["revision"]
+    assert "Shop User" in body["members"]
+    names = [i["name"] for i in body["items"]]
+    assert any("Milk" in n for n in names)
+
+    page = client.get(f"/tracker/public/{token}/page")
+    assert page.status_code == 200, page.text[:500]
+    assert "Sunday Market" in page.text
+    assert "public-app" in page.text
+    assert "shop-composer" in page.text
+    assert "Internal Server Error" not in page.text
+
+
+def test_admin_statements_moved_to_expense_analyser():
+    email = "pdf-move@example.com"
+    _headers(email)
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    bounced = session.get("/admin/tracker/statements", follow_redirects=False)
+    assert bounced.status_code in (302, 303)
+    assert "/admin/expense-analyser/statements" in bounced.headers.get("location", "")
+    page = session.get("/admin/expense-analyser/statements")
+    assert page.status_code == 200, page.text[:500]
+    assert "Bank statements" in page.text
+    assert "Expense Analyser" in page.text
+    assert "Internal Server Error" not in page.text

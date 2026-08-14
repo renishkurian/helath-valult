@@ -158,4 +158,20 @@
     });
   }
   filterChips();
+
+  var liveUrl = root.getAttribute("data-live");
+  var revision = root.getAttribute("data-revision") || "";
+  if (liveUrl) {
+    setInterval(function () {
+      var active = document.activeElement;
+      if (active && active.matches && active.matches("input, textarea, select")) return;
+      fetch(liveUrl, { headers: { Accept: "application/json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (!data || !data.revision) return;
+          if (revision && data.revision !== revision) location.reload();
+        })
+        .catch(function () {});
+    }, 2500);
+  }
 })();
