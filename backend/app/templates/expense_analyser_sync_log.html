@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Expense Analyser sync log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/expense-analyser">Expense Analyser</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Sync log
+    </div>
+    <h1 class="page-title">Sync log</h1>
+    <p class="page-lead">Manual and scheduled Gmail pulls — fetched, new, skipped, matched, and missed counts.</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if status.connected %}
+    <form method="post" action="/admin/expense-analyser/sync">
+      <button class="btn btn-primary" type="submit" {% if status.syncing %}disabled{% endif %}>
+        <i class="bi bi-arrow-repeat"></i> {% if status.syncing %}Syncing…{% else %}Sync Gmail{% endif %}
+      </button>
+    </form>
+    {% endif %}
+    <a class="btn btn-outline-secondary" href="/admin/expense-analyser"><i class="bi bi-inbox"></i> Inbox</a>
+    <a class="btn btn-outline-secondary" href="/admin/expense-analyser/settings"><i class="bi bi-gear"></i> Settings</a>
+  </div>
+</div>
+
+{% if status.syncing %}
+<div class="alert alert-info" role="alert">
+  <i class="bi bi-arrow-repeat"></i> Sync is running on the server. Refresh in a moment to see the new log entry.
+</div>
+{% endif %}
+
+<div class="card table-card">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-clock-history"></i></span>
+    <div>
+      <h2>Gmail sync history</h2>
+      <div class="card-sub">Newest first</div>
+    </div>
+    <span class="badge badge-soft ms-auto">{% if pager %}{{ "{:,}".format(pager.total) }}{% else %}{{ sync_logs | length }}{% endif %}</span>
+  </div>
+  {% if sync_logs %}
+  {% include "_pager.html" %}
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Finished</th>
+          <th>Trigger</th>
+          <th>Status</th>
+          <th class="num">Fetched</th>
+          <th class="num">New</th>
+          <th class="num">Skipped</th>
+          <th class="num">Matched</th>
+          <th class="num">Missed</th>
+          <th>Error</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in sync_logs %}
+        <tr>
+          <td class="mono">{{ log.finished_at.strftime('%Y-%m-%d %H:%M:%S') if log.finished_at else '—' }}</td>
+          <td><span class="badge badge-soft">{{ log.trigger | labelize }}</span></td>
+          <td>
+            {% if log.ok %}
+            <span class="badge badge-good">OK</span>
+            {% else %}
+            <span class="badge badge-bad">Failed</span>
+            {% endif %}
+          </td>
+          <td class="num">{{ log.fetched }}</td>
+          <td class="num">{{ log.created }}</td>
+          <td class="num">{{ log.skipped }}</td>
+          <td class="num">{{ log.matched }}</td>
+          <td class="num">{{ log.missed }}</td>
+          <td class="small {% if log.error %}text-danger{% else %}text-muted{% endif %}">
+            {{ log.error or '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "_pager.html" %}
+  {% else %}
+  <div class="card-body">
+    <p class="text-muted mb-0">No syncs yet. Press <strong>Sync Gmail</strong> to start the log.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

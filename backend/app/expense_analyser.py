@@ -503,16 +503,26 @@ def _record_sync_log(
     ))
 
 
+def count_sync_logs(db: Session, user: models.User) -> int:
+    return (
+        db.query(models.ExpenseAnalyserSyncLog)
+        .filter(models.ExpenseAnalyserSyncLog.user_id == vault_id(user))
+        .count()
+    )
+
+
 def list_sync_logs(
     db: Session,
     user: models.User,
     *,
     limit: int = 30,
+    offset: int = 0,
 ) -> list[models.ExpenseAnalyserSyncLog]:
     return (
         db.query(models.ExpenseAnalyserSyncLog)
         .filter(models.ExpenseAnalyserSyncLog.user_id == vault_id(user))
         .order_by(models.ExpenseAnalyserSyncLog.finished_at.desc())
+        .offset(max(0, offset))
         .limit(max(1, min(100, limit)))
         .all()
     )

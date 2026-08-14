@@ -2825,14 +2825,13 @@ def expense_analyser_home(
         kind = "income" if item.direction == "credit" else "expense"
         parent_id, sub_id = ea.match_category_ids(cat_rows, item.suggested_category, kind)
         cat_picks[item.id] = {"parent": parent_id, "sub": sub_id, "kind": kind}
-    sync_logs = ea.list_sync_logs(db, user, limit=15)
     pager_prev, pager_next = _pager_urls(
         "/admin/expense-analyser", pager, status=filter_status or None,
     )
     return templates.TemplateResponse("expense_analyser.html", _ea_ctx(
         request, user, "ea_inbox",
         status=st, items=items, accounts=accounts,
-        filter_status=filter_status, inr=inr, sync_logs=sync_logs,
+        filter_status=filter_status, inr=inr,
         pager=pager, pager_prev=pager_prev, pager_next=pager_next,
         ea_cats=ea_cats, cat_picks=cat_picks,
     ))
@@ -2845,10 +2844,34 @@ def expense_analyser_settings(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     st = ea.status_dict(db, user)
-    sync_logs = ea.list_sync_logs(db, user, limit=25)
     return templates.TemplateResponse("expense_analyser_settings.html", _ea_ctx(
         request, user, "ea_settings",
-        status=st, redirect_uri=_ea_redirect_uri(request), sync_logs=sync_logs,
+        status=st, redirect_uri=_ea_redirect_uri(request),
+    ))
+
+
+@router.get("/expense-analyser/sync-log", response_class=HTMLResponse)
+def expense_analyser_sync_log(
+    request: Request,
+    page: int = 1,
+    db: Session = Depends(get_db),
+):
+    from app import expense_analyser as ea
+    from app.paging import paginate
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    st = ea.status_dict(db, user)
+    total = ea.count_sync_logs(db, user)
+    pager = paginate(page=page, per_page=40, total=total)
+    sync_logs = ea.list_sync_logs(
+        db, user, limit=pager["per_page"], offset=pager["offset"],
+    )
+    pager_prev, pager_next = _pager_urls("/admin/expense-analyser/sync-log", pager)
+    return templates.TemplateResponse("expense_analyser_sync_log.html", _ea_ctx(
+        request, user, "ea_sync_log",
+        status=st, sync_logs=sync_logs,
+        pager=pager, pager_prev=pager_prev, pager_next=pager_next,
     ))
 
 

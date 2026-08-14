@@ -24,6 +24,8 @@ _TAG_LABELS = {
     "posted": "Posted",
     "ignored": "Ignored",
     "missed": "Missed",
+    "manual": "Manual",
+    "scheduled": "Scheduled",
     **PAYMENT_LABELS,
 }
 
