@@ -62,16 +62,50 @@ _PAYEE_MAP: list[tuple[tuple[str, ...], str]] = [
     (("amazon", "flipkart", "myntra", "ajio", "meesho", "nykaa"), "Shopping"),
     (("jio", "airtel", "vi ", "bsnl", "electricity", "bescom", "water board", "gas"), "Bills & utilities"),
     (("rent", "nobroker", "housing.com"), "Rent"),
-    (("apollo", "1mg", "pharmeasy", "pharmacy", "hospital", "clinic"), "Health"),
+    (
+        (
+            "apollo", "1mg", "pharmeasy", "pharmacy", "hospital", "clinic",
+            "medical", "medico", "dental", "diagnostic", "doctor", "labs",
+        ),
+        "Health",
+    ),
     (("byju", "unacademy", "coursera", "udemy", "school", "college"), "Education"),
     (("netflix", "spotify", "youtube premium", "hotstar", "prime video", "apple.com/bill", "google one", "icloud"), "Subscriptions"),
     (("bookmyshow", "pvr", "inox"), "Entertainment"),
     (("indigo", "airindia", "spicejet", "goibibo", "booking.com", "airbnb", "oyo"), "Travel"),
+    # Keep EMI / Insurance specific — short tokens use word boundaries in _keyword_hit.
+    # Do NOT add "convert to emi" / "easy emi" (card marketing footers).
     (("emi", "loan", "bajaj finserv", "hdfc bank emi"), "EMI / loans"),
-    (("lic", "policybazaar", "insurance"), "Insurance"),
+    (
+        (
+            "insurance", "policybazaar", "life insurance", "health insurance",
+            "lic of india", "lic premium", "star health", "hdfc life", "sbi life",
+        ),
+        "Insurance",
+    ),
     (("salary", "payroll", "neft cr", "credited by"), "Salary"),
     (("refund", "reversed", "cashback"), "Refund"),
 ]
+
+# Short / ambiguous keys must not match inside other words (click→lic, premium→emi, medical footer noise).
+_BOUNDARY_KEYS = frozenset({
+    "emi", "lic", "loan", "gas", "rent", "atm", "vi ", "labs", "pvr",
+})
+_HEALTH_HINT_RE = re.compile(
+    r"medical|medico|hospital|clinic|pharma|pharmacy|diagnostic|dental|"
+    r"doctor|apollo|1mg|pharmeasy|\blabs?\b",
+    re.I,
+)
+_PERSONAL_VPA_RE = re.compile(
+    r"\b[a-z0-9][a-z0-9._-]{2,40}@"
+    r"(?:oksbi|okaxis|okybl|okhdfcbank|ybl|paytm|ibl|fbl|axl|upi)\b",
+    re.I,
+)
+_KNOWN_MERCHANT_HINT_RE = re.compile(
+    r"swiggy|zomato|amazon|flipkart|myntra|uber|ola|irctc|netflix|spotify|"
+    r"phonepe|google pay|gpay|paytm|bigbasket|blinkit|zepto",
+    re.I,
+)
 
 _AMOUNT_RE = re.compile(
     r"(?:rs\.?|inr|₹)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)",
@@ -354,20 +388,62 @@ def build_description(
     return label or who
 
 
+def _keyword_hit(haystack: str, key: str) -> bool:
+    needle = (key or "").strip().lower()
+    if not needle or not haystack:
+        return False
+    # Trailing-space keys (e.g. "vi ") are intentional phrase pads — keep substring match.
+    if needle.endswith(" ") or len(needle) <= 3 or needle in _BOUNDARY_KEYS:
+        return bool(re.search(rf"(?<![a-z0-9]){re.escape(needle.strip())}(?![a-z0-9])", haystack))
+    return needle in haystack
+
+
 def _keyword_category(text: str, direction: str) -> tuple[str, float]:
-    lower = text.lower()
+    lower = (text or "").lower()
+    # Merchant health signals beat EMI/insurance marketing footers.
+    if direction != "credit" and _HEALTH_HINT_RE.search(lower):
+        return "Health", 0.9
+    best: tuple[str, float, int] | None = None
     for keys, cat in _PAYEE_MAP:
-        if any(k in lower for k in keys):
-            if direction == "credit" and cat not in INCOME_CATEGORIES:
-                if cat == "Refund":
-                    return cat, 0.82
-                return "Other income", 0.55
-            if direction == "debit" and cat in INCOME_CATEGORIES and cat != "Refund":
-                return "Other", 0.5
-            return cat, 0.8
-    if direction == "credit":
-        return "Other income", 0.4
-    return "Other", 0.4
+        for key in keys:
+            if not _keyword_hit(lower, key):
+                continue
+            score = len(key.strip())
+            if best is None or score > best[2]:
+                best = (cat, 0.8, score)
+    if best is None:
+        if direction != "credit" and _looks_personal_upi(text):
+            return "UPI / transfers", 0.82
+        if direction == "credit":
+            return "Other income", 0.4
+        return "Other", 0.4
+    cat, conf, _ = best
+    if direction == "credit" and cat not in INCOME_CATEGORIES:
+        if cat == "Refund":
+            return cat, 0.82
+        return "Other income", 0.55
+    if direction == "debit" and cat in INCOME_CATEGORIES and cat != "Refund":
+        return "Other", 0.5
+    if cat in {"EMI / loans", "Insurance"} and _looks_personal_upi(text):
+        return "UPI / transfers", 0.86
+    return cat, conf
+
+
+def _looks_personal_upi(text: str, payee: str | None = None) -> bool:
+    """True for person-to-person UPI (name@oksbi), not merchant brands."""
+    blob = f"{text or ''} {payee or ''}"
+    if _KNOWN_MERCHANT_HINT_RE.search(blob):
+        return False
+    if _HEALTH_HINT_RE.search(blob):
+        return False
+    if _PERSONAL_VPA_RE.search(blob):
+        return True
+    who = (payee or "").strip()
+    if who and re.fullmatch(r"[A-Za-z][A-Za-z .'-]{1,40}", who):
+        # "VJ BIJI", "Renish K" — person-like, not ALLCAPS merchant brands with digits.
+        if not re.search(r"\d", who) and len(who.split()) <= 4:
+            return True
+    return False
 
 
 def classify_heuristic(text: str) -> dict[str, Any]:
@@ -455,6 +531,44 @@ def hard_correct(text: str, result: dict[str, Any]) -> dict[str, Any]:
     elif out.get("payee"):
         # Junk payee — try body extraction, else drop.
         out["payee"] = _guess_payee(text)
+
+    # Strong merchant hints always win over weak/wrong AI categories.
+    if _HEALTH_HINT_RE.search(text or "") or _HEALTH_HINT_RE.search(out.get("payee") or ""):
+        out["category"] = "Health"
+        out["confidence"] = max(float(out.get("confidence") or 0), 0.93)
+        if out.get("direction") in {None, "", "unknown", "credit"} and (
+            _CC_SPEND_RE.search(text or "") or _DEBIT_RE.search(text or "")
+        ):
+            out["direction"] = "debit"
+    elif _looks_personal_upi(text, out.get("payee")) and out.get("category") in {
+        "Insurance", "EMI / loans", "Subscriptions", "Other", "Other income",
+        "ATM / cash", "Salary", None, "",
+    }:
+        out["category"] = "UPI / transfers"
+        out["payment_method"] = out.get("payment_method") or "upi"
+        if out.get("payment_method") == "other":
+            out["payment_method"] = "upi"
+        out["confidence"] = max(float(out.get("confidence") or 0), 0.86)
+
+    # Recompute from body when AI still left a fragile EMI/Insurance tag with no real keyword.
+    fragile = out.get("category") in {"EMI / loans", "Insurance"}
+    if fragile:
+        cat, conf = _keyword_category(text, out.get("direction") or "debit")
+        if cat not in {"EMI / loans", "Insurance"} and conf >= 0.8:
+            out["category"] = cat
+            out["confidence"] = max(float(out.get("confidence") or 0), conf)
+        elif cat in {"EMI / loans", "Insurance"}:
+            # Confirm with boundary-safe keys only; otherwise drop to safer default.
+            out["category"] = cat
+        else:
+            if method == "upi" or _UPI_RE.search(text or ""):
+                out["category"] = "UPI / transfers"
+            elif _HEALTH_HINT_RE.search(text or ""):
+                out["category"] = "Health"
+            else:
+                out["category"] = "Other"
+            out["confidence"] = min(float(out.get("confidence") or 0.5), 0.55)
+
     out["description"] = build_description(
         out.get("payment_method"), out.get("payee"), out.get("category"), out.get("notes"),
     )
@@ -562,7 +676,12 @@ def classify_with_ai(
         "IMPORTANT: A credit-card spend ('Credit Card … used for a transaction', Info: MERCHANT) "
         "is direction=debit and payment_method=credit_card. Never call that income or atm. "
         "Ignore phrases like Available Credit Limit when deciding direction. "
-        "Payee should be the merchant from Info:/at:, e.g. AMAZON PAY."
+        "Payee should be the merchant from Info:/at:/towards VPA, e.g. AMAZON PAY. "
+        "Category from the MERCHANT, not email footers: "
+        "names containing medical/hospital/clinic/pharma → Health (never EMI / loans); "
+        "person UPI VPAs like name@oksbi / name@ybl → UPI / transfers (never Insurance); "
+        "EMI / loans only for real loan/EMI payments; Insurance only for insurers/premiums. "
+        "Ignore 'click here', Convert to EMI ads, and marketing footers."
     )
     user = f"Message:\n{text}"
     usage: dict[str, Any] = {}

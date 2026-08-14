@@ -79,6 +79,63 @@ def test_heuristic_icici_credit_card_amazon():
     assert classify_message(text)["payment_method"] == "credit_card"
 
 
+def test_medical_merchant_not_emi_and_personal_upi_not_insurance():
+    from app.finance_ai import classify_message, hard_correct
+
+    medical = (
+        "Dear Cardholder, This is to inform you that, Rs.481.00 spent on your "
+        "SBI Credit Card ending 5824 at PALADIOCESANMEDICAL on 14/08/26. "
+        "Trxn. not done by you? Report at https://example.com/click-here. "
+        "Convert to Easy EMI on your next statement."
+    )
+    out = classify_heuristic(medical)
+    assert out["direction"] == "debit"
+    assert out["payment_method"] == "credit_card"
+    assert out["category"] == "Health"
+    # AI wrongly saying EMI must be corrected.
+    fixed = hard_correct(medical, {
+        "direction": "debit", "amount": 481, "payee": "PALADIOCESANMEDICAL",
+        "category": "EMI / loans", "payment_method": "credit_card", "confidence": 0.99,
+    })
+    assert fixed["category"] == "Health"
+    assert classify_message(medical)["category"] == "Health"
+
+    personal = (
+        "Dear Customer, Greetings from HDFC Bank! Rs.30.00 is debited from your "
+        "account ending 6030 towards VPA sviji795@oksbi (VJ BIJI) on 14-08-26. "
+        "UPI transaction reference no.: 659210606381. Please click here to manage alerts."
+    )
+    pout = classify_heuristic(personal)
+    assert pout["direction"] == "debit"
+    assert pout["payment_method"] == "upi"
+    assert pout["category"] == "UPI / transfers"
+    assert pout["category"] != "Insurance"
+    pfixed = hard_correct(personal, {
+        "direction": "debit", "amount": 30, "payee": "VJ BIJI",
+        "category": "Insurance", "payment_method": "upi", "confidence": 0.99,
+    })
+    assert pfixed["category"] == "UPI / transfers"
+    assert classify_message(personal)["category"] == "UPI / transfers"
+
+
+def test_keyword_boundaries_skip_click_and_prefer_medical():
+    from app.finance_ai import _keyword_category, _keyword_hit
+    assert _keyword_hit("please click here to apply", "lic") is False
+    assert _keyword_hit("lic premium due", "lic") is True
+    assert _keyword_hit("convert to emi today", "emi") is True
+    assert _keyword_hit("premium due now", "emi") is False
+    cat, _ = _keyword_category(
+        "spent at PALADIOCESANMEDICAL. Convert to Easy EMI. click here.",
+        "debit",
+    )
+    assert cat == "Health"
+    # Marketing EMI footer must not beat a medical merchant.
+    assert _keyword_hit("convert to easy emi today", "emi") is True
+    assert classify_heuristic(
+        "Rs.100 spent on credit card at CITY HOSPITAL. Convert to Easy EMI. click here."
+    )["category"] == "Health"
+
+
 def test_heuristic_credit_salary():
     out = classify_heuristic("INR 25,000.00 credited to your account from ACME PAYROLL on 01-08-2026")
     assert out["direction"] == "credit"
