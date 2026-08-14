@@ -33,6 +33,7 @@ data class InviteViewerRequest(
 )
 data class TotpSetupOut(val secret: String, val otpauth_url: String)
 data class TotpVerifyIn(val totp_token: String? = null, val code: String)
+data class RefreshIn(val refresh_token: String)
 data class DeviceTokenIn(val token: String, val platform: String = "android")
 data class LoginChallengeOut(
     val id: String,

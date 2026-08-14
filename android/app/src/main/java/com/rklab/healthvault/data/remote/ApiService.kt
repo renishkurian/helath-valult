@@ -613,4 +613,59 @@ interface ApiService {
 
     @GET("ai/usage/summary")
     suspend fun aiUsageSummary(@Query("days") days: Int = 30): AiUsageSummaryOut
+
+    // ---------- Expense Analyser ----------
+    @GET("expense-analyser/status")
+    suspend fun expenseAnalyserStatus(): ExpenseAnalyserStatusOut
+
+    @GET("expense-analyser/items")
+    suspend fun listExpenseAnalyserItems(
+        @Query("status") status: String? = null,
+        @Query("statuses") statuses: String? = null,
+        @Query("kind") kind: String? = null,
+        @Query("limit") limit: Int = 200,
+        @Query("offset") offset: Int = 0
+    ): List<ExpenseAnalyserItemOut>
+
+    @PATCH("expense-analyser/items/{id}")
+    suspend fun updateExpenseAnalyserItem(
+        @Path("id") id: String,
+        @Body body: ExpenseAnalyserItemUpdate
+    ): ExpenseAnalyserItemOut
+
+    @POST("expense-analyser/items/{id}/ignore")
+    suspend fun ignoreExpenseAnalyserItem(@Path("id") id: String): ExpenseAnalyserItemOut
+
+    @POST("expense-analyser/items/{id}/post")
+    suspend fun postExpenseAnalyserItem(
+        @Path("id") id: String,
+        @Body body: ExpenseAnalyserPostIn = ExpenseAnalyserPostIn()
+    ): ExpenseAnalyserPostOut
+
+    @POST("expense-analyser/sync")
+    suspend fun syncExpenseAnalyser(): ExpenseAnalyserSyncOut
+
+    @GET("expense-analyser/sync-logs")
+    suspend fun listExpenseAnalyserSyncLogs(@Query("limit") limit: Int = 30): List<ExpenseAnalyserSyncLogOut>
+
+    @POST("expense-analyser/retag")
+    suspend fun retagExpenseAnalyser(): Map<String, Any>
+
+    @POST("expense-analyser/clear")
+    suspend fun clearExpenseAnalyser(): ExpenseAnalyserClearOut
+
+    @POST("expense-analyser/reconcile")
+    suspend fun reconcileExpenseAnalyser(): ExpenseAnalyserReconcileOut
+
+    @PUT("expense-analyser/query")
+    suspend fun saveExpenseAnalyserQuery(@Body body: ExpenseAnalyserQueryIn): ExpenseAnalyserStatusOut
+
+    @PUT("expense-analyser/schedule")
+    suspend fun saveExpenseAnalyserSchedule(@Body body: ExpenseAnalyserScheduleIn): ExpenseAnalyserStatusOut
+
+    @GET("expense-analyser/insights")
+    suspend fun expenseAnalyserInsights(@Query("month") month: String? = null): ExpenseAnalyserInsightsOut
+
+    @POST("expense-analyser/disconnect")
+    suspend fun disconnectExpenseAnalyser(): ExpenseAnalyserStatusOut
 }

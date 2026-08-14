@@ -37,6 +37,7 @@ import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
@@ -80,6 +81,7 @@ import com.rklab.healthvault.ui.theme.HubBg
 import com.rklab.healthvault.ui.theme.HubDock
 import com.rklab.healthvault.ui.theme.HubGlass
 import com.rklab.healthvault.ui.theme.HubGlassHi
+import com.rklab.healthvault.ui.theme.HubMint
 import com.rklab.healthvault.ui.theme.HubRose
 import com.rklab.healthvault.ui.theme.HubSky
 import com.rklab.healthvault.ui.theme.HubSlate
@@ -107,6 +109,7 @@ fun ModulePickerScreen(
     onHealth: () -> Unit,
     onPasswords: () -> Unit,
     onFinance: () -> Unit,
+    onExpense: () -> Unit,
     onAi: () -> Unit,
     onLocker: () -> Unit,
     onUrls: () -> Unit,
@@ -251,6 +254,47 @@ fun ModulePickerScreen(
                         )
                     }
                     TileFooter(stat = state.financeFooter)
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            HubTile(
+                glow = HubMint,
+                onClick = onExpense,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(132.dp),
+                contentDescription = "Open Expense Analyser, ${state.eaPending} pending"
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    TileIcon(Icons.Outlined.Email, HubMint)
+                    Text(
+                        if (state.eaConnected) "Gmail connected" else "Connect Gmail",
+                        color = HubMint,
+                        fontFamily = MonoFont,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(ChipShape)
+                            .background(HubMint.copy(alpha = 0.12f))
+                            .border(1.dp, HubMint.copy(alpha = 0.25f), ChipShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Column {
+                    Text("Expense Analyser", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        if (state.eaPending > 0) "${state.eaPending} items need review"
+                        else "Bank alerts from mail — match, then post",
+                        color = HubTextDim,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))

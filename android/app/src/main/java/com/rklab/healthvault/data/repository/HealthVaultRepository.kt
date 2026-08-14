@@ -696,4 +696,29 @@ class HealthVaultRepository(
     suspend fun listAiUsage(client: String? = null, limit: Int = 100) =
         api.listAiUsage(client, limit)
     suspend fun aiUsageSummary(days: Int = 30) = api.aiUsageSummary(days)
+
+    // ---------- Expense Analyser ----------
+    suspend fun expenseAnalyserStatus() = api.expenseAnalyserStatus()
+    suspend fun listExpenseAnalyserItems(
+        status: String? = null,
+        statuses: String? = null,
+        kind: String? = null,
+        limit: Int = 200
+    ) = api.listExpenseAnalyserItems(status, statuses, kind, limit)
+    suspend fun updateExpenseAnalyserItem(id: String, body: ExpenseAnalyserItemUpdate) =
+        api.updateExpenseAnalyserItem(id, body)
+    suspend fun ignoreExpenseAnalyserItem(id: String) = api.ignoreExpenseAnalyserItem(id)
+    suspend fun postExpenseAnalyserItem(id: String, body: ExpenseAnalyserPostIn = ExpenseAnalyserPostIn()) =
+        api.postExpenseAnalyserItem(id, body)
+    suspend fun syncExpenseAnalyser() = api.syncExpenseAnalyser()
+    suspend fun listExpenseAnalyserSyncLogs(limit: Int = 30) = api.listExpenseAnalyserSyncLogs(limit)
+    suspend fun retagExpenseAnalyser() = api.retagExpenseAnalyser()
+    suspend fun clearExpenseAnalyser() = api.clearExpenseAnalyser()
+    suspend fun reconcileExpenseAnalyser() = api.reconcileExpenseAnalyser()
+    suspend fun saveExpenseAnalyserQuery(query: String?) =
+        api.saveExpenseAnalyserQuery(ExpenseAnalyserQueryIn(query))
+    suspend fun saveExpenseAnalyserSchedule(enabled: Boolean, hour: Int) =
+        api.saveExpenseAnalyserSchedule(ExpenseAnalyserScheduleIn(enabled, hour))
+    suspend fun expenseAnalyserInsights(month: String? = null) = api.expenseAnalyserInsights(month)
+    suspend fun disconnectExpenseAnalyser() = api.disconnectExpenseAnalyser()
 }

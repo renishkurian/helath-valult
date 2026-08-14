@@ -30,6 +30,12 @@ import com.rklab.healthvault.ui.components.AiBottomNav
 import com.rklab.healthvault.ui.screens.ai.AiAskScreen
 import com.rklab.healthvault.ui.screens.ai.AiProvidersScreen
 import com.rklab.healthvault.ui.screens.ai.AiUsageLogsScreen
+import com.rklab.healthvault.ui.components.ExpenseTab
+import com.rklab.healthvault.ui.components.ExpenseAnalyserBottomNav
+import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserInboxScreen
+import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserInsightsScreen
+import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserSettingsScreen
+import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserSyncLogScreen
 import com.rklab.healthvault.ui.screens.finance.*
 import com.rklab.healthvault.ui.screens.locker.*
 import com.rklab.healthvault.ui.screens.urls.*
@@ -84,6 +90,10 @@ private object Routes {
     const val AI = "ai"
     const val AI_PROVIDERS = "ai_providers"
     const val AI_LOGS = "ai_logs"
+    const val EXPENSE = "expense"
+    const val EXPENSE_INSIGHTS = "expense_insights"
+    const val EXPENSE_LOG = "expense_log"
+    const val EXPENSE_SETTINGS = "expense_settings"
 
     fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
     fun lockerItem(itemId: String) = "locker_item/$itemId"
@@ -183,6 +193,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
     val aiTabs = setOf(Routes.AI, Routes.AI_PROVIDERS, Routes.AI_LOGS)
+    val expenseTabs = setOf(Routes.EXPENSE, Routes.EXPENSE_INSIGHTS, Routes.EXPENSE_LOG, Routes.EXPENSE_SETTINGS)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
     val onLockerItem = currentRoute?.startsWith("locker_item/") == true
     val onLockerAdd = currentRoute?.startsWith("locker_add") == true
@@ -236,6 +247,26 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     }
                     navController.navigate(route) {
                         popUpTo(Routes.FINANCE) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            } else if (currentRoute in expenseTabs) {
+                val current = when (currentRoute) {
+                    Routes.EXPENSE_INSIGHTS -> ExpenseTab.INSIGHTS
+                    Routes.EXPENSE_LOG -> ExpenseTab.LOG
+                    Routes.EXPENSE_SETTINGS -> ExpenseTab.SETTINGS
+                    else -> ExpenseTab.INBOX
+                }
+                ExpenseAnalyserBottomNav(current = current) { tab ->
+                    val route = when (tab) {
+                        ExpenseTab.INBOX -> Routes.EXPENSE
+                        ExpenseTab.INSIGHTS -> Routes.EXPENSE_INSIGHTS
+                        ExpenseTab.LOG -> Routes.EXPENSE_LOG
+                        ExpenseTab.SETTINGS -> Routes.EXPENSE_SETTINGS
+                    }
+                    navController.navigate(route) {
+                        popUpTo(Routes.EXPENSE) { inclusive = false; saveState = true }
                         launchSingleTop = true
                         restoreState = true
                     }
@@ -366,6 +397,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     },
                     onFinance = {
                         navController.navigate(Routes.FINANCE) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
+                    onExpense = {
+                        navController.navigate(Routes.EXPENSE) {
                             popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
                             launchSingleTop = true
                         }
@@ -503,6 +540,31 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 )
             }
 
+            composable(Routes.EXPENSE) {
+                ExpenseAnalyserInboxScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.EXPENSE_INSIGHTS) {
+                ExpenseAnalyserInsightsScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.EXPENSE_LOG) {
+                ExpenseAnalyserSyncLogScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.EXPENSE_SETTINGS) {
+                ExpenseAnalyserSettingsScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+
             composable(Routes.FINANCE) {
                 FinanceTransScreen(
                     repository = repository,
@@ -532,7 +594,8 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     onOpenModules = { navController.navigate(Routes.MODULES) },
                     onOpenInbox = { navController.navigate(Routes.FINANCE_INBOX) },
                     onOpenEmi = { navController.navigate(Routes.FINANCE_EMI) },
-                    onOpenAiProviders = { navController.navigate(Routes.AI_PROVIDERS) }
+                    onOpenAiProviders = { navController.navigate(Routes.AI_PROVIDERS) },
+                    onOpenExpense = { navController.navigate(Routes.EXPENSE) }
                 )
             }
             composable(Routes.FINANCE_EMI) {

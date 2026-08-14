@@ -212,6 +212,9 @@ def test_bill_line_parse_and_post_bridge():
     r = client.get("/expense-analyser/items?status=posted", headers=headers)
     assert r.status_code == 200
     assert any(i["payee"] == "AMAZON PAY" for i in r.json())
+    r = client.get("/expense-analyser/items?statuses=posted,pending", headers=headers)
+    assert r.status_code == 200
+    assert any(i["payee"] == "AMAZON PAY" for i in r.json())
 
 
 def test_post_creates_category_and_subcategory():

@@ -5,7 +5,9 @@ import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.SmartToy
 import androidx.compose.material.icons.filled.Star
@@ -43,6 +46,8 @@ enum class LockerTab { LOCKER, EXPIRING }
 enum class UrlTab { LINKS, FAVORITES, MANAGE }
 
 enum class AiTab { ASK, PROVIDERS, LOGS }
+
+enum class ExpenseTab { INBOX, INSIGHTS, LOG, SETTINGS }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
@@ -75,6 +80,40 @@ fun AiBottomNav(current: AiTab, onSelect: (AiTab) -> Unit) {
             onClick = { onSelect(AiTab.LOGS) },
             icon = { Icon(Icons.Filled.MenuBook, contentDescription = "Usage logs") },
             label = { Text("Logs") },
+            colors = navColors
+        )
+    }
+}
+
+@Composable
+fun ExpenseAnalyserBottomNav(current: ExpenseTab, onSelect: (ExpenseTab) -> Unit) {
+    NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
+        NavigationBarItem(
+            selected = current == ExpenseTab.INBOX,
+            onClick = { onSelect(ExpenseTab.INBOX) },
+            icon = { Icon(Icons.Filled.Inbox, contentDescription = "Inbox") },
+            label = { Text("Inbox") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == ExpenseTab.INSIGHTS,
+            onClick = { onSelect(ExpenseTab.INSIGHTS) },
+            icon = { Icon(Icons.Filled.BarChart, contentDescription = "Insights") },
+            label = { Text("Insights") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == ExpenseTab.LOG,
+            onClick = { onSelect(ExpenseTab.LOG) },
+            icon = { Icon(Icons.Filled.History, contentDescription = "Sync log") },
+            label = { Text("Log") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == ExpenseTab.SETTINGS,
+            onClick = { onSelect(ExpenseTab.SETTINGS) },
+            icon = { Icon(Icons.Filled.Settings, contentDescription = "Gmail & sync") },
+            label = { Text("Gmail") },
             colors = navColors
         )
     }

@@ -49,6 +49,7 @@ def status(
 @router.get("/items", response_model=list[schemas.ExpenseAnalyserItemOut])
 def list_items(
     status: str | None = None,
+    statuses: str | None = None,
     kind: str | None = None,
     limit: int = 100,
     offset: int = 0,
@@ -56,9 +57,10 @@ def list_items(
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
+    status_list = [s.strip() for s in (statuses or "").split(",") if s.strip()] or None
     rows = ea.list_items(
         db, current_user,
-        status=status or None, kind=kind or None,
+        status=status or None, statuses=status_list, kind=kind or None,
         limit=limit, offset=offset,
     )
     return [_item_out(r) for r in rows]
