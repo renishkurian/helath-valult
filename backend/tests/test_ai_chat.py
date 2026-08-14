@@ -158,6 +158,8 @@ def test_chat_roundtrip_with_mocked_llm():
         assert log.completion_tokens == 40
         assert log.total_tokens == 160
         assert log.ok is True
+        assert log.request_text
+        assert "KIMS" in (log.response_text or "") or log.response_text
     finally:
         db.close()
 

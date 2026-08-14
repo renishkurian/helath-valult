@@ -725,6 +725,7 @@ def classify_with_ai(
         "description": build_description(method, data.get("payee"), cat, notes),
         "provider": kind,
         "_usage": usage,
+        "_raw": (raw or "")[:4000],
     }
 
 
@@ -752,12 +753,27 @@ def classify_message(
             base_url=ai.get("base_url"),
         )
         latency = int((time.monotonic() - started) * 1000)
-        maybe_log_from_ai_result(ai, ai_result, latency_ms=latency, ok=True)
+        maybe_log_from_ai_result(
+            ai, ai_result, latency_ms=latency, ok=True,
+            request_text=text,
+            response_text=ai_result.get("_raw") or json.dumps({
+                "direction": ai_result.get("direction"),
+                "amount": ai_result.get("amount"),
+                "payee": ai_result.get("payee"),
+                "category": ai_result.get("category"),
+                "payment_method": ai_result.get("payment_method"),
+                "confidence": ai_result.get("confidence"),
+            }, ensure_ascii=False),
+        )
         if float(ai_result.get("confidence") or 0) >= float(result.get("confidence") or 0):
             result = ai_result
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError, KeyError, json.JSONDecodeError) as exc:
         latency = int((time.monotonic() - started) * 1000)
-        maybe_log_from_ai_result(ai, {"_usage": {}, "provider": ai.get("kind")}, latency_ms=latency, ok=False, error=str(exc)[:200])
+        maybe_log_from_ai_result(
+            ai, {"_usage": {}, "provider": ai.get("kind")},
+            latency_ms=latency, ok=False, error=str(exc)[:200],
+            request_text=text,
+        )
         result["ai_error"] = True
     return hard_correct(text, result)
 

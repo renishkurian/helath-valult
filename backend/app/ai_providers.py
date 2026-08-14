@@ -142,6 +142,8 @@ def test_provider_row(db: Session, user: models.User, provider_id: str) -> str:
             total_tokens=usage.get("total_tokens"),
             latency_ms=latency,
             ok=True,
+            request_text="Dear Customer, Rs.199.00 debited via UPI to NETFLIX on 13-08-2026.",
+            response_text=sample,
         )
         return sample
     except Exception as exc:
@@ -155,6 +157,7 @@ def test_provider_row(db: Session, user: models.User, provider_id: str) -> str:
             latency_ms=latency,
             ok=False,
             error=str(exc)[:200],
+            request_text="Dear Customer, Rs.199.00 debited via UPI to NETFLIX on 13-08-2026.",
         )
         raise
 
@@ -193,6 +196,8 @@ def test_default_connection(db: Session, user: models.User) -> dict:
             total_tokens=result.get("total_tokens"),
             latency_ms=latency,
             ok=True,
+            request_text="ping",
+            response_text=reply,
         )
         return {
             "ok": True,
@@ -215,6 +220,7 @@ def test_default_connection(db: Session, user: models.User) -> dict:
             latency_ms=latency,
             ok=False,
             error=str(exc)[:200],
+            request_text="ping",
         )
         raise
 

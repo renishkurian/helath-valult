@@ -729,6 +729,8 @@ class AiUsageLog(Base):
     latency_ms = Column(Integer, nullable=True)
     ok = Column(Boolean, default=True, nullable=False)
     error = Column(Text, nullable=True)
+    request_text = Column(Text, nullable=True)  # prompt / user query / SMS body
+    response_text = Column(Text, nullable=True)  # model reply or classify JSON
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 

@@ -979,6 +979,8 @@ data class AiUsageLogOut(
     val latency_ms: Int? = null,
     val ok: Boolean = true,
     val error: String? = null,
+    val request_text: String? = null,
+    val response_text: String? = null,
     val created_at: String = ""
 )
 
@@ -991,4 +993,146 @@ data class AiUsageSummaryOut(
     val completion_tokens: Int = 0,
     val total_tokens: Int = 0,
     val by_client: Map<String, Int> = emptyMap()
+)
+
+data class ExpenseAnalyserStatusOut(
+    val connected: Boolean = false,
+    val email: String? = null,
+    val server_oauth: Boolean = false,
+    val sync_query: String? = null,
+    val enabled: Boolean = false,
+    val hour: Int = 6,
+    val last_sync_at: String? = null,
+    val last_ok: Boolean? = null,
+    val last_error: String? = null,
+    val syncing: Boolean = false,
+    val retagging: Boolean = false,
+    val pending: Int = 0,
+    val matched: Int = 0,
+    val missed: Int = 0,
+    val posted: Int = 0,
+    val corrected: Int = 0
+)
+
+data class ExpenseAnalyserItemOut(
+    val id: String,
+    val gmail_message_id: String = "",
+    val kind: String = "alert",
+    val subject: String? = null,
+    val from_addr: String? = null,
+    val received_at: String? = null,
+    val raw_snippet: String? = null,
+    val direction: String = "debit",
+    val amount: Double? = null,
+    val currency: String = "INR",
+    val payee: String? = null,
+    val txn_date: String? = null,
+    val payment_method: String? = null,
+    val suggested_category: String? = null,
+    val confidence: Double? = null,
+    val status: String = "pending",
+    val match_txn_id: String? = null,
+    val finance_txn_id: String? = null,
+    val notes: String? = null,
+    val created_at: String = ""
+)
+
+data class ExpenseAnalyserItemUpdate(
+    val direction: String? = null,
+    val amount: Double? = null,
+    val payee: String? = null,
+    val txn_date: String? = null,
+    val payment_method: String? = null,
+    val suggested_category: String? = null,
+    val notes: String? = null
+)
+
+data class ExpenseAnalyserSyncOut(
+    val fetched: Int = 0,
+    val created: Int = 0,
+    val skipped: Int = 0,
+    val matched: Int = 0,
+    val missed: Int = 0,
+    val error: String? = null
+)
+
+data class ExpenseAnalyserSyncLogOut(
+    val id: String,
+    val trigger: String = "manual",
+    val ok: Boolean = true,
+    val fetched: Int = 0,
+    val created: Int = 0,
+    val skipped: Int = 0,
+    val matched: Int = 0,
+    val missed: Int = 0,
+    val error: String? = null,
+    val started_at: String = "",
+    val finished_at: String = ""
+)
+
+data class ExpenseAnalyserPostIn(
+    val account_id: String? = null,
+    val category_id: String? = null,
+    val subcategory_id: String? = null,
+    val new_category: String? = null,
+    val new_subcategory: String? = null
+)
+
+data class ExpenseAnalyserPostOut(
+    val ok: Boolean = true,
+    val finance_txn_id: String? = null
+)
+
+data class ExpenseAnalyserScheduleIn(
+    val enabled: Boolean = false,
+    val hour: Int = 6
+)
+
+data class ExpenseAnalyserQueryIn(
+    val sync_query: String? = null
+)
+
+data class ExpenseAnalyserClearOut(
+    val deleted: Int = 0
+)
+
+data class ExpenseAnalyserReconcileOut(
+    val ok: Boolean = true,
+    val updated: Int = 0
+)
+
+data class ExpenseAnalyserSlice(
+    val name: String = "",
+    val amount: Double = 0.0,
+    val count: Int = 0,
+    val pct: Double = 0.0,
+    val color: String? = null
+)
+
+data class ExpenseAnalyserDayBar(
+    val date: String = "",
+    val label: String = "",
+    val amount: Double = 0.0,
+    val pct: Double = 0.0
+)
+
+data class ExpenseAnalyserStatusSlice(
+    val name: String = "",
+    val count: Int = 0,
+    val color: String? = null
+)
+
+data class ExpenseAnalyserInsightsOut(
+    val year_month: String = "",
+    val label: String = "",
+    val prev: String = "",
+    val next: String = "",
+    val debit_total: Double = 0.0,
+    val credit_total: Double = 0.0,
+    val item_count: Int = 0,
+    val by_category: List<ExpenseAnalyserSlice> = emptyList(),
+    val by_method: List<ExpenseAnalyserSlice> = emptyList(),
+    val by_day: List<ExpenseAnalyserDayBar> = emptyList(),
+    val by_status: List<ExpenseAnalyserStatusSlice> = emptyList(),
+    val top_payees: List<ExpenseAnalyserSlice> = emptyList()
 )

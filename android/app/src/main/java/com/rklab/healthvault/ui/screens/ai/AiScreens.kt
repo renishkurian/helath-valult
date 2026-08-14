@@ -724,6 +724,14 @@ fun AiUsageLogsScreen(
                     if (!row.ok && !row.error.isNullOrBlank()) {
                         Text(row.error!!, color = StampRed, style = MaterialTheme.typography.bodySmall)
                     }
+                    if (!row.request_text.isNullOrBlank()) {
+                        Text("Request", color = InkSoft, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 8.dp))
+                        Text(row.request_text!!, color = Ink, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (!row.response_text.isNullOrBlank()) {
+                        Text("Response", color = InkSoft, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp))
+                        Text(row.response_text!!, color = Ink, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             item { Spacer(Modifier.height(48.dp)) }

@@ -77,6 +77,10 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("hour", "INTEGER NOT NULL DEFAULT 6"),
     ],
+    "ai_usage_logs": [
+        ("request_text", "TEXT"),
+        ("response_text", "TEXT"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [

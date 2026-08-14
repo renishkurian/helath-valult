@@ -7,7 +7,7 @@
     <h1 class="page-title">Usage logs</h1>
     <p class="page-lead">
       Every provider call — Ask AI, SMS tagging, Expense Analyser, and connection tests —
-      with client, model, request/response tokens, and time.
+      with client, model, request/response tokens, and time. Click a row to see the query and reply.
     </p>
   </div>
   <div class="page-actions">
@@ -59,7 +59,7 @@
     <span class="card-ico info"><i class="bi bi-journal-text"></i></span>
     <div>
       <h2>Call history</h2>
-      <div class="card-sub">Newest first · tokens from the provider when reported</div>
+      <div class="card-sub">Newest first · click a row for request query and response</div>
     </div>
     <span class="badge badge-soft ms-auto">{% if pager %}{{ "{:,}".format(pager.total) }}{% else %}{{ logs | length }}{% endif %}</span>
   </div>
@@ -69,6 +69,7 @@
     <table class="table table-hover mb-0">
       <thead>
         <tr>
+          <th style="width:1.5rem;"></th>
           <th>Date &amp; time</th>
           <th>Client</th>
           <th>Provider</th>
@@ -82,7 +83,8 @@
       </thead>
       <tbody>
         {% for row in logs %}
-        <tr>
+        <tr class="ai-log-row" role="button" tabindex="0" aria-expanded="false" data-ai-log="{{ row.id }}" title="Show request and response">
+          <td class="text-muted"><i class="bi bi-chevron-right ai-log-chevron"></i></td>
           <td class="mono">{{ row.created_at.strftime('%Y-%m-%d %H:%M:%S') if row.created_at else '—' }}</td>
           <td>{{ row.client_label }}</td>
           <td>
@@ -102,11 +104,30 @@
             {% endif %}
           </td>
         </tr>
-        {% if row.error and not row.ok %}
-        <tr>
-          <td colspan="9" class="small text-muted" style="padding-top:0;">{{ row.error }}</td>
+        <tr class="ai-log-detail" id="ai-log-{{ row.id }}" hidden>
+          <td colspan="10" class="bg-body-tertiary">
+            <div class="row g-3 p-2">
+              <div class="col-lg-6">
+                <div class="small text-muted mb-1">Request query</div>
+                {% if row.request_text %}
+                <pre class="ai-log-pre mb-0">{{ row.request_text }}</pre>
+                {% else %}
+                <p class="small text-muted mb-0">Not stored — this call was logged before request capture was added.</p>
+                {% endif %}
+              </div>
+              <div class="col-lg-6">
+                <div class="small text-muted mb-1">Response</div>
+                {% if row.response_text %}
+                <pre class="ai-log-pre mb-0">{{ row.response_text }}</pre>
+                {% elif row.error %}
+                <pre class="ai-log-pre text-danger mb-0">{{ row.error }}</pre>
+                {% else %}
+                <p class="small text-muted mb-0">No response text stored.</p>
+                {% endif %}
+              </div>
+            </div>
+          </td>
         </tr>
-        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -120,4 +141,47 @@
   </div>
   {% endif %}
 </div>
+<style>
+  tr.ai-log-row { cursor: pointer; }
+  tr.ai-log-row:hover { filter: brightness(1.08); }
+  tr.ai-log-row.is-open .ai-log-chevron { transform: rotate(90deg); }
+  .ai-log-chevron { display: inline-block; transition: transform .15s ease; }
+  .ai-log-pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: .8rem;
+    line-height: 1.45;
+    max-height: 22rem;
+    overflow: auto;
+    margin: 0;
+    padding: .75rem .9rem;
+    border-radius: .5rem;
+    background: rgba(0,0,0,.25);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+</style>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  function toggle(row) {
+    var id = row.getAttribute("data-ai-log");
+    var detail = document.getElementById("ai-log-" + id);
+    if (!detail) return;
+    var open = detail.hasAttribute("hidden");
+    detail.toggleAttribute("hidden", !open);
+    row.classList.toggle("is-open", open);
+    row.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  document.querySelectorAll("tr.ai-log-row").forEach(function (row) {
+    row.addEventListener("click", function () { toggle(row); });
+    row.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        toggle(row);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -1066,6 +1066,8 @@ class AiUsageLogOut(BaseModel):
     latency_ms: Optional[int] = None
     ok: bool = True
     error: Optional[str] = None
+    request_text: Optional[str] = None
+    response_text: Optional[str] = None
     created_at: datetime
 
 

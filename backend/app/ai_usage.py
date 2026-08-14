@@ -16,6 +16,9 @@ CLIENT_LABELS = {
     "provider_test": "Provider test",
 }
 
+_REQUEST_LIMIT = 8000
+_RESPONSE_LIMIT = 8000
+
 
 def _uid(user: models.User) -> str:
     return vault_id(user)
@@ -28,6 +31,17 @@ def _int(val) -> int | None:
         return int(val)
     except (TypeError, ValueError):
         return None
+
+
+def _clip(text: str | None, limit: int) -> str | None:
+    if text is None:
+        return None
+    value = str(text).strip()
+    if not value:
+        return None
+    if len(value) <= limit:
+        return value
+    return value[: limit - 1] + "…"
 
 
 def parse_usage(data: dict | None) -> dict:
@@ -61,6 +75,8 @@ def record(
     latency_ms: int | None = None,
     ok: bool = True,
     error: str | None = None,
+    request_text: str | None = None,
+    response_text: str | None = None,
 ) -> models.AiUsageLog | None:
     """Attach a usage row to the caller's session (flush via SAVEPOINT).
 
@@ -81,15 +97,17 @@ def record(
         latency_ms=latency_ms,
         ok=bool(ok),
         error=(error or None)[:500] if error else None,
+        request_text=_clip(request_text, _REQUEST_LIMIT),
+        response_text=_clip(response_text, _RESPONSE_LIMIT),
         created_at=datetime.utcnow(),
     )
     try:
         with db.begin_nested():
             db.add(row)
             db.flush()
-        return row
     except Exception:
         return None
+    return row
 
 
 def attach_log_context(bundle: dict | None, db: Session, user: models.User, client: str) -> dict | None:
@@ -103,7 +121,16 @@ def attach_log_context(bundle: dict | None, db: Session, user: models.User, clie
     return out
 
 
-def maybe_log_from_ai_result(ai: dict | None, result: dict, *, latency_ms: int | None = None, ok: bool = True, error: str | None = None) -> None:
+def maybe_log_from_ai_result(
+    ai: dict | None,
+    result: dict,
+    *,
+    latency_ms: int | None = None,
+    ok: bool = True,
+    error: str | None = None,
+    request_text: str | None = None,
+    response_text: str | None = None,
+) -> None:
     if not ai:
         return
     db = ai.get("_db")
@@ -112,6 +139,8 @@ def maybe_log_from_ai_result(ai: dict | None, result: dict, *, latency_ms: int |
     if not db or not user or not client:
         return
     usage = result.get("_usage") or {}
+    if response_text is None:
+        response_text = result.get("_raw") or result.get("notes")
     record(
         db, user,
         client=client,
@@ -124,6 +153,8 @@ def maybe_log_from_ai_result(ai: dict | None, result: dict, *, latency_ms: int |
         latency_ms=latency_ms,
         ok=ok,
         error=error,
+        request_text=request_text,
+        response_text=response_text,
     )
 
 
@@ -198,5 +229,7 @@ def log_out(row: models.AiUsageLog) -> dict:
         "latency_ms": row.latency_ms,
         "ok": bool(row.ok),
         "error": row.error,
+        "request_text": row.request_text,
+        "response_text": row.response_text,
         "created_at": row.created_at,
     }

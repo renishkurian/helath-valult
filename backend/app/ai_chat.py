@@ -903,6 +903,8 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
             total_tokens=result.get("total_tokens"),
             latency_ms=latency,
             ok=True,
+            request_text=text,
+            response_text=reply,
         )
     except ValueError as exc:
         latency = int((time.monotonic() - started) * 1000)
@@ -915,6 +917,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
             latency_ms=latency,
             ok=False,
             error=str(exc)[:200],
+            request_text=text,
         )
         raise
     except Exception as exc:
@@ -928,6 +931,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
             latency_ms=latency,
             ok=False,
             error=str(exc)[:200],
+            request_text=text,
         )
         raise ValueError(f"Provider failed: {exc}") from exc
     if not reply:
