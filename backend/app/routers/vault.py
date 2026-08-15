@@ -19,6 +19,8 @@ from app.deps import require_enabled_module, get_current_user, require_owner, va
 from app.templating import setup_templates
 
 router = APIRouter(prefix="/vault", tags=["vault"], dependencies=[Depends(require_enabled_module("passwords"))])
+# Token links must stay anonymous — do not attach module/auth deps here.
+public_router = APIRouter(prefix="/vault", tags=["vault"])
 templates = setup_templates()
 
 _ALLOWED_TYPES = {t.value for t in models.VaultItemType}
@@ -489,7 +491,7 @@ def revoke_send(send_id: str, db: Session = Depends(get_db), current_user: model
     db.commit()
 
 
-@router.get("/public/{token}", response_model=schemas.VaultSendPublicOut)
+@public_router.get("/public/{token}", response_model=schemas.VaultSendPublicOut)
 def public_send_json(
     token: str,
     request: Request,
@@ -528,7 +530,7 @@ def public_send_json(
     )
 
 
-@router.get("/public/{token}/page", response_class=HTMLResponse)
+@public_router.get("/public/{token}/page", response_class=HTMLResponse)
 def public_send_page(
     token: str,
     request: Request,

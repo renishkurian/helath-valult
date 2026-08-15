@@ -18,6 +18,7 @@ from app.og import fetch_preview, hostname_of, normalize_url
 from app.templating import setup_templates
 
 router = APIRouter(prefix="/urls", tags=["urls"], dependencies=[Depends(require_enabled_module("urls"))])
+public_router = APIRouter(prefix="/urls", tags=["urls"])
 templates = setup_templates()
 
 DEFAULT_CATEGORIES = [
@@ -425,7 +426,7 @@ def _public_share(token: str, db: Session) -> models.UrlShare:
     return share
 
 
-@router.get("/public/{token}", response_model=schemas.UrlItemOut)
+@public_router.get("/public/{token}", response_model=schemas.UrlItemOut)
 def public_item(token: str, db: Session = Depends(get_db)):
     share = _public_share(token, db)
     share.view_count = (share.view_count or 0) + 1
@@ -433,7 +434,7 @@ def public_item(token: str, db: Session = Depends(get_db)):
     return _to_out(share.item)
 
 
-@router.get("/public/{token}/page", response_class=HTMLResponse)
+@public_router.get("/public/{token}/page", response_class=HTMLResponse)
 def public_page(token: str, request: Request, db: Session = Depends(get_db)):
     share = _public_share(token, db)
     share.view_count = (share.view_count or 0) + 1

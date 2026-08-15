@@ -23,6 +23,7 @@ from app.grocery import (
 )
 
 router = APIRouter(prefix="/tracker", tags=["tracker"], dependencies=[Depends(require_enabled_module("tracker"))])
+public_router = APIRouter(prefix="/tracker", tags=["tracker"])
 templates = setup_templates()
 
 MAX_PDF = 10 * 1024 * 1024
@@ -1015,13 +1016,13 @@ def _list_by_token(db: Session, token: str, *, bump: bool = True) -> tuple[model
     return share, lst
 
 
-@router.get("/shared/{token}")
+@public_router.get("/shared/{token}")
 def get_shared(token: str, db: Session = Depends(get_db)):
     share, lst = _list_by_token(db, token, bump=False)
     return _public_payload(db, lst)
 
 
-@router.post("/shared/{token}/items", status_code=201)
+@public_router.post("/shared/{token}/items", status_code=201)
 def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(get_db)):
     share, lst = _list_by_token(db, token)
     guest = (body.guest_name or "Guest").strip() or "Guest"
@@ -1037,7 +1038,7 @@ def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(g
     return _item_out(db, item, merged=_merged)
 
 
-@router.post("/shared/{token}/items/{item_id}/toggle")
+@public_router.post("/shared/{token}/items/{item_id}/toggle")
 def guest_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
     share, lst = _list_by_token(db, token, bump=False)
     item = next((i for i in lst.items if i.id == item_id), None)
@@ -1834,14 +1835,14 @@ def ignore_one(
     return None
 
 
-@router.get("/public/{token}/suggest")
+@public_router.get("/public/{token}/suggest")
 def public_suggest(token: str, q: str = "", limit: int = 8, db: Session = Depends(get_db)):
     """Public-share typeahead — no login, token gates access to the list."""
     _share, lst = _list_by_token(db, token, bump=False)
     return suggest(db, q or "", limit=limit, user_id=lst.user_id)
 
 
-@router.get("/public/{token}/page", response_class=HTMLResponse)
+@public_router.get("/public/{token}/page", response_class=HTMLResponse)
 def public_page(token: str, request: Request, db: Session = Depends(get_db), err: str = "", ok: str = ""):
     from app.grocery import catalog_json_text, catalog_payload
     try:
@@ -1865,7 +1866,7 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
     })
 
 
-@router.post("/public/{token}/items")
+@public_router.post("/public/{token}/items")
 async def public_add_item(token: str, request: Request, db: Session = Depends(get_db)):
     from urllib.parse import quote
     form = await request.form()
@@ -1898,7 +1899,7 @@ async def public_add_item(token: str, request: Request, db: Session = Depends(ge
     return RedirectResponse(f"/shop/{token}?ok=added", status_code=302)
 
 
-@router.post("/public/{token}/items/{item_id}/toggle")
+@public_router.post("/public/{token}/items/{item_id}/toggle")
 def public_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
     try:
         share, lst = _list_by_token(db, token)
@@ -1912,7 +1913,7 @@ def public_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
     return RedirectResponse(f"/shop/{token}", status_code=302)
 
 
-@router.post("/public/{token}/items/{item_id}/edit")
+@public_router.post("/public/{token}/items/{item_id}/edit")
 async def public_edit_item(token: str, item_id: str, request: Request, db: Session = Depends(get_db)):
     form = await request.form()
     try:
