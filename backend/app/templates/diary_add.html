@@ -42,8 +42,10 @@
     </div>
 
     <label class="form-label" for="dy-body">Story</label>
+    <div class="diary-md-preview md-body" id="dy-body-preview" hidden></div>
     <textarea class="form-control body-input" id="dy-body" name="body" rows="10"
               placeholder="What happened today…"></textarea>
+    <div class="form-text">Markdown tables and bold render in the preview above.</div>
 
     <div class="mt-3">
       <label class="form-label" for="dy-photos">Photos</label>
@@ -60,4 +62,26 @@
     </div>
   </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vault-md.js?v=1"></script>
+<script>
+(function () {
+  var ta = document.getElementById("dy-body");
+  var preview = document.getElementById("dy-body-preview");
+  if (!ta || !preview || !window.VaultMd) return;
+  function refresh() {
+    var raw = ta.value || "";
+    if (!raw.trim()) {
+      preview.hidden = true;
+      preview.innerHTML = "";
+      return;
+    }
+    preview.hidden = false;
+    preview.innerHTML = VaultMd.render(raw);
+  }
+  ta.addEventListener("input", refresh);
+  refresh();
+})();
+</script>
 {% endblock %}

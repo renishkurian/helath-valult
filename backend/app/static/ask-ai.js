@@ -21,66 +21,15 @@
   var state = { threadId: null, busy: false, threads: [] };
 
   function esc(s) {
-    return String(s == null ? "" : s)
+    return (window.VaultMd && VaultMd.esc) ? VaultMd.esc(s) : String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   function renderMd(raw) {
-    var text = String(raw || "").replace(/\r\n/g, "\n");
-    var blocks = text.split("\n\n");
-    var html = [];
-    for (var b = 0; b < blocks.length; b++) {
-      var block = blocks[b];
-      if (!block.trim()) continue;
-      var lines = block.split("\n");
-      if (lines[0].indexOf("|") !== -1 && lines.length >= 2) {
-        html.push(mdTable(lines));
-        continue;
-      }
-      if (/^```/.test(lines[0])) {
-        var code = lines.slice(1).join("\n").replace(/```\s*$/, "");
-        html.push("<pre><code>" + esc(code) + "</code></pre>");
-        continue;
-      }
-      if (/^#{1,3}\s/.test(lines[0]) && lines.length === 1) {
-        html.push("<h3>" + inline(lines[0].replace(/^#{1,3}\s+/, "")) + "</h3>");
-        continue;
-      }
-      var list = lines.every(function (ln) { return /^\s*[-*]\s+/.test(ln) || /^\s*\d+\.\s+/.test(ln); });
-      if (list) {
-        var ol = /^\s*\d+\./.test(lines[0]);
-        var items = lines.map(function (ln) {
-          return "<li>" + inline(ln.replace(/^\s*(?:[-*]|\d+\.)\s+/, "")) + "</li>";
-        }).join("");
-        html.push((ol ? "<ol>" : "<ul>") + items + (ol ? "</ol>" : "</ul>"));
-        continue;
-      }
-      html.push("<p>" + lines.map(inline).join("<br>") + "</p>");
+    if (window.VaultMd && typeof VaultMd.render === "function") {
+      return VaultMd.render(raw);
     }
-    return html.join("") || "<p></p>";
-  }
-
-  function mdTable(lines) {
-    var rows = lines.filter(function (ln) { return ln.indexOf("|") !== -1; });
-    if (rows.length < 2) return "<p>" + lines.map(inline).join("<br>") + "</p>";
-    function cells(ln) {
-      return ln.replace(/^\s*\|/, "").replace(/\|\s*$/, "").split("|").map(function (c) { return c.trim(); });
-    }
-    var head = cells(rows[0]);
-    var start = /^[\s|:-]+$/.test(rows[1]) ? 2 : 1;
-    var out = "<table><thead><tr>" + head.map(function (c) { return "<th>" + inline(c) + "</th>"; }).join("") + "</tr></thead><tbody>";
-    for (var i = start; i < rows.length; i++) {
-      out += "<tr>" + cells(rows[i]).map(function (c) { return "<td>" + inline(c) + "</td>"; }).join("") + "</tr>";
-    }
-    return out + "</tbody></table>";
-  }
-
-  function inline(s) {
-    var t = esc(s);
-    t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
-    t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    t = t.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" rel="noopener">$1</a>');
-    return t;
+    return "<p>" + esc(raw).replace(/\n/g, "<br>") + "</p>";
   }
 
   function toBottom() {
@@ -195,7 +144,7 @@
     if (lis) {
       preview = "<ul>" + lis + "</ul>";
     } else if (action.body) {
-      preview = '<p class="ask-action-preview">' + esc(String(action.body).slice(0, 220)) + "</p>";
+      preview = '<div class="ask-action-preview md-body">' + renderMd(String(action.body).slice(0, 800)) + "</div>";
     }
     wrap.innerHTML =
       '<div class="ask-action-head"><i class="bi bi-journal-richtext"></i> Proposed diary entry</div>' +

@@ -1657,13 +1657,40 @@ body.ask-ai .app-main{
   background:rgba(0,0,0,.32); border:1px solid var(--v-line); margin:.6em 0;
 }
 .ask-bubble pre code{ background:none; padding:0; }
-.ask-bubble table{
+.ask-bubble table,
+.md-body table,
+.md-table{
   width:100%; border-collapse:collapse; font-size:.8125rem; margin:.6em 0;
 }
-.ask-bubble th,.ask-bubble td{
+.ask-bubble th,.ask-bubble td,
+.md-body th,.md-body td,
+.md-table th,.md-table td{
   border:1px solid var(--v-line); padding:.4rem .55rem; text-align:left;
 }
-.ask-bubble th{ color:var(--v-ink-2); font-weight:600; background:rgba(255,255,255,.03); }
+.ask-bubble th,
+.md-body th,
+.md-table th{
+  color:var(--v-ink-2); font-weight:600; background:rgba(255,255,255,.03);
+}
+.md-table-wrap{ overflow-x:auto; margin:.6em 0; }
+.md-table-wrap .md-table{ margin:0; }
+.md-body{
+  font-size:.9375rem; line-height:1.55; color:var(--v-ink);
+}
+.md-body p{ margin:0 0 .75em; }
+.md-body h1,.md-body h2,.md-body h3{
+  font-size:1rem; font-weight:650; margin:1em 0 .4em; letter-spacing:-0.02em;
+}
+.md-body h1:first-child,.md-body h2:first-child,.md-body h3:first-child{ margin-top:0; }
+.md-body ul,.md-body ol{ margin:0 0 .75em; padding-left:1.2em; }
+.md-body pre{
+  overflow-x:auto; padding:.75rem .9rem; border-radius:10px;
+  background:rgba(0,0,0,.32); border:1px solid var(--v-line); margin:.6em 0;
+}
+.diary-md-preview{
+  margin:0 0 .75rem; padding:1rem 1.1rem; border-radius:var(--v-r);
+  background:var(--v-surface-2); border:1px solid var(--v-line);
+}
 .ask-action{
   margin-top:.9rem; padding:.85rem 1rem; border-radius:12px;
   border:1px solid var(--v-gold-line, rgba(228,195,122,.35));
@@ -1680,6 +1707,8 @@ body.ask-ai .app-main{
   margin:.25rem 0 .75rem; font-size:.875rem; color:var(--v-ink-2); line-height:1.4;
   white-space:pre-wrap;
 }
+.ask-action-preview.md-body{ white-space:normal; }
+.ask-action-preview.md-body .md-table{ font-size:.8125rem; }
 .ask-action ul{ margin:.25rem 0 .75rem; padding-left:1.1em; }
 .ask-action li span{ color:var(--v-ink-3); font-size:.875em; }
 .ask-action-bar{ display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
