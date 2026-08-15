@@ -59,11 +59,19 @@
 <div class="shop-composer surface mb-4">
   <div class="section-head"><h2>New list</h2></div>
   <form method="post" action="/admin/tracker/lists" class="row g-2 align-items-end">
-    <div class="col-md-5 shop-composer-main">
+    <div class="col-md-4 shop-composer-main">
       <label class="form-label" for="list-name">Name</label>
       <input class="form-control" id="list-name" name="name" required maxlength="255" placeholder="New list name">
     </div>
-    <div class="col-md-5 shop-composer-extra">
+    <div class="col-md-3 shop-composer-extra">
+      <label class="form-label" for="list-cat">Money Manager category</label>
+      <select class="form-select" id="list-cat" name="finance_category_id">
+        {% for c in categories or [] %}
+        <option value="{{ c.id }}" {% if c.name == 'Groceries' %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-3 shop-composer-extra">
       <label class="form-label" for="list-desc">Note</label>
       <input class="form-control" id="list-desc" name="description" maxlength="500" placeholder="Optional">
     </div>
@@ -86,9 +94,11 @@
         <span class="row-title d-block">{{ lst.name }}</span>
         <span class="row-meta">
           {{ c }}/{{ n }} items
+          {% if lst.finance_category_name %} · {{ lst.finance_category_name }}{% endif %}
           {% if lst.owner_name %} · {{ lst.owner_name }}{% endif %}
           {% if lst.created_at %} · {{ lst.created_at.strftime('%d %b %Y') }}{% endif %}
           {% if lst.receipt_count %} · {{ lst.receipt_count }} bill{% if lst.receipt_count != 1 %}s{% endif %}{% endif %}
+          {% if lst.finance_txn_id %}<span class="badge badge-good ms-1">In ledger</span>{% endif %}
           {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
         </span>
       </span>

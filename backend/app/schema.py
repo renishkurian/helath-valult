@@ -83,6 +83,8 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "shop_lists": [
         ("deleted_at", "DATETIME"),
+        ("finance_txn_id", "VARCHAR(32)"),
+        ("finance_category_id", "VARCHAR(32)"),
     ],
 }
 
@@ -117,6 +119,8 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_shop_statement_pdfs_gmail_message_id", "shop_statement_pdfs", "gmail_message_id"),
     ("ix_shop_statement_pdfs_status", "shop_statement_pdfs", "status"),
     ("ix_shop_lists_deleted_at", "shop_lists", "deleted_at"),
+    ("ix_shop_lists_finance_txn_id", "shop_lists", "finance_txn_id"),
+    ("ix_shop_lists_finance_category_id", "shop_lists", "finance_category_id"),
 ]
 
 

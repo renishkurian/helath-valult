@@ -3184,24 +3184,35 @@ def _tr_user(request, db):
 @router.get("/tracker", response_class=HTMLResponse)
 def tracker_home(request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
+    from app.routers import finance as fn
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     summary = tr.tracker_summary(db=db, current_user=user)
     lists = tr.list_lists(completed=None, db=db, current_user=user)
+    fn.ensure_defaults(db, user)
+    categories = [c for c in fn.list_categories(db=db, current_user=user) if c.kind == "expense" and not getattr(c, "parent_id", None)]
     return templates.TemplateResponse("tracker_lists.html", _tr_ctx(
-        request, user, "tr_lists", summary=summary, lists=lists,
+        request, user, "tr_lists", summary=summary, lists=lists, categories=categories,
     ))
 
 
 @router.post("/tracker/lists")
-def tracker_create_list(request: Request, name: str = Form(...), description: str = Form(""), db: Session = Depends(get_db)):
+def tracker_create_list(
+    request: Request, name: str = Form(...), description: str = Form(""),
+    finance_category_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers import tracker as tr
     from app import schemas as sc
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    created = tr.create_list(sc.ShopListIn(name=name, description=description or None), db=db, current_user=user)
+    created = tr.create_list(sc.ShopListIn(
+        name=name,
+        description=description or None,
+        finance_category_id=finance_category_id or None,
+    ), db=db, current_user=user)
     return RedirectResponse(f"/admin/tracker/lists/{created.id}", status_code=302)
 
 
@@ -3235,6 +3246,7 @@ def tracker_suggest_admin(request: Request, q: str = "", limit: int = 8, db: Ses
 @router.get("/tracker/lists/{list_id}", response_class=HTMLResponse)
 def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
+    from app.routers import finance as fn
     from app.grocery import catalog_json_text, catalog_payload
     from app.deps import vault_id
     user = _tr_user(request, db)
@@ -3245,6 +3257,12 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
     friends = tr.list_friends(db=db, current_user=user)
     uid = vault_id(user)
     catalog = catalog_payload(db, uid)
+    fn.ensure_defaults(db, user)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    categories = [
+        c for c in fn.list_categories(db=db, current_user=user)
+        if c.kind == "expense" and not getattr(c, "parent_id", None)
+    ]
     return templates.TemplateResponse("tracker_list.html", _tr_ctx(
         request, user, "tr_lists", lst=lst,
         pending=[i for i in items if i.status == "pending"],
@@ -3254,6 +3272,8 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
         suggest_url="/admin/tracker/suggest",
         receipts=lst.receipts or [],
         revision=lst.revision,
+        accounts=accounts,
+        categories=categories,
     ))
 
 
@@ -3428,6 +3448,55 @@ def tracker_complete_list(list_id: str, request: Request, db: Session = Depends(
     lst = tr.get_list(list_id, db=db, current_user=user)
     tr.update_list(list_id, sc.ShopListUpdate(completed=not lst.completed), db=db, current_user=user)
     return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/post-finance")
+def tracker_post_list_finance(
+    list_id: str,
+    request: Request,
+    account_id: str = Form(...),
+    category_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from urllib.parse import quote
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        ft = tr.post_list_to_finance(
+            db, user, list_id, account_id, category_id=category_id or None,
+        )
+    except RuntimeError as exc:
+        return RedirectResponse(
+            f"/admin/tracker/lists/{list_id}?err={quote(str(exc))}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        f"/admin/tracker/lists/{list_id}?ok=finance&amount={ft.amount}",
+        status_code=302,
+    )
+
+
+@router.post("/tracker/lists/{list_id}/category")
+def tracker_set_list_category(
+    list_id: str,
+    request: Request,
+    finance_category_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.update_list(
+        list_id,
+        sc.ShopListUpdate(finance_category_id=finance_category_id or None),
+        db=db,
+        current_user=user,
+    )
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}?ok=1", status_code=302)
 
 
 @router.post("/tracker/lists/{list_id}/delete")

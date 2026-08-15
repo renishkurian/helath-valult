@@ -1450,12 +1450,14 @@ class ExpenseAnalyserQueryIn(BaseModel):
 class ShopListIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: Optional[str] = None
+    finance_category_id: Optional[str] = None
 
 
 class ShopListUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
     description: Optional[str] = None
     completed: Optional[bool] = None
+    finance_category_id: Optional[str] = None
 
 
 class ShopItemIn(BaseModel):
@@ -1521,6 +1523,9 @@ class ShopListOut(BaseModel):
     receipt_count: int = 0
     share_token: Optional[str] = None
     owner_name: Optional[str] = None
+    finance_category_id: Optional[str] = None
+    finance_category_name: Optional[str] = None
+    finance_txn_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -1528,6 +1533,12 @@ class ShopListOut(BaseModel):
     revision: Optional[str] = None
     items: Optional[List[ShopItemOut]] = None
     receipts: Optional[List[ShopReceiptOut]] = None
+
+
+class ShopListPostFinanceIn(BaseModel):
+    account_id: str = Field(min_length=1, max_length=32)
+    category_id: Optional[str] = None  # override list tag; defaults to list / Groceries
+
 
 
 class ShopShareOut(BaseModel):

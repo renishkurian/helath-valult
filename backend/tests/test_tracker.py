@@ -370,3 +370,67 @@ def test_tracker_list_moves_to_trash():
     assert trash_page.status_code == 200
     assert "Again" in trash_page.text
     assert "Restore" in trash_page.text
+
+
+def test_post_completed_list_to_finance():
+    import uuid
+    email = f"shop-mm-{uuid.uuid4().hex[:8]}@example.com"
+    headers = _headers(email)
+
+    accounts = client.get("/finance/accounts", headers=headers)
+    assert accounts.status_code == 200, accounts.text
+    rows = accounts.json()
+    if rows:
+        account_id = rows[0]["id"]
+    else:
+        acc = client.post("/finance/accounts", headers=headers, json={
+            "name": "Home", "account_type": "cash", "opening_balance": 0,
+        })
+        assert acc.status_code in (200, 201), acc.text
+        account_id = acc.json()["id"]
+
+    cats = client.get("/finance/categories", headers=headers).json()
+    groceries = next(c for c in cats if c["name"] == "Groceries" and c["kind"] == "expense")
+
+    lst = client.post("/tracker/lists", headers=headers, json={
+        "name": "Sunday market",
+        "finance_category_id": groceries["id"],
+    }).json()
+    assert lst["finance_category_id"] == groceries["id"]
+    assert lst["finance_category_name"] == "Groceries"
+    list_id = lst["id"]
+    item = client.post(
+        f"/tracker/lists/{list_id}/items",
+        headers=headers,
+        json={"name": "Onion", "quantity": 2, "unit": "kg", "price": 30},
+    ).json()
+    client.post(f"/tracker/lists/{list_id}/items/{item['id']}/toggle", headers=headers)
+    client.patch(f"/tracker/lists/{list_id}", headers=headers, json={"completed": True})
+
+    posted = client.post(
+        f"/tracker/lists/{list_id}/post-finance",
+        headers=headers,
+        json={"account_id": account_id, "category_id": groceries["id"]},
+    )
+    assert posted.status_code == 200, posted.text
+    body = posted.json()
+    assert body["ok"] is True
+    assert body["amount"] == 60.0
+    assert body["category_id"] == groceries["id"]
+
+    detail = client.get(f"/tracker/lists/{list_id}", headers=headers).json()
+    assert detail["finance_txn_id"] == body["finance_txn_id"]
+    assert detail["completed"] is True
+
+    again = client.post(
+        f"/tracker/lists/{list_id}/post-finance",
+        headers=headers,
+        json={"account_id": account_id},
+    )
+    assert again.status_code == 400
+
+    txns = client.get("/finance/transactions", headers=headers)
+    assert txns.status_code == 200
+    match = next(t for t in txns.json() if t["id"] == body["finance_txn_id"])
+    assert match["category_id"] == groceries["id"]
+    assert match["account_id"] == account_id

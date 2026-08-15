@@ -59,6 +59,11 @@
   <strong>{{ request.query_params.get('name') or 'item' }}</strong>
   is now {{ request.query_params.get('qty') or '' }}.
 </div>
+{% elif request.query_params.get('ok') == 'finance' %}
+<div class="alert alert-success mb-4" role="status">
+  Posted to Money Manager{% if request.query_params.get('amount') %} · {{ inr(request.query_params.get('amount')) }}{% endif %}.
+  <a href="/admin/finance">Open ledger</a>
+</div>
 {% elif request.query_params.get('ok') %}
 <div class="alert alert-success mb-4" role="status">Saved.</div>
 {% endif %}
@@ -87,6 +92,73 @@
   </div>
   <div class="shop-progress-bar"><span style="width:{{ pct }}%"></span></div>
 </div>
+
+{% if lst.finance_txn_id %}
+<div class="alert alert-info mb-4" role="status">
+  <i class="bi bi-wallet2"></i>
+  This trip is in Money Manager{% if lst.finance_category_name %} as <strong>{{ lst.finance_category_name }}</strong>{% endif %}.
+  <a href="/admin/finance">Open ledger</a>
+</div>
+{% elif accounts %}
+<div class="surface mb-4">
+  <div class="section-head"><h2>Import to Money Manager</h2></div>
+  <p class="text-muted small mb-3">
+    Tag this list with a category, then import the <strong>total sum</strong> to an account
+    (e.g. Home + Groceries).
+  </p>
+  {% if categories %}
+  <form method="post" action="/admin/tracker/lists/{{ lst.id }}/category" class="row g-2 align-items-end mb-3">
+    <div class="col-md-8">
+      <label class="form-label" for="list-mm-cat">List category</label>
+      <select class="form-select" id="list-mm-cat" name="finance_category_id">
+        {% for c in categories %}
+        <option value="{{ c.id }}" {% if lst.finance_category_id == c.id or (not lst.finance_category_id and c.name == 'Groceries') %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <button class="btn btn-outline-light w-100" type="submit">Save tag</button>
+    </div>
+  </form>
+  {% endif %}
+  {% if lst.completed or lst.total_amount %}
+  <form method="post" action="/admin/tracker/lists/{{ lst.id }}/post-finance" class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label" for="mm-account">Account</label>
+      <select class="form-select" id="mm-account" name="account_id" required>
+        {% for a in accounts %}
+        <option value="{{ a.id }}">{{ a.name }}{% if a.institution %} · {{ a.institution }}{% endif %}{% if a.last4 %} ·••{{ a.last4 }}{% endif %}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label" for="mm-cat">Category</label>
+      <select class="form-select" id="mm-cat" name="category_id" required>
+        {% for c in categories or [] %}
+        <option value="{{ c.id }}" {% if lst.finance_category_id == c.id or (not lst.finance_category_id and c.name == 'Groceries') %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <button class="btn btn-primary w-100" type="submit"{% if not lst.total_amount %} disabled title="Add prices first"{% endif %}>
+        <i class="bi bi-wallet2"></i> Import {{ inr(lst.total_amount) if lst.total_amount else '' }}
+      </button>
+    </div>
+  </form>
+  {% if not lst.total_amount %}
+  <p class="small text-muted mt-2 mb-0">Set a price on purchased items so the total can post.</p>
+  {% elif not lst.completed %}
+  <p class="small text-muted mt-2 mb-0">Importing will also mark this list done.</p>
+  {% endif %}
+  {% else %}
+  <p class="small text-muted mb-0">Mark the list done and add prices, then import the total here.</p>
+  {% endif %}
+</div>
+{% elif not accounts %}
+<div class="alert alert-warning mb-4" role="status">
+  Add a <a href="/admin/finance/accounts">Money Manager account</a> to import this purchase.
+</div>
+{% endif %}
 
 <div class="shop-composer surface mb-4">
   <div class="section-head"><h2>Add item</h2></div>

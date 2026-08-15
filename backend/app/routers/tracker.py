@@ -186,6 +186,12 @@ def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) ->
     items = list(lst.items or [])
     receipts = list(lst.receipts or [])
     names: dict[str, str] = {}
+    cat_name = None
+    if lst.finance_category_id:
+        cat = db.query(models.FinanceCategory).filter(
+            models.FinanceCategory.id == lst.finance_category_id
+        ).first()
+        cat_name = cat.name if cat else None
     return schemas.ShopListOut(
         id=lst.id, name=lst.name, description=lst.description,
         completed=bool(lst.completed), total_amount=money(lst.total_amount),
@@ -195,12 +201,47 @@ def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) ->
         receipt_count=len(receipts),
         share_token=_share_token(db, lst),
         owner_name=_owner_name(db, lst, names),
+        finance_category_id=lst.finance_category_id,
+        finance_category_name=cat_name,
+        finance_txn_id=lst.finance_txn_id,
         created_at=lst.created_at, updated_at=lst.updated_at,
         completed_at=lst.completed_at, deleted_at=lst.deleted_at,
         revision=_list_revision(lst),
         items=[_item_out(db, i, names) for i in items] if with_items else None,
         receipts=[_receipt_out(r) for r in receipts] if with_items else None,
     )
+
+
+def _resolve_list_finance_category(
+    db: Session, user: models.User, category_id: Optional[str],
+) -> Optional[str]:
+    """Return a finance_category_id owned by this vault, or default Groceries."""
+    from app.routers import finance as fn
+
+    uid = _uid(user)
+    fn.ensure_defaults(db, user)
+    if category_id:
+        row = (
+            db.query(models.FinanceCategory)
+            .filter(
+                models.FinanceCategory.id == category_id,
+                models.FinanceCategory.user_id == uid,
+                models.FinanceCategory.kind == "expense",
+            )
+            .first()
+        )
+        if row:
+            return row.id
+    groceries = (
+        db.query(models.FinanceCategory)
+        .filter(
+            models.FinanceCategory.user_id == uid,
+            models.FinanceCategory.name == "Groceries",
+            models.FinanceCategory.kind == "expense",
+        )
+        .first()
+    )
+    return groceries.id if groceries else None
 
 
 def _owned_list(
@@ -358,9 +399,11 @@ def create_list(
 ):
     require_owner(current_user)
     name = body.name.strip().title()
+    cat_id = _resolve_list_finance_category(db, current_user, body.finance_category_id)
     lst = models.ShopList(
         user_id=_uid(current_user), name=name,
         description=(body.description or "").strip() or None,
+        finance_category_id=cat_id,
     )
     db.add(lst)
     db.commit()
@@ -393,10 +436,141 @@ def update_list(
     if body.completed is not None:
         lst.completed = body.completed
         lst.completed_at = datetime.utcnow() if body.completed else None
+    if "finance_category_id" in body.model_fields_set:
+        if body.finance_category_id:
+            lst.finance_category_id = _resolve_list_finance_category(
+                db, current_user, body.finance_category_id,
+            )
+        else:
+            lst.finance_category_id = None
     lst.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(lst)
     return _list_out(db, lst, with_items=True)
+
+
+def _line_amount(item: models.ShopItem) -> Decimal:
+    if item.price is None:
+        return Decimal("0")
+    qty = item.quantity if item.quantity is not None else Decimal("1")
+    return Decimal(str(item.price)) * Decimal(str(qty))
+
+
+def post_list_to_finance(
+    db: Session,
+    user: models.User,
+    list_id: str,
+    account_id: str,
+    category_id: Optional[str] = None,
+) -> models.FinanceTransaction:
+    """Post one expense for the list total into a Money Manager account + category."""
+    from app.routers import finance as fn
+
+    require_owner(user)
+    uid = _uid(user)
+    lst = _owned_list(db, user, list_id)
+    if lst.finance_txn_id:
+        raise RuntimeError("Already posted to Money Manager")
+
+    items = [i for i in (lst.items or []) if i.status != "rejected"]
+    priced_checked = [i for i in items if i.checked and i.price is not None and _line_amount(i) > 0]
+    priced_all = [i for i in items if i.price is not None and _line_amount(i) > 0]
+    use = priced_checked or priced_all
+    if not use:
+        raise RuntimeError("Add prices to purchased items before importing")
+
+    amount = sum((_line_amount(i) for i in use), Decimal("0"))
+    if amount <= 0:
+        raise RuntimeError("Import amount must be greater than zero")
+
+    fn.ensure_defaults(db, user)
+    acc = (
+        db.query(models.FinanceAccount)
+        .filter(
+            models.FinanceAccount.id == account_id,
+            models.FinanceAccount.user_id == uid,
+            models.FinanceAccount.archived.is_(False),
+        )
+        .first()
+    )
+    if not acc:
+        raise RuntimeError("Account not found")
+
+    want_cat = category_id or lst.finance_category_id
+    resolved_cat_id = _resolve_list_finance_category(db, user, want_cat)
+    cat = None
+    if resolved_cat_id:
+        cat = db.query(models.FinanceCategory).filter(
+            models.FinanceCategory.id == resolved_cat_id
+        ).first()
+    # Persist tag on the list if they chose one at import time
+    if resolved_cat_id and lst.finance_category_id != resolved_cat_id:
+        lst.finance_category_id = resolved_cat_id
+
+    names = []
+    for i in use[:12]:
+        bit = (i.name or "Item").strip()
+        if i.quantity is not None:
+            bit += f" {float(i.quantity):g}"
+            if i.unit:
+                bit += f" {i.unit}"
+        names.append(bit)
+    extra = len(use) - len(names)
+    notes = ", ".join(names)
+    if extra > 0:
+        notes += f" (+{extra} more)"
+
+    txn_date = (
+        (lst.completed_at or lst.updated_at or datetime.utcnow()).strftime("%Y-%m-%d")
+    )
+    method = "cash" if (acc.account_type or "").lower() == "cash" else "other"
+    cat_label = (cat.name if cat else "Groceries")
+    ft = models.FinanceTransaction(
+        user_id=uid,
+        account_id=acc.id,
+        category_id=cat.id if cat else None,
+        txn_type="expense",
+        amount=amount,
+        txn_date=txn_date,
+        payee=(lst.name or "Shopping")[:255],
+        description=f"Shopping list · {cat_label} · {len(use)} items",
+        payment_method=method,
+        source="shop_list",
+        notes=notes[:500],
+        tags="shopping-list",
+    )
+    db.add(ft)
+    db.flush()
+    lst.finance_txn_id = ft.id
+    if not lst.completed:
+        lst.completed = True
+        lst.completed_at = datetime.utcnow()
+    lst.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(ft)
+    return ft
+
+
+@router.post("/lists/{list_id}/post-finance")
+def post_list_finance(
+    list_id: str,
+    body: schemas.ShopListPostFinanceIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    try:
+        ft = post_list_to_finance(
+            db, current_user, list_id, body.account_id, category_id=body.category_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {
+        "ok": True,
+        "finance_txn_id": ft.id,
+        "amount": money(ft.amount),
+        "account_id": ft.account_id,
+        "category_id": ft.category_id,
+    }
 
 
 @router.delete("/lists/{list_id}", status_code=204)

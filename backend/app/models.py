@@ -1004,6 +1004,8 @@ class ShopList(Base):
     total_amount = Column(Numeric(14, 2), default=0, nullable=False)
     image_path = Column(String(500), nullable=True)
     blocked_uids = Column(Text, nullable=True)  # JSON list of guest names / user ids
+    finance_category_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True, index=True)
+    finance_txn_id = Column(String(32), nullable=True, index=True)  # posted to Money Manager
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
