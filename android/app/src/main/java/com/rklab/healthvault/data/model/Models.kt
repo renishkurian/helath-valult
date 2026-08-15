@@ -574,6 +574,7 @@ data class VaultSendRequestOut(
     val send_id: String,
     val send_name: String = "",
     val send_token: String = "",
+    val item_id: String? = null,
     val name: String? = null,
     val email: String? = null,
     val ip: String? = null,

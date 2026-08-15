@@ -446,6 +446,14 @@ hr{ border-color:var(--v-line); opacity:1; }
   background:var(--v-surface); border:1px solid var(--v-line);
   border-radius:var(--v-r-lg); padding:1.25rem; box-shadow:var(--v-sh-1);
 }
+.surface.send-req-flash{
+  animation: sendReqFlash 2.2s ease;
+  border-color:rgba(240,169,78,.55) !important;
+}
+@keyframes sendReqFlash{
+  0%,100%{ box-shadow:var(--v-sh-1); }
+  30%{ box-shadow:0 0 0 3px rgba(240,169,78,.35); }
+}
 .surface-2{ background:var(--v-surface-2); }
 .surface-quiet{ background:rgba(255,255,255,0.02); box-shadow:none; }
 

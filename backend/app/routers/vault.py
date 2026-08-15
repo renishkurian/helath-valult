@@ -916,6 +916,13 @@ def _notify_send_request(
     from app.server_settings import fcm_service_account
 
     # Live update any open web admin tabs (SSE), independent of FCM.
+    item_id = None
+    if req.send_id:
+        send_row = db.query(models.VaultSend).filter(models.VaultSend.id == req.send_id).first()
+        if send_row:
+            raw = _payload(send_row).get("item_id")
+            if isinstance(raw, str) and raw.strip():
+                item_id = raw.strip()
     send_request_hub.publish(
         owner_id,
         {
@@ -923,6 +930,7 @@ def _notify_send_request(
             "send_id": req.send_id,
             "send_name": send_name,
             "send_token": send_token,
+            "item_id": item_id,
             "name": req.name,
             "email": req.email,
             "ip": req.ip,
@@ -952,11 +960,18 @@ def _notify_send_request(
 
 def _request_out(row: models.VaultSendRequest, send: models.VaultSend | None = None) -> schemas.VaultSendRequestOut:
     send = send or row.send
+    item_id = None
+    if send:
+        data = _payload(send)
+        raw = data.get("item_id")
+        if isinstance(raw, str) and raw.strip():
+            item_id = raw.strip()
     return schemas.VaultSendRequestOut(
         id=row.id,
         send_id=row.send_id,
         send_name=(send.name if send else "Send"),
         send_token=(send.token if send else ""),
+        item_id=item_id,
         name=row.name,
         email=row.email,
         ip=row.ip,

@@ -819,6 +819,7 @@ class VaultSendRequestOut(BaseModel):
     send_id: str
     send_name: str
     send_token: str
+    item_id: Optional[str] = None
     name: Optional[str] = None
     email: Optional[str] = None
     ip: Optional[str] = None

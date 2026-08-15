@@ -220,7 +220,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=25">
+<link rel="stylesheet" href="/static/vault.css?v=26">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">
@@ -300,14 +300,18 @@
       <div class="modal-body">
         <p class="mb-2" id="send-request-modal-who">Someone asked for access.</p>
         <p class="text-muted small mb-3" id="send-request-modal-meta"></p>
-        <p class="text-muted small mb-0">Grant unlocks the password for that guest’s browser. Dismiss rejects the request.</p>
+        <p class="text-muted small mb-0">
+          <strong>Grant access</strong> unlocks the password for that guest’s browser.
+          <strong>Dismiss</strong> rejects the request.
+          <strong>View request details</strong> opens the Access requests list (photo, map, live video).
+        </p>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer flex-wrap gap-2">
         <form method="post" id="send-request-dismiss-form" action="#">
           <input type="hidden" name="next" value="">
           <button class="btn btn-ghost" type="submit">Dismiss</button>
         </form>
-        <a class="btn btn-outline-light" id="send-request-open" href="/admin/passwords/sends">Open Send</a>
+        <a class="btn btn-outline-light" id="send-request-open" href="/admin/passwords/sends">View request details</a>
         <form method="post" id="send-request-grant-form" action="#">
           <input type="hidden" name="next" value="">
           <button class="btn btn-primary" type="submit">
@@ -441,6 +445,22 @@
   var openLink = document.getElementById("send-request-open");
   var toastText = document.getElementById("send-request-toast-text");
 
+  function detailUrl(req){
+    if (req.item_id) {
+      return "/admin/passwords/" + encodeURIComponent(req.item_id) + "#send-req-" + encodeURIComponent(req.id);
+    }
+    return "/admin/passwords/sends#send-req-" + encodeURIComponent(req.id);
+  }
+
+  function focusRequest(reqId){
+    var el = document.getElementById("send-req-" + reqId);
+    if (!el) return false;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("send-req-flash");
+    setTimeout(function(){ el.classList.remove("send-req-flash"); }, 2200);
+    return true;
+  }
+
   function fill(req){
     var label = (req.name || req.email || req.ip || "Someone");
     who.textContent = label + " asked for access to “" + (req.send_name || "a share") + "”.";
@@ -451,9 +471,28 @@
     dismissForm.action = "/admin/passwords/send-requests/" + encodeURIComponent(req.id) + "/dismiss";
     grantForm.querySelector('input[name="next"]').value = here;
     dismissForm.querySelector('input[name="next"]').value = here;
-    openLink.href = "/admin/passwords/sends";
+    openLink.href = detailUrl(req);
+    openLink.setAttribute("data-request-id", req.id || "");
     shownId = req.id;
   }
+
+  openLink.addEventListener("click", function(ev){
+    var reqId = openLink.getAttribute("data-request-id") || shownId || "";
+    var target = openLink.getAttribute("href") || "/admin/passwords/sends";
+    var path = target.split("#")[0];
+    // Already on this page — modal link to same URL looked like a no-op.
+    if (path === window.location.pathname) {
+      ev.preventDefault();
+      modal.hide();
+      if (reqId && focusRequest(reqId)) return;
+      window.location.hash = "send-req-" + encodeURIComponent(reqId);
+      setTimeout(function(){ focusRequest(reqId); }, 50);
+      return;
+    }
+    // Force navigation even if Bootstrap is holding focus.
+    ev.preventDefault();
+    window.location.assign(target);
+  });
 
   function showReq(req){
     if (!req || !req.id || seen[req.id]) return;
@@ -515,6 +554,18 @@
     };
   }
   connectSse();
+
+  // Deep-link from “View request details”
+  if (window.location.hash && window.location.hash.indexOf("send-req-") === 1) {
+    var hid = window.location.hash.slice(1);
+    setTimeout(function(){
+      var el = document.getElementById(hid);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("send-req-flash");
+      setTimeout(function(){ el.classList.remove("send-req-flash"); }, 2200);
+    }, 200);
+  }
 })();
 {% endif %}
 </script>
