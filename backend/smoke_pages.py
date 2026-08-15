@@ -130,6 +130,7 @@ PAGES = [
     "/admin/sa", "/admin/sa/users", "/admin/sa/online", "/admin/sa/logins",
     "/admin/sa/signup", "/admin/sa/settings", "/admin/sa/users?q=smoke", "/admin/sa/logins?outcome=all",
     "/admin/login/qr",
+    "/admin/signup",
 ]
 if pw_id:
     PAGES.append(f"/admin/passwords/{pw_id}")

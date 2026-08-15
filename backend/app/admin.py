@@ -94,6 +94,66 @@ def _login_ctx(request: Request, error=None):
     }
 
 
+def _signup_ctx(request: Request, error=None, email="", full_name=""):
+    from app.login_guard import recaptcha_public_key
+    return {
+        "request": request,
+        "error": error,
+        "email": email or "",
+        "full_name": full_name or "",
+        "recaptcha_site_key": recaptcha_public_key(),
+    }
+
+
+@router.get("/signup", response_class=HTMLResponse)
+def signup_form(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/admin/modules", status_code=302)
+    return templates.TemplateResponse("signup.html", _signup_ctx(request))
+
+
+@router.post("/signup", response_class=HTMLResponse)
+async def signup_submit(request: Request, db: Session = Depends(get_db)):
+    from app.accounts import AccountExists, create_vault_user
+    from app.login_guard import client_ip, verify_recaptcha
+
+    if request.session.get("user_id"):
+        return RedirectResponse("/admin/modules", status_code=302)
+
+    form = await request.form()
+    full_name = str(form.get("full_name") or "").strip()
+    email = str(form.get("email") or "").strip()
+    password = str(form.get("password") or "")
+    password2 = str(form.get("password2") or "")
+    token = str(form.get("g-recaptcha-response") or "")
+
+    def _fail(msg: str, code: int = 400):
+        return templates.TemplateResponse(
+            "signup.html",
+            _signup_ctx(request, msg, email=email, full_name=full_name),
+            status_code=code,
+        )
+
+    if not verify_recaptcha(token, client_ip(request), db):
+        return _fail("Please complete the captcha.", 400)
+    if password != password2:
+        return _fail("Passwords do not match.")
+    try:
+        user = create_vault_user(
+            db, email=email, password=password, full_name=full_name,
+            role=models.UserRole.owner.value,
+        )
+    except AccountExists:
+        return _fail("An account with this email already exists.", 409)
+    except ValueError as exc:
+        return _fail(str(exc))
+
+    request.session.pop("totp_pending", None)
+    request.session.pop("login_challenge_id", None)
+    request.session["user_id"] = user.id
+    return RedirectResponse("/admin/modules", status_code=302)
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request):
     if request.session.get("user_id"):

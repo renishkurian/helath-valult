@@ -24,6 +24,7 @@ def test_admin_module_for_path():
     assert modules.admin_module_for_path("/admin/finance/stats") == "finance"
     assert modules.admin_module_for_path("/admin/modules") is None
     assert modules.admin_module_for_path("/admin/login") is None
+    assert modules.admin_module_for_path("/admin/signup") is None
     assert modules.admin_module_for_path("/admin") == "health"
 
 

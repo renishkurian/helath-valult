@@ -171,22 +171,77 @@ def test_reminder_crud():
 def test_admin_ui_login_and_dashboard():
     _register("adminui@example.com", "password123", "Admin UI User")
 
-    r = client.get("/admin/login")
+    web = TestClient(app)
+    r = web.get("/admin/login")
     assert r.status_code == 200
     assert "Welcome back" in r.text
+    assert "/admin/signup" in r.text
 
-    r = client.post(
+    r = web.post(
         "/admin/login",
         data={"email": "adminui@example.com", "password": "password123"},
         follow_redirects=True,
     )
     assert r.status_code == 200
-    assert "Your five vaults" in r.text
+    assert "Your vaults" in r.text or "Your five vaults" in r.text
     assert "Password Vault" in r.text
 
-    r = client.get("/admin", follow_redirects=False)
+    r = web.get("/admin", follow_redirects=False)
     assert r.status_code == 200  # already logged in this session
     assert "Hi, Admin" in r.text
+
+
+def test_admin_ui_signup():
+    web = TestClient(app)
+    page = web.get("/admin/signup")
+    assert page.status_code == 200
+    assert "Create your vault" in page.text
+    assert "/admin/login" in page.text
+
+    bad = web.post("/admin/signup", data={
+        "full_name": "Web Signup",
+        "email": "websignup@example.com",
+        "password": "password123",
+        "password2": "different",
+    })
+    assert bad.status_code == 400
+    assert "Passwords do not match" in bad.text
+
+    ok = web.post(
+        "/admin/signup",
+        data={
+            "full_name": "Web Signup",
+            "email": "websignup@example.com",
+            "password": "password123",
+            "password2": "password123",
+        },
+        follow_redirects=False,
+    )
+    assert ok.status_code == 302
+    assert ok.headers["location"].endswith("/admin/modules")
+
+    home = web.get("/admin/modules", follow_redirects=True)
+    assert home.status_code == 200
+    assert "Your vaults" in home.text or "Web Signup" in home.text
+
+    again = web.post("/admin/signup", data={
+        "full_name": "Web Signup",
+        "email": "websignup@example.com",
+        "password": "password123",
+        "password2": "password123",
+    }, follow_redirects=False)
+    # Already signed in → redirect to modules
+    assert again.status_code == 302
+    assert again.headers["location"].endswith("/admin/modules")
+
+    other = TestClient(app)
+    dup = other.post("/admin/signup", data={
+        "full_name": "Web Signup 2",
+        "email": "websignup@example.com",
+        "password": "password123",
+        "password2": "password123",
+    })
+    assert dup.status_code == 409
 
 
 def test_display_name_and_relation_labels():

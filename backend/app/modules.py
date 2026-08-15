@@ -133,12 +133,12 @@ def admin_module_for_path(path: str) -> Optional[str]:
     if not path.startswith("/admin"):
         return None
     # Shared shell / auth — always allowed when logged in
-    if path in ("/admin", "/admin/", "/admin/modules", "/admin/login", "/admin/logout"):
+    if path in ("/admin", "/admin/", "/admin/modules", "/admin/login", "/admin/logout", "/admin/signup"):
         # Dashboard home is health
         if path in ("/admin", "/admin/"):
             return "health"
         return None
-    if path.startswith("/admin/login") or path.startswith("/admin/logout"):
+    if path.startswith("/admin/login") or path.startswith("/admin/logout") or path.startswith("/admin/signup"):
         return None
     # Other health admin pages (family, care, …) without a dedicated prefix
     health_only = (
