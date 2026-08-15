@@ -31,6 +31,9 @@ def test_detect_months():
     assert "2026-07" in detect_months("last month statement", today)
     assert detect_months("HDFC statement for March 2026", today) == ["2026-03"]
     assert "2026-01" in detect_months("January 2026 credit card", today)
+    two = detect_months("create a list from my last 2 months purchase history", today)
+    assert "2026-07" in two and "2026-06" in two
+    assert "2026-07" in detect_months("past two months of groceries", today)
 
 
 def test_context_includes_hospital_and_card_not_secrets():
@@ -264,3 +267,83 @@ def test_parse_usage_openai_and_anthropic():
     assert parse_usage({"usage": {"input_tokens": 5, "output_tokens": 3}}) == {
         "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8,
     }
+
+
+def test_shopping_context_and_apply_list_action():
+    from app.ai_chat import apply_shop_list_action, extract_vault_action
+
+    display, action = extract_vault_action(
+        "Here is a list.\n\n```vault-action\n"
+        '{"type":"create_shop_list","name":"Sunday market","items":['
+        '{"name":"atta podi"},{"name":"sharkara","quantity":2,"unit":"kg"},"mav podi"]}\n```'
+    )
+    assert "vault-action" not in display
+    assert action["name"] == "Sunday market"
+    assert len(action["items"]) == 3
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        lst = models.ShopList(user_id=uid, name="July shop", completed=True, completed_at=datetime(2026, 7, 20))
+        db.add(lst)
+        db.flush()
+        db.add(models.ShopItem(
+            list_id=lst.id, name="Coconut Oil (തേങ്ങാവെളിച്ചെണ്ണ)", checked=True,
+            category="essentials", status="approved",
+            updated_at=datetime(2026, 7, 18),
+        ))
+        db.add(models.ShopItem(
+            list_id=lst.id, name="Rice (അരി)", checked=True, status="approved",
+            updated_at=datetime(2026, 7, 18),
+        ))
+        db.commit()
+        ctx = build_vault_context(db, user, "last month did I purchase oil?")
+        assert "## Shopping List" in ctx
+        assert "Coconut Oil" in ctx
+        assert "2026-07" in ctx
+        created = apply_shop_list_action(db, user, action)
+    finally:
+        db.close()
+
+    assert created["list_id"]
+    assert created["item_count"] >= 3
+    assert "/admin/tracker/lists/" in created["url"]
+
+    detail = client.get(f"/tracker/lists/{created['list_id']}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    names = " ".join(i["name"].lower() for i in detail.json()["items"])
+    assert "atta" in names or "wheat" in names or "podi" in names
+
+
+def test_chat_returns_shop_list_action():
+    headers, email = _headers()
+    assert client.post("/ai/providers", headers=headers, json={
+        "name": "Shop AI", "kind": "openrouter", "api_key": "sk-test",
+        "is_default": True, "model": "openai/gpt-4o-mini",
+    }).status_code == 200
+
+    reply = (
+        "I'll make a list with atta and jaggery.\n\n```vault-action\n"
+        '{"type":"create_shop_list","name":"Kitchen restock","items":['
+        '{"name":"Atta"},{"name":"Jaggery"}]}\n```'
+    )
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": reply, "kind": "openrouter", "model": "openai/gpt-4o-mini",
+        "prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+    }):
+        r = client.post("/ai/chat", headers=headers, json={
+            "message": "create a shopping list with atta and sharkara",
+        })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["action"]["type"] == "create_shop_list"
+    assert body["action"]["name"] == "Kitchen restock"
+    assert "vault-action" not in body["reply"]
+
+    applied = client.post("/ai/chat/apply-shop-list", headers=headers, json=body["action"])
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["item_count"] == 2
+    assert client.get(f"/tracker/lists/{applied.json()['list_id']}", headers=headers).status_code == 200
+

@@ -1,4 +1,4 @@
-"""Ask AI — vault-wide Q&A over Health, Money, Expense Analyser, Locker, URLs.
+"""Ask AI — vault-wide Q&A over Health, Money, Expense Analyser, Shopping List, Locker, URLs.
 
 Secrets stay out of the prompt: no password vault plaintext, locker ID numbers,
 hospital patient IDs, or API keys. The model only sees titles, dates, amounts,
@@ -25,19 +25,40 @@ MAX_CONTEXT_CHARS = 22000
 MAX_HISTORY = 20
 CHAT_TIMEOUT = 60
 
-SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money Manager, Expense Analyser, Document Vault, URL Vault, Password Vault).
+SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money Manager, Expense Analyser, Shopping List, Document Vault, URL Vault, Password Vault).
 
-Answer only from the VAULT SNAPSHOT attached to each turn. Do not invent hospitals, reports, transactions, balances, or dates. If the snapshot does not contain the answer, say what is missing and which module to open.
+Answer only from the VAULT SNAPSHOT attached to each turn. Do not invent hospitals, reports, transactions, balances, shopping items, or dates. If the snapshot does not contain the answer, say what is missing and which module to open.
 
 When the user asks for:
 - hospital reports / labs / bills: list matching Health Vault documents (title, date, category, amount, person). Group by hospital.
 - a credit-card (or any account) statement for a month: list that account's transactions for the month with date, payee, category, amount, and a total. Say if the account was not found.
 - spend / income: use Money Manager ledger figures. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant.
+- shopping / groceries / “did I buy X”: use the Shopping List section (list names, item names, checked/purchased dates). Prefer item names over merchant payees when answering product questions (oil, rice, atta, etc.).
+- create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
 - IDs / Aadhaar / PAN: you may name the Document Vault item and expiry, never an ID number (those are omitted on purpose).
 - passwords / logins: you may name entries. Never claim to know a password.
 
+Creating a shopping list — after your normal markdown answer, if (and only if) the user wants a new list created, append exactly one fenced block:
+
+```vault-action
+{"type":"create_shop_list","name":"Short list title","items":[{"name":"Onion","quantity":1,"unit":"kg"},{"name":"Atta"}]}
+```
+
+Rules for vault-action:
+- type must be create_shop_list
+- name: short English title
+- items: 1–60 objects with name (required), optional quantity (number), optional unit
+- Recognise Malayalam / misspellings into English grocery names when the snapshot or common Kerala groceries make that clear (atta/mav podi → Wheat Flour, sharkara → Jaggery, etc.)
+- Do NOT emit vault-action for pure questions (e.g. “did I buy oil last month?”)
+- Do NOT invent purchases that are not in the snapshot; for history-based lists, prefer frequent checked items from the months asked
+
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
 """
+
+_VAULT_ACTION_RE = re.compile(
+    r"```vault-action\s*(\{.*?\})\s*```",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def _uid(user: models.User) -> str:
@@ -121,6 +142,18 @@ def detect_months(question: str, today: datetime | None = None) -> list[str]:
         found.append(this)
     if re.search(r"\blast month\b", q):
         found.append(_shift_month(this, -1))
+    # last/past N months (including “two”)
+    span = None
+    m = re.search(r"\b(?:last|past)\s+(\d{1,2})\s+months?\b", q)
+    if m:
+        span = max(1, min(12, int(m.group(1))))
+    elif re.search(r"\b(?:last|past)\s+two\s+months?\b", q):
+        span = 2
+    elif re.search(r"\b(?:last|past)\s+three\s+months?\b", q):
+        span = 3
+    if span:
+        for i in range(1, span + 1):
+            found.append(_shift_month(this, -i))
     for m in re.findall(r"\b(20\d{2})-(\d{2})\b", q):
         found.append(f"{m[0]}-{m[1]}")
     for name, year in re.findall(
@@ -235,10 +268,24 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
         "label": "Pending mail spends",
         "prompt": "What Expense Analyser items are still pending or missed, and which merchants are the largest?",
     })
-    hints.append({
-        "label": "Expiring documents",
-        "prompt": "Which Document Vault items and health documents expire in the next 90 days?",
-    })
+    shop_n = (
+        db.query(models.ShopList)
+        .filter(models.ShopList.user_id == uid, models.ShopList.deleted_at.is_(None))
+        .count()
+    )
+    if shop_n:
+        hints.append({
+            "label": "Restock from history",
+            "prompt": (
+                "Create a shopping list based on my last 2 months of Shopping List purchases. "
+                "Suggest items I buy regularly, then propose the list for me to approve."
+            ),
+        })
+    else:
+        hints.append({
+            "label": "Expiring documents",
+            "prompt": "Which Document Vault items and health documents expire in the next 90 days?",
+        })
     return hints[:4]
 
 
@@ -573,6 +620,11 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     else:
         lines.append("No analyser items yet.")
 
+    # ---- Shopping List ----
+    lines.append("")
+    lines.append("## Shopping List")
+    lines.extend(_shopping_snapshot_lines(db, uid, months, today, q))
+
     # ---- Locker ----
     lines.append("")
     lines.append("## Document Vault (IDs & papers — ID numbers omitted)")
@@ -646,6 +698,208 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     if len(text) > MAX_CONTEXT_CHARS:
         text = text[: MAX_CONTEXT_CHARS - 20] + "\n… [truncated]"
     return text
+
+
+def _item_when(item: models.ShopItem, lst: models.ShopList) -> datetime | None:
+    if item.checked and item.updated_at:
+        return item.updated_at
+    if lst.completed_at:
+        return lst.completed_at
+    return item.created_at or lst.created_at or item.updated_at
+
+
+def _ym(dt: datetime | None) -> str:
+    if not dt:
+        return ""
+    return f"{dt:%Y-%m}"
+
+
+def _shopping_snapshot_lines(
+    db: Session,
+    uid: str,
+    months: list[str],
+    today: datetime,
+    question: str,
+) -> list[str]:
+    lines: list[str] = []
+    lists = (
+        db.query(models.ShopList)
+        .filter(models.ShopList.user_id == uid, models.ShopList.deleted_at.is_(None))
+        .order_by(models.ShopList.updated_at.desc())
+        .limit(40)
+        .all()
+    )
+    if not lists:
+        lines.append("No shopping lists yet.")
+        return lines
+
+    month_set = set(months or [])
+    if not month_set:
+        month_set = {f"{today:%Y-%m}", _shift_month(f"{today:%Y-%m}", -1)}
+
+    open_lists = [lst for lst in lists if not lst.completed][:12]
+    lines.append(f"Active lists ({len([l for l in lists if not l.completed])} open / {len(lists)} total):")
+    if open_lists:
+        for lst in open_lists:
+            items = [i for i in (lst.items or []) if (i.status or "approved") != "rejected"]
+            checked = sum(1 for i in items if i.checked)
+            names = ", ".join((i.name or "")[:40] for i in items[:12]) or "(empty)"
+            more = f" +{len(items) - 12} more" if len(items) > 12 else ""
+            lines.append(
+                f"- {lst.name} · {checked}/{len(items)} checked · created "
+                f"{lst.created_at.strftime('%Y-%m-%d') if lst.created_at else '—'} · items: {names}{more}"
+            )
+    else:
+        lines.append("- (none open)")
+
+    # Purchased / checked items in focus months
+    freq: dict[str, dict] = {}
+    month_hits: list[str] = []
+    for lst in lists:
+        for item in lst.items or []:
+            if (item.status or "approved") == "rejected":
+                continue
+            if not item.checked and not lst.completed:
+                continue
+            when = _item_when(item, lst)
+            ym = _ym(when)
+            if ym and ym not in month_set:
+                continue
+            key = (item.name or "").strip()
+            if not key:
+                continue
+            slot = freq.setdefault(key.lower(), {
+                "name": key, "count": 0, "category": item.category, "dates": [],
+            })
+            slot["count"] += 1
+            if ym and ym not in slot["dates"]:
+                slot["dates"].append(ym)
+            day = when.strftime("%Y-%m-%d") if when else ""
+            if day:
+                month_hits.append(
+                    f"- {day} · {key}"
+                    + (f" · {item.category}" if item.category else "")
+                    + f" · list {lst.name}"
+                    + (" · checked" if item.checked else " · on completed list")
+                )
+
+    lines.append(
+        f"Purchased/checked grocery items in months {', '.join(sorted(month_set))} "
+        f"(date ≈ check/complete time):"
+    )
+    if month_hits:
+        for row in month_hits[:80]:
+            lines.append(row)
+    else:
+        lines.append("- none recorded in those months")
+
+    if freq:
+        top = sorted(freq.values(), key=lambda r: (-r["count"], r["name"].lower()))[:30]
+        lines.append("Most frequent purchased items in that window (for restock suggestions):")
+        for row in top:
+            lines.append(
+                f"- {row['name']} ×{row['count']}"
+                + (f" · {row['category']}" if row.get("category") else "")
+                + (f" · months {', '.join(sorted(row['dates']))}" if row.get("dates") else "")
+            )
+
+    # Recent list names for “which lists do I have”
+    done = [lst for lst in lists if lst.completed][:8]
+    if done:
+        lines.append("Recently completed lists:")
+        for lst in done:
+            when = lst.completed_at or lst.updated_at
+            lines.append(
+                f"- {lst.name} · completed "
+                f"{when.strftime('%Y-%m-%d') if when else '—'} · "
+                f"{len(lst.items or [])} items"
+            )
+    return lines
+
+
+def extract_vault_action(text: str) -> tuple[str, dict | None]:
+    """Split assistant reply into display text + optional create_shop_list action."""
+    raw = text or ""
+    m = _VAULT_ACTION_RE.search(raw)
+    if not m:
+        return raw.strip(), None
+    try:
+        data = json.loads(m.group(1))
+    except (TypeError, json.JSONDecodeError):
+        return raw.strip(), None
+    cleaned = _VAULT_ACTION_RE.sub("", raw).strip()
+    action = normalize_shop_list_action(data)
+    return cleaned, action
+
+
+def normalize_shop_list_action(data: dict | None) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    if (data.get("type") or "") != "create_shop_list":
+        return None
+    name = re.sub(r"\s+", " ", str(data.get("name") or "Shopping list")).strip()[:120]
+    if not name:
+        name = "Shopping list"
+    items_in = data.get("items") if isinstance(data.get("items"), list) else []
+    items: list[dict] = []
+    seen: set[str] = set()
+    for raw in items_in[:60]:
+        if isinstance(raw, str):
+            raw = {"name": raw}
+        if not isinstance(raw, dict):
+            continue
+        label = re.sub(r"\s+", " ", str(raw.get("name") or "")).strip()[:255]
+        if not label:
+            continue
+        key = label.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        qty = raw.get("quantity", 1)
+        try:
+            qty_f = float(qty if qty not in (None, "") else 1)
+        except (TypeError, ValueError):
+            qty_f = 1.0
+        if qty_f <= 0:
+            qty_f = 1.0
+        unit = re.sub(r"\s+", " ", str(raw.get("unit") or "")).strip()[:40] or None
+        items.append({"name": label, "quantity": qty_f, "unit": unit})
+    if not items:
+        return None
+    return {"type": "create_shop_list", "name": name, "items": items}
+
+
+def apply_shop_list_action(db: Session, user: models.User, action: dict) -> dict:
+    """Create a ShopList + items from an approved Ask AI action."""
+    from app import schemas as sc
+    from app.routers.tracker import _add_item_row, _list_out
+
+    normalized = normalize_shop_list_action(action)
+    if not normalized:
+        raise ValueError("Invalid shopping list action")
+    lst = models.ShopList(
+        user_id=_uid(user),
+        name=normalized["name"].title(),
+        description="Created from Ask AI",
+    )
+    db.add(lst)
+    db.flush()
+    for row in normalized["items"]:
+        body = sc.ShopItemIn(
+            name=row["name"],
+            quantity=row.get("quantity") or 1,
+            unit=row.get("unit"),
+        )
+        _add_item_row(db, lst, body, added_by=user.id, status="approved")
+    db.commit()
+    db.refresh(lst)
+    out = _list_out(db, lst, with_items=True)
+    return {
+        "list_id": out.id,
+        "name": out.name,
+        "item_count": out.item_count,
+        "url": f"/admin/tracker/lists/{out.id}",
+    }
 
 
 def complete_chat(
@@ -937,12 +1191,23 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     if not reply:
         reply = "The provider returned an empty reply. Try again, or test the key on the Providers page."
 
+    display_reply, action = extract_vault_action(reply)
+    # Persist display text + action fence so the UI can re-offer Approve after reload.
+    store_reply = display_reply
+    if action:
+        store_reply = (
+            display_reply.rstrip()
+            + "\n\n```vault-action\n"
+            + json.dumps(action, ensure_ascii=False)
+            + "\n```"
+        )
+
     now = datetime.utcnow()
     user_row = models.AiChatMessage(
         thread_id=thread.id, role="user", content_enc=crypto.encrypt_text(text), created_at=now,
     )
     asst_row = models.AiChatMessage(
-        thread_id=thread.id, role="assistant", content_enc=crypto.encrypt_text(reply),
+        thread_id=thread.id, role="assistant", content_enc=crypto.encrypt_text(store_reply),
         created_at=now + timedelta(seconds=1),
     )
     db.add(user_row)
@@ -957,6 +1222,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     return {
         "thread_id": thread.id,
         "title": thread.title,
-        "reply": reply,
+        "reply": display_reply,
+        "action": action,
         "messages": detail["messages"] if detail else [],
     }

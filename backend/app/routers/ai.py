@@ -144,6 +144,20 @@ def chat(
     return schemas.AiChatReplyOut(**result)
 
 
+@router.post("/chat/apply-shop-list", response_model=schemas.AiShopListActionOut)
+def apply_shop_list(
+    body: schemas.AiShopListActionIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        result = ai_chat.apply_shop_list_action(db, current_user, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.AiShopListActionOut(**result)
+
+
 @router.get("/usage", response_model=list[schemas.AiUsageLogOut])
 def list_usage(
     client: str | None = None,

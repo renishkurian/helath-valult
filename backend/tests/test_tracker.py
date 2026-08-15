@@ -96,6 +96,11 @@ def test_tracker_recognize_and_friends_send():
     assert hits.status_code == 200, hits.text
     assert any(row["english"] == "Brinjal" for row in hits.json())
 
+    typo = client.post("/tracker/recognize", headers=owner, json={"name": "brinjl"})
+    assert typo.status_code == 200, typo.text
+    assert typo.json()["english"] == "Brinjal"
+    assert typo.json()["matched"] is True
+
     groups = client.get("/tracker/quick-add", headers=owner)
     assert groups.status_code == 200
     payload = groups.json()["groups"]
@@ -177,6 +182,11 @@ def test_admin_list_detail_renders_quick_add():
     assert "Potato" in page.text
     assert "ഉള്ളി" in page.text
     assert "Use AI (Malayalam" in page.text
+    assert 'id="shop-catalog-data"' in page.text
+    assert 'data-suggest="/admin/tracker/suggest"' in page.text
+    assert "shop-list.js?v=6" in page.text
+    assert "shop-chip-section" in page.text
+    assert "shop-chip-heading" in page.text
     assert "Internal Server Error" not in page.text
     assert "Live" in page.text
     assert "app-tabbar" in page.text
@@ -184,6 +194,10 @@ def test_admin_list_detail_renders_quick_add():
     assert "Add bill copy" in page.text
     assert "Open statements" not in page.text
     assert "Family on this list" not in page.text
+
+    suggest = session.get("/admin/tracker/suggest", params={"q": "vazhuth"})
+    assert suggest.status_code == 200, suggest.text
+    assert any(row.get("english") == "Brinjal" for row in suggest.json())
 
 
 def test_family_share_auto_approves_and_polls_revision():

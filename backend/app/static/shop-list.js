@@ -3,7 +3,15 @@
   if (!root) return;
 
   var catalog = {};
-  try { catalog = JSON.parse(root.getAttribute("data-catalog") || "{}"); } catch (e) { catalog = {}; }
+  var catNode = document.getElementById("shop-catalog-data");
+  if (catNode) {
+    try { catalog = JSON.parse(catNode.textContent || "{}"); } catch (e) { catalog = {}; }
+  }
+  if (!(catalog.groups && catalog.groups.length)) {
+    try { catalog = JSON.parse(root.getAttribute("data-catalog") || "{}"); } catch (e) { catalog = {}; }
+  }
+
+  var suggestUrl = (root.getAttribute("data-suggest") || "").trim();
   var useAi = document.getElementById("shop-use-ai");
   var search = document.getElementById("shop-quick-search");
   var nameInput = document.getElementById("item-name");
@@ -13,9 +21,31 @@
   var emptyHint = document.getElementById("shop-chip-empty");
   var itemFilter = document.getElementById("shop-item-filter");
   var activeCat = "all";
+  var suggestTimer = null;
+  var suggestSeq = 0;
 
   function fold(s) {
-    return String(s || "").toLowerCase().replace(/[^a-z0-9\u0d00-\u0d7f]+/g, "");
+    // Match backend: keep Malayalam letters, drop virama (U+0D4D) and punctuation.
+    return String(s || "").toLowerCase().replace(/\u0d4d/g, "").replace(/[^a-z0-9\u0d00-\u0d7f]+/g, "");
+  }
+
+  function editDistance(a, b) {
+    if (a === b) return 0;
+    if (!a) return b.length;
+    if (!b) return a.length;
+    if (Math.abs(a.length - b.length) > 2) return 99;
+    if (a.length > 24 || b.length > 24) return 99;
+    var prev = [];
+    for (var j = 0; j <= b.length; j++) prev[j] = j;
+    for (var i = 1; i <= a.length; i++) {
+      var cur = [i];
+      for (j = 1; j <= b.length; j++) {
+        var cost = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+        cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      }
+      prev = cur;
+    }
+    return prev[b.length];
   }
 
   function entries() {
@@ -39,7 +69,12 @@
     var bits = haystack(it, ai);
     for (var i = 0; i < bits.length; i++) {
       var h = fold(bits[i]);
-      if (h && h.indexOf(n) >= 0) return true;
+      if (!h) continue;
+      if (h.indexOf(n) >= 0) return true;
+      if (ai && n.length >= 4) {
+        var d = editDistance(n, h);
+        if (d === 1 || (d === 2 && n.length >= 5)) return true;
+      }
     }
     return false;
   }
@@ -54,6 +89,11 @@
       if (h === n) best = Math.max(best, 100);
       else if (h.indexOf(n) === 0) best = Math.max(best, n.length >= 4 ? 92 : 80);
       else if (h.indexOf(n) >= 0) best = Math.max(best, 70);
+      else if (n.length >= 4) {
+        var d = editDistance(n, h);
+        if (d === 1) best = Math.max(best, 86);
+        else if (d === 2 && n.length >= 5) best = Math.max(best, 72);
+      }
     });
     return best;
   }
@@ -79,7 +119,46 @@
       form.hidden = !ok;
       if (ok) shown += 1;
     });
+    Array.prototype.forEach.call(chipHost.querySelectorAll(".shop-chip-section"), function (sec) {
+      var cat = sec.getAttribute("data-section-cat") || "";
+      var catOk = activeCat === "all" || cat === activeCat;
+      var any = false;
+      if (catOk) {
+        Array.prototype.forEach.call(sec.querySelectorAll("form"), function (form) {
+          if (!form.hidden) any = true;
+        });
+      }
+      sec.hidden = !any;
+    });
     if (emptyHint) emptyHint.hidden = shown > 0;
+  }
+
+  function localRanked(q) {
+    return entries().map(function (it) {
+      return { it: it, s: score(it, q) };
+    }).filter(function (row) { return row.s >= 70; })
+      .sort(function (a, b) { return b.s - a.s; })
+      .slice(0, 8)
+      .map(function (row) { return row.it; });
+  }
+
+  function paintSuggest(rows, emptyMsg) {
+    if (!suggestBox) return;
+    if (!rows || !rows.length) {
+      suggestBox.innerHTML = '<div class="shop-suggest-empty">' + (emptyMsg || "No match — Add will keep this name") + "</div>";
+      suggestBox.hidden = false;
+      return;
+    }
+    suggestBox.innerHTML = rows.map(function (it) {
+      var ml = it.malayalam ? " (" + it.malayalam + ")" : "";
+      return '<button type="button" class="shop-suggest-row" data-en="' +
+        encodeURIComponent(it.english) + '" data-emoji="' +
+        encodeURIComponent(it.emoji || "") + '" data-cat="' +
+        encodeURIComponent(it.category || "") + '">' +
+        '<span>' + (it.emoji || "🛒") + " " + it.english + ml + "</span>" +
+        '<span class="text-muted">Match</span></button>';
+    }).join("");
+    suggestBox.hidden = false;
   }
 
   function renderSuggest() {
@@ -90,27 +169,39 @@
       suggestBox.innerHTML = "";
       return;
     }
-    var ranked = entries().map(function (it) {
-      return { it: it, s: score(it, q) };
-    }).filter(function (row) { return row.s >= 70; })
-      .sort(function (a, b) { return b.s - a.s; })
-      .slice(0, 8);
-    if (!ranked.length) {
-      suggestBox.hidden = true;
-      suggestBox.innerHTML = "";
+    var seq = ++suggestSeq;
+    var local = localRanked(q);
+    if (local.length) paintSuggest(local);
+    else {
+      suggestBox.innerHTML = '<div class="shop-suggest-empty">Looking up…</div>';
+      suggestBox.hidden = false;
+    }
+
+    if (!suggestUrl) {
+      if (!local.length) paintSuggest([], "No match — Add will keep this name");
       return;
     }
-    suggestBox.innerHTML = ranked.map(function (row) {
-      var it = row.it;
-      var ml = it.malayalam ? " (" + it.malayalam + ")" : "";
-      return '<button type="button" class="shop-suggest-row" data-en="' +
-        encodeURIComponent(it.english) + '" data-emoji="' +
-        encodeURIComponent(it.emoji || "") + '" data-cat="' +
-        encodeURIComponent(it.category || "") + '">' +
-        '<span>' + (it.emoji || "🛒") + " " + it.english + ml + "</span>" +
-        '<span class="text-muted">Match</span></button>';
-    }).join("");
-    suggestBox.hidden = false;
+
+    if (suggestTimer) clearTimeout(suggestTimer);
+    suggestTimer = setTimeout(function () {
+      fetch(suggestUrl + (suggestUrl.indexOf("?") >= 0 ? "&" : "?") + "q=" + encodeURIComponent(q) + "&limit=8", {
+        headers: { Accept: "application/json" },
+        credentials: "same-origin",
+      })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (data) {
+          if (seq !== suggestSeq) return;
+          var rows = Array.isArray(data) ? data.filter(function (it) { return it && it.english; }) : [];
+          if (rows.length) paintSuggest(rows);
+          else if (local.length) paintSuggest(local);
+          else paintSuggest([], "No match — Add will keep this name");
+        })
+        .catch(function () {
+          if (seq !== suggestSeq) return;
+          if (local.length) paintSuggest(local);
+          else paintSuggest([], "No match — Add will keep this name");
+        });
+    }, 180);
   }
 
   if (catBar) {

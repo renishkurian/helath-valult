@@ -2619,6 +2619,23 @@ async def ai_ask_send(request: Request, db: Session = Depends(get_db)):
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
 
+@router.post("/ai/ask/apply-shop-list")
+async def ai_ask_apply_shop_list(request: Request, db: Session = Depends(get_db)):
+    """Approve an Ask AI create_shop_list proposal and create the list."""
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, status_code=400)
+    try:
+        return ai_chat.apply_shop_list_action(db, user, body if isinstance(body, dict) else {})
+    except ValueError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
 @router.post("/ai/ask/test")
 def ai_ask_test_connection(request: Request, db: Session = Depends(get_db)):
     """Session-auth ping of the default Ask AI provider."""
@@ -3203,11 +3220,21 @@ def tracker_list_live(list_id: str, request: Request, db: Session = Depends(get_
     })
 
 
+@router.get("/tracker/suggest")
+def tracker_suggest_admin(request: Request, q: str = "", limit: int = 8, db: Session = Depends(get_db)):
+    """Session-auth suggest for the web Shopping List UI (cookie login)."""
+    from app.grocery import suggest
+    user = _tr_user(request, db)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    rows = suggest(db, q or "", limit=limit)
+    return JSONResponse(rows)
+
+
 @router.get("/tracker/lists/{list_id}", response_class=HTMLResponse)
 def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
-    from app.grocery import catalog_payload
-    import json
+    from app.grocery import catalog_json_text, catalog_payload
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -3220,7 +3247,8 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
         pending=[i for i in items if i.status == "pending"],
         approved=[i for i in items if i.status != "pending"],
         friends=friends, groups=catalog["groups"],
-        catalog_json=json.dumps(catalog, ensure_ascii=False),
+        catalog_json=catalog_json_text(),
+        suggest_url="/admin/tracker/suggest",
         receipts=lst.receipts or [],
         revision=lst.revision,
     ))

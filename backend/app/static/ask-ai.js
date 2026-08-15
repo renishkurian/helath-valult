@@ -99,19 +99,82 @@
     if (delBtn) delBtn.hidden = !state.threadId;
   }
 
+  function splitAction(content) {
+    var text = String(content || "");
+    var m = text.match(/```vault-action\s*(\{[\s\S]*?\})\s*```/i);
+    if (!m) return { text: text, action: null };
+    var action = null;
+    try { action = JSON.parse(m[1]); } catch (e) { action = null; }
+    if (!action || action.type !== "create_shop_list" || !Array.isArray(action.items)) {
+      return { text: text, action: null };
+    }
+    return { text: text.replace(m[0], "").trim(), action: action };
+  }
+
+  function actionCard(action) {
+    var wrap = document.createElement("div");
+    wrap.className = "ask-action";
+    var items = (action.items || []).slice(0, 60);
+    var lis = items.map(function (it) {
+      var name = typeof it === "string" ? it : (it && it.name) || "";
+      var qty = (it && it.quantity != null) ? it.quantity : "";
+      var unit = (it && it.unit) || "";
+      var meta = [qty, unit].filter(Boolean).join(" ");
+      return "<li><strong>" + esc(name) + "</strong>" + (meta ? " <span>" + esc(meta) + "</span>" : "") + "</li>";
+    }).join("");
+    wrap.innerHTML =
+      '<div class="ask-action-head"><i class="bi bi-cart3"></i> Proposed shopping list</div>' +
+      '<div class="ask-action-title">' + esc(action.name || "Shopping list") + "</div>" +
+      "<ul>" + lis + "</ul>" +
+      '<div class="ask-action-bar">' +
+        '<button type="button" class="btn btn-sm btn-primary ask-action-go">Create list</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-light ask-action-skip">Dismiss</button>' +
+        '<span class="ask-action-status" hidden></span>' +
+      "</div>";
+    var go = wrap.querySelector(".ask-action-go");
+    var skip = wrap.querySelector(".ask-action-skip");
+    var status = wrap.querySelector(".ask-action-status");
+    skip.addEventListener("click", function () { wrap.remove(); });
+    go.addEventListener("click", function () {
+      go.disabled = true;
+      skip.disabled = true;
+      status.hidden = false;
+      status.textContent = "Creating…";
+      api("/admin/ai/ask/apply-shop-list", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(action),
+      }).then(function (res) {
+        status.innerHTML = 'Created <a href="' + esc(res.url || ("/admin/tracker/lists/" + res.list_id)) + '">' +
+          esc(res.name || "list") + "</a> · " + esc(String(res.item_count || items.length)) + " items";
+        go.hidden = true;
+        skip.hidden = true;
+      }).catch(function (err) {
+        status.textContent = err.message || "Could not create list";
+        go.disabled = false;
+        skip.disabled = false;
+      });
+    });
+    return wrap;
+  }
+
   function bubble(role, content, typing) {
     var turn = document.createElement("div");
     turn.className = "ask-turn " + (role === "user" ? "user" : "assistant");
     var ico = role === "user" ? "bi-person" : "bi-stars";
-    var inner;
+    var bubbleEl = document.createElement("div");
+    bubbleEl.className = "ask-bubble";
     if (typing) {
-      inner = '<div class="ask-typing" aria-label="Thinking"><i></i><i></i><i></i></div>';
+      bubbleEl.innerHTML = '<div class="ask-typing" aria-label="Thinking"><i></i><i></i><i></i></div>';
+    } else if (role === "assistant") {
+      var parts = splitAction(content);
+      bubbleEl.innerHTML = renderMd(parts.text);
+      if (parts.action) bubbleEl.appendChild(actionCard(parts.action));
     } else {
-      inner = renderMd(content);
+      bubbleEl.innerHTML = renderMd(content);
     }
-    turn.innerHTML =
-      '<div class="ask-avatar" aria-hidden="true"><i class="bi ' + ico + '"></i></div>' +
-      '<div class="ask-bubble">' + inner + "</div>";
+    turn.innerHTML = '<div class="ask-avatar" aria-hidden="true"><i class="bi ' + ico + '"></i></div>';
+    turn.appendChild(bubbleEl);
     return turn;
   }
 

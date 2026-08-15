@@ -1476,10 +1476,16 @@ def ignore_one(
     return None
 
 
+@router.get("/public/{token}/suggest")
+def public_suggest(token: str, q: str = "", limit: int = 8, db: Session = Depends(get_db)):
+    """Public-share typeahead — no login, token gates access to the list."""
+    _list_by_token(db, token)
+    return suggest(db, q or "", limit=limit)
+
+
 @router.get("/public/{token}/page", response_class=HTMLResponse)
 def public_page(token: str, request: Request, db: Session = Depends(get_db), err: str = "", ok: str = ""):
-    from app.grocery import catalog_payload
-    import json
+    from app.grocery import catalog_json_text, catalog_payload
     try:
         share, lst = _list_by_token(db, token)
         db.commit()
@@ -1494,7 +1500,8 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
         "token": token,
         "err": err,
         "ok": ok,
-        "catalog_json": json.dumps(catalog, ensure_ascii=False),
+        "catalog_json": catalog_json_text(),
+        "suggest_url": f"/tracker/public/{token}/suggest",
         "groups": catalog["groups"],
         "revision": _list_revision(lst),
     })

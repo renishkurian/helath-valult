@@ -18,7 +18,8 @@
 {% set checked_n = lst.checked_count or 0 %}
 {% set pct = ((checked_n / item_n * 100)|round(0, 'floor')|int) if item_n else 0 %}
 {% block content %}
-<div id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-live="/admin/tracker/lists/{{ lst.id }}/live" data-revision="{{ revision or '' }}">
+<div id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-suggest="{{ suggest_url or '' }}" data-live="/admin/tracker/lists/{{ lst.id }}/live" data-revision="{{ revision or '' }}">
+<script type="application/json" id="shop-catalog-data">{{ catalog_json | safe }}</script>
 <div class="page-head">
   <div>
     <div class="eyebrow">
@@ -207,17 +208,22 @@
     </div>
     <div class="shop-chips" id="shop-chips-host">
       {% for g in groups %}
-      {% for it in g.entries %}
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items" data-cat="{{ it.category }}" data-en="{{ it.english }}" data-ml="{{ it.malayalam or '' }}" data-keys="{{ it.aliases|join(' ') }}" {% if it.star %}data-star="1"{% endif %}>
-        <input type="hidden" name="name" value="{{ it.english }}">
-        <input type="hidden" name="emoji" value="{{ it.emoji }}">
-        <input type="hidden" name="category" value="{{ it.category }}">
-        <button class="chip shop-bilingual{% if it.star %} shop-star{% endif %}" type="submit">
-          <span class="shop-chip-en">{{ it.emoji }} {{ it.english|upper }}</span>
-          {% if it.malayalam %}<span class="shop-chip-ml">({{ it.malayalam }})</span>{% endif %}
-        </button>
-      </form>
-      {% endfor %}
+      <section class="shop-chip-section" data-section-cat="{{ g.key }}">
+        <h3 class="shop-chip-heading">{{ g.icon }} {{ g.label }}</h3>
+        <div class="shop-chip-grid">
+          {% for it in g.entries %}
+          <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items" data-cat="{{ it.category }}" data-en="{{ it.english }}" data-ml="{{ it.malayalam or '' }}" data-keys="{{ it.aliases|join(' ') }}" {% if it.star %}data-star="1"{% endif %}>
+            <input type="hidden" name="name" value="{{ it.english }}">
+            <input type="hidden" name="emoji" value="{{ it.emoji }}">
+            <input type="hidden" name="category" value="{{ it.category }}">
+            <button class="chip shop-bilingual{% if it.star %} shop-star{% endif %}" type="submit">
+              <span class="shop-chip-en">{{ it.emoji }} {{ it.english|upper }}</span>
+              {% if it.malayalam %}<span class="shop-chip-ml">({{ it.malayalam }})</span>{% endif %}
+            </button>
+          </form>
+          {% endfor %}
+        </div>
+      </section>
       {% endfor %}
     </div>
     <p class="small text-muted mb-0 mt-2" id="shop-chip-empty" hidden>No matches. Type the name above and add it.</p>
@@ -304,5 +310,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/shop-list.js?v=4"></script>
+<script src="/static/shop-list.js?v=6"></script>
 {% endblock %}

@@ -1055,6 +1055,20 @@ class AiChatReplyOut(BaseModel):
     title: str
     reply: str
     messages: List[AiChatMessageOut] = []
+    action: Optional[dict] = None
+
+
+class AiShopListActionIn(BaseModel):
+    type: str = "create_shop_list"
+    name: str = Field(min_length=1, max_length=120)
+    items: List[dict] = Field(min_length=1, max_length=60)
+
+
+class AiShopListActionOut(BaseModel):
+    list_id: str
+    name: str
+    item_count: int
+    url: str
 
 
 class AiUsageLogOut(BaseModel):

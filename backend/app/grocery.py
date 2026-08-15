@@ -233,7 +233,39 @@ def _all_catalog() -> list[dict]:
 
 
 def _fold(s: str) -> str:
-    return "".join(ch for ch in (s or "").lower() if ch.isalnum())
+    """Normalize for matching: lowercase alphanumeric, drop Malayalam virama/marks."""
+    out: list[str] = []
+    for ch in (s or "").lower():
+        o = ord(ch)
+        # Skip spaces/punctuation and Malayalam virama / candrakkala-style marks.
+        if o == 0x0D4D or not ch.isalnum():
+            continue
+        out.append(ch)
+    return "".join(out)
+
+
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance capped for short grocery keys."""
+    if a == b:
+        return 0
+    if not a:
+        return len(b)
+    if not b:
+        return len(a)
+    if abs(len(a) - len(b)) > 2:
+        return 99
+    if len(a) > 24 or len(b) > 24:
+        return 99
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            ins = cur[j - 1] + 1
+            delete = prev[j] + 1
+            sub = prev[j - 1] + (0 if ca == cb else 1)
+            cur.append(min(ins, delete, sub))
+        prev = cur
+    return prev[-1]
 
 
 def _bare_name(name: str) -> str:
@@ -280,6 +312,13 @@ def grouped_quick_add() -> list[dict]:
 
 def catalog_payload() -> dict:
     return {"groups": grouped_quick_add()}
+
+
+def catalog_json_text() -> str:
+    """JSON safe to embed in a <script type=\"application/json\"> tag."""
+    import json
+
+    return json.dumps(catalog_payload(), ensure_ascii=False).replace("<", "\\u003c")
 
 
 def format_item_name(english: str, malayalam: Optional[str] = None) -> str:
@@ -366,11 +405,12 @@ def _score_row(q: str, q_fold: str, row: dict) -> int:
     en = (row.get("english") or "").lower()
     ml = row.get("malayalam") or ""
     ml_fold = _fold(ml)
+    en_fold = _fold(en)
     keys = row.get("keys") or []
     best = 0
     if q == en or q == ml or q_fold == ml_fold:
         best = max(best, 100)
-    if q_fold and q_fold == _fold(en):
+    if q_fold and q_fold == en_fold:
         best = max(best, 100)
     for key in keys:
         if not key:
@@ -383,16 +423,28 @@ def _score_row(q: str, q_fold: str, row: dict) -> int:
             best = max(best, 78)
         elif q_fold and q_fold in key:
             best = max(best, 70)
-    if q_fold and _fold(en).startswith(q_fold):
+        elif q_fold and len(q_fold) >= 4:
+            dist = _edit_distance(q_fold, key)
+            if dist == 1:
+                best = max(best, 86)
+            elif dist == 2 and len(q_fold) >= 5:
+                best = max(best, 72)
+    if q_fold and en_fold.startswith(q_fold):
         best = max(best, 88)
     if q and ml.startswith(q):
         best = max(best, 90)
     if q_fold and ml_fold.startswith(q_fold):
         best = max(best, 90)
-    if q_fold and q_fold in _fold(en):
+    if q_fold and q_fold in en_fold:
         best = max(best, 65)
     if q and q in ml:
         best = max(best, 75)
+    if q_fold and len(q_fold) >= 4 and en_fold:
+        dist = _edit_distance(q_fold, en_fold)
+        if dist == 1:
+            best = max(best, 86)
+        elif dist == 2 and len(q_fold) >= 5:
+            best = max(best, 72)
     return best
 
 
