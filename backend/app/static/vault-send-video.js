@@ -72,6 +72,10 @@
 
   function ensureModal() {
     var el = document.getElementById("vault-video-modal");
+    if (el && !document.getElementById("vault-video-capture")) {
+      el.remove();
+      el = null;
+    }
     if (el) return el;
     el = document.createElement("div");
     el.id = "vault-video-modal";
@@ -88,6 +92,14 @@
       '<div class="modal-body">' +
       '<p class="text-muted small mb-2" id="vault-video-status">Waiting for the guest to accept…</p>' +
       '<video id="vault-video-remote" playsinline autoplay style="width:100%;max-height:420px;background:#000;border-radius:12px;"></video>' +
+      '<div class="d-flex flex-wrap align-items-center gap-3 mt-3" id="vault-video-face-row" hidden>' +
+      '<button type="button" class="btn btn-outline-light" id="vault-video-capture" disabled>' +
+      '<i class="bi bi-person-bounding-box"></i> Capture face</button>' +
+      '<img id="vault-video-face-preview" alt="Captured face" hidden ' +
+      'style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--v-line);">' +
+      '<span class="text-muted small" id="vault-video-face-note"></span>' +
+      "</div>" +
+      '<p class="form-text mb-0 mt-2">Capture a face still before granting — it is stored encrypted with this access request.</p>' +
       "</div>" +
       '<div class="modal-footer flex-wrap gap-2">' +
       '<button type="button" class="btn btn-ghost" data-bs-dismiss="modal" id="vault-video-end">End video</button>' +
@@ -101,18 +113,44 @@
     return el;
   }
 
+  function captureFrame(video) {
+    if (!video || !video.videoWidth) return null;
+    var canvas = document.createElement("canvas");
+    var w = video.videoWidth;
+    var h = video.videoHeight;
+    // Cap longest side for storage size
+    var max = 960;
+    var scale = Math.min(1, max / Math.max(w, h));
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    var ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
   function admin(opts) {
     var requestId = opts.requestId;
     var base = "/admin/passwords/send-requests/" + encodeURIComponent(requestId) + "/video";
+    var faceUrl = "/admin/passwords/send-requests/" + encodeURIComponent(requestId) + "/face";
     var modalEl = ensureModal();
     var remote = document.getElementById("vault-video-remote");
     var statusEl = document.getElementById("vault-video-status");
     var grantBtn = document.getElementById("vault-video-grant");
     var grantForm = document.getElementById("vault-video-grant-form");
     var grantNext = document.getElementById("vault-video-grant-next");
+    var captureBtn = document.getElementById("vault-video-capture");
+    var faceRow = document.getElementById("vault-video-face-row");
+    var facePreview = document.getElementById("vault-video-face-preview");
+    var faceNote = document.getElementById("vault-video-face-note");
+    var faceCaptured = false;
     grantForm.action = "/admin/passwords/send-requests/" + encodeURIComponent(requestId) + "/grant";
     grantNext.value = opts.next || (location.pathname + location.search);
     grantBtn.disabled = true;
+    captureBtn.disabled = true;
+    faceRow.hidden = false;
+    facePreview.hidden = true;
+    facePreview.removeAttribute("src");
+    faceNote.textContent = "";
     statusEl.textContent = "Asking guest for live video…";
     remote.srcObject = null;
 
@@ -122,11 +160,65 @@
     wireIce(pc, base + "/signal");
     pc.ontrack = function (ev) {
       remote.srcObject = ev.streams[0] || new MediaStream([ev.track]);
-      statusEl.textContent = "Live — verify the person, then grant access.";
+      statusEl.textContent = "Live — capture a face still, then grant access.";
       grantBtn.disabled = false;
+      captureBtn.disabled = false;
     };
     pc.addTransceiver("video", { direction: "recvonly" });
     pc.addTransceiver("audio", { direction: "recvonly" });
+
+    captureBtn.onclick = function () {
+      var canvas = captureFrame(remote);
+      if (!canvas) {
+        faceNote.textContent = "Wait for the video to start, then try again.";
+        return;
+      }
+      captureBtn.disabled = true;
+      faceNote.textContent = "Saving encrypted face…";
+      canvas.toBlob(function (blob) {
+        if (!blob) {
+          captureBtn.disabled = false;
+          faceNote.textContent = "Could not capture frame.";
+          return;
+        }
+        var fd = new FormData();
+        fd.append("photo", blob, "face.jpg");
+        fetch(faceUrl, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "fetch" },
+          body: fd,
+        })
+          .then(function (r) {
+            return r.json().then(function (j) {
+              if (!r.ok) throw new Error((j && j.detail) || r.statusText);
+              return j;
+            });
+          })
+          .then(function () {
+            faceCaptured = true;
+            facePreview.src = canvas.toDataURL("image/jpeg", 0.85);
+            facePreview.hidden = false;
+            faceNote.textContent = "Face saved encrypted with this request.";
+            statusEl.textContent = "Face captured — you can grant access.";
+          })
+          .catch(function (err) {
+            faceNote.textContent = err.message || "Could not save face.";
+          })
+          .finally(function () {
+            captureBtn.disabled = false;
+          });
+      }, "image/jpeg", 0.85);
+    };
+
+    grantForm.onsubmit = function (ev) {
+      if (faceCaptured) return true;
+      if (!window.confirm("No face capture saved yet. Grant access without a face record?")) {
+        ev.preventDefault();
+        return false;
+      }
+      return true;
+    };
 
     function cleanup() {
       if (closed) return;

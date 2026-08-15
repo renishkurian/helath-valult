@@ -1706,6 +1706,37 @@ def passwords_send_request_photo(request_id: str, request: Request, db: Session 
     return send_request_photo(request_id, db=db, current_user=user)
 
 
+@router.post("/passwords/send-requests/{request_id}/face")
+async def passwords_send_request_face(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import capture_send_request_face
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    form = await request.form()
+    photo = form.get("photo")
+    if photo is None or not hasattr(photo, "read"):
+        return JSONResponse({"detail": "Image required"}, status_code=400)
+    try:
+        out = await capture_send_request_face(request_id, photo=photo, db=db, current_user=user)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return JSONResponse({
+        "ok": True,
+        "id": out.id,
+        "has_face": out.has_face,
+        "face_captured_at": out.face_captured_at.isoformat() if out.face_captured_at else None,
+    })
+
+
+@router.get("/passwords/send-requests/{request_id}/face")
+def passwords_send_request_face_get(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import send_request_face
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return send_request_face(request_id, db=db, current_user=user)
+
+
 @router.post("/passwords/sends/{send_id}/revoke")
 def passwords_send_revoke(
     send_id: str,
@@ -1722,6 +1753,24 @@ def passwords_send_revoke(
     if dest.startswith("/admin/passwords/") and "://" not in dest:
         return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
+
+
+@router.post("/passwords/{item_id}/sends/revoke-all")
+def passwords_item_sends_revoke_all(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.vault import revoke_all_item_sends
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    revoke_all_item_sends(item_id, db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/passwords/") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse(f"/admin/passwords/{item_id}", status_code=302)
 
 
 @router.get("/passwords/trash", response_class=HTMLResponse)

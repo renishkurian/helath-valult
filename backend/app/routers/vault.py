@@ -476,6 +476,29 @@ def list_item_sends(item_id: str, db: Session, current_user: models.User) -> lis
     ]
 
 
+@router.post("/items/{item_id}/sends/revoke-all", status_code=204)
+def revoke_all_item_sends(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Revoke every active share link for this login."""
+    require_owner(current_user)
+    _owned_item(item_id, db, current_user)
+    rows = db.query(models.VaultSend).filter(
+        models.VaultSend.user_id == vault_id(current_user),
+        models.VaultSend.revoked.is_(False),
+    ).all()
+    n = 0
+    for row in rows:
+        data = _payload(row)
+        if data.get("item_id") == item_id:
+            row.revoked = True
+            n += 1
+    db.commit()
+    return Response(status_code=204)
+
+
 @router.post("/sends", response_model=schemas.VaultSendOut, status_code=201)
 def create_send(
     body: schemas.VaultSendCreate,
@@ -979,10 +1002,12 @@ def _request_out(row: models.VaultSendRequest, send: models.VaultSend | None = N
         latitude=row.latitude,
         longitude=row.longitude,
         has_photo=bool(row.photo_path),
+        has_face=bool(row.face_path),
         status=row.status,
         video_status=(row.video_status or "none"),
         created_at=row.created_at,
         viewed_at=row.viewed_at,
+        face_captured_at=row.face_captured_at,
     )
 
 
@@ -1464,6 +1489,60 @@ def send_request_photo(
         raise HTTPException(404, "Photo not found")
     raw = crypto.decrypt_bytes(path.read_bytes())
     return Response(content=raw, media_type=row.photo_mime or "image/jpeg")
+
+
+@router.post("/send-requests/{request_id}/face", response_model=schemas.VaultSendRequestOut)
+async def capture_send_request_face(
+    request_id: str,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Owner captures a still from live video; stored encrypted as verification record."""
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    if row.status not in ("pending", "seen"):
+        raise HTTPException(400, "Can only capture a face while the request is pending")
+    raw = await photo.read()
+    if not raw or not (photo.content_type or "").startswith("image/"):
+        raise HTTPException(400, "Image required")
+    if len(raw) > settings.MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(400, "Image too large")
+    dest = settings.STORAGE_DIR / row.user_id / "vault_send_faces"
+    dest.mkdir(parents=True, exist_ok=True)
+    # Replace previous capture if any
+    if row.face_path:
+        old = settings.STORAGE_DIR / row.face_path
+        try:
+            if old.is_file():
+                old.unlink()
+        except OSError:
+            pass
+    enc_path = dest / f"{row.id}.enc"
+    enc_path.write_bytes(crypto.encrypt_bytes(raw))
+    row.face_path = str(enc_path.relative_to(settings.STORAGE_DIR))
+    row.face_mime = (photo.content_type or "image/jpeg")[:80]
+    row.face_captured_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _request_out(row)
+
+
+@router.get("/send-requests/{request_id}/face")
+def send_request_face(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    if not row.face_path:
+        raise HTTPException(404, "Face capture not found")
+    path = settings.STORAGE_DIR / row.face_path
+    if not path.is_file():
+        raise HTTPException(404, "Face capture not found")
+    raw = crypto.decrypt_bytes(path.read_bytes())
+    return Response(content=raw, media_type=row.face_mime or "image/jpeg")
 
 
 # ---------- Items ----------

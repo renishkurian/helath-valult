@@ -582,10 +582,12 @@ data class VaultSendRequestOut(
     val latitude: String? = null,
     val longitude: String? = null,
     val has_photo: Boolean = false,
+    val has_face: Boolean = false,
     val status: String = "pending",
     val video_status: String = "none",
     val created_at: String = "",
-    val viewed_at: String? = null
+    val viewed_at: String? = null,
+    val face_captured_at: String? = null
 )
 
 data class PersonUpdate(

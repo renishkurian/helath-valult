@@ -321,7 +321,7 @@
 })();
 </script>
 {% if grant_pending or video_status in ('requested', 'live') %}
-<script src="/static/vault-send-video.js?v=1"></script>
+<script src="/static/vault-send-video.js?v=2"></script>
 <script>
 VaultSendVideo.guest({ token: {{ token|tojson }} });
 </script>

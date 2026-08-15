@@ -77,6 +77,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "vault_send_requests": [
         ("viewed_at", "DATETIME"),
         ("video_status", "VARCHAR(20) NOT NULL DEFAULT 'none'"),
+        ("face_path", "VARCHAR(500)"),
+        ("face_mime", "VARCHAR(80)"),
+        ("face_captured_at", "DATETIME"),
     ],
     "vault_send_accesses": [
         ("email", "VARCHAR(255)"),

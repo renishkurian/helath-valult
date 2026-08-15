@@ -589,8 +589,11 @@ class VaultSendRequest(Base):
     user_agent = Column(String(400), nullable=True)
     latitude = Column(String(32), nullable=True)
     longitude = Column(String(32), nullable=True)
-    photo_path = Column(String(500), nullable=True)  # encrypted relative path
+    photo_path = Column(String(500), nullable=True)  # encrypted relative path (guest selfie at request)
     photo_mime = Column(String(80), nullable=True)
+    face_path = Column(String(500), nullable=True)  # encrypted owner capture from live video
+    face_mime = Column(String(80), nullable=True)
+    face_captured_at = Column(DateTime, nullable=True)
     status = Column(String(20), default="pending", nullable=False)  # pending | seen | granted | dismissed
     video_status = Column(String(20), default="none", nullable=False)  # none | requested | live | ended
     created_at = Column(DateTime, default=datetime.utcnow, index=True)

@@ -827,10 +827,12 @@ class VaultSendRequestOut(BaseModel):
     latitude: Optional[str] = None
     longitude: Optional[str] = None
     has_photo: bool = False
+    has_face: bool = False
     status: str
     video_status: str = "none"
     created_at: datetime
     viewed_at: Optional[datetime] = None
+    face_captured_at: Optional[datetime] = None
 
 
 class VaultVideoSignalIn(BaseModel):
