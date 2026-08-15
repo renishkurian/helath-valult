@@ -559,6 +559,7 @@ data class VaultSendOut(
     val revoked: Boolean = false,
     val has_pin: Boolean = false,
     val item_id: String? = null,
+    val requires_totp: Boolean = false,
     val created_at: String
 )
 

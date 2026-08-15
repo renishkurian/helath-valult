@@ -124,6 +124,11 @@ def short_vault_send(token: str):
     return RedirectResponse(f"/vault/public/{token}/page", status_code=302)
 
 
+@app.get("/v/{token}/qr")
+def short_vault_send_qr(token: str):
+    return RedirectResponse(f"/vault/public/{token}/qr", status_code=302)
+
+
 @app.get("/u/{token}")
 def short_url_share(token: str):
     return RedirectResponse(f"/urls/public/{token}/page", status_code=302)

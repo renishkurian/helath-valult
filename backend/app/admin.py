@@ -1487,6 +1487,8 @@ def passwords_send_create(
         q = f"?send={send.token}"
         if send.has_pin:
             q += "&pin=1"
+        if send.requires_totp:
+            q += "&totp=1"
         return RedirectResponse(dest + q, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
@@ -1546,6 +1548,7 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
     return templates.TemplateResponse("password_item.html", _pw_ctx(
         request, user, "pw_vault", item=item, totp=totp, history=history, folders=folders,
         sends=sends, send_token=send_token, send_has_pin=bool(request.query_params.get("pin")),
+        send_has_totp=bool(request.query_params.get("totp")),
         public_base=str(request.base_url).rstrip("/"),
     ))
 

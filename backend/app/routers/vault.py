@@ -375,6 +375,7 @@ def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
         revoked=bool(row.revoked),
         has_pin=bool(row.pin_hash),
         item_id=item_id,
+        requires_totp=bool(data.get("require_totp") and data.get("totp_secret")),
         created_at=row.created_at,
     )
 
@@ -539,7 +540,6 @@ def public_send_json(
         return schemas.VaultSendPublicOut(
             name=row.name,
             send_type=row.send_type,
-            totp_secret=data.get("totp_secret"),
             expires_at=row.expires_at,
             has_pin=bool(row.pin_hash),
             pin_required=False,
@@ -554,7 +554,6 @@ def public_send_json(
         username=data.get("username"),
         password=data.get("password"),
         uris=data.get("uris") or [],
-        totp_secret=data.get("totp_secret"),
         notes=notes,
         expires_at=row.expires_at,
         has_pin=bool(row.pin_hash),
@@ -580,25 +579,54 @@ def public_send_page(
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": True, "totp_required": False,
             "payload": None, "notes": None, "error": bool(pin), "totp_error": False,
-            "otpauth_url": None, "otpauth_qr": None, "pin_value": pin or "",
+            "pin_value": pin or "",
         })
     data = _payload(row)
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
-        secret = (data.get("totp_secret") or "").strip()
-        otpauth_url, otpauth_qr = _otpauth_for_send(row.name, secret)
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": True,
-            "payload": {"totp_secret": secret, "name": data.get("name") or row.name},
+            "payload": {"name": data.get("name") or row.name},
             "notes": None, "error": False, "totp_error": bool(totp),
-            "otpauth_url": otpauth_url, "otpauth_qr": otpauth_qr, "pin_value": pin or "",
+            "pin_value": pin or "",
         })
     notes = crypto.decrypt_text(row.notes_enc)
+    # Do not expose totp_secret on the password page — setup is via /qr only.
+    shown = {k: v for k, v in data.items() if k != "totp_secret"}
     _record_send_view(row, request, db)
     return templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
-        "payload": data, "notes": notes, "error": False, "totp_error": False,
-        "otpauth_url": None, "otpauth_qr": None, "pin_value": pin or "",
+        "payload": shown, "notes": notes, "error": False, "totp_error": False,
+        "pin_value": pin or "",
+    })
+
+
+@public_router.get("/public/{token}/qr", response_class=HTMLResponse)
+def public_send_qr_page(
+    token: str,
+    request: Request,
+    pin: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Separate authenticator setup page — QR/key only, no password."""
+    try:
+        row = _load_valid_send(token, db)
+    except HTTPException as exc:
+        return HTMLResponse(f"<h1>{exc.detail}</h1>", status_code=exc.status_code)
+    data = _payload(row)
+    secret = (data.get("totp_secret") or "").strip()
+    if not secret or not data.get("require_totp"):
+        return HTMLResponse("<h1>No authenticator setup for this send</h1>", status_code=404)
+    pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
+    if not pin_ok:
+        return templates.TemplateResponse(request, "vault_send_qr.html", {
+            "send": row, "token": token, "pin_required": True, "error": bool(pin),
+            "totp_secret": None, "otpauth_qr": None,
+        })
+    _url, otpauth_qr = _otpauth_for_send(row.name, secret)
+    return templates.TemplateResponse(request, "vault_send_qr.html", {
+        "send": row, "token": token, "pin_required": False, "error": False,
+        "totp_secret": secret, "otpauth_qr": otpauth_qr,
     })
 
 

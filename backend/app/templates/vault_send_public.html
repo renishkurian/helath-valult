@@ -55,29 +55,9 @@
           </div>
           {% endif %}
           <p class="text-muted mb-3">
-            Add this key in your authenticator app, then enter the 6-digit code to view the password.
+            Set up the authenticator using the <strong>separate QR link</strong> the owner shared,
+            then enter the 6-digit code from your app to view the password.
           </p>
-          <div class="stack mb-3">
-            {% if otpauth_qr %}
-            <div class="text-center">
-              <img src="{{ otpauth_qr }}" alt="Authenticator QR code" width="180" height="180"
-                   style="background:#fff;border-radius:12px;padding:8px;">
-              <div class="form-text mt-2">Scan with Google Authenticator, Authy, or similar.</div>
-            </div>
-            {% endif %}
-            <div>
-              <div class="form-label">Authenticator key</div>
-              <div class="secret-cell">
-                <span class="secret-plain js-totp-text" data-secret="{{ payload.totp_secret }}" data-shown="0">••••••••</span>
-                <button type="button" class="secret-btn" id="totp-toggle" aria-label="Show authenticator key" title="Show">
-                  <i class="bi bi-eye"></i>
-                </button>
-                <button type="button" class="secret-btn" id="totp-copy" aria-label="Copy authenticator key" title="Copy">
-                  <i class="bi bi-clipboard"></i>
-                </button>
-              </div>
-            </div>
-          </div>
           <form method="get" action="/vault/public/{{ token }}/page" class="stack">
             {% if pin_value %}<input type="hidden" name="pin" value="{{ pin_value }}">{% endif %}
             <div>
@@ -125,21 +105,6 @@
               <div class="mono text-break">{{ payload.uris|join(', ') }}</div>
             </div>
             {% endif %}
-            {% if payload.totp_secret %}
-            <div>
-              <div class="form-label">Authenticator key</div>
-              <div class="secret-cell">
-                <span class="secret-plain js-totp-text" data-secret="{{ payload.totp_secret }}" data-shown="0">••••••••</span>
-                <button type="button" class="secret-btn" id="totp-toggle" aria-label="Show authenticator key" title="Show">
-                  <i class="bi bi-eye"></i>
-                </button>
-                <button type="button" class="secret-btn" id="totp-copy" aria-label="Copy authenticator key" title="Copy">
-                  <i class="bi bi-clipboard"></i>
-                </button>
-              </div>
-              <div class="form-text mt-1">Keep this in your authenticator app for future login codes.</div>
-            </div>
-            {% endif %}
             {% if notes %}
             <div>
               <div class="form-label">Notes</div>
@@ -159,47 +124,31 @@
     {% endif %}
   </div>
 </div>
-{% if (totp_required or (not pin_required and payload and (payload.password or payload.totp_secret))) %}
+{% if not pin_required and not totp_required and payload and payload.password %}
 <script>
 (function(){
   var ICO_EYE = '<i class="bi bi-eye"></i>';
   var ICO_EYE_OFF = '<i class="bi bi-eye-slash"></i>';
   var ICO_COPY = '<i class="bi bi-clipboard"></i>';
   var ICO_CHECK = '<i class="bi bi-check2"></i>';
-  function wire(el, toggle, copy, hideLabel, showLabel, copyLabel) {
-    if (!el || !toggle) return;
-    var secret = el.getAttribute("data-secret") || "";
-    toggle.addEventListener("click", function(){
-      var shown = el.getAttribute("data-shown") === "1";
-      el.setAttribute("data-shown", shown ? "0" : "1");
-      el.textContent = shown ? "••••••••" : secret;
-      toggle.innerHTML = shown ? ICO_EYE : ICO_EYE_OFF;
-      toggle.setAttribute("aria-label", shown ? showLabel : hideLabel);
-      toggle.setAttribute("title", shown ? "Show" : "Hide");
+  var el = document.querySelector(".js-secret-text");
+  var toggle = document.getElementById("send-toggle");
+  var copy = document.getElementById("send-copy");
+  if (!el || !toggle) return;
+  var secret = el.getAttribute("data-secret") || "";
+  toggle.addEventListener("click", function(){
+    var shown = el.getAttribute("data-shown") === "1";
+    el.setAttribute("data-shown", shown ? "0" : "1");
+    el.textContent = shown ? "••••••••" : secret;
+    toggle.innerHTML = shown ? ICO_EYE : ICO_EYE_OFF;
+  });
+  if (copy) {
+    copy.addEventListener("click", function(){
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(secret);
+      copy.innerHTML = ICO_CHECK;
+      setTimeout(function(){ copy.innerHTML = ICO_COPY; }, 1200);
     });
-    if (copy) {
-      copy.addEventListener("click", function(){
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(secret);
-        }
-        copy.innerHTML = ICO_CHECK;
-        copy.setAttribute("aria-label", "Copied");
-        setTimeout(function(){ copy.innerHTML = ICO_COPY; copy.setAttribute("aria-label", copyLabel); }, 1200);
-      });
-    }
   }
-  wire(
-    document.querySelector(".js-secret-text"),
-    document.getElementById("send-toggle"),
-    document.getElementById("send-copy"),
-    "Hide password", "Show password", "Copy password"
-  );
-  wire(
-    document.querySelector(".js-totp-text"),
-    document.getElementById("totp-toggle"),
-    document.getElementById("totp-copy"),
-    "Hide authenticator key", "Show authenticator key", "Copy authenticator key"
-  );
 })();
 </script>
 {% endif %}

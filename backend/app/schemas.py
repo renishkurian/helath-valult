@@ -786,6 +786,7 @@ class VaultSendOut(BaseModel):
     revoked: bool
     has_pin: bool = False
     item_id: Optional[str] = None
+    requires_totp: bool = False
     created_at: datetime
 
 

@@ -159,10 +159,13 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                     )
                                 )
                                 val url = "$base/v/${created.token}"
-                                ClipboardUtil.copy(context, "Send link", url)
+                                val shareText = if (created.requires_totp) {
+                                    "Password: $url\nAuthenticator QR: $url/qr"
+                                } else url
+                                ClipboardUtil.copy(context, "Send link", shareText)
                                 context.startActivity(Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, url)
+                                    putExtra(Intent.EXTRA_TEXT, shareText)
                                 })
                                 name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false; reload()
                             }
