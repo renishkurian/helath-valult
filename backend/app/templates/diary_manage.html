@@ -7,51 +7,51 @@
       <a href="/admin/diary"><i class="bi bi-chevron-left"></i> Diary</a>
     </div>
     <h1 class="page-title">Categories</h1>
-    <p class="page-lead">Tag entries under Personal, Work, Travel, or your own labels.</p>
+    <p class="page-lead">Colour-code Personal, Work, Travel, or invent your own shelves.</p>
   </div>
 </div>
 
-<div class="row g-4" style="max-width:900px;">
-  <div class="col-lg-7">
-    <div class="table-card">
-      <div class="table-responsive">
-        <table class="table align-middle">
-          <thead><tr><th>Name</th><th>Entries</th><th></th></tr></thead>
-          <tbody>
-            {% for c in categories %}
-            <tr>
-              <td>
-                <span class="badge badge-soft" style="border-color:{{ c.color or '#8B95A8' }};">{{ c.name }}</span>
-                {% if c.is_default %}<span class="text-faint ms-1" style="font-size:.7rem;">default</span>{% endif %}
-              </td>
-              <td class="mono">{{ c.count }}</td>
-              <td class="text-end">
-                <form method="post" action="/admin/diary/categories/{{ c.id }}/delete"
-                      data-confirm="Delete category {{ c.name }}? Entries stay uncategorized.">
-                  <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
-                </form>
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3"><div class="empty-state"><div class="empty-title">No categories</div></div></td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
+<div class="row g-4">
+  <div class="col-lg-8">
+    {% if categories %}
+    <div class="diary-cat-grid">
+      {% for c in categories %}
+      <div class="diary-cat-card" style="--cat:{{ c.color or '#8B95A8' }};">
+        <div class="swatch" aria-hidden="true"></div>
+        <div class="name">{{ c.name }}</div>
+        <div class="meta">
+          {{ c.count }} entr{{ 'y' if c.count == 1 else 'ies' }}
+          {% if c.is_default %} · default{% endif %}
+        </div>
+        <div class="row-actions">
+          <form method="post" action="/admin/diary/categories/{{ c.id }}/delete"
+                data-confirm="Delete category {{ c.name }}? Entries stay uncategorized.">
+            <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+          </form>
+        </div>
       </div>
+      {% endfor %}
     </div>
+    {% else %}
+    <div class="diary-empty">
+      <div class="diary-empty-ico" aria-hidden="true"><i class="bi bi-folder"></i></div>
+      <h2>No categories yet</h2>
+      <p>Add a label on the right to organise new pages.</p>
+    </div>
+    {% endif %}
   </div>
-  <div class="col-lg-5">
-    <form class="card" method="post" action="/admin/diary/categories">
-      <h2 class="h6 mb-3">Add category</h2>
+  <div class="col-lg-4">
+    <form class="diary-desk-card" method="post" action="/admin/diary/categories">
+      <div class="section-head"><h2>Add category</h2></div>
       <div class="mb-3">
-        <label class="form-label">Name</label>
-        <input class="form-control" name="name" required maxlength="80" placeholder="Memories">
+        <label class="form-label" for="cat-name">Name</label>
+        <input class="form-control" id="cat-name" name="name" required maxlength="80" placeholder="Memories">
       </div>
       <div class="mb-3">
-        <label class="form-label">Color</label>
-        <input class="form-control form-control-color" type="color" name="color" value="#F472B6">
+        <label class="form-label" for="cat-color">Color</label>
+        <input class="form-control form-control-color" id="cat-color" type="color" name="color" value="#F472B6">
       </div>
-      <button class="btn btn-primary" type="submit">Add</button>
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i> Add</button>
     </form>
   </div>
 </div>

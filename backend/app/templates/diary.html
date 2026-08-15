@@ -1,119 +1,116 @@
 {% extends "base.html" %}
 {% block title %}Digital Diary{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <div class="eyebrow">
-      <a href="/admin/modules">All modules</a>
-      <i class="bi bi-chevron-right"></i>
-      Digital Diary
-    </div>
-    <h1 class="page-title">Diary</h1>
-    <p class="page-lead">Notes, photos, and categories — encrypted on your Pi.</p>
-  </div>
-  <div class="page-actions">
-    <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
-  </div>
-</div>
+{% set months = {
+  '01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun',
+  '07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'
+} %}
 
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3">
-    <div class="stat">
-      <div class="lbl"><i class="bi bi-journal-richtext"></i> Entries</div>
-      <div class="val">{{ summary.total }}</div>
+<section class="diary-hero">
+  <div class="diary-hero-top">
+    <div>
+      <div class="diary-hero-mark" aria-hidden="true"><i class="bi bi-journal-richtext"></i></div>
+      <div class="eyebrow mt-3">Digital Diary</div>
+      <h1 class="page-title">Your pages</h1>
+      <p class="page-lead">Private notes and photos, encrypted on your Pi.</p>
+    </div>
+    <div class="page-actions">
+      <a class="btn btn-outline-light" href="/admin/diary/manage"><i class="bi bi-folder"></i> Categories</a>
+      <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
     </div>
   </div>
-  <div class="col-6 col-lg-3">
-    <div class="stat {% if summary.pinned %}accent{% endif %}">
-      <div class="lbl"><i class="bi bi-pin-angle"></i> Pinned</div>
-      <div class="val">{{ summary.pinned }}</div>
-    </div>
+  <div class="diary-stats" aria-label="Diary summary">
+    <span class="diary-stat"><strong>{{ summary.total }}</strong> entries</span>
+    <span class="diary-stat {% if summary.pinned %}is-accent{% endif %}"><strong>{{ summary.pinned }}</strong> pinned</span>
+    <span class="diary-stat"><strong>{{ summary.categories | length }}</strong> categories</span>
   </div>
-  <div class="col-6 col-lg-3">
-    <div class="stat">
-      <div class="lbl"><i class="bi bi-folder"></i> Categories</div>
-      <div class="val">{{ summary.categories | length }}</div>
-    </div>
-  </div>
-</div>
+</section>
 
-<form class="filter-bar" method="get" action="/admin/diary">
-  <div class="search-field">
+<form class="diary-toolbar filter-bar" method="get" action="/admin/diary" style="margin-bottom:0;">
+  <div class="search-field grow">
     <i class="bi bi-search"></i>
-    <input class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Search title or tags">
+    <input class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Search title, tags, or mood" aria-label="Search diary">
   </div>
-  <select class="form-select" name="category_id" style="flex:0 1 200px;">
+  <select class="form-select" name="category_id" aria-label="Category">
     <option value="">All categories</option>
     {% for c in summary.categories %}
     <option value="{{ c.id }}" {% if category_id==c.id %}selected{% endif %}>{{ c.name }} ({{ c.count }})</option>
     {% endfor %}
   </select>
-  <button class="btn btn-outline-light" type="submit">Filter</button>
+  {% if pinned %}<input type="hidden" name="pinned" value="1">{% endif %}
+  <button class="btn btn-outline-light" type="submit">Search</button>
   {% if q or category_id or pinned %}
   <a class="btn btn-ghost" href="/admin/diary">Clear</a>
   {% endif %}
 </form>
 
-<div class="folder-row mb-3">
-  <a class="folder {% if not category_id and not pinned %}on{% endif %}" href="/admin/diary">All</a>
-  <a class="folder {% if pinned %}on{% endif %}" href="/admin/diary?pinned=1">Pinned</a>
+<nav class="diary-chips" aria-label="Filter by category">
+  <a class="diary-chip {% if not category_id and not pinned %}on{% endif %}" href="/admin/diary">All</a>
+  <a class="diary-chip {% if pinned %}on{% endif %}" href="/admin/diary?pinned=1"><i class="bi bi-pin-angle"></i> Pinned</a>
   {% for c in summary.categories %}
-  <a class="folder {% if category_id==c.id %}on{% endif %}" href="/admin/diary?category_id={{ c.id }}" style="--folder-accent:{{ c.color or '#8B95A8' }};">
+  <a class="diary-chip {% if category_id==c.id %}on{% endif %}"
+     href="/admin/diary?category_id={{ c.id }}"
+     style="--chip-accent:{{ c.color or '#8B95A8' }};">
+    <span class="dot" aria-hidden="true"></span>
     {{ c.name }}
+    {% if c.count %}<span class="n">{{ c.count }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</nav>
+
+{% if entries %}
+<div class="diary-feed">
+  {% for e in entries %}
+  {% set d = e.entry_date or '' %}
+  {% set mon = months.get(d[5:7], '') if d|length >= 7 else '' %}
+  <a class="diary-card {% if e.pinned %}is-pinned{% endif %}" href="/admin/diary/{{ e.id }}">
+    <div class="diary-date" aria-label="{{ e.entry_date }}">
+      <span class="d-day">{{ d[8:10] if d|length >= 10 else '—' }}</span>
+      <span class="d-mon">{{ mon }}</span>
+      {% if d|length >= 4 %}<span class="d-yr">{{ d[0:4] }}</span>{% endif %}
+    </div>
+    <div class="diary-card-body">
+      <div class="diary-card-top">
+        <h2 class="diary-card-title">
+          {% if e.pinned %}<i class="bi bi-pin-angle-fill pin" aria-label="Pinned"></i>{% endif %}
+          {{ e.title }}
+        </h2>
+      </div>
+      {% if e.body %}
+      <p class="diary-excerpt">{{ e.body | truncate(160, True, '…') }}</p>
+      {% endif %}
+      <div class="diary-meta">
+        {% if e.category_name %}
+        <span class="cat" style="--cat:{{ e.category_color or '#8B95A8' }};">
+          <span class="dot" aria-hidden="true"></span>{{ e.category_name }}
+        </span>
+        {% endif %}
+        {% if e.mood %}<span><i class="bi bi-emoji-smile"></i> {{ e.mood }}</span>{% endif %}
+        {% if e.tags %}<span><i class="bi bi-tags"></i> {{ e.tags }}</span>{% endif %}
+        {% if e.image_count %}<span><i class="bi bi-images"></i> {{ e.image_count }}</span>{% endif %}
+      </div>
+    </div>
   </a>
   {% endfor %}
 </div>
-
-<div class="table-card">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle">
-      <thead>
-        <tr>
-          <th>Entry</th>
-          <th>Date</th>
-          <th>Category</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for e in entries %}
-        <tr>
-          <td>
-            <a class="d-flex align-items-center gap-2 text-reset text-decoration-none" href="/admin/diary/{{ e.id }}">
-              {% if e.pinned %}<i class="bi bi-pin-angle-fill text-warning"></i>{% endif %}
-              <div>
-                <div class="fw-semibold">{{ e.title }}</div>
-                {% if e.tags %}<div class="text-faint" style="font-size:.75rem;">{{ e.tags }}</div>{% endif %}
-                {% if e.image_count %}<div class="text-faint" style="font-size:.75rem;"><i class="bi bi-images"></i> {{ e.image_count }}</div>{% endif %}
-              </div>
-            </a>
-          </td>
-          <td class="mono text-muted">{{ e.entry_date }}</td>
-          <td>
-            {% if e.category_name %}
-            <span class="badge badge-soft" style="border-color:{{ e.category_color or '#8B95A8' }};">{{ e.category_name }}</span>
-            {% else %}—{% endif %}
-          </td>
-          <td class="text-end">
-            <a class="btn btn-outline-light btn-sm" href="/admin/diary/{{ e.id }}">Open</a>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="4">
-            <div class="empty-state">
-              <div class="empty-ico"><i class="bi bi-journal-richtext"></i></div>
-              <div class="empty-title">No diary entries yet</div>
-              <p>Write the first note — add photos and a category when you like.</p>
-              <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+{% else %}
+<div class="diary-empty">
+  <div class="diary-empty-ico" aria-hidden="true"><i class="bi bi-pen"></i></div>
+  <h2>{% if q or category_id or pinned %}Nothing matches{% else %}Start a new page{% endif %}</h2>
+  <p>
+    {% if q or category_id or pinned %}
+    Try another search, or clear filters to see everything.
+    {% else %}
+    Write the first note — add a category, tags, and photos when you like.
+    {% endif %}
+  </p>
+  {% if q or category_id or pinned %}
+  <a class="btn btn-outline-light" href="/admin/diary">Clear filters</a>
+  {% else %}
+  <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
+  {% endif %}
 </div>
+{% endif %}
 
 <a class="fab" href="/admin/diary/add" aria-label="New entry"><i class="bi bi-plus-lg"></i></a>
 {% endblock %}
