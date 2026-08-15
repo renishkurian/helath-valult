@@ -22,13 +22,18 @@
         <span class="brand-mark">V</span>
         <span>
           <span class="brand-name d-block">{{ list.name }}</span>
-          <span class="brand-sub">Live shopping list</span>
+          <span class="brand-sub">
+            {% if owner_name %}Created by {{ owner_name }}{% else %}Live shopping list{% endif %}{% if list.created_at %} · {{ list.created_at.strftime('%d %b %Y') }}{% endif %}
+          </span>
         </span>
       </div>
       <span class="shop-live"><i class="bi bi-broadcast"></i> Live</span>
     </header>
 
     {% if list.description %}<p class="page-lead d-none d-lg-block">{{ list.description }}</p>{% endif %}
+    <p class="page-lead d-lg-none small text-muted mb-3">
+      {% if owner_name %}Created by {{ owner_name }}{% endif %}{% if list.updated_at %}{% if owner_name %} · {% endif %}Updated {{ list.updated_at.strftime('%d %b %H:%M') }}{% endif %}
+    </p>
 
     {% if err == 'blocked' %}
     <div class="alert alert-danger">You are blocked from this list.</div>

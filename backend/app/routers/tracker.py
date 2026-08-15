@@ -124,6 +124,19 @@ def _share_token(db: Session, lst: models.ShopList) -> Optional[str]:
     return share.token if share else None
 
 
+def _owner_name(db: Session, lst: models.ShopList, cache: dict[str, str] | None = None) -> str:
+    uid = (lst.user_id or "").strip()
+    if not uid:
+        return "Owner"
+    names = cache if cache is not None else {}
+    if uid not in names:
+        owner = db.query(models.User).filter(models.User.id == uid).first()
+        names[uid] = (
+            ((owner.full_name or owner.email or "").strip() if owner else "") or "Owner"
+        )
+    return names[uid] or "Owner"
+
+
 def _adder_name(db: Session, item: models.ShopItem, cache: dict[str, str]) -> Optional[str]:
     guest = (item.guest_name or "").strip()
     if guest:
@@ -179,6 +192,7 @@ def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) ->
         pending_count=sum(1 for i in items if i.status == "pending"),
         receipt_count=len(receipts),
         share_token=_share_token(db, lst),
+        owner_name=_owner_name(db, lst, names),
         created_at=lst.created_at, updated_at=lst.updated_at,
         completed_at=lst.completed_at, deleted_at=lst.deleted_at,
         revision=_list_revision(lst),
@@ -264,6 +278,9 @@ def _public_payload(db: Session, lst: models.ShopList) -> dict:
         "completed": bool(lst.completed),
         "total_amount": money(lst.total_amount),
         "revision": _list_revision(lst),
+        "owner_name": _owner_name(db, lst, names),
+        "created_at": lst.created_at.isoformat() if lst.created_at else None,
+        "updated_at": lst.updated_at.isoformat() if lst.updated_at else None,
         "members": _member_names(db, lst.user_id),
         "items": items,
     }
@@ -1429,6 +1446,7 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
     names: dict[str, str] = {}
     return templates.TemplateResponse(request, "tracker_share_public.html", {
         "list": lst,
+        "owner_name": _owner_name(db, lst, names),
         "items": [_item_out(db, i, names) for i in (lst.items or []) if i.status != "rejected"],
         "token": token,
         "err": err,

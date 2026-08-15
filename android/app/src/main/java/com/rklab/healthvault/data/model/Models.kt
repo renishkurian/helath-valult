@@ -1204,6 +1204,7 @@ data class ShopListOut(
     val pending_count: Int = 0,
     val receipt_count: Int = 0,
     val share_token: String? = null,
+    val owner_name: String? = null,
     val created_at: String = "",
     val updated_at: String? = null,
     val completed_at: String? = null,

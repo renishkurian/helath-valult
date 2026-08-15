@@ -1505,6 +1505,7 @@ class ShopListOut(BaseModel):
     pending_count: int = 0
     receipt_count: int = 0
     share_token: Optional[str] = None
+    owner_name: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None

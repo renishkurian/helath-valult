@@ -101,9 +101,14 @@ fun ShopListScreen(
                             Column(Modifier.padding(16.dp)) {
                                 Text(lst.name, color = Ink, fontWeight = FontWeight.SemiBold)
                                 Text(
-                                    "${lst.item_count} items" +
-                                        (if (lst.pending_count > 0) " · ${lst.pending_count} pending" else "") +
-                                        (if (lst.completed) " · done" else ""),
+                                    buildString {
+                                        append("${lst.item_count} items")
+                                        lst.owner_name?.takeIf { it.isNotBlank() }?.let {
+                                            append(" · "); append(it)
+                                        }
+                                        if (lst.pending_count > 0) append(" · ${lst.pending_count} pending")
+                                        if (lst.completed) append(" · done")
+                                    },
                                     color = InkSoft,
                                     style = MaterialTheme.typography.bodySmall
                                 )
@@ -258,7 +263,12 @@ fun ShopDetailScreen(
             modifier = Modifier.padding(horizontal = 20.dp)
         )
         Text(
-            "${lst?.item_count ?: 0} items · ${lst?.checked_count ?: 0} done",
+            buildString {
+                append("${lst?.item_count ?: 0} items · ${lst?.checked_count ?: 0} done")
+                lst?.owner_name?.takeIf { it.isNotBlank() }?.let {
+                    append(" · Created by "); append(it)
+                }
+            },
             color = InkSoft,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
         )

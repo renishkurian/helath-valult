@@ -86,6 +86,8 @@
         <span class="row-title d-block">{{ lst.name }}</span>
         <span class="row-meta">
           {{ c }}/{{ n }} items
+          {% if lst.owner_name %} · {{ lst.owner_name }}{% endif %}
+          {% if lst.created_at %} · {{ lst.created_at.strftime('%d %b %Y') }}{% endif %}
           {% if lst.receipt_count %} · {{ lst.receipt_count }} bill{% if lst.receipt_count != 1 %}s{% endif %}{% endif %}
           {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
         </span>

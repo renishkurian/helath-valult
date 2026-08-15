@@ -27,7 +27,9 @@
       Shopping list
     </div>
     <h1 class="page-title">{{ lst.name }} <span class="shop-live" title="Guests and family see checks as they happen"><i class="bi bi-broadcast"></i> Live</span></h1>
-    <p class="page-lead">{{ lst.description or 'Check items off as you shop. Family names skip the pending queue. Guests add until you approve them.' }}</p>
+    <p class="page-lead">
+      {% if lst.owner_name %}Created by {{ lst.owner_name }}{% endif %}{% if lst.created_at %}{% if lst.owner_name %} · {% endif %}{{ lst.created_at.strftime('%d %b %Y %H:%M') }}{% endif %}{% if lst.description %}{% if lst.owner_name or lst.created_at %} · {% endif %}{{ lst.description }}{% elif not lst.owner_name and not lst.created_at %}Check items off as you shop. Family names skip the pending queue. Guests add until you approve them.{% endif %}
+    </p>
   </div>
   <div class="page-actions d-none d-lg-flex">
     <form method="post" action="/admin/tracker/lists/{{ lst.id }}/share">

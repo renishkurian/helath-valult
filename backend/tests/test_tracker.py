@@ -22,6 +22,8 @@ def test_tracker_list_item_toggle_and_share():
     assert created.status_code == 201, created.text
     lst = created.json()
     assert lst["name"] == "Saturday Market"
+    assert lst.get("owner_name") == "Shop User"
+    assert lst.get("created_at")
     list_id = lst["id"]
 
     item = client.post(
