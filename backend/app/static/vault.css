@@ -1549,10 +1549,18 @@ body.ask-ai .app-main{
 .ask-thread i{ margin-top:2px; color:var(--v-ink-3); flex:0 0 16px; }
 .ask-thread.active i{ color:var(--v-gold); }
 .ask-thread-body{ min-width:0; flex:1; }
+.ask-thread-top{
+  display:flex; align-items:baseline; justify-content:space-between; gap:.5rem;
+}
 .ask-thread-title{
   display:block; font-size:.8125rem; font-weight:600; letter-spacing:-0.01em;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:inherit;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:inherit; min-width:0;
 }
+.ask-thread-when{
+  flex:0 0 auto; font-size:.625rem; font-weight:500; letter-spacing:0.01em;
+  color:var(--v-ink-3); white-space:nowrap;
+}
+.ask-thread.active .ask-thread-when{ color:var(--v-ink-2); }
 .ask-thread-preview{
   display:block; font-size:.6875rem; color:var(--v-ink-3);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:2px;

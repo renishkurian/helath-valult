@@ -299,6 +299,24 @@
     toBottom();
   }
 
+  function fmtThreadWhen(iso) {
+    if (!iso) return "";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var now = new Date();
+    var startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var dayMs = 86400000;
+    var dayDiff = Math.round((startToday - startThat) / dayMs);
+    var timeOpts = { hour: "numeric", minute: "2-digit" };
+    var time = d.toLocaleTimeString(undefined, timeOpts);
+    if (dayDiff === 0) return "Today · " + time;
+    if (dayDiff === 1) return "Yesterday · " + time;
+    var dateOpts = { day: "numeric", month: "short" };
+    if (d.getFullYear() !== now.getFullYear()) dateOpts.year = "numeric";
+    return d.toLocaleDateString(undefined, dateOpts) + " · " + time;
+  }
+
   function renderThreads() {
     var rows = state.threads || [];
     if (!rows.length) {
@@ -307,11 +325,15 @@
     }
     threadBox.innerHTML = rows.map(function (t) {
       var active = t.id === state.threadId ? " active" : "";
+      var when = fmtThreadWhen(t.updated_at || t.created_at);
       return (
         '<button class="ask-thread' + active + '" type="button" data-id="' + esc(t.id) + '" role="listitem">' +
           '<i class="bi bi-chat-dots"></i>' +
           '<span class="ask-thread-body">' +
-            '<span class="ask-thread-title">' + esc(t.title || "New chat") + "</span>" +
+            '<span class="ask-thread-top">' +
+              '<span class="ask-thread-title">' + esc(t.title || "New chat") + "</span>" +
+              (when ? '<span class="ask-thread-when">' + esc(when) + "</span>" : "") +
+            "</span>" +
             (t.preview ? '<span class="ask-thread-preview">' + esc(t.preview) + "</span>" : "") +
           "</span>" +
         "</button>"

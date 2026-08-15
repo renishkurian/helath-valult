@@ -315,7 +315,30 @@ fun AiAskScreen(
                                 ) {
                                     Icon(Icons.Filled.Chat, null, tint = HubSlate, modifier = Modifier.size(18.dp))
                                     Column(Modifier.padding(start = 8.dp).weight(1f)) {
-                                        Text(t.title, color = Ink, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Row(
+                                            Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                t.title,
+                                                color = Ink,
+                                                fontWeight = FontWeight.SemiBold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            val whenLabel = t.updated_at.ifBlank { t.created_at }
+                                            if (whenLabel.isNotBlank()) {
+                                                Text(
+                                                    fmtWhen(whenLabel),
+                                                    color = InkSoft,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    maxLines = 1,
+                                                    modifier = Modifier.padding(start = 8.dp)
+                                                )
+                                            }
+                                        }
                                         t.preview?.let {
                                             Text(it, color = InkSoft, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
