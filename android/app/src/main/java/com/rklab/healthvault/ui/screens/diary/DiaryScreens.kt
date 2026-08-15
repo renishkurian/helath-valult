@@ -30,6 +30,7 @@ import com.rklab.healthvault.data.model.DiaryEntryUpdate
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
 import com.rklab.healthvault.util.FileUtil
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -60,7 +61,10 @@ fun DiaryListScreen(
             loading = false
         }
     }
-    LaunchedEffect(query, categoryId, pinnedOnly) { reload() }
+    LaunchedEffect(query, categoryId, pinnedOnly) {
+        delay(350)
+        reload()
+    }
 
     Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
@@ -81,7 +85,7 @@ fun DiaryListScreen(
                 value = query,
                 onValueChange = { query = it },
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                placeholder = { Text("Search title or tags") },
+                placeholder = { Text("Search title, story, tags, mood…") },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true
             )

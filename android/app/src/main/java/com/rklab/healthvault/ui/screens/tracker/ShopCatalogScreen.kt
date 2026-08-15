@@ -28,6 +28,8 @@ import com.rklab.healthvault.ui.theme.Navy
 import com.rklab.healthvault.ui.theme.StampRed
 import com.rklab.healthvault.ui.theme.TextDark
 import com.rklab.healthvault.ui.theme.VaultGold
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val catalogCategories = listOf(
@@ -52,8 +54,61 @@ fun ShopCatalogScreen(
     var category by remember { mutableStateOf("custom") }
     var scopeKind by remember { mutableStateOf("personal") }
     var aliases by remember { mutableStateOf("") }
+    var aiTranslate by remember { mutableStateOf(true) }
+    var translateStatus by remember { mutableStateOf("") }
+    var lastApplied by remember { mutableStateOf("") }
+    var lastQuery by remember { mutableStateOf("") }
     var catOpen by remember { mutableStateOf(false) }
     var scopeOpen by remember { mutableStateOf(false) }
+    var translateJob by remember { mutableStateOf<Job?>(null) }
+
+    fun appendAlias(raw: String) {
+        val fold = raw.trim().lowercase()
+        if (fold.isEmpty()) return
+        val parts = aliases.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+        if (parts.none { it.lowercase() == fold }) {
+            parts.add(raw.trim())
+            aliases = parts.joinToString(", ")
+        }
+    }
+
+    fun scheduleTranslate(typed: String) {
+        translateJob?.cancel()
+        if (!aiTranslate) {
+            translateStatus = ""
+            return
+        }
+        val q = typed.trim()
+        if (q.length < 2 || q == lastApplied || q == lastQuery) return
+        translateJob = scope.launch {
+            delay(700)
+            if (!aiTranslate) return@launch
+            translateStatus = "Translating…"
+            runCatching { repository.translateShopCatalog(q) }
+                .onSuccess { data ->
+                    if (english.trim() != q) return@onSuccess
+                    lastQuery = q
+                    if (data.source == "unchanged") {
+                        translateStatus = "Already English"
+                        lastApplied = data.english
+                        return@onSuccess
+                    }
+                    english = data.english
+                    lastApplied = data.english
+                    if (malayalam.isBlank() && !data.malayalam.isNullOrBlank()) {
+                        malayalam = data.malayalam
+                    }
+                    if (data.emoji.isNotBlank()) emoji = data.emoji
+                    if (data.category.isNotBlank()) category = data.category
+                    appendAlias(data.manglish.ifBlank { q })
+                    val via = if (data.source == "ai") "AI" else "dictionary"
+                    translateStatus = "Translated via $via: ${data.english}"
+                }
+                .onFailure {
+                    translateStatus = it.message ?: "Translate failed"
+                }
+        }
+    }
 
     fun reload() {
         scope.launch {
@@ -166,10 +221,24 @@ fun ShopCatalogScreen(
             title = { Text("Add Quick add chip") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = aiTranslate, onCheckedChange = {
+                            aiTranslate = it
+                            if (it) scheduleTranslate(english) else translateStatus = ""
+                        })
+                        Text("AI translate Manglish → English", color = Ink, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (translateStatus.isNotBlank()) {
+                        Text(translateStatus, color = InkSoft, style = MaterialTheme.typography.labelSmall)
+                    }
                     OutlinedTextField(
                         value = english,
-                        onValueChange = { english = it },
+                        onValueChange = {
+                            english = it
+                            scheduleTranslate(it)
+                        },
                         label = { Text("English name") },
+                        placeholder = { Text("e.g. Vazhuthananga") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -257,6 +326,9 @@ fun ShopCatalogScreen(
                             category = "custom"
                             scopeKind = "personal"
                             aliases = ""
+                            translateStatus = ""
+                            lastApplied = ""
+                            lastQuery = ""
                             showAdd = false
                             reload()
                         }.onFailure {

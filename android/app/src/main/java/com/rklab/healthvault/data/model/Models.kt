@@ -1019,7 +1019,63 @@ data class AiChatReplyOut(
     val thread_id: String,
     val title: String,
     val reply: String,
-    val messages: List<AiChatMessageOut> = emptyList()
+    val messages: List<AiChatMessageOut> = emptyList(),
+    val action: AiVaultAction? = null
+)
+
+data class AiShopItemProposal(
+    val name: String = "",
+    val quantity: Double? = 1.0,
+    val unit: String? = null
+)
+
+data class AiDiaryCharge(
+    val label: String? = null,
+    val name: String? = null,
+    val amount: Double? = null
+)
+
+/** Shared vault-action payload from Ask AI (shop list or diary entry). */
+data class AiVaultAction(
+    val type: String = "",
+    val name: String? = null,
+    val items: List<AiShopItemProposal>? = null,
+    val title: String? = null,
+    val body: String? = null,
+    val charges: List<AiDiaryCharge>? = null,
+    val entry_date: String? = null,
+    val category: String? = null,
+    val tags: String? = null,
+    val mood: String? = null,
+    val pinned: Boolean? = false
+)
+
+data class AiShopListActionOut(
+    val list_id: String,
+    val name: String,
+    val item_count: Int = 0,
+    val url: String = ""
+)
+
+data class AiDiaryEntryActionOut(
+    val entry_id: String,
+    val title: String,
+    val url: String = ""
+)
+
+data class ShopCatalogTranslateIn(
+    val q: String = "",
+    val text: String = ""
+)
+
+data class ShopCatalogTranslateOut(
+    val english: String,
+    val malayalam: String? = null,
+    val emoji: String = "🛒",
+    val category: String = "custom",
+    val source: String = "",
+    val manglish: String = "",
+    val score: Int? = null
 )
 
 data class AiUsageLogOut(

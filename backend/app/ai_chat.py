@@ -1,4 +1,5 @@
-"""Ask AI — vault-wide Q&A over Health, Money, Expense Analyser, Shopping List, Locker, URLs.
+"""Ask AI — vault-wide Q&A over Health, Money, Expense Analyser, Shopping List,
+Digital Diary, Locker, URLs.
 
 Secrets stay out of the prompt: no password vault plaintext, locker ID numbers,
 hospital patient IDs, or API keys. The model only sees titles, dates, amounts,
@@ -25,11 +26,11 @@ MAX_CONTEXT_CHARS = 22000
 MAX_HISTORY = 20
 CHAT_TIMEOUT = 60
 
-SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money Manager, Expense Analyser, Shopping List, Document Vault, URL Vault, Password Vault).
+SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money Manager, Expense Analyser, Shopping List, Digital Diary, Document Vault, URL Vault, Password Vault).
 
-Language: The user may write in English, Malayalam script, or Manglish (Malayalam in Latin letters, e.g. “kazhinja maasam enna vaangiya?”, “atta podi koode list undaakkan”). Understand all three. Reply in the same style the user used when helpful (short Manglish is fine); otherwise use clear English. Always keep vault facts accurate.
+Language: The user may write in English, Malayalam script, or Manglish (Malayalam in Latin letters, e.g. “kazhinja maasam enna vaangiya?”, “atta podi koode list undaakkan”). Understand all three. Reply in the same style the user used when helpful (short Manglish is fine); otherwise use clear English. Always keep vault facts accurate. Treat “dairy” as a common typo for Digital Diary when the intent is clearly a journal/note.
 
-Answer only from the VAULT SNAPSHOT attached to each turn. Do not invent hospitals, reports, transactions, balances, shopping items, or dates. If the snapshot does not contain the answer, say what is missing and which module to open.
+For questions about existing vault data, answer only from the VAULT SNAPSHOT. Do not invent hospitals, reports, transactions, balances, shopping items, or past diary entries. If the snapshot lacks the answer, say what is missing and which module to open.
 
 When the user asks for:
 - hospital reports / labs / bills: list matching Health Vault documents (title, date, category, amount, person). Group by hospital.
@@ -37,6 +38,9 @@ When the user asks for:
 - spend / income: use Money Manager ledger figures. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant.
 - shopping / groceries / “did I buy X” / “X vaangiya?”: use the Shopping List section and any Manglish glossary hints. Prefer item names over merchant payees for products (oil/enna, rice/ari, atta, etc.).
 - create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named, including Manglish). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
+- diary / journal / notes / “diary il undayirunno?”: use the Digital Diary section (titles, dates, categories, tags, body excerpts).
+- add / save / write a diary note (e.g. “add Thidanad trip to diary”, “diary il ittu”, “save this note”, including “dairy” typos): draft from the USER’S message — do not wait for that note to already exist in the snapshot. Confirm briefly, then emit ONE create_diary_entry vault-action. Prefer category Travel for trips; otherwise Personal or a matching snapshot category.
+- calculate / total / split charges / rough expenses, then save to diary: show the working clearly (markdown table with a Total row), then emit ONE create_diary_entry vault-action with charges[].
 - IDs / Aadhaar / PAN: you may name the Document Vault item and expiry, never an ID number (those are omitted on purpose).
 - passwords / logins: you may name entries. Never claim to know a password.
 
@@ -46,13 +50,19 @@ Creating a shopping list — after your normal markdown answer, if (and only if)
 {"type":"create_shop_list","name":"Short list title","items":[{"name":"Onion","quantity":1,"unit":"kg"},{"name":"Atta"}]}
 ```
 
+Creating a diary entry — after your normal markdown answer, if (and only if) the user wants it saved to Digital Diary, append exactly one fenced block:
+
+```vault-action
+{"type":"create_diary_entry","title":"Short title","body":"Optional notes","charges":[{"label":"Cake","amount":1200},{"label":"Decor","amount":800}],"entry_date":"2026-08-15","category":"Personal","tags":"party, charges","mood":"","pinned":false}
+```
+
 Rules for vault-action:
-- type must be create_shop_list
-- name: short English title (OK to keep a Manglish nickname in the markdown answer)
-- items: 1–60 objects with name (required), optional quantity (number), optional unit
-- Put the canonical English grocery name in items[].name when known (ulli→Onion, enna→Coconut Oil, sharkara→Jaggery, atta/mav podi→Wheat Flour, ari→Rice, paal→Milk). Use the snapshot Manglish glossary when present.
-- Do NOT emit vault-action for pure questions (e.g. “did I buy oil last month?” / “enna vaangiya?”)
-- Do NOT invent purchases that are not in the snapshot; for history-based lists, prefer frequent checked items from the months asked
+- Emit at most ONE vault-action block per reply (shop list OR diary, not both)
+- create_shop_list: name + items (1–60) with name required, optional quantity/unit; use English grocery names when known (ulli→Onion, enna→Coconut Oil, sharkara→Jaggery)
+- create_diary_entry: title required; body may be the user’s note text (trips, events, freeform). Include charges[] only when you totalled money — the app formats a ₹ table with Total. Optional entry_date (YYYY-MM-DD, default today), category, tags, mood, pinned
+- When charges[] is present, also show charge math as a markdown table with a Total row in the visible reply
+- Do NOT emit vault-action for pure questions (e.g. “did I buy oil?” / “diary il enthu ezhuthi?”)
+- For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes the user is dictating, use their words freely.
 
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
 """
@@ -345,6 +355,24 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
             ),
         })
     else:
+        hints.append({
+            "label": "Save charges to diary",
+            "prompt": (
+                "I spent roughly 1200 on cake, 800 on decor, and 450 on snacks. "
+                "Total them in a table and add the note to my Digital Diary."
+            ),
+        })
+    diary_n = (
+        db.query(models.DiaryEntry)
+        .filter(models.DiaryEntry.user_id == uid)
+        .count()
+    )
+    if diary_n and shop_n:
+        hints.append({
+            "label": "Recent diary notes",
+            "prompt": "Summarise my recent Digital Diary entries by date and category.",
+        })
+    elif not shop_n:
         hints.append({
             "label": "Expiring documents",
             "prompt": "Which Document Vault items and health documents expire in the next 90 days?",
@@ -697,6 +725,11 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     gloss = sorted({f"{k}={v}" for k, v in SEED_KEYS.items()}, key=lambda s: s.lower())
     lines.append("Manglish grocery glossary (subset): " + ", ".join(gloss[:80]))
 
+    # ---- Digital Diary ----
+    lines.append("")
+    lines.append("## Digital Diary")
+    lines.extend(_diary_snapshot_lines(db, uid, q))
+
     # ---- Locker ----
     lines.append("")
     lines.append("## Document Vault (IDs & papers — ID numbers omitted)")
@@ -889,8 +922,87 @@ def _shopping_snapshot_lines(
     return lines
 
 
+def _diary_snapshot_lines(db: Session, uid: str, question: str = "") -> list[str]:
+    lines: list[str] = []
+    cats = (
+        db.query(models.DiaryCategory)
+        .filter(models.DiaryCategory.user_id == uid)
+        .order_by(models.DiaryCategory.sort_order, models.DiaryCategory.name)
+        .all()
+    )
+    if cats:
+        lines.append("Categories: " + ", ".join(c.name for c in cats))
+    else:
+        lines.append(
+            "Categories: Personal, Work, Travel, Health, Family, Ideas, Other "
+            "(defaults are created when the diary is first opened)"
+        )
+
+    entries = (
+        db.query(models.DiaryEntry)
+        .filter(models.DiaryEntry.user_id == uid)
+        .order_by(
+            models.DiaryEntry.pinned.desc(),
+            models.DiaryEntry.entry_date.desc(),
+            models.DiaryEntry.created_at.desc(),
+        )
+        .limit(40)
+        .all()
+    )
+    if not entries:
+        lines.append("No diary entries yet.")
+        return lines
+
+    q = (question or "").casefold().strip()
+    lines.append(f"Recent entries ({min(len(entries), 30)} shown):")
+    shown = 0
+    for e in entries:
+        cat = e.category.name if e.category else "—"
+        body = crypto.decrypt_text(e.body_enc) or ""
+        hay = " ".join([e.title or "", cat, e.tags or "", e.mood or "", body]).casefold()
+        if q and len(q) >= 3 and q not in hay and shown >= 15:
+            continue
+        pin = " · pinned" if e.pinned else ""
+        lines.append(
+            f"- {e.entry_date or 'undated'} · {e.title} · {cat}"
+            f"{' · tags ' + e.tags if e.tags else ''}"
+            f"{' · mood ' + e.mood if e.mood else ''}{pin}"
+        )
+        if body:
+            lines.append(f"  {_clip(body, 220)}")
+        shown += 1
+        if shown >= 30:
+            break
+    return lines
+
+
+def format_diary_charges_table(charges: list[dict], preface: str | None = None) -> str:
+    """Build markdown table with Item / Amount / Total for diary bodies."""
+    parts: list[str] = []
+    note = (preface or "").strip()
+    if note:
+        parts.append(note)
+        parts.append("")
+    parts.append("| Item | Amount (₹) |")
+    parts.append("| --- | ---: |")
+    total = 0.0
+    for raw in charges:
+        if not isinstance(raw, dict):
+            continue
+        label = re.sub(r"\s+", " ", str(raw.get("label") or raw.get("name") or "")).strip()[:120]
+        if not label:
+            continue
+        amt = _f(raw.get("amount"))
+        total += amt
+        # Keep numeric cell clean for alignment; currency in header.
+        cell = f"{amt:,.2f}"
+        parts.append(f"| {label} | {cell} |")
+    parts.append(f"| **Total** | **{total:,.2f}** |")
+    return "\n".join(parts)
+
+
 def extract_vault_action(text: str) -> tuple[str, dict | None]:
-    """Split assistant reply into display text + optional create_shop_list action."""
+    """Split assistant reply into display text + optional vault action."""
     raw = text or ""
     m = _VAULT_ACTION_RE.search(raw)
     if not m:
@@ -900,8 +1012,19 @@ def extract_vault_action(text: str) -> tuple[str, dict | None]:
     except (TypeError, json.JSONDecodeError):
         return raw.strip(), None
     cleaned = _VAULT_ACTION_RE.sub("", raw).strip()
-    action = normalize_shop_list_action(data)
+    action = normalize_vault_action(data)
     return cleaned, action
+
+
+def normalize_vault_action(data: dict | None) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    kind = (data.get("type") or "").strip()
+    if kind == "create_shop_list":
+        return normalize_shop_list_action(data)
+    if kind == "create_diary_entry":
+        return normalize_diary_entry_action(data)
+    return None
 
 
 def normalize_shop_list_action(data: dict | None) -> dict | None:
@@ -941,6 +1064,52 @@ def normalize_shop_list_action(data: dict | None) -> dict | None:
     return {"type": "create_shop_list", "name": name, "items": items}
 
 
+def normalize_diary_entry_action(data: dict | None) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    if (data.get("type") or "") != "create_diary_entry":
+        return None
+    title = re.sub(r"\s+", " ", str(data.get("title") or "")).strip()[:255]
+    if not title:
+        return None
+    body = str(data.get("body") or "").strip()
+    charges_in = data.get("charges") if isinstance(data.get("charges"), list) else []
+    charges: list[dict] = []
+    for raw in charges_in[:40]:
+        if isinstance(raw, str):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        label = re.sub(r"\s+", " ", str(raw.get("label") or raw.get("name") or "")).strip()[:120]
+        if not label:
+            continue
+        charges.append({"label": label, "amount": _f(raw.get("amount"))})
+    if charges:
+        body = format_diary_charges_table(charges, preface=body or None)
+    if not body:
+        body = title
+    entry_date = str(data.get("entry_date") or "").strip()[:10]
+    if entry_date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", entry_date):
+        entry_date = ""
+    if not entry_date:
+        entry_date = datetime.utcnow().strftime("%Y-%m-%d")
+    category = re.sub(r"\s+", " ", str(data.get("category") or "")).strip()[:80] or None
+    tags = re.sub(r"\s+", " ", str(data.get("tags") or "")).strip()[:255] or None
+    mood = re.sub(r"\s+", " ", str(data.get("mood") or "")).strip()[:80] or None
+    pinned = bool(data.get("pinned"))
+    return {
+        "type": "create_diary_entry",
+        "title": title,
+        "body": body[:20000],
+        "charges": charges,
+        "entry_date": entry_date,
+        "category": category,
+        "tags": tags,
+        "mood": mood,
+        "pinned": pinned,
+    }
+
+
 def apply_shop_list_action(db: Session, user: models.User, action: dict) -> dict:
     """Create a ShopList + items from an approved Ask AI action."""
     from app import schemas as sc
@@ -971,6 +1140,48 @@ def apply_shop_list_action(db: Session, user: models.User, action: dict) -> dict
         "name": out.name,
         "item_count": out.item_count,
         "url": f"/admin/tracker/lists/{out.id}",
+    }
+
+
+def apply_diary_entry_action(db: Session, user: models.User, action: dict) -> dict:
+    """Create a Digital Diary entry from an approved Ask AI action."""
+    from app.routers import diary as dy
+
+    normalized = normalize_diary_entry_action(action)
+    if not normalized:
+        raise ValueError("Invalid diary entry action")
+    dy.ensure_defaults(db, user)
+    uid = _uid(user)
+    category_id = None
+    cat_name = normalized.get("category")
+    if cat_name:
+        row = (
+            db.query(models.DiaryCategory)
+            .filter(
+                models.DiaryCategory.user_id == uid,
+                models.DiaryCategory.name.ilike(cat_name),
+            )
+            .first()
+        )
+        if row:
+            category_id = row.id
+    entry = models.DiaryEntry(
+        user_id=uid,
+        title=normalized["title"],
+        body_enc=crypto.encrypt_text(normalized["body"]),
+        entry_date=normalized["entry_date"],
+        category_id=category_id,
+        tags=normalized.get("tags"),
+        mood=normalized.get("mood"),
+        pinned=bool(normalized.get("pinned")),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {
+        "entry_id": entry.id,
+        "title": entry.title,
+        "url": f"/admin/diary/{entry.id}",
     }
 
 

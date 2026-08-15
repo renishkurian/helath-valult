@@ -661,6 +661,12 @@ interface ApiService {
     @POST("ai/chat")
     suspend fun aiChat(@Body body: AiChatIn): AiChatReplyOut
 
+    @POST("ai/chat/apply-shop-list")
+    suspend fun applyAiShopList(@Body body: AiVaultAction): AiShopListActionOut
+
+    @POST("ai/chat/apply-diary-entry")
+    suspend fun applyAiDiaryEntry(@Body body: AiVaultAction): AiDiaryEntryActionOut
+
     @GET("ai/usage")
     suspend fun listAiUsage(
         @Query("client") client: String? = null,
@@ -818,6 +824,9 @@ interface ApiService {
 
     @GET("tracker/catalog")
     suspend fun listShopCatalog(): List<ShopCatalogItemOut>
+
+    @POST("tracker/catalog/translate")
+    suspend fun translateShopCatalog(@Body body: ShopCatalogTranslateIn): ShopCatalogTranslateOut
 
     @POST("tracker/catalog")
     suspend fun addShopCatalogItem(@Body body: ShopCatalogItemIn): ShopCatalogItemOut

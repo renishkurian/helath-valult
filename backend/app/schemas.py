@@ -1077,6 +1077,24 @@ class AiShopListActionOut(BaseModel):
     url: str
 
 
+class AiDiaryEntryActionIn(BaseModel):
+    type: str = "create_diary_entry"
+    title: str = Field(min_length=1, max_length=255)
+    body: Optional[str] = None
+    charges: Optional[List[dict]] = None
+    entry_date: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[str] = None
+    mood: Optional[str] = None
+    pinned: bool = False
+
+
+class AiDiaryEntryActionOut(BaseModel):
+    entry_id: str
+    title: str
+    url: str
+
+
 class AiUsageLogOut(BaseModel):
     id: str
     client: str

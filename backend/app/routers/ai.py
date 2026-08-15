@@ -158,6 +158,20 @@ def apply_shop_list(
     return schemas.AiShopListActionOut(**result)
 
 
+@router.post("/chat/apply-diary-entry", response_model=schemas.AiDiaryEntryActionOut)
+def apply_diary_entry(
+    body: schemas.AiDiaryEntryActionIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        result = ai_chat.apply_diary_entry_action(db, current_user, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.AiDiaryEntryActionOut(**result)
+
+
 @router.get("/usage", response_model=list[schemas.AiUsageLogOut])
 def list_usage(
     client: str | None = None,

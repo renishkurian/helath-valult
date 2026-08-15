@@ -7,7 +7,6 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -278,21 +277,28 @@ def list_entries(
         query = query.filter(models.DiaryEntry.entry_date >= from_date)
     if to_date:
         query = query.filter(models.DiaryEntry.entry_date <= to_date)
-    if q:
-        like = f"%{q.strip()}%"
-        query = query.filter(or_(
-            models.DiaryEntry.title.ilike(like),
-            models.DiaryEntry.tags.ilike(like),
-            models.DiaryEntry.mood.ilike(like),
-        ))
-    return [
-        _to_out(e)
-        for e in query.order_by(
-            models.DiaryEntry.pinned.desc(),
-            models.DiaryEntry.entry_date.desc(),
-            models.DiaryEntry.created_at.desc(),
-        ).all()
-    ]
+    rows = query.order_by(
+        models.DiaryEntry.pinned.desc(),
+        models.DiaryEntry.entry_date.desc(),
+        models.DiaryEntry.created_at.desc(),
+    ).all()
+    needle = (q or "").strip().casefold()
+    if needle:
+        matched = []
+        for e in rows:
+            cat = e.category.name if e.category else ""
+            body = crypto.decrypt_text(e.body_enc) or ""
+            hay = " ".join([
+                e.title or "",
+                e.tags or "",
+                e.mood or "",
+                cat,
+                body,
+            ]).casefold()
+            if needle in hay:
+                matched.append(e)
+        rows = matched
+    return [_to_out(e) for e in rows]
 
 
 @router.post("", response_model=schemas.DiaryEntryOut, status_code=201)

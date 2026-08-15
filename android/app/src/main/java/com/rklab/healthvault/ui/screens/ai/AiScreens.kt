@@ -75,7 +75,9 @@ import com.rklab.healthvault.data.model.AiProviderOut
 import com.rklab.healthvault.data.model.AiStatusOut
 import com.rklab.healthvault.data.model.AiUsageLogOut
 import com.rklab.healthvault.data.model.AiUsageSummaryOut
+import com.rklab.healthvault.data.model.AiVaultAction
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.google.gson.Gson
 import com.rklab.healthvault.ui.theme.HubBg
 import com.rklab.healthvault.ui.theme.HubGlass
 import com.rklab.healthvault.ui.theme.HubSlate
@@ -91,6 +93,31 @@ import retrofit2.HttpException
 
 private val BubbleUser = VaultGold.copy(alpha = 0.18f)
 private val BubbleAi = HubGlass
+private val vaultActionGson = Gson()
+private val vaultActionRegex = Regex(
+    """```vault-action\s*(\{[\s\S]*?\})\s*```""",
+    setOf(RegexOption.IGNORE_CASE)
+)
+
+private data class SplitVaultContent(
+    val text: String,
+    val action: AiVaultAction?
+)
+
+private fun splitVaultAction(content: String): SplitVaultContent {
+    val match = vaultActionRegex.find(content) ?: return SplitVaultContent(content, null)
+    val raw = match.groupValues.getOrNull(1).orEmpty()
+    val action = runCatching { vaultActionGson.fromJson(raw, AiVaultAction::class.java) }.getOrNull()
+    val cleaned = content.replace(match.value, "").trim()
+    return when (action?.type) {
+        "create_shop_list" -> if (!action.items.isNullOrEmpty()) SplitVaultContent(cleaned, action)
+            else SplitVaultContent(content, null)
+        "create_diary_entry" -> if (!action.title.isNullOrBlank()) SplitVaultContent(cleaned, action)
+            else SplitVaultContent(content, null)
+        else -> SplitVaultContent(content, null)
+    }
+}
+
 private val ProviderKinds = listOf(
     "openai" to "ChatGPT / OpenAI",
     "anthropic" to "Claude / Anthropic",
@@ -322,7 +349,7 @@ fun AiAskScreen(
                             Spacer(Modifier.height(12.dp))
                             Text("Ask anything in this vault", color = Ink, fontWeight = FontWeight.SemiBold)
                             Text(
-                                "Hospital reports, card statements, spend, expiring IDs…",
+                                "Reports, shopping lists, diary notes — total charges and save to Digital Diary.",
                                 color = InkSoft,
                                 style = MaterialTheme.typography.bodySmall,
                                 modifier = Modifier.padding(top = 4.dp, start = 24.dp, end = 24.dp)
@@ -330,8 +357,8 @@ fun AiAskScreen(
                             Spacer(Modifier.height(16.dp))
                             listOf(
                                 "Summarise health reports by hospital",
-                                "Credit card statement for this month",
-                                "What documents expire soon?"
+                                "Create a shopping list with onion and rice",
+                                "Cake 1200, decor 800 — total and add to diary"
                             ).forEach { hint ->
                                 Text(
                                     hint,
@@ -349,12 +376,13 @@ fun AiAskScreen(
                 }
                 items(messages, key = { it.id + it.role + it.content.take(24) }) { m ->
                     val mine = m.role == "user"
-                    Row(
+                    val split = if (mine) SplitVaultContent(m.content, null) else splitVaultAction(m.content)
+                    Column(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start
+                        horizontalAlignment = if (mine) Alignment.End else Alignment.Start
                     ) {
                         Text(
-                            m.content,
+                            split.text,
                             color = Ink,
                             modifier = Modifier
                                 .widthIn(max = 320.dp)
@@ -363,6 +391,14 @@ fun AiAskScreen(
                                 .border(1.dp, if (mine) VaultGold.copy(alpha = 0.35f) else LineColor, RoundedCornerShape(16.dp))
                                 .padding(12.dp)
                         )
+                        split.action?.let { action ->
+                            Spacer(Modifier.height(8.dp))
+                            VaultActionCard(
+                                action = action,
+                                repository = repository,
+                                onApplied = { /* stay on thread */ }
+                            )
+                        }
                     }
                 }
                 if (busy) {
@@ -391,7 +427,7 @@ fun AiAskScreen(
                     value = draft,
                     onValueChange = { draft = it },
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Ask about a hospital, card, spend…") },
+                    placeholder = { Text("Ask about hospital, shop list, diary…") },
                     enabled = !busy && status?.has_default == true,
                     maxLines = 5
                 )
@@ -612,6 +648,109 @@ private fun StatChip(text: String, modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+private fun VaultActionCard(
+    action: AiVaultAction,
+    repository: HealthVaultRepository,
+    onApplied: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    var doneUrl by remember { mutableStateOf<String?>(null) }
+    var doneLabel by remember { mutableStateOf<String?>(null) }
+    var dismissed by remember { mutableStateOf(false) }
+    if (dismissed) return
+
+    val isDiary = action.type == "create_diary_entry"
+    val heading = if (isDiary) "Proposed diary entry" else "Proposed shopping list"
+    val title = if (isDiary) action.title.orEmpty() else action.name.orEmpty()
+    val cta = if (isDiary) "Save to diary" else "Create list"
+
+    Column(
+        Modifier
+            .widthIn(max = 320.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .border(1.dp, VaultGold.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .background(HubGlass)
+            .padding(12.dp)
+    ) {
+        Text(heading, color = VaultGold, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+        Text(title, color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 4.dp))
+        if (isDiary) {
+            val meta = listOfNotNull(action.entry_date, action.category).joinToString(" · ")
+            if (meta.isNotBlank()) {
+                Text(meta, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+            }
+            action.charges.orEmpty().take(8).forEach { c ->
+                val label = c.label ?: c.name ?: ""
+                Text(
+                    "• $label${c.amount?.let { " · ₹ $it" } ?: ""}",
+                    color = InkSoft,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            if (action.charges.isNullOrEmpty() && !action.body.isNullOrBlank()) {
+                Text(action.body.take(160), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+            }
+        } else {
+            action.items.orEmpty().take(8).forEach { item ->
+                val meta = listOfNotNull(
+                    item.quantity?.takeIf { it != 1.0 }?.toString(),
+                    item.unit
+                ).joinToString(" ")
+                Text(
+                    "• ${item.name}${if (meta.isNotBlank()) " $meta" else ""}",
+                    color = InkSoft,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+            val extra = (action.items?.size ?: 0) - 8
+            if (extra > 0) Text("+$extra more", color = InkSoft, style = MaterialTheme.typography.labelSmall)
+        }
+        Spacer(Modifier.height(8.dp))
+        if (doneUrl != null) {
+            Text(
+                "Saved: ${doneLabel ?: title}",
+                color = Sage,
+                style = MaterialTheme.typography.bodySmall
+            )
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            try {
+                                if (isDiary) {
+                                    val res = repository.applyAiDiaryEntry(action)
+                                    doneUrl = res.url
+                                    doneLabel = res.title
+                                } else {
+                                    val res = repository.applyAiShopList(action)
+                                    doneUrl = res.url
+                                    doneLabel = res.name
+                                }
+                                Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
+                                onApplied()
+                            } catch (t: Throwable) {
+                                Toast.makeText(context, errMessage(t), Toast.LENGTH_LONG).show()
+                            }
+                            busy = false
+                        }
+                    },
+                    enabled = !busy,
+                    colors = ButtonDefaults.buttonColors(containerColor = VaultGold, contentColor = Color(0xFF18130A)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) { Text(if (busy) "…" else cta) }
+                TextButton(onClick = { dismissed = true }, enabled = !busy) {
+                    Text("Dismiss", color = InkSoft)
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun AiUsageLogsScreen(
@@ -628,6 +767,7 @@ fun AiUsageLogsScreen(
         "ask_ai" to "Ask AI",
         "finance_sms" to "SMS",
         "expense_analyser" to "Mail",
+        "catalog_translate" to "Catalog",
         "connection_test" to "Connection",
         "provider_test" to "Provider"
     )

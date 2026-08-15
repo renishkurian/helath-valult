@@ -105,13 +105,24 @@
     if (!m) return { text: text, action: null };
     var action = null;
     try { action = JSON.parse(m[1]); } catch (e) { action = null; }
-    if (!action || action.type !== "create_shop_list" || !Array.isArray(action.items)) {
-      return { text: text, action: null };
+    if (!action || !action.type) return { text: text, action: null };
+    if (action.type === "create_shop_list" && Array.isArray(action.items)) {
+      return { text: text.replace(m[0], "").trim(), action: action };
     }
-    return { text: text.replace(m[0], "").trim(), action: action };
+    if (action.type === "create_diary_entry" && action.title) {
+      return { text: text.replace(m[0], "").trim(), action: action };
+    }
+    return { text: text, action: null };
   }
 
   function actionCard(action) {
+    if (action && action.type === "create_diary_entry") {
+      return diaryActionCard(action);
+    }
+    return shopActionCard(action);
+  }
+
+  function shopActionCard(action) {
     var wrap = document.createElement("div");
     wrap.className = "ask-action";
     var items = (action.items || []).slice(0, 60);
@@ -151,6 +162,60 @@
         skip.hidden = true;
       }).catch(function (err) {
         status.textContent = err.message || "Could not create list";
+        go.disabled = false;
+        skip.disabled = false;
+      });
+    });
+    return wrap;
+  }
+
+  function diaryActionCard(action) {
+    var wrap = document.createElement("div");
+    wrap.className = "ask-action ask-action-diary";
+    var charges = (action.charges || []).slice(0, 40);
+    var lis = charges.map(function (c) {
+      var label = (c && (c.label || c.name)) || "";
+      var amt = (c && c.amount != null) ? c.amount : "";
+      return "<li><strong>" + esc(label) + "</strong>" +
+        (amt !== "" ? " <span>₹ " + esc(String(amt)) + "</span>" : "") + "</li>";
+    }).join("");
+    var preview = "";
+    if (lis) {
+      preview = "<ul>" + lis + "</ul>";
+    } else if (action.body) {
+      preview = '<p class="ask-action-preview">' + esc(String(action.body).slice(0, 220)) + "</p>";
+    }
+    wrap.innerHTML =
+      '<div class="ask-action-head"><i class="bi bi-journal-richtext"></i> Proposed diary entry</div>' +
+      '<div class="ask-action-title">' + esc(action.title || "Diary entry") + "</div>" +
+      (action.entry_date ? '<div class="ask-action-meta">' + esc(action.entry_date) +
+        (action.category ? " · " + esc(action.category) : "") + "</div>" : "") +
+      preview +
+      '<div class="ask-action-bar">' +
+        '<button type="button" class="btn btn-sm btn-primary ask-action-go">Save to diary</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-light ask-action-skip">Dismiss</button>' +
+        '<span class="ask-action-status" hidden></span>' +
+      "</div>";
+    var go = wrap.querySelector(".ask-action-go");
+    var skip = wrap.querySelector(".ask-action-skip");
+    var status = wrap.querySelector(".ask-action-status");
+    skip.addEventListener("click", function () { wrap.remove(); });
+    go.addEventListener("click", function () {
+      go.disabled = true;
+      skip.disabled = true;
+      status.hidden = false;
+      status.textContent = "Saving…";
+      api("/admin/ai/ask/apply-diary-entry", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(action),
+      }).then(function (res) {
+        status.innerHTML = 'Saved <a href="' + esc(res.url || ("/admin/diary/" + res.entry_id)) + '">' +
+          esc(res.title || "entry") + "</a>";
+        go.hidden = true;
+        skip.hidden = true;
+      }).catch(function (err) {
+        status.textContent = err.message || "Could not save diary entry";
         go.disabled = false;
         skip.disabled = false;
       });

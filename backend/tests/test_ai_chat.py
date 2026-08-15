@@ -360,3 +360,96 @@ def test_chat_returns_shop_list_action():
     assert applied.json()["item_count"] == 2
     assert client.get(f"/tracker/lists/{applied.json()['list_id']}", headers=headers).status_code == 200
 
+
+def test_diary_context_search_and_apply_entry_action():
+    from app import crypto
+    from app.ai_chat import apply_diary_entry_action, extract_vault_action, format_diary_charges_table
+
+    table = format_diary_charges_table(
+        [{"label": "Cake", "amount": 1200}, {"label": "Decor", "amount": 800}],
+        preface="Party rough costs",
+    )
+    assert "Cake" in table and "2,000.00" in table and "Total" in table
+
+    display, action = extract_vault_action(
+        "Here is the total.\n\n| Item | Amount |\n| --- | ---: |\n| Cake | 1200 |\n\n"
+        "```vault-action\n"
+        '{"type":"create_diary_entry","title":"Party charges","body":"Rough list",'
+        '"charges":[{"label":"Cake","amount":1200},{"label":"Decor","amount":800}],'
+        '"category":"Personal","tags":"party"}\n```'
+    )
+    assert "vault-action" not in display
+    assert action["type"] == "create_diary_entry"
+    assert action["title"] == "Party charges"
+    assert "Total" in action["body"]
+    assert len(action["charges"]) == 2
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        from app.routers import diary as dy
+        dy.ensure_defaults(db, user)
+        cat = (
+            db.query(models.DiaryCategory)
+            .filter(models.DiaryCategory.user_id == uid, models.DiaryCategory.name == "Personal")
+            .first()
+        )
+        db.add(models.DiaryEntry(
+            user_id=uid, title="Beach day",
+            body_enc=crypto.encrypt_text("We bought coconut water and snacks by the shore."),
+            entry_date="2026-08-10", category_id=cat.id if cat else None, tags="travel",
+        ))
+        db.commit()
+        ctx = build_vault_context(db, user, "diary beach coconut")
+        assert "## Digital Diary" in ctx
+        assert "Beach day" in ctx
+        assert "coconut" in ctx.lower()
+        created = apply_diary_entry_action(db, user, action)
+    finally:
+        db.close()
+
+    assert created["entry_id"]
+    assert "/admin/diary/" in created["url"]
+
+    listed = client.get("/diary", headers=headers, params={"q": "coconut"}).json()
+    assert any(e["title"] == "Beach day" for e in listed)
+
+    detail = client.get(f"/diary/{created['entry_id']}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    body = detail.json()["body"]
+    assert "Cake" in body and "2,000.00" in body
+
+
+def test_chat_returns_diary_entry_action():
+    headers, _ = _headers()
+    assert client.post("/ai/providers", headers=headers, json={
+        "name": "Diary AI", "kind": "openrouter", "api_key": "sk-test",
+        "is_default": True, "model": "openai/gpt-4o-mini",
+    }).status_code == 200
+
+    reply = (
+        "Total is 2450.\n\n```vault-action\n"
+        '{"type":"create_diary_entry","title":"Snack run","charges":['
+        '{"label":"Tea","amount":50},{"label":"Snacks","amount":2400}],'
+        '"tags":"food"}\n```'
+    )
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": reply, "kind": "openrouter", "model": "openai/gpt-4o-mini",
+        "prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+    }):
+        r = client.post("/ai/chat", headers=headers, json={
+            "message": "tea 50 snacks 2400 add to diary",
+        })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["action"]["type"] == "create_diary_entry"
+    assert body["action"]["title"] == "Snack run"
+    assert "vault-action" not in body["reply"]
+
+    applied = client.post("/ai/chat/apply-diary-entry", headers=headers, json=body["action"])
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["entry_id"]
+    assert client.get(f"/diary/{applied.json()['entry_id']}", headers=headers).status_code == 200
+

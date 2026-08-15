@@ -738,6 +738,8 @@ class HealthVaultRepository(
     suspend fun deleteAiChatThread(id: String) = api.deleteAiChatThread(id)
     suspend fun aiChat(message: String, threadId: String? = null) =
         api.aiChat(AiChatIn(message = message, thread_id = threadId))
+    suspend fun applyAiShopList(action: AiVaultAction) = api.applyAiShopList(action)
+    suspend fun applyAiDiaryEntry(action: AiVaultAction) = api.applyAiDiaryEntry(action)
     suspend fun listAiUsage(client: String? = null, limit: Int = 100) =
         api.listAiUsage(client, limit)
     suspend fun aiUsageSummary(days: Int = 30) = api.aiUsageSummary(days)
@@ -805,6 +807,8 @@ class HealthVaultRepository(
         api.postShopListFinance(id, body)
     suspend fun shopQuickAdd() = api.shopQuickAdd()
     suspend fun listShopCatalog() = api.listShopCatalog()
+    suspend fun translateShopCatalog(text: String) =
+        api.translateShopCatalog(ShopCatalogTranslateIn(q = text, text = text))
     suspend fun addShopCatalogItem(body: ShopCatalogItemIn) = api.addShopCatalogItem(body)
     suspend fun updateShopCatalogItem(id: String, body: ShopCatalogItemIn) =
         api.updateShopCatalogItem(id, body)

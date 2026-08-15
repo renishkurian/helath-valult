@@ -2650,6 +2650,23 @@ async def ai_ask_apply_shop_list(request: Request, db: Session = Depends(get_db)
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
 
+@router.post("/ai/ask/apply-diary-entry")
+async def ai_ask_apply_diary_entry(request: Request, db: Session = Depends(get_db)):
+    """Approve an Ask AI create_diary_entry proposal and create the note."""
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, status_code=400)
+    try:
+        return ai_chat.apply_diary_entry_action(db, user, body if isinstance(body, dict) else {})
+    except ValueError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
 @router.post("/ai/ask/test")
 def ai_ask_test_connection(request: Request, db: Session = Depends(get_db)):
     """Session-auth ping of the default Ask AI provider."""
