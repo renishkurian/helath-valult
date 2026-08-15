@@ -303,3 +303,43 @@ def ignore_mail_pdf(
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc
     return _pdf_out(row)
+
+
+def _mail_pdf_file_response(pdf_id: str, db: Session, user: models.User, *, inline: bool):
+    from fastapi.responses import Response
+    try:
+        data, filename = ea.fetch_mail_pdf_bytes(db, user, pdf_id)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    safe = filename.replace('"', "")
+    disposition = "inline" if inline else "attachment"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{safe}"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@router.get("/mail-pdfs/{pdf_id}/view")
+def view_mail_pdf(
+    pdf_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    return _mail_pdf_file_response(pdf_id, db, current_user, inline=True)
+
+
+@router.get("/mail-pdfs/{pdf_id}/download")
+def download_mail_pdf(
+    pdf_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    return _mail_pdf_file_response(pdf_id, db, current_user, inline=False)

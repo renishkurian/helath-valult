@@ -595,6 +595,69 @@ def test_gmail_pdf_import_marks_needs_password(monkeypatch):
         db.close()
 
 
+def test_mail_pdf_download_and_view(monkeypatch):
+    from app import expense_analyser as ea
+    from app.database import SessionLocal
+
+    headers, email = _headers()
+    raw_pdf = b"%PDF-1.4 fake-statement"
+    monkeypatch.setattr("app.gmail.get_attachment_bytes", lambda *a, **k: raw_pdf)
+    monkeypatch.setattr("app.expense_analyser._access_token", lambda *a, **k: "tok")
+
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        row = ea.get_or_create(db, user)
+        row.refresh_token_enc = "x"
+        pdf = models.ShopStatementPdf(
+            user_id=user.id,
+            gmail_message_id="m-dl-1",
+            gmail_attachment_id="att-dl-1",
+            filename="HDFC.pdf",
+            status="needs_password",
+            error="Password-protected PDF",
+            bank_hint="HDFC",
+        )
+        db.add(pdf)
+        db.commit()
+        db.refresh(pdf)
+        pdf_id = pdf.id
+
+        data, name = ea.fetch_mail_pdf_bytes(db, user, pdf_id)
+        assert data == raw_pdf
+        assert name == "HDFC.pdf"
+    finally:
+        db.close()
+
+    dl = client.get(f"/expense-analyser/mail-pdfs/{pdf_id}/download", headers=headers)
+    assert dl.status_code == 200, dl.text
+    assert dl.content == raw_pdf
+    assert "attachment" in dl.headers.get("content-disposition", "")
+    assert "application/pdf" in dl.headers.get("content-type", "")
+
+    view = client.get(f"/expense-analyser/mail-pdfs/{pdf_id}/view", headers=headers)
+    assert view.status_code == 200
+    assert "inline" in view.headers.get("content-disposition", "")
+
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    page = session.get("/admin/expense-analyser/statements")
+    assert page.status_code == 200
+    assert f"/admin/expense-analyser/mail-pdfs/{pdf_id}/view" in page.text
+    assert f"/admin/expense-analyser/mail-pdfs/{pdf_id}/download" in page.text
+    assert "View" in page.text
+    assert "Download" in page.text
+
+    admin_dl = session.get(f"/admin/expense-analyser/mail-pdfs/{pdf_id}/download")
+    assert admin_dl.status_code == 200
+    assert admin_dl.content == raw_pdf
+
+
 def test_admin_settings_shows_bank_passwords():
     email = "ea-settings-pdf@example.com"
     _headers(email)

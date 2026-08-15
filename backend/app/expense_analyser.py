@@ -896,6 +896,49 @@ def ignore_mail_pdf(db: Session, user: models.User, pdf_id: str) -> models.ShopS
     return row
 
 
+def get_mail_pdf(db: Session, user: models.User, pdf_id: str) -> models.ShopStatementPdf:
+    row = (
+        db.query(models.ShopStatementPdf)
+        .filter(
+            models.ShopStatementPdf.id == pdf_id,
+            models.ShopStatementPdf.user_id == vault_id(user),
+        )
+        .first()
+    )
+    if not row:
+        raise LookupError("PDF not found")
+    return row
+
+
+def fetch_mail_pdf_bytes(db: Session, user: models.User, pdf_id: str) -> tuple[bytes, str]:
+    """Re-download a tracked Gmail PDF attachment. Returns (bytes, filename)."""
+    from app.routers.tracker import MAX_PDF
+
+    row = get_mail_pdf(db, user, pdf_id)
+    conn = _row(db, user)
+    if not conn or not conn.refresh_token_enc:
+        raise RuntimeError("Connect Gmail first")
+    mid = (row.gmail_message_id or "").strip()
+    aid = (row.gmail_attachment_id or "").strip()
+    if not mid:
+        raise RuntimeError("This PDF has no Gmail message id")
+    if not aid or aid.startswith("inline:"):
+        raise RuntimeError("This PDF was embedded in the email and cannot be re-downloaded")
+    token = _access_token(db, conn)
+    try:
+        data = gmail.get_attachment_bytes(token, mid, aid)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"Could not download from Gmail: {exc}") from exc
+    if not data:
+        raise RuntimeError("Empty PDF attachment")
+    if len(data) > MAX_PDF:
+        raise RuntimeError("PDF is larger than 10 MB")
+    name = (row.filename or "statement.pdf").strip() or "statement.pdf"
+    if not name.lower().endswith(".pdf"):
+        name = f"{name}.pdf"
+    return data, name
+
+
 def count_sync_logs(db: Session, user: models.User) -> int:
     return (
         db.query(models.ExpenseAnalyserSyncLog)

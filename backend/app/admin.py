@@ -3547,6 +3547,44 @@ def ea_ignore_mail_pdf(pdf_id: str, request: Request, db: Session = Depends(get_
     return RedirectResponse("/admin/expense-analyser/statements", status_code=302)
 
 
+def _ea_mail_pdf_response(pdf_id: str, request: Request, db: Session, *, inline: bool):
+    from app import expense_analyser as ea
+    from urllib.parse import quote
+
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        data, filename = ea.fetch_mail_pdf_bytes(db, user, pdf_id)
+    except LookupError:
+        return RedirectResponse("/admin/expense-analyser/statements?err=PDF+not+found", status_code=302)
+    except RuntimeError as exc:
+        return RedirectResponse(
+            f"/admin/expense-analyser/statements?err={quote(str(exc))}",
+            status_code=302,
+        )
+    safe = filename.replace('"', "")
+    disposition = "inline" if inline else "attachment"
+    return Response(
+        content=data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{safe}"',
+            "Cache-Control": "private, no-store",
+        },
+    )
+
+
+@router.get("/expense-analyser/mail-pdfs/{pdf_id}/view")
+def ea_view_mail_pdf(pdf_id: str, request: Request, db: Session = Depends(get_db)):
+    return _ea_mail_pdf_response(pdf_id, request, db, inline=True)
+
+
+@router.get("/expense-analyser/mail-pdfs/{pdf_id}/download")
+def ea_download_mail_pdf(pdf_id: str, request: Request, db: Session = Depends(get_db)):
+    return _ea_mail_pdf_response(pdf_id, request, db, inline=False)
+
+
 @router.get("/tracker/friends", response_class=HTMLResponse)
 def tracker_friends(request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr

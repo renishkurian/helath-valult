@@ -92,9 +92,13 @@
           {% if p.error %} · {{ p.error }}{% endif %}
         </span>
       </span>
-      <form method="post" action="/admin/expense-analyser/mail-pdfs/{{ p.id }}/ignore">
-        <button class="btn btn-ghost" type="submit">Ignore</button>
-      </form>
+      <span class="row-actions">
+        <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/mail-pdfs/{{ p.id }}/view" target="_blank" rel="noopener">View</a>
+        <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/mail-pdfs/{{ p.id }}/download">Download</a>
+        <form method="post" action="/admin/expense-analyser/mail-pdfs/{{ p.id }}/ignore">
+          <button class="btn btn-sm btn-ghost" type="submit">Ignore</button>
+        </form>
+      </span>
     </div>
     {% endfor %}
   </div>
@@ -107,9 +111,13 @@
         <span class="row-title">{{ p.filename or 'statement.pdf' }}</span>
         <span class="row-meta text-danger">{{ p.error or 'Could not parse' }}</span>
       </span>
-      <form method="post" action="/admin/expense-analyser/mail-pdfs/{{ p.id }}/ignore">
-        <button class="btn btn-ghost" type="submit">Ignore</button>
-      </form>
+      <span class="row-actions">
+        <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/mail-pdfs/{{ p.id }}/view" target="_blank" rel="noopener">View</a>
+        <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/mail-pdfs/{{ p.id }}/download">Download</a>
+        <form method="post" action="/admin/expense-analyser/mail-pdfs/{{ p.id }}/ignore">
+          <button class="btn btn-sm btn-ghost" type="submit">Ignore</button>
+        </form>
+      </span>
     </div>
     {% endfor %}
   </div>
@@ -126,6 +134,10 @@
           {{ p.created_count }} row{% if p.created_count != 1 %}s{% endif %}
           {% if p.skipped_count %} · {{ p.skipped_count }} duplicate{% if p.skipped_count != 1 %}s{% endif %}{% endif %}
         </span>
+      </span>
+      <span class="row-actions">
+        <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/mail-pdfs/{{ p.id }}/view" target="_blank" rel="noopener">View</a>
+        <a class="btn btn-sm btn-outline-light" href="/admin/expense-analyser/mail-pdfs/{{ p.id }}/download">Download</a>
       </span>
     </div>
     {% endfor %}
