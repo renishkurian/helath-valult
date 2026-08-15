@@ -805,6 +805,22 @@ class VaultSendPublicOut(BaseModel):
     totp_required: bool = False
 
 
+class VaultSendRequestOut(BaseModel):
+    id: str
+    send_id: str
+    send_name: str
+    send_token: str
+    name: Optional[str] = None
+    email: Optional[str] = None
+    ip: Optional[str] = None
+    user_agent: Optional[str] = None
+    latitude: Optional[str] = None
+    longitude: Optional[str] = None
+    has_photo: bool = False
+    status: str
+    created_at: datetime
+
+
 # ---------- Finance / Money Manager ----------
 class FinanceAccountIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)

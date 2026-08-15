@@ -575,6 +575,27 @@ class VaultSendAccess(Base):
     send = relationship("VaultSend", back_populates="accesses")
 
 
+class VaultSendRequest(Base):
+    """Guest asked the owner for access to a Send link (optional photo/geo)."""
+    __tablename__ = "vault_send_requests"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    send_id = Column(String(32), ForeignKey("vault_sends.id"), nullable=False, index=True)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)  # owner
+    name = Column(String(120), nullable=True)
+    email = Column(String(255), nullable=True)
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    latitude = Column(String(32), nullable=True)
+    longitude = Column(String(32), nullable=True)
+    photo_path = Column(String(500), nullable=True)  # encrypted relative path
+    photo_mime = Column(String(80), nullable=True)
+    status = Column(String(20), default="pending", nullable=False)  # pending | seen | dismissed
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    decided_at = Column(DateTime, nullable=True)
+
+    send = relationship("VaultSend")
+
+
 # ---------- Finance / Money Manager ----------
 class FinanceAccount(Base):
     __tablename__ = "finance_accounts"

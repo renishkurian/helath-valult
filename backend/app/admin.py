@@ -1442,14 +1442,15 @@ def passwords_health_page(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/passwords/sends", response_class=HTMLResponse)
 def passwords_sends_page(request: Request, db: Session = Depends(get_db)):
-    from app.routers.vault import list_sends, list_items
+    from app.routers.vault import list_sends, list_items, list_send_requests
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     sends = list_sends(db=db, current_user=user)
     items = list_items(q=None, item_type="login", folder_id=None, favorite=False, db=db, current_user=user)
+    requests = list_send_requests(status="all", db=db, current_user=user)
     return templates.TemplateResponse("password_sends.html", _pw_ctx(
-        request, user, "pw_sends", sends=sends, items=items,
+        request, user, "pw_sends", sends=sends, items=items, requests=requests,
         public_base=str(request.base_url).rstrip("/"),
     ))
 
@@ -1491,6 +1492,35 @@ def passwords_send_create(
             q += "&totp=1"
         return RedirectResponse(dest + q, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
+
+
+@router.post("/passwords/send-requests/{request_id}/dismiss")
+def passwords_send_request_dismiss(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import dismiss_send_request
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    dismiss_send_request(request_id, db=db, current_user=user)
+    return RedirectResponse("/admin/passwords/sends", status_code=302)
+
+
+@router.post("/passwords/send-requests/{request_id}/seen")
+def passwords_send_request_seen(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import mark_send_request_seen
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    mark_send_request_seen(request_id, db=db, current_user=user)
+    return RedirectResponse("/admin/passwords/sends", status_code=302)
+
+
+@router.get("/passwords/send-requests/{request_id}/photo")
+def passwords_send_request_photo(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import send_request_photo
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return send_request_photo(request_id, db=db, current_user=user)
 
 
 @router.post("/passwords/sends/{send_id}/revoke")

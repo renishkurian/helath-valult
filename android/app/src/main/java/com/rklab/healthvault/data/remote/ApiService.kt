@@ -381,6 +381,15 @@ interface ApiService {
     @DELETE("vault/sends/{id}")
     suspend fun revokeVaultSend(@Path("id") id: String): Response<Unit>
 
+    @GET("vault/send-requests")
+    suspend fun listVaultSendRequests(@Query("status") status: String? = "pending"): List<VaultSendRequestOut>
+
+    @POST("vault/send-requests/{id}/seen")
+    suspend fun markVaultSendRequestSeen(@Path("id") id: String): VaultSendRequestOut
+
+    @POST("vault/send-requests/{id}/dismiss")
+    suspend fun dismissVaultSendRequest(@Path("id") id: String): VaultSendRequestOut
+
     // ---------- Document Vault ----------
     @GET("locker/summary")
     suspend fun lockerSummary(): LockerSummaryOut

@@ -122,6 +122,57 @@
       This link expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC · opening is logged for the owner.
     </div>
     {% endif %}
+
+    <div class="card mt-3">
+      <div class="card-header">
+        <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
+        <div>
+          <h2>Request access</h2>
+          <div class="card-sub">Notify the owner — they see your IP and browser</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if request_ok %}
+        <div class="alert alert-success" role="status">
+          <i class="bi bi-check2-circle"></i> Request sent. The owner was notified.
+        </div>
+        {% elif request_err == 'email' %}
+        <div class="alert alert-danger">Please enter a valid email, or leave it blank.</div>
+        {% elif request_err == 'photo' %}
+        <div class="alert alert-danger">Photo was too large. Try a smaller image.</div>
+        {% elif request_err %}
+        <div class="alert alert-danger">Could not send the request. Try again.</div>
+        {% endif %}
+        <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
+              class="stack" id="req-access-form">
+          <input type="hidden" name="next" value="page">
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <label class="form-label" for="req-name">Name <span class="text-muted">(optional)</span></label>
+              <input class="form-control" id="req-name" type="text" name="name" maxlength="120" autocomplete="name">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="req-email">Email <span class="text-muted">(optional)</span></label>
+              <input class="form-control" id="req-email" type="email" name="email" maxlength="255" autocomplete="email">
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="req-photo">Photo <span class="text-muted">(optional)</span></label>
+            <input class="form-control" id="req-photo" type="file" name="photo" accept="image/*" capture="user">
+            <div class="form-text">On phones you can allow the camera; otherwise pick a file.</div>
+          </div>
+          <input type="hidden" name="latitude" id="req-lat" value="">
+          <input type="hidden" name="longitude" id="req-lng" value="">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="req-geo" checked>
+            <label class="form-check-label" for="req-geo">Share approximate location if the browser allows</label>
+          </div>
+          <button class="btn btn-outline-light" type="submit" id="req-submit">
+            <i class="bi bi-send"></i> Request access
+          </button>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 {% if not pin_required and not totp_required and payload and payload.password %}
@@ -152,5 +203,35 @@
 })();
 </script>
 {% endif %}
+<script>
+(function(){
+  var form = document.getElementById("req-access-form");
+  if (!form) return;
+  form.addEventListener("submit", function(ev){
+    var geo = document.getElementById("req-geo");
+    var lat = document.getElementById("req-lat");
+    var lng = document.getElementById("req-lng");
+    if (!geo || !geo.checked || !navigator.geolocation) return;
+    ev.preventDefault();
+    var btn = document.getElementById("req-submit");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending…'; }
+    var done = false;
+    function finish() {
+      if (done) return;
+      done = true;
+      form.submit();
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(pos){
+        lat.value = String(pos.coords.latitude);
+        lng.value = String(pos.coords.longitude);
+        finish();
+      },
+      function(){ finish(); },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 60000 }
+    );
+  });
+})();
+</script>
 </body>
 </html>

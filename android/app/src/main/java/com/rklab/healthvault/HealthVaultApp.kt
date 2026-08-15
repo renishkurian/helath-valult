@@ -49,6 +49,7 @@ class HealthVaultApp : Application() {
         createReminderNotificationChannel()
         createEmiNotificationChannel()
         createLoginNotificationChannel()
+        createSendRequestNotificationChannel()
         com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.ensureChannel(this)
         if (tokenManager.getAccessToken() != null) {
             com.rklab.healthvault.ui.screens.finance.FinanceSmsIngestor.scanInbox(this)
@@ -97,9 +98,24 @@ class HealthVaultApp : Application() {
         }
     }
 
+    private fun createSendRequestNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                SEND_REQUEST_CHANNEL_ID,
+                "Send access requests",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Someone requested access to a shared password link"
+            }
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+        }
+    }
+
     companion object {
         const val REMINDER_CHANNEL_ID = "reminders"
         const val EMI_CHANNEL_ID = "emi"
         const val LOGIN_CHANNEL_ID = "login_challenge"
+        const val SEND_REQUEST_CHANNEL_ID = "vault_send_request"
     }
 }

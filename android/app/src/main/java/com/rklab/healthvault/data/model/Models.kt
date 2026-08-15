@@ -563,6 +563,22 @@ data class VaultSendOut(
     val created_at: String
 )
 
+data class VaultSendRequestOut(
+    val id: String,
+    val send_id: String,
+    val send_name: String = "",
+    val send_token: String = "",
+    val name: String? = null,
+    val email: String? = null,
+    val ip: String? = null,
+    val user_agent: String? = null,
+    val latitude: String? = null,
+    val longitude: String? = null,
+    val has_photo: Boolean = false,
+    val status: String = "pending",
+    val created_at: String = ""
+)
+
 data class PersonUpdate(
     val allergies: String? = null,
     val conditions: String? = null,

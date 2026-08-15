@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultSendOut
+import com.rklab.healthvault.data.model.VaultSendRequestOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.components.VaultCardShape
 import com.rklab.healthvault.ui.components.VaultFilterChip
@@ -39,6 +40,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sends by remember { mutableStateOf<List<VaultSendOut>>(emptyList()) }
+    var requests by remember { mutableStateOf<List<VaultSendRequestOut>>(emptyList()) }
     var items by remember { mutableStateOf<List<VaultItemOut>>(emptyList()) }
     var name by remember { mutableStateOf("") }
     var text by remember { mutableStateOf("") }
@@ -53,6 +55,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     fun reload() {
         scope.launch {
             sends = runCatching { repository.listVaultSends() }.getOrDefault(emptyList())
+            requests = runCatching { repository.listVaultSendRequests("all") }.getOrDefault(emptyList())
             items = runCatching { repository.listVaultItems(itemType = "login") }.getOrDefault(emptyList())
             if (prefillItemId != null) {
                 items.firstOrNull { it.id == prefillItemId }?.let { name = it.name }
@@ -172,6 +175,60 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                         }
                     }
                 )
+                Spacer(Modifier.height(16.dp))
+                if (requests.isNotEmpty()) {
+                    Text(
+                        "ACCESS REQUESTS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = VaultGold
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+            items(requests, key = { "req-${it.id}" }) { req ->
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(VaultCardShape)
+                        .background(HubGlass)
+                        .border(1.dp, HubStroke, VaultCardShape)
+                        .padding(14.dp)
+                ) {
+                    val who = listOfNotNull(req.name, req.email).joinToString(" · ").ifBlank { "Anonymous" }
+                    Text(who, color = HubText, fontWeight = FontWeight.SemiBold)
+                    Text("Asked for ${req.send_name}", color = HubTextDim, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        listOfNotNull(req.ip, req.status, req.created_at.take(16)).joinToString(" · "),
+                        color = HubTextDim,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (!req.latitude.isNullOrBlank() && !req.longitude.isNullOrBlank()) {
+                        Text("Loc ${req.latitude}, ${req.longitude}", color = HubTextDim, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (req.has_photo) {
+                        Text("Photo attached (view on web)", color = VaultGold, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (req.status == "pending") {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    runCatching { repository.markVaultSendRequestSeen(req.id) }
+                                    reload()
+                                }
+                            }) { Text("Mark seen", color = VaultGold) }
+                        }
+                        if (req.status != "dismissed") {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    runCatching { repository.dismissVaultSendRequest(req.id) }
+                                    reload()
+                                }
+                            }) { Text("Dismiss", color = StampRed) }
+                        }
+                    }
+                }
+            }
+            item {
                 Spacer(Modifier.height(16.dp))
                 Text(
                     "YOUR SENDS",

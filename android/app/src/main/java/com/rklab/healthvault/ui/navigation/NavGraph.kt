@@ -63,6 +63,7 @@ import com.rklab.healthvault.ui.screens.settings.SettingsScreen
 import com.rklab.healthvault.ui.screens.login.LoginChallengeDialog
 import com.rklab.healthvault.data.model.LoginChallengeOut
 import com.rklab.healthvault.util.LoginChallengeNotifier
+import com.rklab.healthvault.util.VaultSendRequestNotifier
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
@@ -198,6 +199,11 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     val next = repository.pendingLoginChallenges().firstOrNull()
                     pendingWebLogin = next
                     if (next != null) LoginChallengeNotifier.show(context, next)
+                }
+                runCatching {
+                    repository.listVaultSendRequests("pending").take(3).forEach {
+                        VaultSendRequestNotifier.show(context, it)
+                    }
                 }
                 delay(2_000)
             }

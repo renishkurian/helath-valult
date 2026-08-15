@@ -9,10 +9,11 @@ import time
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto, security
 from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
@@ -391,6 +392,59 @@ def _load_valid_send(token: str, db: Session) -> models.VaultSend:
     return row
 
 
+_SEND_GONE = {
+    "This send has reached its view limit": {
+        "title": "view limit reached",
+        "eyebrow": "Send · one-time link",
+        "heading": "This link has reached its view limit",
+        "body": (
+            "Shared links can only be opened a set number of times. "
+            "That limit's been used, so the vault door has sealed — "
+            "the content isn't recoverable, even by us."
+        ),
+        "tag": "Sealed · nothing recoverable",
+    },
+    "This send has expired": {
+        "title": "link expired",
+        "eyebrow": "Send · timed link",
+        "heading": "This link has expired",
+        "body": (
+            "This send passed its expiry time, so the vault door has sealed. "
+            "Ask the sender for a fresh link if you still need access."
+        ),
+        "tag": "Sealed · nothing recoverable",
+    },
+    "Send not found": {
+        "title": "send not found",
+        "eyebrow": "Send · unavailable",
+        "heading": "This send is no longer available",
+        "body": (
+            "The link may have been revoked or never existed. "
+            "Ask the sender for a new one if you still need access."
+        ),
+        "tag": "Sealed · nothing recoverable",
+    },
+}
+
+
+def _send_gone_page(request: Request, exc: HTTPException) -> HTMLResponse:
+    """Styled sealed-door page for public send HTML routes."""
+    detail = str(exc.detail)
+    copy = _SEND_GONE.get(detail) or {
+        "title": "unavailable",
+        "eyebrow": "Send · unavailable",
+        "heading": detail,
+        "body": "This send can't be opened. Ask the sender for a new link if you still need access.",
+        "tag": "Sealed · nothing recoverable",
+    }
+    return templates.TemplateResponse(
+        request,
+        "vault_send_gone.html",
+        copy,
+        status_code=exc.status_code,
+    )
+
+
 def _payload(row: models.VaultSend) -> dict:
     raw = crypto.decrypt_text(row.payload_enc) or "{}"
     try:
@@ -568,18 +622,24 @@ def public_send_page(
     request: Request,
     pin: Optional[str] = None,
     totp: Optional[str] = None,
+    req_ok: Optional[str] = None,
+    req_err: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     try:
         row = _load_valid_send(token, db)
     except HTTPException as exc:
-        return HTMLResponse(f"<h1>{exc.detail}</h1>", status_code=exc.status_code)
+        return _send_gone_page(request, exc)
+    ctx_extra = {
+        "request_ok": bool(req_ok),
+        "request_err": (req_err or "").strip(),
+    }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": True, "totp_required": False,
             "payload": None, "notes": None, "error": bool(pin), "totp_error": False,
-            "pin_value": pin or "",
+            "pin_value": pin or "", **ctx_extra,
         })
     data = _payload(row)
     needs_totp, totp_ok = _send_totp_gate(data, totp)
@@ -588,7 +648,7 @@ def public_send_page(
             "send": row, "token": token, "pin_required": False, "totp_required": True,
             "payload": {"name": data.get("name") or row.name},
             "notes": None, "error": False, "totp_error": bool(totp),
-            "pin_value": pin or "",
+            "pin_value": pin or "", **ctx_extra,
         })
     notes = crypto.decrypt_text(row.notes_enc)
     # Do not expose totp_secret on the password page — setup is via /qr only.
@@ -597,7 +657,7 @@ def public_send_page(
     return templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
         "payload": shown, "notes": notes, "error": False, "totp_error": False,
-        "pin_value": pin or "",
+        "pin_value": pin or "", **ctx_extra,
     })
 
 
@@ -606,28 +666,244 @@ def public_send_qr_page(
     token: str,
     request: Request,
     pin: Optional[str] = None,
+    req_ok: Optional[str] = None,
+    req_err: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """Separate authenticator setup page — QR/key only, no password."""
     try:
         row = _load_valid_send(token, db)
     except HTTPException as exc:
-        return HTMLResponse(f"<h1>{exc.detail}</h1>", status_code=exc.status_code)
+        return _send_gone_page(request, exc)
     data = _payload(row)
     secret = (data.get("totp_secret") or "").strip()
     if not secret or not data.get("require_totp"):
         return HTMLResponse("<h1>No authenticator setup for this send</h1>", status_code=404)
+    ctx_extra = {"request_ok": bool(req_ok), "request_err": (req_err or "").strip()}
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
         return templates.TemplateResponse(request, "vault_send_qr.html", {
             "send": row, "token": token, "pin_required": True, "error": bool(pin),
-            "totp_secret": None, "otpauth_qr": None,
+            "totp_secret": None, "otpauth_qr": None, **ctx_extra,
         })
     _url, otpauth_qr = _otpauth_for_send(row.name, secret)
     return templates.TemplateResponse(request, "vault_send_qr.html", {
         "send": row, "token": token, "pin_required": False, "error": False,
-        "totp_secret": secret, "otpauth_qr": otpauth_qr,
+        "totp_secret": secret, "otpauth_qr": otpauth_qr, **ctx_extra,
     })
+
+
+def _notify_send_request(db: Session, owner_id: str, req: models.VaultSendRequest, send_name: str) -> int:
+    from app.push import send_fcm
+    from app.server_settings import fcm_service_account
+    account = fcm_service_account(db)
+    tokens = db.query(models.DeviceToken).filter(models.DeviceToken.user_id == owner_id).all()
+    if not tokens or not account:
+        return 0
+    who = (req.name or req.email or req.ip or "Someone").strip()
+    title = "Send access request"
+    body = f"{who} asked for access to “{send_name}”"
+    sent = 0
+    for tok in tokens:
+        if send_fcm(
+            tok.token, title, body,
+            data={"type": "vault_send_request", "id": req.id, "send_id": req.send_id},
+            account=account,
+        ):
+            sent += 1
+    return sent
+
+
+def _request_out(row: models.VaultSendRequest, send: models.VaultSend | None = None) -> schemas.VaultSendRequestOut:
+    send = send or row.send
+    return schemas.VaultSendRequestOut(
+        id=row.id,
+        send_id=row.send_id,
+        send_name=(send.name if send else "Send"),
+        send_token=(send.token if send else ""),
+        name=row.name,
+        email=row.email,
+        ip=row.ip,
+        user_agent=row.user_agent,
+        latitude=row.latitude,
+        longitude=row.longitude,
+        has_photo=bool(row.photo_path),
+        status=row.status,
+        created_at=row.created_at,
+    )
+
+
+@public_router.post("/public/{token}/request-access")
+async def public_request_access(
+    token: str,
+    request: Request,
+    name: str = Form(""),
+    email: str = Form(""),
+    latitude: str = Form(""),
+    longitude: str = Form(""),
+    next: str = Form("page"),
+    photo: Optional[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    """Guest asks the owner for access; optional name, email, geo, selfie/photo."""
+    back = "qr" if (next or "").strip() == "qr" else "page"
+    back_url = f"/vault/public/{token}/{back}"
+
+    def _redir(q: str = "") -> RedirectResponse:
+        return RedirectResponse(back_url + (f"?{q}" if q else ""), status_code=302)
+
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        return _redir("req_err=gone")
+
+    display_name = (name or "").strip()[:120] or None
+    mail = (email or "").strip()[:255] or None
+    if mail and "@" not in mail:
+        return _redir("req_err=email")
+
+    lat = (latitude or "").strip()[:32] or None
+    lng = (longitude or "").strip()[:32] or None
+    if lat:
+        try:
+            float(lat)
+        except ValueError:
+            lat = None
+    if lng:
+        try:
+            float(lng)
+        except ValueError:
+            lng = None
+
+    row = models.VaultSendRequest(
+        send_id=send.id,
+        user_id=send.user_id,
+        name=display_name,
+        email=mail,
+        ip=_client_ip(request),
+        user_agent=(request.headers.get("user-agent") or "")[:400] or None,
+        latitude=lat,
+        longitude=lng,
+        status="pending",
+    )
+    db.add(row)
+    db.flush()
+
+    if photo and (photo.filename or (photo.content_type or "").startswith("image/")):
+        raw = await photo.read()
+        if raw and (photo.content_type or "").startswith("image/"):
+            if len(raw) > settings.MAX_UPLOAD_MB * 1024 * 1024:
+                db.rollback()
+                return _redir("req_err=photo")
+            dest = settings.STORAGE_DIR / send.user_id / "vault_send_requests"
+            dest.mkdir(parents=True, exist_ok=True)
+            enc_path = dest / f"{row.id}.enc"
+            enc_path.write_bytes(crypto.encrypt_bytes(raw))
+            row.photo_path = str(enc_path.relative_to(settings.STORAGE_DIR))
+            row.photo_mime = (photo.content_type or "image/jpeg")[:80]
+
+    db.commit()
+    db.refresh(row)
+    _notify_send_request(db, send.user_id, row, send.name)
+
+    wants_json = "application/json" in (request.headers.get("accept") or "")
+    if wants_json:
+        return {"ok": True, "id": row.id}
+    return _redir("req_ok=1")
+
+
+@router.get("/send-requests", response_model=list[schemas.VaultSendRequestOut])
+def list_send_requests(
+    status: Optional[str] = "pending",
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    q = db.query(models.VaultSendRequest).filter(
+        models.VaultSendRequest.user_id == vault_id(current_user),
+    )
+    if status and status != "all":
+        q = q.filter(models.VaultSendRequest.status == status)
+    rows = q.order_by(models.VaultSendRequest.created_at.desc()).limit(100).all()
+    send_ids = {r.send_id for r in rows}
+    sends = {
+        s.id: s
+        for s in db.query(models.VaultSend).filter(models.VaultSend.id.in_(send_ids)).all()
+    } if send_ids else {}
+    return [_request_out(r, sends.get(r.send_id)) for r in rows]
+
+
+@router.post("/send-requests/{request_id}/seen", response_model=schemas.VaultSendRequestOut)
+def mark_send_request_seen(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.id == request_id,
+            models.VaultSendRequest.user_id == vault_id(current_user),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Request not found")
+    if row.status == "pending":
+        row.status = "seen"
+        row.decided_at = datetime.utcnow()
+        db.commit()
+        db.refresh(row)
+    return _request_out(row)
+
+
+@router.post("/send-requests/{request_id}/dismiss", response_model=schemas.VaultSendRequestOut)
+def dismiss_send_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.id == request_id,
+            models.VaultSendRequest.user_id == vault_id(current_user),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Request not found")
+    row.status = "dismissed"
+    row.decided_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _request_out(row)
+
+
+@router.get("/send-requests/{request_id}/photo")
+def send_request_photo(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.id == request_id,
+            models.VaultSendRequest.user_id == vault_id(current_user),
+        )
+        .first()
+    )
+    if not row or not row.photo_path:
+        raise HTTPException(404, "Photo not found")
+    path = settings.STORAGE_DIR / row.photo_path
+    if not path.is_file():
+        raise HTTPException(404, "Photo not found")
+    raw = crypto.decrypt_bytes(path.read_bytes())
+    return Response(content=raw, media_type=row.photo_mime or "image/jpeg")
 
 
 # ---------- Items ----------
