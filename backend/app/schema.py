@@ -81,6 +81,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("request_text", "TEXT"),
         ("response_text", "TEXT"),
     ],
+    "shop_lists": [
+        ("deleted_at", "DATETIME"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [
@@ -113,6 +116,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_shop_statement_pdfs_user_id", "shop_statement_pdfs", "user_id"),
     ("ix_shop_statement_pdfs_gmail_message_id", "shop_statement_pdfs", "gmail_message_id"),
     ("ix_shop_statement_pdfs_status", "shop_statement_pdfs", "status"),
+    ("ix_shop_lists_deleted_at", "shop_lists", "deleted_at"),
 ]
 
 

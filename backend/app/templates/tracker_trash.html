@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Shopping list trash{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/tracker">Shopping List</a>
+      <i class="bi bi-chevron-right"></i>
+      Trash
+    </div>
+    <h1 class="page-title">Trash</h1>
+    <p class="page-lead">Deleted lists stay here until you restore them or empty the trash.</p>
+  </div>
+  {% if lists %}
+  <div class="page-actions">
+    <form method="post" action="/admin/tracker/trash/empty" onsubmit="return confirm('Permanently delete everything in trash?');">
+      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Empty trash</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  {% if lists %}
+  <div class="card-header">
+    <span class="card-ico bad"><i class="bi bi-trash3"></i></span>
+    <div><h2>Deleted lists</h2></div>
+    <span class="badge badge-soft ms-auto">{{ lists|length }}</span>
+  </div>
+  {% endif %}
+  <div class="list-rows">
+    {% for lst in lists %}
+    <div class="list-row">
+      <span class="shop-emoji">🛒</span>
+      <div class="row-body">
+        <div class="row-title truncate">{{ lst.name }}</div>
+        <div class="row-meta">
+          {{ lst.item_count or 0 }} items
+          {% if lst.deleted_at %} · deleted {{ lst.deleted_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+        </div>
+      </div>
+      <div class="row-actions">
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/restore">
+          <button class="btn btn-outline-light btn-sm" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+        </form>
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/permanent" onsubmit="return confirm('Delete forever?');">
+          <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-x-lg"></i> Delete</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-trash3"></i></div>
+      <div class="empty-title">Trash is empty</div>
+      <p>Lists you delete will wait here before they are gone for good.</p>
+      <a class="btn btn-primary" href="/admin/tracker"><i class="bi bi-cart3"></i> Back to lists</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -283,8 +283,8 @@
 </div>
 {% endif %}
 
-<form class="mt-4" method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" onsubmit="return confirm('Delete this list?');">
-  <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete list</button>
+<form class="mt-4" method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" onsubmit="return confirm('Move this list to trash?');">
+  <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
 </form>
 </div>
 {% endblock %}

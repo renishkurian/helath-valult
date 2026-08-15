@@ -14,7 +14,11 @@
   </div>
 </div>
 
-{% if request.query_params.get('ok') %}
+{% if request.query_params.get('ok') == 'trashed' %}
+<div class="alert alert-success mb-4" role="status">List moved to trash.</div>
+{% elif request.query_params.get('ok') == 'restored' %}
+<div class="alert alert-success mb-4" role="status">List restored.</div>
+{% elif request.query_params.get('ok') %}
 <div class="alert alert-success mb-4" role="status">Saved.</div>
 {% endif %}
 {% if request.query_params.get('err') %}
@@ -75,16 +79,18 @@
   {% set n = lst.item_count or 0 %}
   {% set c = lst.checked_count or 0 %}
   {% set pct = ((c / n * 100)|round(0, 'floor')|int) if n else 0 %}
-  <a class="list-row" href="/admin/tracker/lists/{{ lst.id }}">
-    <span class="shop-emoji">🛒</span>
-    <span class="row-body">
-      <span class="row-title">{{ lst.name }}</span>
-      <span class="row-meta">
-        {{ c }}/{{ n }} items
-        {% if lst.receipt_count %} · {{ lst.receipt_count }} bill{% if lst.receipt_count != 1 %}s{% endif %}{% endif %}
-        {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
+  <div class="list-row">
+    <a class="row-body text-decoration-none text-reset d-flex align-items-center gap-3 flex-grow-1 min-w-0" href="/admin/tracker/lists/{{ lst.id }}">
+      <span class="shop-emoji">🛒</span>
+      <span class="min-w-0">
+        <span class="row-title d-block">{{ lst.name }}</span>
+        <span class="row-meta">
+          {{ c }}/{{ n }} items
+          {% if lst.receipt_count %} · {{ lst.receipt_count }} bill{% if lst.receipt_count != 1 %}s{% endif %}{% endif %}
+          {% if lst.pending_count %}<span class="badge badge-info ms-1">{{ lst.pending_count }} pending</span>{% endif %}
+        </span>
       </span>
-    </span>
+    </a>
     <span class="row-side text-end">
       {% if lst.completed %}
       <span class="shop-status done">Done</span>
@@ -97,7 +103,12 @@
         {% if lst.total_amount %}{{ inr(lst.total_amount) }} · {% endif %}{{ pct }}%
       </div>
     </span>
-  </a>
+    <div class="row-actions">
+      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" onsubmit="return confirm('Move this list to trash?');">
+        <button class="btn btn-ghost" type="submit" aria-label="Move to trash" title="Move to trash"><i class="bi bi-trash3"></i></button>
+      </form>
+    </div>
+  </div>
   {% endfor %}
 </div>
 {% else %}

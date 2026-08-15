@@ -697,6 +697,18 @@ interface ApiService {
     @DELETE("tracker/lists/{id}")
     suspend fun deleteShopList(@Path("id") id: String): Response<Unit>
 
+    @GET("tracker/trash")
+    suspend fun listShopTrash(): List<ShopListOut>
+
+    @POST("tracker/lists/{id}/restore")
+    suspend fun restoreShopList(@Path("id") id: String): ShopListOut
+
+    @DELETE("tracker/lists/{id}/permanent")
+    suspend fun permanentDeleteShopList(@Path("id") id: String): Response<Unit>
+
+    @POST("tracker/trash/empty")
+    suspend fun emptyShopTrash(): Response<Unit>
+
     @POST("tracker/lists/{id}/items")
     suspend fun addShopItem(@Path("id") id: String, @Body body: ShopItemIn): ShopItemOut
 

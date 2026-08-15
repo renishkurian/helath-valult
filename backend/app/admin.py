@@ -3397,7 +3397,49 @@ def tracker_delete_list(list_id: str, request: Request, db: Session = Depends(ge
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     tr.delete_list(list_id, db=db, current_user=user)
-    return RedirectResponse("/admin/tracker", status_code=302)
+    return RedirectResponse("/admin/tracker?ok=trashed", status_code=302)
+
+
+@router.get("/tracker/trash", response_class=HTMLResponse)
+def tracker_trash_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = tr.list_trash(db=db, current_user=user)
+    return templates.TemplateResponse("tracker_trash.html", _tr_ctx(
+        request, user, "tr_trash", lists=items,
+    ))
+
+
+@router.post("/tracker/trash/empty")
+def tracker_trash_empty(request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.empty_trash(db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/trash", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/restore")
+def tracker_restore_list(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.restore_list(list_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker?ok=restored", status_code=302)
+
+
+@router.post("/tracker/lists/{list_id}/permanent")
+def tracker_permanent_delete_list(list_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    tr.permanent_delete_list(list_id, db=db, current_user=user)
+    return RedirectResponse("/admin/tracker/trash", status_code=302)
 
 
 @router.post("/tracker/lists/{list_id}/send")

@@ -235,6 +235,20 @@ fun ShopDetailScreen(
             }) {
                 Icon(Icons.Filled.Share, contentDescription = "Share", tint = Ink)
             }
+            IconButton(onClick = {
+                scope.launch {
+                    runCatching { repository.deleteShopList(listId) }
+                        .onSuccess {
+                            Toast.makeText(context, "Moved to trash", Toast.LENGTH_SHORT).show()
+                            onBack()
+                        }
+                        .onFailure {
+                            Toast.makeText(context, it.message ?: "Could not delete", Toast.LENGTH_SHORT).show()
+                        }
+                }
+            }) {
+                Icon(Icons.Filled.Delete, contentDescription = "Move to trash", tint = StampRed)
+            }
         }
         Text(
             lst?.name ?: "List",

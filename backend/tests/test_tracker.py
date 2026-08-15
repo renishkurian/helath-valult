@@ -269,3 +269,50 @@ def test_shop_list_bill_copy_upload():
     gone = client.delete(f"/tracker/lists/{lst['id']}/receipts/{rec['id']}", headers=headers)
     assert gone.status_code == 204
     assert client.get(f"/tracker/lists/{lst['id']}", headers=headers).json()["receipt_count"] == 0
+
+
+def test_tracker_list_moves_to_trash():
+    import uuid
+
+    email = f"shop-trash-{uuid.uuid4().hex[:8]}@example.com"
+    headers = _headers(email)
+    created = client.post("/tracker/lists", headers=headers, json={"name": "Dealer"}).json()
+    list_id = created["id"]
+    client.post(f"/tracker/lists/{list_id}/items", headers=headers, json={"name": "milk"})
+
+    gone = client.delete(f"/tracker/lists/{list_id}", headers=headers)
+    assert gone.status_code == 204
+    assert client.get(f"/tracker/lists/{list_id}", headers=headers).status_code == 404
+    assert all(x["id"] != list_id for x in client.get("/tracker/lists", headers=headers).json())
+
+    trash = client.get("/tracker/trash", headers=headers)
+    assert trash.status_code == 200, trash.text
+    assert any(x["id"] == list_id for x in trash.json())
+    assert trash.json()[0]["deleted_at"]
+
+    restored = client.post(f"/tracker/lists/{list_id}/restore", headers=headers)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["deleted_at"] is None
+    assert client.get(f"/tracker/lists/{list_id}", headers=headers).status_code == 200
+
+    client.delete(f"/tracker/lists/{list_id}", headers=headers)
+    perm = client.delete(f"/tracker/lists/{list_id}/permanent", headers=headers)
+    assert perm.status_code == 204
+    assert client.get("/tracker/trash", headers=headers).json() == []
+
+    again = client.post("/tracker/lists", headers=headers, json={"name": "Again"}).json()
+    client.delete(f"/tracker/lists/{again['id']}", headers=headers)
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    page = session.get("/admin/tracker")
+    assert page.status_code == 200
+    assert "Move to trash" in page.text or "bi-trash3" in page.text
+    trash_page = session.get("/admin/tracker/trash")
+    assert trash_page.status_code == 200
+    assert "Again" in trash_page.text
+    assert "Restore" in trash_page.text

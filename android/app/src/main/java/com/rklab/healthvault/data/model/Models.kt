@@ -1207,6 +1207,7 @@ data class ShopListOut(
     val created_at: String = "",
     val updated_at: String? = null,
     val completed_at: String? = null,
+    val deleted_at: String? = null,
     val revision: String? = null,
     val items: List<ShopItemOut>? = null,
     val receipts: List<ShopReceiptOut>? = null

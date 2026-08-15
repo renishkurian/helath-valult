@@ -1508,6 +1508,7 @@ class ShopListOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
     revision: Optional[str] = None
     items: Optional[List[ShopItemOut]] = None
     receipts: Optional[List[ShopReceiptOut]] = None

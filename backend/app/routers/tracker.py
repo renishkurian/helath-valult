@@ -180,19 +180,22 @@ def _list_out(db: Session, lst: models.ShopList, *, with_items: bool = False) ->
         receipt_count=len(receipts),
         share_token=_share_token(db, lst),
         created_at=lst.created_at, updated_at=lst.updated_at,
-        completed_at=lst.completed_at, revision=_list_revision(lst),
+        completed_at=lst.completed_at, deleted_at=lst.deleted_at,
+        revision=_list_revision(lst),
         items=[_item_out(db, i, names) for i in items] if with_items else None,
         receipts=[_receipt_out(r) for r in receipts] if with_items else None,
     )
 
 
-def _owned_list(db: Session, user: models.User, list_id: str) -> models.ShopList:
+def _owned_list(
+    db: Session, user: models.User, list_id: str, *, include_deleted: bool = False,
+) -> models.ShopList:
     lst = (
         db.query(models.ShopList)
         .filter(models.ShopList.id == list_id, models.ShopList.user_id == _uid(user))
         .first()
     )
-    if not lst:
+    if not lst or (lst.deleted_at and not include_deleted):
         raise HTTPException(404, "List not found")
     return lst
 
@@ -274,11 +277,19 @@ def tracker_summary(
     current_user: models.User = Depends(get_current_user),
 ):
     uid = _uid(current_user)
-    lists = db.query(models.ShopList).filter(models.ShopList.user_id == uid).all()
+    lists = (
+        db.query(models.ShopList)
+        .filter(models.ShopList.user_id == uid, models.ShopList.deleted_at.is_(None))
+        .all()
+    )
     pending_items = (
         db.query(models.ShopItem)
         .join(models.ShopList)
-        .filter(models.ShopList.user_id == uid, models.ShopItem.status == "pending")
+        .filter(
+            models.ShopList.user_id == uid,
+            models.ShopList.deleted_at.is_(None),
+            models.ShopItem.status == "pending",
+        )
         .count()
     )
     pending_stmt = (
@@ -310,7 +321,10 @@ def list_lists(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    q = db.query(models.ShopList).filter(models.ShopList.user_id == _uid(current_user))
+    q = db.query(models.ShopList).filter(
+        models.ShopList.user_id == _uid(current_user),
+        models.ShopList.deleted_at.is_(None),
+    )
     if completed is not None:
         q = q.filter(models.ShopList.completed.is_(completed))
     rows = q.order_by(models.ShopList.updated_at.desc()).all()
@@ -372,11 +386,85 @@ def delete_list(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """Move a shopping list to trash (soft delete)."""
     require_owner(current_user)
     lst = _owned_list(db, current_user, list_id)
+    lst.deleted_at = datetime.utcnow()
+    lst.updated_at = datetime.utcnow()
+    db.commit()
+    return None
+
+
+@router.get("/trash", response_model=list[schemas.ShopListOut])
+def list_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = (
+        db.query(models.ShopList)
+        .filter(
+            models.ShopList.user_id == _uid(current_user),
+            models.ShopList.deleted_at.isnot(None),
+        )
+        .order_by(models.ShopList.deleted_at.desc())
+        .all()
+    )
+    return [_list_out(db, r) for r in rows]
+
+
+@router.post("/lists/{list_id}/restore", response_model=schemas.ShopListOut)
+def restore_list(
+    list_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id, include_deleted=True)
+    if not lst.deleted_at:
+        raise HTTPException(400, "List is not in trash")
+    lst.deleted_at = None
+    lst.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(lst)
+    return _list_out(db, lst)
+
+
+@router.delete("/lists/{list_id}/permanent", status_code=204)
+def permanent_delete_list(
+    list_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    lst = _owned_list(db, current_user, list_id, include_deleted=True)
+    if not lst.deleted_at:
+        raise HTTPException(400, "Move the list to trash first")
     for rec in list(lst.receipts or []):
         _drop_receipt_file(rec)
     db.delete(lst)
+    db.commit()
+    return None
+
+
+@router.post("/trash/empty", status_code=204)
+def empty_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = (
+        db.query(models.ShopList)
+        .filter(
+            models.ShopList.user_id == _uid(current_user),
+            models.ShopList.deleted_at.isnot(None),
+        )
+        .all()
+    )
+    for lst in rows:
+        for rec in list(lst.receipts or []):
+            _drop_receipt_file(rec)
+        db.delete(lst)
     db.commit()
     return None
 
@@ -686,7 +774,7 @@ def _list_by_token(db: Session, token: str, *, bump: bool = True) -> tuple[model
     if not share:
         raise HTTPException(404, "Share not found")
     lst = db.query(models.ShopList).filter(models.ShopList.id == share.list_id).first()
-    if not lst:
+    if not lst or lst.deleted_at:
         raise HTTPException(404, "List not found")
     if bump:
         share.use_count = (share.use_count or 0) + 1
