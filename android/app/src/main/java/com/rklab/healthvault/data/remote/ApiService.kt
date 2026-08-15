@@ -667,6 +667,9 @@ interface ApiService {
     @POST("ai/chat/apply-diary-entry")
     suspend fun applyAiDiaryEntry(@Body body: AiVaultAction): AiDiaryEntryActionOut
 
+    @POST("ai/chat/apply-finance-txn")
+    suspend fun applyAiFinanceTxn(@Body body: AiVaultAction): AiFinanceTxnActionOut
+
     @GET("ai/usage")
     suspend fun listAiUsage(
         @Query("client") client: String? = null,

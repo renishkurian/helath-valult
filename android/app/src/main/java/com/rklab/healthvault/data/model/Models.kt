@@ -1035,7 +1035,7 @@ data class AiDiaryCharge(
     val amount: Double? = null
 )
 
-/** Shared vault-action payload from Ask AI (shop list or diary entry). */
+/** Shared vault-action payload from Ask AI (shop list, diary, or finance). */
 data class AiVaultAction(
     val type: String = "",
     val name: String? = null,
@@ -1047,7 +1047,14 @@ data class AiVaultAction(
     val category: String? = null,
     val tags: String? = null,
     val mood: String? = null,
-    val pinned: Boolean? = false
+    val pinned: Boolean? = false,
+    val amount: Double? = null,
+    val payee: String? = null,
+    val account: String? = null,
+    val txn_type: String? = null,
+    val txn_date: String? = null,
+    val notes: String? = null,
+    val payment_method: String? = null
 )
 
 data class AiShopListActionOut(
@@ -1060,6 +1067,14 @@ data class AiShopListActionOut(
 data class AiDiaryEntryActionOut(
     val entry_id: String,
     val title: String,
+    val url: String = ""
+)
+
+data class AiFinanceTxnActionOut(
+    val txn_id: String,
+    val payee: String,
+    val amount: Double = 0.0,
+    val account_name: String = "",
     val url: String = ""
 )
 

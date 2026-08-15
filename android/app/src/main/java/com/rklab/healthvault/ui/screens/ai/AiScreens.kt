@@ -114,6 +114,8 @@ private fun splitVaultAction(content: String): SplitVaultContent {
             else SplitVaultContent(content, null)
         "create_diary_entry" -> if (!action.title.isNullOrBlank()) SplitVaultContent(cleaned, action)
             else SplitVaultContent(content, null)
+        "create_finance_txn" -> if ((action.amount ?: 0.0) > 0.0) SplitVaultContent(cleaned, action)
+            else SplitVaultContent(content, null)
         else -> SplitVaultContent(content, null)
     }
 }
@@ -663,9 +665,25 @@ private fun VaultActionCard(
     if (dismissed) return
 
     val isDiary = action.type == "create_diary_entry"
-    val heading = if (isDiary) "Proposed diary entry" else "Proposed shopping list"
-    val title = if (isDiary) action.title.orEmpty() else action.name.orEmpty()
-    val cta = if (isDiary) "Save to diary" else "Create list"
+    val isFinance = action.type == "create_finance_txn"
+    val heading = when {
+        isDiary -> "Proposed diary entry"
+        isFinance -> "Proposed Money Manager entry"
+        else -> "Proposed shopping list"
+    }
+    val title = when {
+        isDiary -> action.title.orEmpty()
+        isFinance -> listOfNotNull(
+            action.payee?.takeIf { it.isNotBlank() },
+            action.amount?.let { "₹ $it" }
+        ).joinToString(" · ")
+        else -> action.name.orEmpty()
+    }
+    val cta = when {
+        isDiary -> "Save to diary"
+        isFinance -> "Save to Money Manager"
+        else -> "Create list"
+    }
 
     Column(
         Modifier
@@ -693,6 +711,19 @@ private fun VaultActionCard(
             if (action.charges.isNullOrEmpty() && !action.body.isNullOrBlank()) {
                 Text(action.body.take(160), color = InkSoft, style = MaterialTheme.typography.bodySmall)
             }
+        } else if (isFinance) {
+            val meta = listOfNotNull(
+                action.txn_date,
+                action.account,
+                action.category,
+                action.payment_method
+            ).joinToString(" · ")
+            if (meta.isNotBlank()) {
+                Text(meta, color = InkSoft, style = MaterialTheme.typography.bodySmall)
+            }
+            if (!action.notes.isNullOrBlank()) {
+                Text(action.notes.take(160), color = InkSoft, style = MaterialTheme.typography.bodySmall)
+            }
         } else {
             action.items.orEmpty().take(8).forEach { item ->
                 val meta = listOfNotNull(
@@ -708,7 +739,7 @@ private fun VaultActionCard(
             val extra = (action.items?.size ?: 0) - 8
             if (extra > 0) Text("+$extra more", color = InkSoft, style = MaterialTheme.typography.labelSmall)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier.height(8.dp))
         if (doneUrl != null) {
             Text(
                 "Saved: ${doneLabel ?: title}",
@@ -722,14 +753,22 @@ private fun VaultActionCard(
                         busy = true
                         scope.launch {
                             try {
-                                if (isDiary) {
-                                    val res = repository.applyAiDiaryEntry(action)
-                                    doneUrl = res.url
-                                    doneLabel = res.title
-                                } else {
-                                    val res = repository.applyAiShopList(action)
-                                    doneUrl = res.url
-                                    doneLabel = res.name
+                                when {
+                                    isDiary -> {
+                                        val res = repository.applyAiDiaryEntry(action)
+                                        doneUrl = res.url
+                                        doneLabel = res.title
+                                    }
+                                    isFinance -> {
+                                        val res = repository.applyAiFinanceTxn(action)
+                                        doneUrl = res.url
+                                        doneLabel = res.payee
+                                    }
+                                    else -> {
+                                        val res = repository.applyAiShopList(action)
+                                        doneUrl = res.url
+                                        doneLabel = res.name
+                                    }
                                 }
                                 Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
                                 onApplied()

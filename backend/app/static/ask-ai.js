@@ -112,12 +112,18 @@
     if (action.type === "create_diary_entry" && action.title) {
       return { text: text.replace(m[0], "").trim(), action: action };
     }
+    if (action.type === "create_finance_txn" && action.amount != null && Number(action.amount) > 0) {
+      return { text: text.replace(m[0], "").trim(), action: action };
+    }
     return { text: text, action: null };
   }
 
   function actionCard(action) {
     if (action && action.type === "create_diary_entry") {
       return diaryActionCard(action);
+    }
+    if (action && action.type === "create_finance_txn") {
+      return financeActionCard(action);
     }
     return shopActionCard(action);
   }
@@ -216,6 +222,50 @@
         skip.hidden = true;
       }).catch(function (err) {
         status.textContent = err.message || "Could not save diary entry";
+        go.disabled = false;
+        skip.disabled = false;
+      });
+    });
+    return wrap;
+  }
+
+  function financeActionCard(action) {
+    var wrap = document.createElement("div");
+    wrap.className = "ask-action ask-action-finance";
+    var amt = action.amount != null ? String(action.amount) : "";
+    var meta = [action.txn_date, action.account, action.category, action.payment_method]
+      .filter(Boolean).map(String).join(" · ");
+    wrap.innerHTML =
+      '<div class="ask-action-head"><i class="bi bi-wallet2"></i> Proposed Money Manager entry</div>' +
+      '<div class="ask-action-title">' + esc(action.payee || "Expense") +
+        (amt ? ' · ₹ ' + esc(amt) : "") + "</div>" +
+      (meta ? '<div class="ask-action-meta">' + esc(meta) + "</div>" : "") +
+      (action.notes ? '<p class="ask-action-preview">' + esc(String(action.notes).slice(0, 220)) + "</p>" : "") +
+      '<div class="ask-action-bar">' +
+        '<button type="button" class="btn btn-sm btn-primary ask-action-go">Save to Money Manager</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-light ask-action-skip">Dismiss</button>' +
+        '<span class="ask-action-status" hidden></span>' +
+      "</div>";
+    var go = wrap.querySelector(".ask-action-go");
+    var skip = wrap.querySelector(".ask-action-skip");
+    var status = wrap.querySelector(".ask-action-status");
+    skip.addEventListener("click", function () { wrap.remove(); });
+    go.addEventListener("click", function () {
+      go.disabled = true;
+      skip.disabled = true;
+      status.hidden = false;
+      status.textContent = "Saving…";
+      api("/admin/ai/ask/apply-finance-txn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(action),
+      }).then(function (res) {
+        status.innerHTML = 'Saved <a href="' + esc(res.url || "/admin/finance") + '">' +
+          esc(res.payee || "transaction") + "</a> on " + esc(res.account_name || "account");
+        go.hidden = true;
+        skip.hidden = true;
+      }).catch(function (err) {
+        status.textContent = err.message || "Could not save transaction";
         go.disabled = false;
         skip.disabled = false;
       });

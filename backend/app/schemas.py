@@ -1095,6 +1095,26 @@ class AiDiaryEntryActionOut(BaseModel):
     url: str
 
 
+class AiFinanceTxnActionIn(BaseModel):
+    type: str = "create_finance_txn"
+    amount: float
+    payee: Optional[str] = None
+    account: Optional[str] = None
+    category: Optional[str] = None
+    txn_type: str = "expense"
+    txn_date: Optional[str] = None
+    notes: Optional[str] = None
+    payment_method: Optional[str] = None
+
+
+class AiFinanceTxnActionOut(BaseModel):
+    txn_id: str
+    payee: str
+    amount: float
+    account_name: str
+    url: str
+
+
 class AiUsageLogOut(BaseModel):
     id: str
     client: str

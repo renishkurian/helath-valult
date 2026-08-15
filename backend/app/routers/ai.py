@@ -172,6 +172,20 @@ def apply_diary_entry(
     return schemas.AiDiaryEntryActionOut(**result)
 
 
+@router.post("/chat/apply-finance-txn", response_model=schemas.AiFinanceTxnActionOut)
+def apply_finance_txn(
+    body: schemas.AiFinanceTxnActionIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        result = ai_chat.apply_finance_txn_action(db, current_user, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.AiFinanceTxnActionOut(**result)
+
+
 @router.get("/usage", response_model=list[schemas.AiUsageLogOut])
 def list_usage(
     client: str | None = None,

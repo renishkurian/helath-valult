@@ -740,6 +740,7 @@ class HealthVaultRepository(
         api.aiChat(AiChatIn(message = message, thread_id = threadId))
     suspend fun applyAiShopList(action: AiVaultAction) = api.applyAiShopList(action)
     suspend fun applyAiDiaryEntry(action: AiVaultAction) = api.applyAiDiaryEntry(action)
+    suspend fun applyAiFinanceTxn(action: AiVaultAction) = api.applyAiFinanceTxn(action)
     suspend fun listAiUsage(client: String? = null, limit: Int = 100) =
         api.listAiUsage(client, limit)
     suspend fun aiUsageSummary(days: Int = 30) = api.aiUsageSummary(days)

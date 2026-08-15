@@ -35,12 +35,17 @@ For questions about existing vault data, answer only from the VAULT SNAPSHOT. Do
 When the user asks for:
 - hospital reports / labs / bills: list matching Health Vault documents (title, date, category, amount, person). Group by hospital.
 - a credit-card (or any account) statement for a month: list that account's transactions for the month with date, payee, category, amount, and a total. Say if the account was not found.
-- spend / income: use Money Manager ledger figures. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant.
+- spend / income lookups: use Money Manager ledger figures. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant.
 - shopping / groceries / “did I buy X” / “X vaangiya?”: use the Shopping List section and any Manglish glossary hints. Prefer item names over merchant payees for products (oil/enna, rice/ari, atta, etc.).
 - create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named, including Manglish). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
-- diary / journal / notes / “diary il undayirunno?”: use the Digital Diary section (titles, dates, categories, tags, body excerpts).
-- add / save / write a diary note (e.g. “add Thidanad trip to diary”, “diary il ittu”, “save this note”, including “dairy” typos): draft from the USER’S message — do not wait for that note to already exist in the snapshot. Confirm briefly, then emit ONE create_diary_entry vault-action. Prefer category Travel for trips; otherwise Personal or a matching snapshot category.
-- calculate / total / split charges / rough expenses, then save to diary: show the working clearly (markdown table with a Total row), then emit ONE create_diary_entry vault-action with charges[].
+- diary / journal / notes / “diary il undayirunno?” (lookups): use the Digital Diary section (titles, dates, categories, tags, body excerpts).
+- add / save / write a diary note that is NOT primarily an expense (e.g. “add Thidanad trip to diary”, “diary il ittu”, “save this note”, including “dairy” typos): draft from the USER’S message — do not wait for that note to already exist in the snapshot. Confirm briefly, then emit ONE create_diary_entry vault-action. Prefer category Travel for trips; otherwise Personal or a matching snapshot category.
+- spent / paid / “adichu” / “vaangi” / petrol / food with an amount (expense-like):
+  - If they already named Money Manager / ledger / finance / account → emit create_finance_txn (pick a snapshot account + expense category when possible).
+  - If they already named Digital Diary / diary / dairy / note → emit create_diary_entry with charges[].
+  - If destination is unclear → briefly confirm amount + what they spent on, then ask: Money Manager (ledger) or Digital Diary (journal)? Do NOT emit any vault-action until they choose.
+  - Short follow-ups like “money”, “money manager”, “ledger”, “diary”, “dairy” refer to the latest expense in the thread — then emit the matching vault-action.
+- calculate / total / split charges then save: show a markdown table with Total; ask Money Manager vs Diary if unclear; emit create_finance_txn or create_diary_entry only after they choose (or if they already chose).
 - IDs / Aadhaar / PAN: you may name the Document Vault item and expiry, never an ID number (those are omitted on purpose).
 - passwords / logins: you may name entries. Never claim to know a password.
 
@@ -56,13 +61,21 @@ Creating a diary entry — after your normal markdown answer, if (and only if) t
 {"type":"create_diary_entry","title":"Short title","body":"Optional notes","charges":[{"label":"Cake","amount":1200},{"label":"Decor","amount":800}],"entry_date":"2026-08-15","category":"Personal","tags":"party, charges","mood":"","pinned":false}
 ```
 
+Creating a Money Manager ledger entry — after your normal markdown answer, if (and only if) the user wants it on the ledger, append exactly one fenced block:
+
+```vault-action
+{"type":"create_finance_txn","amount":250,"payee":"Petrol","account":"Cash","category":"Transport","txn_type":"expense","txn_date":"2026-08-15","notes":"Petrol filled","payment_method":"cash"}
+```
+
 Rules for vault-action:
-- Emit at most ONE vault-action block per reply (shop list OR diary, not both)
+- Emit at most ONE vault-action block per reply (shop list OR diary OR finance, not more than one)
 - create_shop_list: name + items (1–60) with name required, optional quantity/unit; use English grocery names when known (ulli→Onion, enna→Coconut Oil, sharkara→Jaggery)
 - create_diary_entry: title required; body may be the user’s note text (trips, events, freeform). Include charges[] only when you totalled money — the app formats a ₹ table with Total. Optional entry_date (YYYY-MM-DD, default today), category, tags, mood, pinned
-- When charges[] is present, also show charge math as a markdown table with a Total row in the visible reply
-- Do NOT emit vault-action for pure questions (e.g. “did I buy oil?” / “diary il enthu ezhuthi?”)
-- For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes the user is dictating, use their words freely.
+- create_finance_txn: amount > 0 required; payee short English label; account and category must match names from the Money Manager snapshot when possible; txn_type expense|income (default expense); optional txn_date (YYYY-MM-DD, default today), notes, payment_method (upi|credit_card|debit_card|atm|netbanking|cash|other)
+- When charges[] or finance amount is present, show the numbers clearly in the visible reply
+- Do NOT emit vault-action for pure questions (e.g. “did I buy oil?” / “diary il enthu ezhuthi?” / “how much petrol this month?”)
+- Do NOT emit vault-action while asking Money Manager vs Diary — wait for their choice
+- For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes or ledger rows the user is dictating, use their words freely.
 
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
 """
@@ -359,7 +372,7 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
             "label": "Save charges to diary",
             "prompt": (
                 "I spent roughly 1200 on cake, 800 on decor, and 450 on snacks. "
-                "Total them in a table and add the note to my Digital Diary."
+                "Total them — ask me if this should go to Money Manager or Digital Diary."
             ),
         })
     diary_n = (
@@ -593,10 +606,19 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
             extra.append(f"limit {_inr(a.credit_limit)}")
         lines.append(f"- Account: {a.name} ({', '.join(extra)})")
 
-    cats = {
-        c.id: c.name
-        for c in db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).all()
-    }
+    cat_rows = (
+        db.query(models.FinanceCategory)
+        .filter(models.FinanceCategory.user_id == uid)
+        .order_by(models.FinanceCategory.kind, models.FinanceCategory.name)
+        .all()
+    )
+    cats = {c.id: c.name for c in cat_rows}
+    exp_cats = [c.name for c in cat_rows if c.kind == "expense"]
+    inc_cats = [c.name for c in cat_rows if c.kind == "income"]
+    if exp_cats:
+        lines.append("Expense categories: " + ", ".join(exp_cats[:40]))
+    if inc_cats:
+        lines.append("Income categories: " + ", ".join(inc_cats[:20]))
     account_names = [a.name for a in accounts] + [a.institution or "" for a in accounts]
     hit_accounts = _match_names(q, [n for n in account_names if n], min_len=3)
     hit_acct_ids = [
@@ -1024,6 +1046,8 @@ def normalize_vault_action(data: dict | None) -> dict | None:
         return normalize_shop_list_action(data)
     if kind == "create_diary_entry":
         return normalize_diary_entry_action(data)
+    if kind == "create_finance_txn":
+        return normalize_finance_txn_action(data)
     return None
 
 
@@ -1110,6 +1134,107 @@ def normalize_diary_entry_action(data: dict | None) -> dict | None:
     }
 
 
+_PAYMENT_METHODS = {"upi", "credit_card", "debit_card", "atm", "netbanking", "cash", "other"}
+
+
+def normalize_finance_txn_action(data: dict | None) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    if (data.get("type") or "") != "create_finance_txn":
+        return None
+    amount = _f(data.get("amount"))
+    if amount <= 0:
+        return None
+    payee = re.sub(r"\s+", " ", str(data.get("payee") or data.get("label") or "")).strip()[:255]
+    if not payee:
+        payee = "Expense"
+    account = re.sub(r"\s+", " ", str(data.get("account") or "")).strip()[:255] or None
+    category = re.sub(r"\s+", " ", str(data.get("category") or "")).strip()[:120] or None
+    txn_type = str(data.get("txn_type") or "expense").strip().lower()
+    if txn_type not in {"expense", "income"}:
+        txn_type = "expense"
+    txn_date = str(data.get("txn_date") or "").strip()[:10]
+    if txn_date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", txn_date):
+        txn_date = ""
+    if not txn_date:
+        txn_date = datetime.utcnow().strftime("%Y-%m-%d")
+    notes = str(data.get("notes") or "").strip()[:2000] or None
+    method = str(data.get("payment_method") or "").strip().lower().replace(" ", "_")
+    if method not in _PAYMENT_METHODS:
+        method = None
+    return {
+        "type": "create_finance_txn",
+        "amount": amount,
+        "payee": payee,
+        "account": account,
+        "category": category,
+        "txn_type": txn_type,
+        "txn_date": txn_date,
+        "notes": notes,
+        "payment_method": method,
+    }
+
+
+def _resolve_finance_account(db: Session, uid: str, name: str | None, payment_method: str | None):
+    accounts = (
+        db.query(models.FinanceAccount)
+        .filter(models.FinanceAccount.user_id == uid, models.FinanceAccount.archived.is_(False))
+        .order_by(models.FinanceAccount.name)
+        .all()
+    )
+    if not accounts:
+        return None
+    if name:
+        needle = name.casefold()
+        for a in accounts:
+            if a.name.casefold() == needle:
+                return a
+        for a in accounts:
+            if needle in a.name.casefold() or (a.institution and needle in a.institution.casefold()):
+                return a
+    if payment_method == "cash":
+        for a in accounts:
+            if a.account_type == "cash" or "cash" in (a.name or "").casefold():
+                return a
+    if payment_method in {"credit_card", "debit_card"}:
+        want = "credit_card" if payment_method == "credit_card" else "bank"
+        for a in accounts:
+            if a.account_type == want or a.account_type == "credit_card":
+                return a
+    return accounts[0]
+
+
+def _resolve_finance_category(db: Session, uid: str, name: str | None, txn_type: str, payee: str):
+    rows = (
+        db.query(models.FinanceCategory)
+        .filter(models.FinanceCategory.user_id == uid, models.FinanceCategory.kind == txn_type)
+        .order_by(models.FinanceCategory.name)
+        .all()
+    )
+    if not rows:
+        return None
+    if name:
+        needle = name.casefold()
+        for c in rows:
+            if c.name.casefold() == needle:
+                return c
+        for c in rows:
+            if needle in c.name.casefold():
+                return c
+    hay = f"{payee} {name or ''}".casefold()
+    for hint, keys in (
+        ("Transport", ("petrol", "diesel", "fuel", "uber", "ola", "auto", "bus", "train")),
+        ("Food", ("food", "tea", "coffee", "lunch", "dinner", "snacks", "restaurant")),
+        ("Groceries", ("grocery", "groceries", "supermarket", "bigbasket")),
+        ("Shopping", ("shopping", "amazon", "flipkart")),
+    ):
+        if any(k in hay for k in keys):
+            for c in rows:
+                if c.name.casefold() == hint.casefold() or hint.casefold() in c.name.casefold():
+                    return c
+    return None
+
+
 def apply_shop_list_action(db: Session, user: models.User, action: dict) -> dict:
     """Create a ShopList + items from an approved Ask AI action."""
     from app import schemas as sc
@@ -1182,6 +1307,52 @@ def apply_diary_entry_action(db: Session, user: models.User, action: dict) -> di
         "entry_id": entry.id,
         "title": entry.title,
         "url": f"/admin/diary/{entry.id}",
+    }
+
+
+def apply_finance_txn_action(db: Session, user: models.User, action: dict) -> dict:
+    """Create a Money Manager transaction from an approved Ask AI action."""
+    from decimal import Decimal
+
+    from app.routers import finance as fn
+
+    normalized = normalize_finance_txn_action(action)
+    if not normalized:
+        raise ValueError("Invalid finance transaction action")
+    fn.ensure_defaults(db, user)
+    uid = _uid(user)
+    acc = _resolve_finance_account(
+        db, uid, normalized.get("account"), normalized.get("payment_method"),
+    )
+    if not acc:
+        raise ValueError("Add a Money Manager account first")
+    cat = _resolve_finance_category(
+        db, uid, normalized.get("category"), normalized["txn_type"], normalized["payee"],
+    )
+    method = normalized.get("payment_method")
+    desc = normalized["payee"]
+    row = models.FinanceTransaction(
+        user_id=uid,
+        account_id=acc.id,
+        category_id=cat.id if cat else None,
+        txn_type=normalized["txn_type"],
+        amount=Decimal(str(round(normalized["amount"], 2))),
+        txn_date=normalized["txn_date"],
+        payee=normalized["payee"],
+        notes=normalized.get("notes"),
+        description=desc,
+        payment_method=method,
+        source="ask_ai",
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return {
+        "txn_id": row.id,
+        "payee": row.payee or desc,
+        "amount": float(row.amount),
+        "account_name": acc.name,
+        "url": f"/admin/finance?q={row.payee or ''}",
     }
 
 

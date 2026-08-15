@@ -453,3 +453,68 @@ def test_chat_returns_diary_entry_action():
     assert applied.json()["entry_id"]
     assert client.get(f"/diary/{applied.json()['entry_id']}", headers=headers).status_code == 200
 
+
+
+def test_finance_txn_action_normalize_and_apply():
+    from app.ai_chat import apply_finance_txn_action, extract_vault_action
+
+    display, action = extract_vault_action(
+        "Got it — ₹250 petrol on Cash.\n\n"
+        "```vault-action\n"
+        '{"type":"create_finance_txn","amount":250,"payee":"Petrol","account":"Cash",'
+        '"category":"Transport","txn_type":"expense","payment_method":"cash"}\n```'
+    )
+    assert "vault-action" not in display
+    assert action["type"] == "create_finance_txn"
+    assert action["amount"] == 250
+    assert action["payee"] == "Petrol"
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        from app.routers import finance as fn
+        fn.ensure_defaults(db, user)
+        created = apply_finance_txn_action(db, user, action)
+    finally:
+        db.close()
+
+    assert created["txn_id"]
+    assert created["amount"] == 250
+    assert "/admin/finance" in created["url"]
+
+    listed = client.get("/finance/transactions", headers=headers)
+    assert listed.status_code == 200, listed.text
+    assert any(
+        float(t["amount"]) == 250 and (t.get("payee") or "").lower().find("petrol") >= 0
+        for t in listed.json()
+    )
+
+
+def test_chat_returns_finance_txn_action():
+    headers, _ = _headers()
+    assert client.post("/ai/providers", headers=headers, json={
+        "name": "Finance AI", "kind": "openrouter", "api_key": "sk-test",
+        "is_default": True, "model": "openai/gpt-4o-mini",
+    }).status_code == 200
+
+    reply = (
+        "Saving petrol to Money Manager.\n\n```vault-action\n"
+        '{"type":"create_finance_txn","amount":250,"payee":"Petrol","payment_method":"cash"}\n```'
+    )
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": reply, "kind": "openrouter", "model": "openai/gpt-4o-mini",
+        "prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+    }):
+        r = client.post("/ai/chat", headers=headers, json={
+            "message": "money manager — 250 petrol",
+        })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["action"]["type"] == "create_finance_txn"
+    assert body["action"]["amount"] == 250
+    assert "vault-action" not in body["reply"]
+
+    applied = client.post("/ai/chat/apply-finance-txn", headers=headers, json=body["action"])
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["txn_id"]
