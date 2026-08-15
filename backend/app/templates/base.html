@@ -445,6 +445,8 @@
   var openLink = document.getElementById("send-request-open");
   var toastText = document.getElementById("send-request-toast-text");
 
+  var lastReq = null;
+
   function detailUrl(req){
     if (req.item_id) {
       return "/admin/passwords/" + encodeURIComponent(req.item_id) + "#send-req-" + encodeURIComponent(req.id);
@@ -461,7 +463,74 @@
     return true;
   }
 
+  function escapeHtml(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function canInjectHere(req){
+    var path = window.location.pathname || "";
+    if (path === "/admin/passwords/sends") return true;
+    if (req.item_id && path === "/admin/passwords/" + req.item_id) return true;
+    // Item page open but payload lacked item_id — still allow inject on any login item page.
+    if (!req.item_id && /^\/admin\/passwords\/[a-zA-Z0-9]+$/.test(path) && path !== "/admin/passwords/sends") return true;
+    return false;
+  }
+
+  function injectRequestCard(req){
+    var list = document.getElementById("send-requests-list");
+    if (!list || !req || !req.id) return false;
+    if (document.getElementById("send-req-" + req.id)) return true;
+    if (!canInjectHere(req)) return false;
+    var card = document.getElementById("access-requests-card");
+    if (card) card.hidden = false;
+    var who = escapeHtml(req.name || req.email || "Anonymous");
+    if (req.name && req.email) who = escapeHtml(req.name) + " · " + escapeHtml(req.email);
+    var when = (req.created_at || "").replace("T", " ").slice(0, 16);
+    var next = (window.location.pathname || "") + (window.location.search || "");
+    var el = document.createElement("div");
+    el.className = "surface";
+    el.id = "send-req-" + req.id;
+    el.style.cssText = "padding:1rem;border-radius:12px;border-color:rgba(240,169,78,.35);";
+    el.innerHTML =
+      '<div class="d-flex flex-wrap align-items-start gap-2">' +
+        (req.has_photo
+          ? '<a href="/admin/passwords/send-requests/' + encodeURIComponent(req.id) + '/photo" target="_blank" rel="noopener">' +
+            '<img src="/admin/passwords/send-requests/' + encodeURIComponent(req.id) + '/photo" alt="Requester photo" ' +
+            'style="width:64px;height:64px;object-fit:cover;border-radius:10px;border:1px solid var(--v-line);"></a>'
+          : "") +
+        '<div class="flex-grow-1 min-w-0">' +
+          '<div class="fw-semibold">' + who + '</div>' +
+          '<div class="text-muted small">Asked for <strong>' + escapeHtml(req.send_name || "share") + '</strong></div>' +
+          '<div class="mono text-muted small mt-1">' + escapeHtml(req.ip || "—") + '</div>' +
+          '<div class="text-muted small mt-1">' + escapeHtml(when) + ' UTC · ' + escapeHtml(req.status || "pending") + '</div>' +
+        '</div>' +
+        '<div class="d-flex flex-column gap-1">' +
+          '<button type="button" class="btn btn-sm btn-outline-light js-request-video" data-request-id="' + escapeHtml(req.id) + '">' +
+            '<i class="bi bi-camera-video"></i> Request live video</button>' +
+          '<form method="post" action="/admin/passwords/send-requests/' + encodeURIComponent(req.id) + '/grant">' +
+            '<input type="hidden" name="next" value="' + escapeHtml(next) + '">' +
+            '<button class="btn btn-sm btn-primary" type="submit"><i class="bi bi-check2-circle"></i> Grant access</button>' +
+          '</form>' +
+          '<form method="post" action="/admin/passwords/send-requests/' + encodeURIComponent(req.id) + '/dismiss">' +
+            '<input type="hidden" name="next" value="' + escapeHtml(next) + '">' +
+            '<button class="btn btn-sm btn-ghost" type="submit">Dismiss</button>' +
+          '</form>' +
+        '</div>' +
+      '</div>';
+    list.insertBefore(el, list.firstChild);
+    var vbtn = el.querySelector(".js-request-video");
+    if (vbtn && window.VaultSendVideo) {
+      vbtn.addEventListener("click", function () {
+        VaultSendVideo.admin({ requestId: req.id, next: next });
+      });
+    }
+    return true;
+  }
+
   function fill(req){
+    lastReq = req;
     var label = (req.name || req.email || req.ip || "Someone");
     who.textContent = label + " asked for access to “" + (req.send_name || "a share") + "”.";
     meta.textContent = [req.ip, req.has_photo ? "photo attached" : null, (req.created_at || "").replace("T", " ").slice(0, 16)]
@@ -477,26 +546,22 @@
   }
 
   openLink.addEventListener("click", function(ev){
+    ev.preventDefault();
     var reqId = openLink.getAttribute("data-request-id") || shownId || "";
     var target = openLink.getAttribute("href") || "/admin/passwords/sends";
-    var path = target.split("#")[0];
-    // Already on this page — modal link to same URL looked like a no-op.
-    if (path === window.location.pathname) {
-      ev.preventDefault();
-      modal.hide();
-      if (reqId && focusRequest(reqId)) return;
-      window.location.hash = "send-req-" + encodeURIComponent(reqId);
-      setTimeout(function(){ focusRequest(reqId); }, 50);
-      return;
-    }
-    // Force navigation even if Bootstrap is holding focus.
-    ev.preventDefault();
-    window.location.assign(target);
+    var pathOnly = target.split("#")[0];
+    modal.hide();
+    if (reqId && focusRequest(reqId)) return;
+    if (lastReq && injectRequestCard(lastReq) && focusRequest(reqId)) return;
+    // Not on a page with the list (or inject failed) — hard reload/navigate.
+    var sep = pathOnly.indexOf("?") >= 0 ? "&" : "?";
+    window.location.assign(pathOnly + sep + "focus_req=" + encodeURIComponent(reqId) + "#send-req-" + encodeURIComponent(reqId));
   });
 
   function showReq(req){
     if (!req || !req.id || seen[req.id]) return;
     seen[req.id] = true;
+    injectRequestCard(req);
     fill(req);
     modal.show();
     if (toast && toastText) {
