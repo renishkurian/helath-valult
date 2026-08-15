@@ -768,7 +768,7 @@ private fun VaultActionCard(
             val extra = (action.items?.size ?: 0) - 8
             if (extra > 0) Text("+$extra more", color = InkSoft, style = MaterialTheme.typography.labelSmall)
         }
-        Spacer(modifier.height(8.dp))
+        Spacer(Modifier.height(8.dp))
         if (doneUrl != null) {
             Text(
                 "Saved: ${doneLabel ?: title}",
