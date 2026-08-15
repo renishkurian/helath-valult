@@ -6,7 +6,7 @@
 <title>{{ send.name }} — Send</title>
 <meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
-{% if grant_required and grant_pending %}<meta http-equiv="refresh" content="5">{% endif %}
+{% if grant_required and grant_pending and video_status not in ('requested', 'live') %}<meta http-equiv="refresh" content="5">{% endif %}
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
@@ -55,13 +55,33 @@
           {% if grant_pending %}
           <div class="alert alert-info mt-3" role="status">
             <i class="bi bi-hourglass-split"></i>
-            Waiting for the owner to grant access. This page refreshes automatically.
+            Waiting for the owner to grant access. This page updates automatically.
           </div>
           {% elif grant_denied %}
           <div class="alert alert-danger mt-3" role="alert">
             Access was declined. Ask the owner for a new link if you still need it.
           </div>
           {% endif %}
+
+          <div id="guest-video-panel" class="mt-3" hidden
+               data-video-status="{{ video_status|default('none') }}">
+            <div data-v="wait" class="stack">
+              <div class="alert alert-info mb-0" role="status">
+                <i class="bi bi-camera-video"></i>
+                <span data-v="note">The owner asked for a live video check before granting access.</span>
+              </div>
+              <button type="button" class="btn btn-primary btn-lg btn-block" data-v="accept">
+                <i class="bi bi-camera-video-fill"></i> Accept &amp; turn on video
+              </button>
+            </div>
+            <div data-v="live" class="stack" hidden>
+              <p class="text-muted small mb-1" data-v="note">Camera on — the owner can see you now.</p>
+              <video playsinline muted autoplay style="width:100%;max-height:280px;background:#000;border-radius:12px;"></video>
+              <button type="button" class="btn btn-outline-danger" data-v="hangup">
+                <i class="bi bi-telephone-x"></i> End video
+              </button>
+            </div>
+          </div>
 
         {% elif email_otp_required %}
           <p class="text-muted mb-3">
@@ -197,7 +217,7 @@
     </div>
     {% endif %}
 
-    {% if request_access_enabled and not pin_required and (grant_required or grant_pending or request_ok or request_err) %}
+    {% if request_access_enabled and not pin_required and grant_required and (grant_pending or request_ok or request_err or grant_denied) %}
     <div class="card mt-3">
       <div class="card-header">
         <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
@@ -314,5 +334,11 @@
   });
 })();
 </script>
+{% if grant_pending or video_status in ('requested', 'live') %}
+<script src="/static/vault-send-video.js?v=1"></script>
+<script>
+VaultSendVideo.guest({ token: {{ token|tojson }} });
+</script>
+{% endif %}
 </body>
 </html>

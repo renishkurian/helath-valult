@@ -320,6 +320,14 @@ private fun AccessRequestCard(
             color = HubTextDim,
             style = MaterialTheme.typography.bodySmall
         )
+        if (req.video_status == "requested" || req.video_status == "live") {
+            Text(
+                if (req.video_status == "live") "Live video in progress (open on web to watch)"
+                else "Video requested — open this request on web to watch",
+                color = VaultGold,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
         req.viewed_at?.takeIf { it.isNotBlank() }?.let { viewed ->
             Text(
                 "Password viewed · ${viewed.take(16)}",

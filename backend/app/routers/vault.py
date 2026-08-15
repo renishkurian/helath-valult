@@ -804,6 +804,8 @@ def public_send_page(
         "request_access_enabled": require_grant,
         "grant_pending": bool(guest_req and guest_req.status in ("pending", "seen")),
         "grant_denied": bool(guest_req and guest_req.status == "dismissed"),
+        "guest_request_id": guest_req.id if guest_req else "",
+        "video_status": (guest_req.video_status if guest_req else "none") or "none",
         "email_otp_enabled": bool(data.get("require_email_otp")),
         "email_otp_required": bool(data.get("require_email_otp")) and not email_ok,
         "email_hint": ", ".join(_normalize_allowed_emails(data.get("allowed_emails") or [])[:3]),
@@ -1064,6 +1066,86 @@ async def public_request_access(
     return resp
 
 
+@public_router.get("/public/{token}/request-status")
+def public_request_status(token: str, request: Request, db: Session = Depends(get_db)):
+    """Guest polls grant / live-video state for their cookie-bound request."""
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        raise HTTPException(410, "Send not found")
+    row = _guest_request(request, send, db)
+    if not row:
+        return {"ok": False, "status": None, "video_status": "none"}
+    return {
+        "ok": True,
+        "id": row.id,
+        "status": row.status,
+        "video_status": row.video_status or "none",
+    }
+
+
+@public_router.post("/public/{token}/video/accept")
+def public_video_accept(token: str, request: Request, db: Session = Depends(get_db)):
+    """Guest accepts live video and marks the session live."""
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        raise HTTPException(410, "Send not found")
+    row = _guest_request(request, send, db)
+    if not row or row.status not in ("pending", "seen"):
+        raise HTTPException(400, "No pending access request")
+    if (row.video_status or "none") not in ("requested", "live"):
+        raise HTTPException(400, "Owner has not asked for live video")
+    from app.video_signal import video_signal_hub
+    row.video_status = "live"
+    db.commit()
+    video_signal_hub.push(row.id, "admin", {"type": "ready"})
+    return {"ok": True, "video_status": "live", "id": row.id}
+
+
+@public_router.post("/public/{token}/video/signal")
+async def public_video_signal(token: str, request: Request, db: Session = Depends(get_db)):
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        raise HTTPException(410, "Send not found")
+    row = _guest_request(request, send, db)
+    if not row or (row.video_status or "none") not in ("requested", "live"):
+        raise HTTPException(400, "Video session is not active")
+    body = await request.json()
+    msg_type = str((body or {}).get("type") or "").strip().lower()
+    if msg_type not in ("offer", "answer", "ice", "hangup"):
+        raise HTTPException(400, "Invalid signal type")
+    from app.video_signal import video_signal_hub
+    payload: dict = {"type": msg_type}
+    if body.get("sdp"):
+        payload["sdp"] = body["sdp"]
+    if body.get("candidate") is not None:
+        payload["candidate"] = body["candidate"]
+    video_signal_hub.push(row.id, "admin", payload)
+    if msg_type == "hangup":
+        row.video_status = "ended"
+        db.commit()
+    return {"ok": True}
+
+
+@public_router.get("/public/{token}/video/signals")
+def public_video_signals(token: str, request: Request, db: Session = Depends(get_db)):
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        raise HTTPException(410, "Send not found")
+    row = _guest_request(request, send, db)
+    if not row:
+        return {"video_status": "none", "status": None, "messages": []}
+    from app.video_signal import video_signal_hub
+    return {
+        "video_status": row.video_status or "none",
+        "status": row.status,
+        "messages": video_signal_hub.drain(row.id, "guest"),
+    }
+
+
 @public_router.post("/public/{token}/email-otp")
 async def public_send_email_otp(
     token: str,
@@ -1225,8 +1307,11 @@ def grant_send_request(
         raise HTTPException(400, "Request was dismissed")
     row.status = "granted"
     row.decided_at = datetime.utcnow()
+    row.video_status = "ended"
     db.commit()
     db.refresh(row)
+    from app.video_signal import video_signal_hub
+    video_signal_hub.clear(row.id)
     return _request_out(row)
 
 
@@ -1249,9 +1334,106 @@ def dismiss_send_request(
         raise HTTPException(404, "Request not found")
     row.status = "dismissed"
     row.decided_at = datetime.utcnow()
+    row.video_status = "ended"
+    db.commit()
+    db.refresh(row)
+    from app.video_signal import video_signal_hub
+    video_signal_hub.clear(row.id)
+    return _request_out(row)
+
+
+def _owned_send_request(request_id: str, db: Session, current_user: models.User) -> models.VaultSendRequest:
+    row = (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.id == request_id,
+            models.VaultSendRequest.user_id == vault_id(current_user),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Request not found")
+    return row
+
+
+@router.post("/send-requests/{request_id}/video/request", response_model=schemas.VaultSendRequestOut)
+def request_send_video(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Owner asks the waiting guest to turn on live camera."""
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    if row.status not in ("pending", "seen"):
+        raise HTTPException(400, "Can only request video while the access request is pending")
+    from app.video_signal import video_signal_hub
+    video_signal_hub.clear(row.id)
+    row.video_status = "requested"
+    if row.status == "pending":
+        row.status = "seen"
     db.commit()
     db.refresh(row)
     return _request_out(row)
+
+
+@router.post("/send-requests/{request_id}/video/end", response_model=schemas.VaultSendRequestOut)
+def end_send_video(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    row.video_status = "ended"
+    db.commit()
+    db.refresh(row)
+    from app.video_signal import video_signal_hub
+    video_signal_hub.push(row.id, "guest", {"type": "hangup"})
+    return _request_out(row)
+
+
+@router.post("/send-requests/{request_id}/video/signal")
+def admin_video_signal(
+    request_id: str,
+    body: schemas.VaultVideoSignalIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    if row.video_status not in ("requested", "live"):
+        raise HTTPException(400, "Video session is not active")
+    from app.video_signal import video_signal_hub
+    msg_type = (body.type or "").strip().lower()
+    if msg_type not in ("offer", "answer", "ice", "hangup"):
+        raise HTTPException(400, "Invalid signal type")
+    payload: dict = {"type": msg_type}
+    if body.sdp:
+        payload["sdp"] = body.sdp
+    if body.candidate is not None:
+        payload["candidate"] = body.candidate
+    video_signal_hub.push(row.id, "guest", payload)
+    if msg_type == "hangup":
+        row.video_status = "ended"
+        db.commit()
+    return {"ok": True}
+
+
+@router.get("/send-requests/{request_id}/video/signals")
+def admin_video_signals(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    from app.video_signal import video_signal_hub
+    return {
+        "video_status": row.video_status or "none",
+        "status": row.status,
+        "messages": video_signal_hub.drain(row.id, "admin"),
+    }
 
 
 @router.get("/send-requests/{request_id}/photo")
@@ -1261,15 +1443,8 @@ def send_request_photo(
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
-    row = (
-        db.query(models.VaultSendRequest)
-        .filter(
-            models.VaultSendRequest.id == request_id,
-            models.VaultSendRequest.user_id == vault_id(current_user),
-        )
-        .first()
-    )
-    if not row or not row.photo_path:
+    row = _owned_send_request(request_id, db, current_user)
+    if not row.photo_path:
         raise HTTPException(404, "Photo not found")
     path = settings.STORAGE_DIR / row.photo_path
     if not path.is_file():

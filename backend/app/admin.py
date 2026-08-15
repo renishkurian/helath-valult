@@ -1614,6 +1614,66 @@ async def passwords_send_request_grant(request_id: str, request: Request, db: Se
     return RedirectResponse(_safe_admin_next(str(form.get("next") or "")), status_code=302)
 
 
+@router.post("/passwords/send-requests/{request_id}/video/request")
+async def passwords_send_request_video(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import request_send_video
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    wants_json = "application/json" in (request.headers.get("accept") or "") or (
+        request.headers.get("x-requested-with") == "fetch"
+    )
+    try:
+        out = request_send_video(request_id, db=db, current_user=user)
+    except Exception as exc:
+        from fastapi import HTTPException as FastAPIHTTPException
+        if isinstance(exc, FastAPIHTTPException):
+            if wants_json:
+                return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+            raise
+        raise
+    if wants_json:
+        return JSONResponse({
+            "ok": True,
+            "id": out.id,
+            "video_status": out.video_status,
+            "status": out.status,
+        })
+    form = await request.form()
+    return RedirectResponse(_safe_admin_next(str(form.get("next") or "")), status_code=302)
+
+
+@router.post("/passwords/send-requests/{request_id}/video/end")
+async def passwords_send_request_video_end(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import end_send_video
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    end_send_video(request_id, db=db, current_user=user)
+    return JSONResponse({"ok": True})
+
+
+@router.post("/passwords/send-requests/{request_id}/video/signal")
+async def passwords_send_request_video_signal(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import admin_video_signal
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    data = await request.json()
+    admin_video_signal(request_id, sc.VaultVideoSignalIn(**data), db=db, current_user=user)
+    return JSONResponse({"ok": True})
+
+
+@router.get("/passwords/send-requests/{request_id}/video/signals")
+def passwords_send_request_video_signals(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import admin_video_signals
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return admin_video_signals(request_id, db=db, current_user=user)
+
+
 @router.post("/passwords/send-requests/{request_id}/dismiss")
 async def passwords_send_request_dismiss(request_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.vault import dismiss_send_request
