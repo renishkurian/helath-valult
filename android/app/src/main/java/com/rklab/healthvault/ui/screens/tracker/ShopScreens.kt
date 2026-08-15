@@ -303,8 +303,9 @@ fun ShopDetailScreen(
     fun reload() {
         scope.launch {
             loading = true
-            runCatching { lst = repository.getShopList(listId) }
+            runCatching { repository.getShopList(listId) }
                 .onSuccess { detail ->
+                    lst = detail
                     if (postCategoryId == null) {
                         postCategoryId = detail.finance_category_id
                     }
