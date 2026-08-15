@@ -19,6 +19,7 @@ class HealthVaultApp : Application() {
 
     @Volatile var pendingQuickAdd: Boolean = false
     @Volatile var pendingOpenCare: Boolean = false
+    @Volatile var pendingOpenVaultSends: Boolean = false
 
     override fun onCreate() {
         super.onCreate()

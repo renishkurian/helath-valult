@@ -3,18 +3,23 @@ package com.rklab.healthvault.ui.screens.passwords
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultSendOut
@@ -33,11 +38,14 @@ import com.rklab.healthvault.ui.theme.HubTextDim
 import com.rklab.healthvault.ui.theme.StampRed
 import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.util.ClipboardUtil
+import java.io.File
+import kotlin.random.Random
 import kotlinx.coroutines.launch
 
 @Composable
 fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? = null) {
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val scope = rememberCoroutineScope()
     var sends by remember { mutableStateOf<List<VaultSendOut>>(emptyList()) }
     var requests by remember { mutableStateOf<List<VaultSendRequestOut>>(emptyList()) }
@@ -51,6 +59,8 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     var oneTime by remember { mutableStateOf(false) }
     var includeTotp by remember { mutableStateOf(false) }
     val fieldColors = vaultFieldColors()
+    val selectedItem = items.firstOrNull { it.id == itemId }
+    val canIncludeTotp = sendType == "login" && selectedItem?.has_totp == true
 
     fun reload() {
         scope.launch {
@@ -63,6 +73,9 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
         }
     }
     LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(canIncludeTotp) {
+        if (!canIncludeTotp) includeTotp = false
+    }
     val base = repository.getServerUrl()?.trimEnd('/') ?: ""
 
     Column(
@@ -119,10 +132,19 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(
-                    pin, { pin = it }, label = { Text("Access code / OTP (optional)") },
-                    modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
-                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        pin, { pin = it }, label = { Text("Access code / OTP (optional)") },
+                        modifier = Modifier.weight(1f), singleLine = true, colors = fieldColors
+                    )
+                    TextButton(onClick = { pin = generateAccessCode() }) {
+                        Text("Generate", color = VaultGold)
+                    }
+                }
                 OutlinedTextField(
                     hours, { hours = it.filter(Char::isDigit) }, label = { Text("Expires in hours") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
@@ -134,7 +156,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                     Checkbox(checked = oneTime, onCheckedChange = { oneTime = it })
                     Text("One-time view", color = HubText)
                 }
-                if (sendType == "login") {
+                if (canIncludeTotp) {
                     Row(
                         Modifier.fillMaxWidth(),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
@@ -158,7 +180,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                         pin = pin.ifBlank { null },
                                         expires_in_hours = hours.toIntOrNull() ?: 48,
                                         max_views = if (oneTime) 1 else null,
-                                        include_totp = includeTotp && sendType == "login"
+                                        include_totp = includeTotp && canIncludeTotp
                                     )
                                 )
                                 val url = "$base/v/${created.token}"
@@ -186,47 +208,16 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                 }
             }
             items(requests, key = { "req-${it.id}" }) { req ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(VaultCardShape)
-                        .background(HubGlass)
-                        .border(1.dp, HubStroke, VaultCardShape)
-                        .padding(14.dp)
-                ) {
-                    val who = listOfNotNull(req.name, req.email).joinToString(" · ").ifBlank { "Anonymous" }
-                    Text(who, color = HubText, fontWeight = FontWeight.SemiBold)
-                    Text("Asked for ${req.send_name}", color = HubTextDim, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        listOfNotNull(req.ip, req.status, req.created_at.take(16)).joinToString(" · "),
-                        color = HubTextDim,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    if (!req.latitude.isNullOrBlank() && !req.longitude.isNullOrBlank()) {
-                        Text("Loc ${req.latitude}, ${req.longitude}", color = HubTextDim, style = MaterialTheme.typography.bodySmall)
-                    }
-                    if (req.has_photo) {
-                        Text("Photo attached (view on web)", color = VaultGold, style = MaterialTheme.typography.bodySmall)
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (req.status == "pending") {
-                            TextButton(onClick = {
-                                scope.launch {
-                                    runCatching { repository.markVaultSendRequestSeen(req.id) }
-                                    reload()
-                                }
-                            }) { Text("Mark seen", color = VaultGold) }
+                AccessRequestCard(
+                    repository = repository,
+                    req = req,
+                    onMaps = { lat, lng ->
+                        runCatching {
+                            uriHandler.openUri("https://maps.google.com/?q=$lat,$lng")
                         }
-                        if (req.status != "dismissed") {
-                            TextButton(onClick = {
-                                scope.launch {
-                                    runCatching { repository.dismissVaultSendRequest(req.id) }
-                                    reload()
-                                }
-                            }) { Text("Dismiss", color = StampRed) }
-                        }
-                    }
-                }
+                    },
+                    onChanged = { reload() }
+                )
             }
             item {
                 Spacer(Modifier.height(16.dp))
@@ -237,34 +228,172 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                 )
             }
             items(sends, key = { it.id }) { send ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(VaultCardShape)
-                        .background(HubGlass)
-                        .border(1.dp, HubStroke, VaultCardShape)
-                        .padding(14.dp)
-                ) {
-                    Text(send.name, color = HubText, fontWeight = FontWeight.SemiBold)
-                    Text(
-                        "${send.send_type} · ${send.view_count} views · ${if (send.revoked) "revoked" else "active"}",
-                        color = HubTextDim,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    val url = "$base/v/${send.token}"
-                    Text(url, color = VaultGold, style = MaterialTheme.typography.bodySmall)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextButton(onClick = { ClipboardUtil.copy(context, "Send link", url) }) {
-                            Text("Copy link", color = VaultGold)
-                        }
-                        if (!send.revoked) {
-                            TextButton(onClick = {
-                                scope.launch { repository.revokeVaultSend(send.id); reload() }
-                            }) { Text("Revoke", color = StampRed) }
-                        }
+                SendCard(
+                    send = send,
+                    base = base,
+                    onCopy = { label, value -> ClipboardUtil.copy(context, label, value) },
+                    onRevoke = {
+                        scope.launch { repository.revokeVaultSend(send.id); reload() }
                     }
-                }
+                )
             }
         }
     }
 }
+
+@Composable
+private fun AccessRequestCard(
+    repository: HealthVaultRepository,
+    req: VaultSendRequestOut,
+    onMaps: (String, String) -> Unit,
+    onChanged: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var photoFile by remember(req.id, req.has_photo) { mutableStateOf<File?>(null) }
+
+    LaunchedEffect(req.id, req.has_photo) {
+        if (!req.has_photo) {
+            photoFile = null
+            return@LaunchedEffect
+        }
+        photoFile = runCatching {
+            val dest = File(context.cacheDir, "send_req_${req.id}.jpg")
+            repository.downloadVaultSendRequestPhoto(req.id, dest)
+        }.getOrNull()
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(VaultCardShape)
+            .background(HubGlass)
+            .border(1.dp, HubStroke, VaultCardShape)
+            .padding(14.dp)
+    ) {
+        val who = listOfNotNull(req.name, req.email).joinToString(" · ").ifBlank { "Anonymous" }
+        Text(who, color = HubText, fontWeight = FontWeight.SemiBold)
+        Text("Asked for ${req.send_name}", color = HubTextDim, style = MaterialTheme.typography.bodySmall)
+        Text(
+            listOfNotNull(req.ip, req.status, req.created_at.take(16)).joinToString(" · "),
+            color = HubTextDim,
+            style = MaterialTheme.typography.bodySmall
+        )
+        req.user_agent?.takeIf { it.isNotBlank() }?.let { ua ->
+            Text(
+                ua.take(96) + if (ua.length > 96) "…" else "",
+                color = HubTextDim,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
+        if (!req.latitude.isNullOrBlank() && !req.longitude.isNullOrBlank()) {
+            Text(
+                "Loc ${req.latitude}, ${req.longitude} · Open map",
+                color = VaultGold,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.clickable { onMaps(req.latitude!!, req.longitude!!) }
+            )
+        }
+        photoFile?.let { file ->
+            Spacer(Modifier.height(8.dp))
+            AsyncImage(
+                model = file,
+                contentDescription = "Access request photo",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(12.dp))
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (req.status == "pending") {
+                TextButton(onClick = {
+                    scope.launch {
+                        runCatching { repository.markVaultSendRequestSeen(req.id) }
+                        onChanged()
+                    }
+                }) { Text("Mark seen", color = VaultGold) }
+            }
+            if (req.status != "dismissed") {
+                TextButton(onClick = {
+                    scope.launch {
+                        runCatching { repository.dismissVaultSendRequest(req.id) }
+                        onChanged()
+                    }
+                }) { Text("Dismiss", color = StampRed) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SendCard(
+    send: VaultSendOut,
+    base: String,
+    onCopy: (String, String) -> Unit,
+    onRevoke: () -> Unit
+) {
+    val url = "$base/v/${send.token}"
+    val qrUrl = "$url/qr"
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(VaultCardShape)
+            .background(HubGlass)
+            .border(1.dp, HubStroke, VaultCardShape)
+            .padding(14.dp)
+    ) {
+        Text(send.name, color = HubText, fontWeight = FontWeight.SemiBold)
+        Text(
+            "${send.send_type} · ${send.view_count} views · ${if (send.revoked) "revoked" else "active"}",
+            color = HubTextDim,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            SendBadge("Expires ${send.expires_at.take(16)}")
+            if (send.has_pin) SendBadge("Access code")
+            if (send.requires_totp) SendBadge("Authenticator")
+            send.max_views?.let { SendBadge(if (it == 1) "One-time" else "Max $it views") }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(url, color = VaultGold, style = MaterialTheme.typography.bodySmall)
+        if (send.requires_totp) {
+            Text(qrUrl, color = HubTextDim, style = MaterialTheme.typography.bodySmall)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = { onCopy("Password link", url) }) {
+                Text(if (send.requires_totp) "Copy password link" else "Copy link", color = VaultGold)
+            }
+            if (send.requires_totp) {
+                TextButton(onClick = { onCopy("QR link", qrUrl) }) {
+                    Text("Copy QR link", color = VaultGold)
+                }
+            }
+            if (!send.revoked) {
+                TextButton(onClick = onRevoke) { Text("Revoke", color = StampRed) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SendBadge(label: String) {
+    Text(
+        label,
+        color = HubTextDim,
+        style = MaterialTheme.typography.labelSmall,
+        modifier = Modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(HubBg)
+            .border(1.dp, HubStroke, RoundedCornerShape(999.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    )
+}
+
+internal fun generateAccessCode(): String =
+    (100000 + Random.nextInt(900000)).toString()

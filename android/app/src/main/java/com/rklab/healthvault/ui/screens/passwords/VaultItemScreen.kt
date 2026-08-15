@@ -1,5 +1,6 @@
 package com.rklab.healthvault.ui.screens.passwords
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,11 +19,15 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,12 +42,14 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.data.model.VaultHistoryOut
 import com.rklab.healthvault.data.model.VaultItemOut
+import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultTotpOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.components.VaultBackLink
 import com.rklab.healthvault.ui.components.VaultGlassCard
 import com.rklab.healthvault.ui.components.VaultOutlinedButton
 import com.rklab.healthvault.ui.components.VaultPrimaryButton
+import com.rklab.healthvault.ui.components.vaultFieldColors
 import com.rklab.healthvault.ui.theme.HubBg
 import com.rklab.healthvault.ui.theme.HubText
 import com.rklab.healthvault.ui.theme.HubTextDim
@@ -70,6 +77,15 @@ fun VaultItemScreen(
     var totp by remember { mutableStateOf<VaultTotpOut?>(null) }
     var history by remember { mutableStateOf<List<VaultHistoryOut>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showShare by remember { mutableStateOf(false) }
+    var sharePin by remember { mutableStateOf("") }
+    var shareHours by remember { mutableStateOf("48") }
+    var shareOneTime by remember { mutableStateOf(false) }
+    var shareIncludeTotp by remember { mutableStateOf(false) }
+    var shareBusy by remember { mutableStateOf(false) }
+    var shareError by remember { mutableStateOf<String?>(null) }
+    var shareReady by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
+    val fieldColors = vaultFieldColors()
 
     fun load() {
         scope.launch {
@@ -158,6 +174,18 @@ fun VaultItemScreen(
         Spacer(Modifier.height(16.dp))
         VaultPrimaryButton("Edit", onEdit)
         Spacer(Modifier.height(8.dp))
+        if (current.item_type == "login") {
+            VaultOutlinedButton("Share", {
+                sharePin = ""
+                shareHours = "48"
+                shareOneTime = false
+                shareIncludeTotp = false
+                shareError = null
+                shareReady = null
+                showShare = true
+            })
+            Spacer(Modifier.height(8.dp))
+        }
         VaultOutlinedButton("Send a copy", onSend)
         Spacer(Modifier.height(8.dp))
         VaultOutlinedButton("Move to trash", {
@@ -185,6 +213,132 @@ fun VaultItemScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+
+    if (showShare && item?.item_type == "login") {
+        val currentItem = item!!
+        val base = repository.getServerUrl()?.trimEnd('/') ?: ""
+        AlertDialog(
+            onDismissRequest = { if (!shareBusy) showShare = false },
+            title = { Text("Share this login") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    shareReady?.let { (token, needsTotp) ->
+                        val url = "$base/v/$token"
+                        Text("Share link ready", color = HubText)
+                        Text(url, color = VaultGold, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        if (needsTotp) {
+                            Text(
+                                "$url/qr",
+                                color = HubTextDim,
+                                fontFamily = FontFamily.Monospace,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text("Send the QR link separately from the password link.", color = HubTextDim, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = { ClipboardUtil.copy(context, "Password link", url) }) {
+                                Text("Copy password link", color = VaultGold)
+                            }
+                            if (needsTotp) {
+                                TextButton(onClick = { ClipboardUtil.copy(context, "QR link", "$url/qr") }) {
+                                    Text("Copy QR link", color = VaultGold)
+                                }
+                            }
+                        }
+                    } ?: run {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                sharePin,
+                                { sharePin = it },
+                                label = { Text("Access code (optional)") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                colors = fieldColors
+                            )
+                            TextButton(onClick = { sharePin = generateAccessCode() }) {
+                                Text("Generate", color = VaultGold)
+                            }
+                        }
+                        OutlinedTextField(
+                            shareHours,
+                            { shareHours = it.filter(Char::isDigit) },
+                            label = { Text("Expires in hours") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = fieldColors
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareOneTime, onCheckedChange = { shareOneTime = it })
+                            Text("One-time view", color = HubText)
+                        }
+                        if (currentItem.has_totp) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = shareIncludeTotp, onCheckedChange = { shareIncludeTotp = it })
+                                Text("Require authenticator to view password", color = HubText)
+                            }
+                        }
+                        shareError?.let { Text(it, color = StampRed, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            },
+            confirmButton = {
+                if (shareReady != null) {
+                    TextButton(onClick = {
+                        val (token, needsTotp) = shareReady!!
+                        val url = "$base/v/$token"
+                        val shareText = if (needsTotp) "Password: $url\nAuthenticator QR: $url/qr" else url
+                        context.startActivity(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        })
+                        showShare = false
+                    }) { Text("Share", color = VaultGold) }
+                } else {
+                    TextButton(
+                        enabled = !shareBusy,
+                        onClick = {
+                            scope.launch {
+                                shareBusy = true
+                                shareError = null
+                                runCatching {
+                                    repository.createVaultSend(
+                                        VaultSendCreate(
+                                            name = currentItem.name,
+                                            send_type = "login",
+                                            item_id = itemId,
+                                            pin = sharePin.ifBlank { null },
+                                            expires_in_hours = shareHours.toIntOrNull() ?: 48,
+                                            max_views = if (shareOneTime) 1 else null,
+                                            include_totp = shareIncludeTotp && currentItem.has_totp
+                                        )
+                                    )
+                                }.onSuccess { created ->
+                                    shareReady = created.token to created.requires_totp
+                                    val url = "$base/v/${created.token}"
+                                    val shareText = if (created.requires_totp) {
+                                        "Password: $url\nAuthenticator QR: $url/qr"
+                                    } else url
+                                    ClipboardUtil.copy(context, "Send link", shareText)
+                                }.onFailure {
+                                    shareError = it.message ?: "Could not create share"
+                                }
+                                shareBusy = false
+                            }
+                        }
+                    ) { Text(if (shareBusy) "Creating…" else "Create share link", color = VaultGold) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!shareBusy) showShare = false }) {
+                    Text("Close", color = HubTextDim)
+                }
+            }
+        )
     }
 }
 

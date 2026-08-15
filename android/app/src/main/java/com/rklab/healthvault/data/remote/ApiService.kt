@@ -390,6 +390,9 @@ interface ApiService {
     @POST("vault/send-requests/{id}/dismiss")
     suspend fun dismissVaultSendRequest(@Path("id") id: String): VaultSendRequestOut
 
+    @GET("vault/send-requests/{id}/photo")
+    suspend fun downloadVaultSendRequestPhoto(@Path("id") id: String): ResponseBody
+
     // ---------- Document Vault ----------
     @GET("locker/summary")
     suspend fun lockerSummary(): LockerSummaryOut

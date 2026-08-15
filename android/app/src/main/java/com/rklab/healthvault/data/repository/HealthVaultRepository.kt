@@ -182,6 +182,13 @@ class HealthVaultRepository(
     suspend fun listVaultSendRequests(status: String? = "pending") = api.listVaultSendRequests(status)
     suspend fun markVaultSendRequestSeen(id: String) = api.markVaultSendRequestSeen(id)
     suspend fun dismissVaultSendRequest(id: String) = api.dismissVaultSendRequest(id)
+    suspend fun downloadVaultSendRequestPhoto(id: String, destination: java.io.File): java.io.File {
+        val body = api.downloadVaultSendRequestPhoto(id)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
     suspend fun lockerSummary() = api.lockerSummary()
     suspend fun diarySummary() = api.diarySummary()
     suspend fun listDiaryCategories() = api.listDiaryCategories()

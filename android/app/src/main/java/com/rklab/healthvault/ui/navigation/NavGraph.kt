@@ -194,6 +194,15 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             return@LaunchedEffect
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val app = context.applicationContext as com.rklab.healthvault.HealthVaultApp
+            if (app.pendingOpenVaultSends) {
+                app.pendingOpenVaultSends = false
+                navController.navigate(Routes.VAULT) {
+                    popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                    launchSingleTop = true
+                }
+                navController.navigate(Routes.vaultSends())
+            }
             while (true) {
                 runCatching {
                     val next = repository.pendingLoginChallenges().firstOrNull()
@@ -205,6 +214,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         VaultSendRequestNotifier.show(context, it)
                     }
                 }
+                if (app.pendingOpenVaultSends) {
+                    app.pendingOpenVaultSends = false
+                    navController.navigate(Routes.VAULT) {
+                        popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                        launchSingleTop = true
+                    }
+                    navController.navigate(Routes.vaultSends())
+                }
                 delay(2_000)
             }
         }
@@ -212,6 +229,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
 
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
+
     val mainTabs = setOf(Routes.HOME, Routes.SEARCH, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
     val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)

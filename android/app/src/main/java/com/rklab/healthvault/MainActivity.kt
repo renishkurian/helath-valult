@@ -143,11 +143,15 @@ class MainActivity : FragmentActivity() {
         if (intent?.getBooleanExtra(EXTRA_OPEN_CARE, false) == true) {
             app.pendingOpenCare = true
         }
+        if (intent?.getBooleanExtra(EXTRA_OPEN_VAULT_SENDS, false) == true) {
+            app.pendingOpenVaultSends = true
+        }
     }
 
     companion object {
         const val EXTRA_QUICK_ADD = "quick_add"
         const val EXTRA_OPEN_CARE = "open_care"
+        const val EXTRA_OPEN_VAULT_SENDS = "open_vault_sends"
     }
 
     enum class AuthState { Checking, Pin, Authenticated }
