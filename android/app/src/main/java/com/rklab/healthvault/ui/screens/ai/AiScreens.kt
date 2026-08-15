@@ -116,6 +116,8 @@ private fun splitVaultAction(content: String): SplitVaultContent {
             else SplitVaultContent(content, null)
         "create_finance_txn" -> if ((action.amount ?: 0.0) > 0.0) SplitVaultContent(cleaned, action)
             else SplitVaultContent(content, null)
+        "create_diary_folder" -> if (!action.name.isNullOrBlank()) SplitVaultContent(cleaned, action)
+            else SplitVaultContent(content, null)
         else -> SplitVaultContent(content, null)
     }
 }
@@ -666,13 +668,16 @@ private fun VaultActionCard(
 
     val isDiary = action.type == "create_diary_entry"
     val isFinance = action.type == "create_finance_txn"
+    val isFolder = action.type == "create_diary_folder"
     val heading = when {
         isDiary -> "Proposed diary entry"
+        isFolder -> "Proposed diary folder"
         isFinance -> "Proposed Money Manager entry"
         else -> "Proposed shopping list"
     }
     val title = when {
         isDiary -> action.title.orEmpty()
+        isFolder -> action.name.orEmpty()
         isFinance -> listOfNotNull(
             action.payee?.takeIf { it.isNotBlank() },
             action.amount?.let { "₹ $it" }
@@ -681,6 +686,7 @@ private fun VaultActionCard(
     }
     val cta = when {
         isDiary -> "Save to diary"
+        isFolder -> "Create folder"
         isFinance -> "Save to Money Manager"
         else -> "Create list"
     }
@@ -758,6 +764,11 @@ private fun VaultActionCard(
                                         val res = repository.applyAiDiaryEntry(action)
                                         doneUrl = res.url
                                         doneLabel = res.title
+                                    }
+                                    isFolder -> {
+                                        val res = repository.applyAiDiaryFolder(action)
+                                        doneUrl = res.url
+                                        doneLabel = res.name
                                     }
                                     isFinance -> {
                                         val res = repository.applyAiFinanceTxn(action)

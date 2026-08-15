@@ -1,15 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Diary categories{% endblock %}
+{% block title %}Diary folders{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <div class="eyebrow">
       <a href="/admin/diary"><i class="bi bi-chevron-left"></i> Diary</a>
     </div>
-    <h1 class="page-title">Categories</h1>
-    <p class="page-lead">Colour-code Personal, Work, Travel, or invent your own shelves.</p>
+    <h1 class="page-title">Folders</h1>
+    <p class="page-lead">Group pages into Travel, Work, or invent your own shelves — like folders in a cabinet.</p>
   </div>
 </div>
+
+{% if notice == 'folder' %}
+<div class="alert alert-success" role="status">Folder created.</div>
+{% endif %}
+{% if err %}
+<div class="alert alert-danger" role="alert">{{ err }}</div>
+{% endif %}
 
 <div class="row g-4">
   <div class="col-lg-8">
@@ -17,15 +24,16 @@
     <div class="diary-cat-grid">
       {% for c in categories %}
       <div class="diary-cat-card" style="--cat:{{ c.color or '#8B95A8' }};">
-        <div class="swatch" aria-hidden="true"></div>
+        <div class="swatch" aria-hidden="true"><i class="bi bi-folder-fill"></i></div>
         <div class="name">{{ c.name }}</div>
         <div class="meta">
           {{ c.count }} entr{{ 'y' if c.count == 1 else 'ies' }}
           {% if c.is_default %} · default{% endif %}
         </div>
         <div class="row-actions">
+          <a class="btn btn-ghost btn-sm" href="/admin/diary?category_id={{ c.id }}">Open</a>
           <form method="post" action="/admin/diary/categories/{{ c.id }}/delete"
-                data-confirm="Delete category {{ c.name }}? Entries stay uncategorized.">
+                data-confirm="Delete folder {{ c.name }}? Entries stay, but leave the folder.">
             <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
           </form>
         </div>
@@ -35,23 +43,23 @@
     {% else %}
     <div class="diary-empty">
       <div class="diary-empty-ico" aria-hidden="true"><i class="bi bi-folder"></i></div>
-      <h2>No categories yet</h2>
-      <p>Add a label on the right to organise new pages.</p>
+      <h2>No folders yet</h2>
+      <p>Create one on the right to start filing pages.</p>
     </div>
     {% endif %}
   </div>
   <div class="col-lg-4">
     <form class="diary-desk-card" method="post" action="/admin/diary/categories">
-      <div class="section-head"><h2>Add category</h2></div>
+      <div class="section-head"><h2>New folder</h2></div>
       <div class="mb-3">
         <label class="form-label" for="cat-name">Name</label>
-        <input class="form-control" id="cat-name" name="name" required maxlength="80" placeholder="Memories">
+        <input class="form-control" id="cat-name" name="name" required maxlength="80" placeholder="Thidanad trip">
       </div>
       <div class="mb-3">
         <label class="form-label" for="cat-color">Color</label>
-        <input class="form-control form-control-color" id="cat-color" type="color" name="color" value="#F472B6">
+        <input class="form-control form-control-color" id="cat-color" type="color" name="color" value="#F06BA8">
       </div>
-      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i> Add</button>
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-folder-plus"></i> Create folder</button>
     </form>
   </div>
 </div>

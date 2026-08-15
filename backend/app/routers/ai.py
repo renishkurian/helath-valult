@@ -186,6 +186,20 @@ def apply_finance_txn(
     return schemas.AiFinanceTxnActionOut(**result)
 
 
+@router.post("/chat/apply-diary-folder", response_model=schemas.AiDiaryFolderActionOut)
+def apply_diary_folder(
+    body: schemas.AiDiaryFolderActionIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        result = ai_chat.apply_diary_folder_action(db, current_user, body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.AiDiaryFolderActionOut(**result)
+
+
 @router.get("/usage", response_model=list[schemas.AiUsageLogOut])
 def list_usage(
     client: str | None = None,

@@ -518,3 +518,37 @@ def test_chat_returns_finance_txn_action():
     applied = client.post("/ai/chat/apply-finance-txn", headers=headers, json=body["action"])
     assert applied.status_code == 200, applied.text
     assert applied.json()["txn_id"]
+
+
+def test_diary_folder_action_and_api():
+    from app.ai_chat import apply_diary_folder_action, extract_vault_action
+
+    display, action = extract_vault_action(
+        "I'll make a folder for the trip.\n\n"
+        "```vault-action\n"
+        '{"type":"create_diary_folder","name":"Thidanad trip","color":"#22D3EE"}\n```'
+    )
+    assert "vault-action" not in display
+    assert action["type"] == "create_diary_folder"
+    assert action["name"] == "Thidanad trip"
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        created = apply_diary_folder_action(db, user, action)
+        again = apply_diary_folder_action(db, user, action)
+    finally:
+        db.close()
+
+    assert created["created"] is True
+    assert created["folder_id"]
+    assert again["created"] is False
+    assert again["folder_id"] == created["folder_id"]
+
+    listed = client.get("/diary/categories", headers=headers)
+    assert listed.status_code == 200
+    assert any(c["name"] == "Thidanad trip" for c in listed.json())
+
+    dup = client.post("/diary/categories", headers=headers, json={"name": "Thidanad trip"})
+    assert dup.status_code == 400

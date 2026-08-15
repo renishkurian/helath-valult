@@ -1115,6 +1115,19 @@ class AiFinanceTxnActionOut(BaseModel):
     url: str
 
 
+class AiDiaryFolderActionIn(BaseModel):
+    type: str = "create_diary_folder"
+    name: str = Field(min_length=1, max_length=80)
+    color: Optional[str] = None
+
+
+class AiDiaryFolderActionOut(BaseModel):
+    folder_id: str
+    name: str
+    created: bool = True
+    url: str
+
+
 class AiUsageLogOut(BaseModel):
     id: str
     client: str

@@ -49,6 +49,10 @@ fun DiaryListScreen(
     var categories by remember { mutableStateOf<List<DiaryCategoryOut>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var creatingFolder by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
     fun reload() {
         scope.launch {
@@ -64,6 +68,48 @@ fun DiaryListScreen(
     LaunchedEffect(query, categoryId, pinnedOnly) {
         delay(350)
         reload()
+    }
+
+    if (showNewFolder) {
+        AlertDialog(
+            onDismissRequest = { if (!creatingFolder) showNewFolder = false },
+            title = { Text("New folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    singleLine = true,
+                    placeholder = { Text("e.g. Thidanad trip") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = newFolderName.isNotBlank() && !creatingFolder,
+                    onClick = {
+                        creatingFolder = true
+                        scope.launch {
+                            runCatching {
+                                val created = repository.createDiaryCategory(newFolderName.trim())
+                                categoryId = created.id
+                                newFolderName = ""
+                                showNewFolder = false
+                                reload()
+                                Toast.makeText(context, "Folder created", Toast.LENGTH_SHORT).show()
+                            }.onFailure {
+                                Toast.makeText(context, it.message ?: "Could not create folder", Toast.LENGTH_LONG).show()
+                            }
+                            creatingFolder = false
+                        }
+                    }
+                ) { Text(if (creatingFolder) "…" else "Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNewFolder = false }, enabled = !creatingFolder) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     Box(Modifier.fillMaxSize().background(HubBg)) {
@@ -106,6 +152,13 @@ fun DiaryListScreen(
                         selected = categoryId == cat.id,
                         onClick = { categoryId = cat.id },
                         label = { Text(cat.name) }
+                    )
+                }
+                item {
+                    FilterChip(
+                        selected = false,
+                        onClick = { showNewFolder = true; newFolderName = "" },
+                        label = { Text("+ Folder") }
                     )
                 }
             }
@@ -198,7 +251,7 @@ fun DiaryAddScreen(
         OutlinedTextField(value = tags, onValueChange = { tags = it }, label = { Text("Tags") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         OutlinedTextField(value = mood, onValueChange = { mood = it }, label = { Text("Mood") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
         if (categories.isNotEmpty()) {
-            Text("Category", color = HubTextDim)
+            Text("Folder", color = HubTextDim)
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
                     FilterChip(selected = categoryId == null, onClick = { categoryId = null }, label = { Text("None") })

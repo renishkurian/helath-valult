@@ -441,6 +441,12 @@ interface ApiService {
     @GET("diary/categories")
     suspend fun listDiaryCategories(): List<DiaryCategoryOut>
 
+    @POST("diary/categories")
+    suspend fun createDiaryCategory(@Body body: DiaryCategoryIn): DiaryCategoryOut
+
+    @DELETE("diary/categories/{id}")
+    suspend fun deleteDiaryCategory(@Path("id") id: String): Response<Unit>
+
     @GET("diary")
     suspend fun listDiaryEntries(
         @Query("category_id") categoryId: String? = null,
@@ -669,6 +675,9 @@ interface ApiService {
 
     @POST("ai/chat/apply-finance-txn")
     suspend fun applyAiFinanceTxn(@Body body: AiVaultAction): AiFinanceTxnActionOut
+
+    @POST("ai/chat/apply-diary-folder")
+    suspend fun applyAiDiaryFolder(@Body body: AiVaultAction): AiDiaryFolderActionOut
 
     @GET("ai/usage")
     suspend fun listAiUsage(

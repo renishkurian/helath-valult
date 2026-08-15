@@ -39,7 +39,8 @@ When the user asks for:
 - shopping / groceries / “did I buy X” / “X vaangiya?”: use the Shopping List section and any Manglish glossary hints. Prefer item names over merchant payees for products (oil/enna, rice/ari, atta, etc.).
 - create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named, including Manglish). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
 - diary / journal / notes / “diary il undayirunno?” (lookups): use the Digital Diary section (titles, dates, categories, tags, body excerpts).
-- add / save / write a diary note that is NOT primarily an expense (e.g. “add Thidanad trip to diary”, “diary il ittu”, “save this note”, including “dairy” typos): draft from the USER’S message — do not wait for that note to already exist in the snapshot. Confirm briefly, then emit ONE create_diary_entry vault-action. Prefer category Travel for trips; otherwise Personal or a matching snapshot category.
+- add / save / write a diary note that is NOT primarily an expense (e.g. “add Thidanad trip to diary”, “diary il ittu”, “save this note”, including “dairy” typos): draft from the USER’S message — do not wait for that note to already exist in the snapshot. Confirm briefly, then emit ONE create_diary_entry vault-action. Prefer category Travel for trips; otherwise Personal or a matching snapshot folder name.
+- create a diary folder / shelf / category (e.g. “make a Thidanad folder”, “new diary folder for Kerala trip”): confirm briefly, then emit ONE create_diary_folder vault-action. Do not invent folders that already exist in the Digital Diary snapshot — reuse the existing name instead.
 - spent / paid / “adichu” / “vaangi” / petrol / food with an amount (expense-like):
   - If they already named Money Manager / ledger / finance / account → emit create_finance_txn (pick a snapshot account + expense category when possible).
   - If they already named Digital Diary / diary / dairy / note → emit create_diary_entry with charges[].
@@ -61,6 +62,12 @@ Creating a diary entry — after your normal markdown answer, if (and only if) t
 {"type":"create_diary_entry","title":"Short title","body":"Optional notes","charges":[{"label":"Cake","amount":1200},{"label":"Decor","amount":800}],"entry_date":"2026-08-15","category":"Personal","tags":"party, charges","mood":"","pinned":false}
 ```
 
+Creating a diary folder — after your normal markdown answer, if (and only if) the user wants a new Digital Diary folder, append exactly one fenced block:
+
+```vault-action
+{"type":"create_diary_folder","name":"Thidanad trip","color":"#22D3EE"}
+```
+
 Creating a Money Manager ledger entry — after your normal markdown answer, if (and only if) the user wants it on the ledger, append exactly one fenced block:
 
 ```vault-action
@@ -68,14 +75,15 @@ Creating a Money Manager ledger entry — after your normal markdown answer, if 
 ```
 
 Rules for vault-action:
-- Emit at most ONE vault-action block per reply (shop list OR diary OR finance, not more than one)
+- Emit at most ONE vault-action block per reply (shop list OR diary entry OR diary folder OR finance, not more than one)
 - create_shop_list: name + items (1–60) with name required, optional quantity/unit; use English grocery names when known (ulli→Onion, enna→Coconut Oil, sharkara→Jaggery)
-- create_diary_entry: title required; body may be the user’s note text (trips, events, freeform). Include charges[] only when you totalled money — the app formats a ₹ table with Total. Optional entry_date (YYYY-MM-DD, default today), category, tags, mood, pinned
+- create_diary_entry: title required; body may be the user’s note text (trips, events, freeform). Include charges[] only when you totalled money — the app formats a ₹ table with Total. Optional entry_date (YYYY-MM-DD, default today), category (folder name from snapshot), tags, mood, pinned
+- create_diary_folder: name required (short English title); optional color as #RRGGBB. Prefer Travel-like teal (#22D3EE) for trips.
 - create_finance_txn: amount > 0 required; payee short English label; account and category must match names from the Money Manager snapshot when possible; txn_type expense|income (default expense); optional txn_date (YYYY-MM-DD, default today), notes, payment_method (upi|credit_card|debit_card|atm|netbanking|cash|other)
 - When charges[] or finance amount is present, show the numbers clearly in the visible reply
 - Do NOT emit vault-action for pure questions (e.g. “did I buy oil?” / “diary il enthu ezhuthi?” / “how much petrol this month?”)
 - Do NOT emit vault-action while asking Money Manager vs Diary — wait for their choice
-- For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes or ledger rows the user is dictating, use their words freely.
+- For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes, folders, or ledger rows the user is dictating, use their words freely.
 
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
 """
@@ -953,10 +961,10 @@ def _diary_snapshot_lines(db: Session, uid: str, question: str = "") -> list[str
         .all()
     )
     if cats:
-        lines.append("Categories: " + ", ".join(c.name for c in cats))
+        lines.append("Folders: " + ", ".join(c.name for c in cats))
     else:
         lines.append(
-            "Categories: Personal, Work, Travel, Health, Family, Ideas, Other "
+            "Folders: Personal, Work, Travel, Health, Family, Ideas, Other "
             "(defaults are created when the diary is first opened)"
         )
 
@@ -1046,6 +1054,8 @@ def normalize_vault_action(data: dict | None) -> dict | None:
         return normalize_shop_list_action(data)
     if kind == "create_diary_entry":
         return normalize_diary_entry_action(data)
+    if kind == "create_diary_folder":
+        return normalize_diary_folder_action(data)
     if kind == "create_finance_txn":
         return normalize_finance_txn_action(data)
     return None
@@ -1135,6 +1145,65 @@ def normalize_diary_entry_action(data: dict | None) -> dict | None:
 
 
 _PAYMENT_METHODS = {"upi", "credit_card", "debit_card", "atm", "netbanking", "cash", "other"}
+
+
+def normalize_diary_folder_action(data: dict | None) -> dict | None:
+    if not isinstance(data, dict):
+        return None
+    if (data.get("type") or "") != "create_diary_folder":
+        return None
+    name = re.sub(r"\s+", " ", str(data.get("name") or data.get("title") or "")).strip()[:80]
+    if not name:
+        return None
+    color = str(data.get("color") or "").strip()[:16] or None
+    if color and not re.fullmatch(r"#?[0-9A-Fa-f]{3,8}", color):
+        color = None
+    if color and not color.startswith("#"):
+        color = f"#{color}"
+    return {"type": "create_diary_folder", "name": name, "color": color}
+
+
+def apply_diary_folder_action(db: Session, user: models.User, action: dict) -> dict:
+    """Create a Digital Diary folder (category) from an approved Ask AI action."""
+    from fastapi import HTTPException
+
+    from app.routers import diary as dy
+    from app import schemas as sc
+
+    normalized = normalize_diary_folder_action(action)
+    if not normalized:
+        raise ValueError("Invalid diary folder action")
+    dy.ensure_defaults(db, user)
+    uid = _uid(user)
+    existing = (
+        db.query(models.DiaryCategory)
+        .filter(
+            models.DiaryCategory.user_id == uid,
+            models.DiaryCategory.name.ilike(normalized["name"]),
+        )
+        .first()
+    )
+    if existing:
+        return {
+            "folder_id": existing.id,
+            "name": existing.name,
+            "created": False,
+            "url": f"/admin/diary?category_id={existing.id}",
+        }
+    try:
+        row = dy.create_category(
+            sc.DiaryCategoryIn(name=normalized["name"], color=normalized.get("color")),
+            db=db,
+            current_user=user,
+        )
+    except HTTPException as exc:
+        raise ValueError(str(exc.detail)) from exc
+    return {
+        "folder_id": row.id,
+        "name": row.name,
+        "created": True,
+        "url": f"/admin/diary?category_id={row.id}",
+    }
 
 
 def normalize_finance_txn_action(data: dict | None) -> dict | None:

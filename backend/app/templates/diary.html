@@ -15,14 +15,14 @@
       <p class="page-lead">Private notes and photos, encrypted on your Pi.</p>
     </div>
     <div class="page-actions">
-      <a class="btn btn-outline-light" href="/admin/diary/manage"><i class="bi bi-folder"></i> Categories</a>
+      <a class="btn btn-outline-light" href="/admin/diary/manage"><i class="bi bi-folder"></i> Folders</a>
       <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
     </div>
   </div>
   <div class="diary-stats" aria-label="Diary summary">
     <span class="diary-stat"><strong>{{ summary.total }}</strong> entries</span>
     <span class="diary-stat {% if summary.pinned %}is-accent{% endif %}"><strong>{{ summary.pinned }}</strong> pinned</span>
-    <span class="diary-stat"><strong>{{ summary.categories | length }}</strong> categories</span>
+    <span class="diary-stat"><strong>{{ summary.categories | length }}</strong> folders</span>
   </div>
 </section>
 
@@ -31,8 +31,8 @@
     <i class="bi bi-search"></i>
     <input class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Search title, story, tags, mood…" aria-label="Search diary">
   </div>
-  <select class="form-select" name="category_id" aria-label="Category">
-    <option value="">All categories</option>
+  <select class="form-select" name="category_id" aria-label="Folder">
+    <option value="">All folders</option>
     {% for c in summary.categories %}
     <option value="{{ c.id }}" {% if category_id==c.id %}selected{% endif %}>{{ c.name }} ({{ c.count }})</option>
     {% endfor %}
@@ -44,7 +44,7 @@
   {% endif %}
 </form>
 
-<nav class="diary-chips" aria-label="Filter by category">
+<nav class="diary-chips" aria-label="Filter by folder">
   <a class="diary-chip {% if not category_id and not pinned %}on{% endif %}" href="/admin/diary">All</a>
   <a class="diary-chip {% if pinned %}on{% endif %}" href="/admin/diary?pinned=1"><i class="bi bi-pin-angle"></i> Pinned</a>
   {% for c in summary.categories %}
@@ -56,6 +56,7 @@
     {% if c.count %}<span class="n">{{ c.count }}</span>{% endif %}
   </a>
   {% endfor %}
+  <a class="diary-chip" href="/admin/diary/manage"><i class="bi bi-folder-plus"></i> New folder</a>
 </nav>
 
 {% if entries %}

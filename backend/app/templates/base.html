@@ -85,7 +85,7 @@
     {'key':'dy_home','label':'All entries','short':'Diary','href':'/admin/diary','icon':'bi-journal-richtext'},
     {'key':'dy_add','label':'New entry','short':'Write','href':'/admin/diary/add','icon':'bi-plus-lg'},
     {'key':'dy_pinned','label':'Pinned','short':'Pin','href':'/admin/diary?pinned=1','icon':'bi-pin-angle'},
-    {'key':'dy_manage','label':'Categories','short':'Cats','href':'/admin/diary/manage','icon':'bi-folder'}
+    {'key':'dy_manage','label':'Folders','short':'Folders','href':'/admin/diary/manage','icon':'bi-folder'}
   ] %}
 {% elif active_module == 'superadmin' %}
   {% set mod_key = 'superadmin' %}
@@ -220,7 +220,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=21">
+<link rel="stylesheet" href="/static/vault.css?v=22">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">

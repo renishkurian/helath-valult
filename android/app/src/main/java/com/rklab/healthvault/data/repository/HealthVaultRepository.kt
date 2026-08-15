@@ -182,6 +182,9 @@ class HealthVaultRepository(
     suspend fun lockerSummary() = api.lockerSummary()
     suspend fun diarySummary() = api.diarySummary()
     suspend fun listDiaryCategories() = api.listDiaryCategories()
+    suspend fun createDiaryCategory(name: String, color: String? = null) =
+        api.createDiaryCategory(DiaryCategoryIn(name = name, color = color))
+    suspend fun deleteDiaryCategory(id: String) = api.deleteDiaryCategory(id)
     suspend fun listDiaryEntries(
         categoryId: String? = null,
         q: String? = null,
@@ -741,6 +744,7 @@ class HealthVaultRepository(
     suspend fun applyAiShopList(action: AiVaultAction) = api.applyAiShopList(action)
     suspend fun applyAiDiaryEntry(action: AiVaultAction) = api.applyAiDiaryEntry(action)
     suspend fun applyAiFinanceTxn(action: AiVaultAction) = api.applyAiFinanceTxn(action)
+    suspend fun applyAiDiaryFolder(action: AiVaultAction) = api.applyAiDiaryFolder(action)
     suspend fun listAiUsage(client: String? = null, limit: Int = 100) =
         api.listAiUsage(client, limit)
     suspend fun aiUsageSummary(days: Int = 30) = api.aiUsageSummary(days)

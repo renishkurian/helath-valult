@@ -207,10 +207,24 @@ def create_category(
 ):
     require_owner(current_user)
     ensure_defaults(db, current_user)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "Folder name is required")
+    uid = vault_id(current_user)
+    existing = (
+        db.query(models.DiaryCategory)
+        .filter(
+            models.DiaryCategory.user_id == uid,
+            models.DiaryCategory.name.ilike(name),
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(400, f"Folder “{existing.name}” already exists")
     color = _norm_color(body.color, CAT_COLORS[0])
     row = models.DiaryCategory(
-        user_id=vault_id(current_user),
-        name=body.name.strip(),
+        user_id=uid,
+        name=name,
         color=color,
         sort_order=body.sort_order if body.sort_order is not None else 100,
         is_default=False,

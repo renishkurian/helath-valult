@@ -1685,6 +1685,10 @@ body.ask-ai .app-main{
 .ask-action-bar{ display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; }
 .ask-action-status{ font-size:.875rem; color:var(--v-ink-2); }
 .ask-action-status a{ color:var(--v-gold); }
+.ask-folder-swatch{
+  display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:.35rem;
+  vertical-align:middle;
+}
 .ask-err{ color:var(--v-bad); }
 
 .ask-typing{ display:flex; gap:5px; padding:.35rem .15rem; }
@@ -2221,14 +2225,16 @@ body.vdlg-open{ overflow:hidden; }
   background:var(--v-surface); border:1px solid var(--v-line);
   box-shadow:var(--v-sh-1);
 }
-.diary-cat-card .swatch{
-  width:100%; height:8px; border-radius:99px;
-  background:var(--cat, var(--v-ink-3));
-  box-shadow:0 0 12px color-mix(in srgb, var(--cat, transparent) 35%, transparent);
-}
 .diary-cat-card .name{ font-weight:650; letter-spacing:-0.015em; font-size:.9375rem; }
 .diary-cat-card .meta{ font-size:.75rem; color:var(--v-ink-3); }
-.diary-cat-card .row-actions{ margin-top:auto; }
+.diary-cat-card .swatch{
+  width:36px; height:36px; border-radius:10px;
+  display:grid; place-items:center; font-size:1.05rem;
+  color:var(--cat, var(--v-ink-3));
+  background:color-mix(in srgb, var(--cat, var(--v-ink-3)) 18%, transparent);
+  border:1px solid color-mix(in srgb, var(--cat, var(--v-ink-3)) 35%, transparent);
+}
+.diary-cat-card .row-actions{ margin-top:auto; display:flex; gap:.35rem; flex-wrap:wrap; }
 
 @media (max-width:575.98px){
   .diary-card{ grid-template-columns:3.5rem 1fr; gap:0 .75rem; padding:.85rem; }

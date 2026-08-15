@@ -112,6 +112,9 @@
     if (action.type === "create_diary_entry" && action.title) {
       return { text: text.replace(m[0], "").trim(), action: action };
     }
+    if (action.type === "create_diary_folder" && action.name) {
+      return { text: text.replace(m[0], "").trim(), action: action };
+    }
     if (action.type === "create_finance_txn" && action.amount != null && Number(action.amount) > 0) {
       return { text: text.replace(m[0], "").trim(), action: action };
     }
@@ -121,6 +124,9 @@
   function actionCard(action) {
     if (action && action.type === "create_diary_entry") {
       return diaryActionCard(action);
+    }
+    if (action && action.type === "create_diary_folder") {
+      return diaryFolderActionCard(action);
     }
     if (action && action.type === "create_finance_txn") {
       return financeActionCard(action);
@@ -222,6 +228,48 @@
         skip.hidden = true;
       }).catch(function (err) {
         status.textContent = err.message || "Could not save diary entry";
+        go.disabled = false;
+        skip.disabled = false;
+      });
+    });
+    return wrap;
+  }
+
+  function diaryFolderActionCard(action) {
+    var wrap = document.createElement("div");
+    wrap.className = "ask-action ask-action-diary-folder";
+    var swatch = action.color
+      ? '<span class="ask-folder-swatch" style="background:' + esc(action.color) + '"></span>'
+      : '<i class="bi bi-folder-plus"></i>';
+    wrap.innerHTML =
+      '<div class="ask-action-head">' + swatch + ' Proposed diary folder</div>' +
+      '<div class="ask-action-title">' + esc(action.name || "Folder") + "</div>" +
+      '<div class="ask-action-bar">' +
+        '<button type="button" class="btn btn-sm btn-primary ask-action-go">Create folder</button>' +
+        '<button type="button" class="btn btn-sm btn-outline-light ask-action-skip">Dismiss</button>' +
+        '<span class="ask-action-status" hidden></span>' +
+      "</div>";
+    var go = wrap.querySelector(".ask-action-go");
+    var skip = wrap.querySelector(".ask-action-skip");
+    var status = wrap.querySelector(".ask-action-status");
+    skip.addEventListener("click", function () { wrap.remove(); });
+    go.addEventListener("click", function () {
+      go.disabled = true;
+      skip.disabled = true;
+      status.hidden = false;
+      status.textContent = "Creating…";
+      api("/admin/ai/ask/apply-diary-folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(action),
+      }).then(function (res) {
+        var verb = res.created === false ? "Opened existing" : "Created";
+        status.innerHTML = verb + ' <a href="' + esc(res.url || "/admin/diary/manage") + '">' +
+          esc(res.name || "folder") + "</a>";
+        go.hidden = true;
+        skip.hidden = true;
+      }).catch(function (err) {
+        status.textContent = err.message || "Could not create folder";
         go.disabled = false;
         skip.disabled = false;
       });

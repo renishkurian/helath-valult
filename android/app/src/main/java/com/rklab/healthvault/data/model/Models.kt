@@ -812,6 +812,12 @@ data class DiaryCategoryOut(
     val count: Int = 0
 )
 
+data class DiaryCategoryIn(
+    val name: String,
+    val color: String? = null,
+    val sort_order: Int? = null
+)
+
 data class DiaryImageOut(
     val id: String,
     val entry_id: String,
@@ -1054,7 +1060,8 @@ data class AiVaultAction(
     val txn_type: String? = null,
     val txn_date: String? = null,
     val notes: String? = null,
-    val payment_method: String? = null
+    val payment_method: String? = null,
+    val color: String? = null
 )
 
 data class AiShopListActionOut(
@@ -1075,6 +1082,13 @@ data class AiFinanceTxnActionOut(
     val payee: String,
     val amount: Double = 0.0,
     val account_name: String = "",
+    val url: String = ""
+)
+
+data class AiDiaryFolderActionOut(
+    val folder_id: String,
+    val name: String,
+    val created: Boolean = true,
     val url: String = ""
 )
 

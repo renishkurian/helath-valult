@@ -2684,6 +2684,23 @@ async def ai_ask_apply_finance_txn(request: Request, db: Session = Depends(get_d
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
 
+@router.post("/ai/ask/apply-diary-folder")
+async def ai_ask_apply_diary_folder(request: Request, db: Session = Depends(get_db)):
+    """Approve an Ask AI create_diary_folder proposal."""
+    from app import ai_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"detail": "Invalid JSON"}, status_code=400)
+    try:
+        return ai_chat.apply_diary_folder_action(db, user, body if isinstance(body, dict) else {})
+    except ValueError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+
+
 @router.post("/ai/ask/test")
 def ai_ask_test_connection(request: Request, db: Session = Depends(get_db)):
     """Session-auth ping of the default Ask AI provider."""
@@ -4052,14 +4069,19 @@ async def diary_add(
 
 
 @router.get("/diary/manage", response_class=HTMLResponse)
-def diary_manage(request: Request, db: Session = Depends(get_db)):
+def diary_manage(
+    request: Request,
+    notice: Optional[str] = None,
+    err: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
     from app.routers import diary as dy
     user = _dy_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     cats = dy.list_categories(db=db, current_user=user)
     return templates.TemplateResponse("diary_manage.html", _dy_ctx(
-        request, user, "dy_manage", categories=cats,
+        request, user, "dy_manage", categories=cats, notice=notice, err=err,
     ))
 
 
@@ -4070,13 +4092,21 @@ def diary_category_add(
     color: str = Form("#5B8CFF"),
     db: Session = Depends(get_db),
 ):
+    from urllib.parse import quote
+    from fastapi import HTTPException
     from app.routers import diary as dy
     from app import schemas as sc
     user = _dy_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    dy.create_category(sc.DiaryCategoryIn(name=name, color=color or None), db=db, current_user=user)
-    return RedirectResponse("/admin/diary/manage", status_code=302)
+    try:
+        dy.create_category(sc.DiaryCategoryIn(name=name, color=color or None), db=db, current_user=user)
+    except HTTPException as exc:
+        return RedirectResponse(
+            f"/admin/diary/manage?err={quote(str(exc.detail))}",
+            status_code=302,
+        )
+    return RedirectResponse("/admin/diary/manage?notice=folder", status_code=302)
 
 
 @router.post("/diary/categories/{category_id}/delete")
