@@ -43,6 +43,7 @@ import com.rklab.healthvault.ui.screens.locker.*
 import com.rklab.healthvault.ui.screens.tracker.ShopDetailScreen
 import com.rklab.healthvault.ui.screens.tracker.ShopFriendsScreen
 import com.rklab.healthvault.ui.screens.tracker.ShopListScreen
+import com.rklab.healthvault.ui.screens.tracker.ShopTrashScreen
 import com.rklab.healthvault.ui.screens.urls.*
 import com.rklab.healthvault.ui.screens.passwords.*
 import com.rklab.healthvault.ui.screens.shell.ModulePickerScreen
@@ -101,6 +102,7 @@ private object Routes {
     const val EXPENSE_SETTINGS = "expense_settings"
     const val TRACKER = "tracker"
     const val TRACKER_FRIENDS = "tracker_friends"
+    const val TRACKER_TRASH = "tracker_trash"
     const val TRACKER_LIST = "tracker_list/{listId}"
 
     fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
@@ -203,7 +205,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
     val aiTabs = setOf(Routes.AI, Routes.AI_PROVIDERS, Routes.AI_LOGS)
     val expenseTabs = setOf(Routes.EXPENSE, Routes.EXPENSE_INSIGHTS, Routes.EXPENSE_LOG, Routes.EXPENSE_SETTINGS)
-    val trackerTabs = setOf(Routes.TRACKER, Routes.TRACKER_FRIENDS)
+    val trackerTabs = setOf(Routes.TRACKER, Routes.TRACKER_FRIENDS, Routes.TRACKER_TRASH)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
     val onLockerItem = currentRoute?.startsWith("locker_item/") == true
     val onLockerAdd = currentRoute?.startsWith("locker_add") == true
@@ -215,9 +217,17 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
         containerColor = HubBg,
         bottomBar = {
             if (currentRoute in trackerTabs || onTrackerList) {
-                val current = if (currentRoute == Routes.TRACKER_FRIENDS) TrackerTab.FRIENDS else TrackerTab.LISTS
+                val current = when (currentRoute) {
+                    Routes.TRACKER_FRIENDS -> TrackerTab.FRIENDS
+                    Routes.TRACKER_TRASH -> TrackerTab.TRASH
+                    else -> TrackerTab.LISTS
+                }
                 TrackerBottomNav(current = current) { tab ->
-                    val route = if (tab == TrackerTab.FRIENDS) Routes.TRACKER_FRIENDS else Routes.TRACKER
+                    val route = when (tab) {
+                        TrackerTab.FRIENDS -> Routes.TRACKER_FRIENDS
+                        TrackerTab.TRASH -> Routes.TRACKER_TRASH
+                        TrackerTab.LISTS -> Routes.TRACKER
+                    }
                     navController.navigate(route) {
                         popUpTo(Routes.TRACKER) { inclusive = false; saveState = true }
                         launchSingleTop = true
@@ -475,6 +485,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     repository = repository,
                     onOpenModules = { navController.navigate(Routes.MODULES) },
                     onOpenList = { navController.navigate(Routes.trackerList(it)) }
+                )
+            }
+            composable(Routes.TRACKER_TRASH) {
+                ShopTrashScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
                 )
             }
             composable(

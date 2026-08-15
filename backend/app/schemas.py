@@ -1482,6 +1482,7 @@ class ShopItemOut(BaseModel):
     guest_name: Optional[str] = None
     added_by_name: Optional[str] = None
     status: str = "approved"
+    merged: bool = False
     created_at: datetime
 
 

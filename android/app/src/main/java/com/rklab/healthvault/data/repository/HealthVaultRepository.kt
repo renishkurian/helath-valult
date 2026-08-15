@@ -724,6 +724,13 @@ class HealthVaultRepository(
     suspend fun importExpenseAnalyserPdfs() = api.importExpenseAnalyserPdfs()
     suspend fun listExpenseAnalyserMailPdfs(status: String? = null) = api.listExpenseAnalyserMailPdfs(status)
     suspend fun ignoreExpenseAnalyserMailPdf(id: String) = api.ignoreExpenseAnalyserMailPdf(id)
+    suspend fun downloadExpenseAnalyserMailPdf(id: String, destination: File, inline: Boolean = false): File {
+        val body = if (inline) api.viewExpenseAnalyserMailPdf(id) else api.downloadExpenseAnalyserMailPdf(id)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
     suspend fun listShopPdfPasswords() = api.listShopPdfPasswords()
     suspend fun saveShopPdfPassword(body: ShopPdfPasswordIn) = api.saveShopPdfPassword(body)
     suspend fun deleteShopPdfPassword(id: String) { api.deleteShopPdfPassword(id) }
@@ -733,7 +740,12 @@ class HealthVaultRepository(
     suspend fun listShopLists(completed: Boolean? = null) = api.listShopLists(completed)
     suspend fun createShopList(body: ShopListIn) = api.createShopList(body)
     suspend fun getShopList(id: String) = api.getShopList(id)
+    suspend fun updateShopList(id: String, body: ShopListUpdate) = api.updateShopList(id, body)
     suspend fun deleteShopList(id: String) { api.deleteShopList(id) }
+    suspend fun listShopTrash() = api.listShopTrash()
+    suspend fun restoreShopList(id: String) = api.restoreShopList(id)
+    suspend fun permanentDeleteShopList(id: String) { api.permanentDeleteShopList(id) }
+    suspend fun emptyShopTrash() { api.emptyShopTrash() }
     suspend fun addShopItem(listId: String, body: ShopItemIn) = api.addShopItem(listId, body)
     suspend fun updateShopItem(listId: String, itemId: String, body: ShopItemUpdate) =
         api.updateShopItem(listId, itemId, body)
@@ -743,6 +755,9 @@ class HealthVaultRepository(
     suspend fun rejectShopItem(listId: String, itemId: String) { api.rejectShopItem(listId, itemId) }
     suspend fun deleteShopItem(listId: String, itemId: String) { api.deleteShopItem(listId, itemId) }
     suspend fun shareShopList(id: String) = api.shareShopList(id)
+    suspend fun sendShopList(id: String, body: ShopSendIn) = api.sendShopList(id, body)
+    suspend fun shopSent() = api.shopSent()
+    suspend fun recallShopSend(id: String) { api.recallShopSend(id) }
     suspend fun uploadShopReceipt(listId: String, file: File, mime: String = "image/jpeg"): ShopReceiptOut {
         val part = MultipartBody.Part.createFormData(
             "file",
@@ -750,6 +765,13 @@ class HealthVaultRepository(
             file.asRequestBody(mime.toMediaTypeOrNull())
         )
         return api.uploadShopReceipt(listId, part)
+    }
+    suspend fun downloadShopReceipt(listId: String, receiptId: String, destination: File): File {
+        val body = api.downloadShopReceipt(listId, receiptId)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
     }
     suspend fun deleteShopReceipt(listId: String, receiptId: String) {
         api.deleteShopReceipt(listId, receiptId)

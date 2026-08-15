@@ -1677,6 +1677,7 @@ button.app-tab{
   .shop-composer .section-head{ display:none; }
   .shop-composer .form-label{ display:none; }
   .shop-composer .shop-composer-extra{ display:none; }
+  .shop-composer .shop-composer-notes{ width:100%; flex:0 0 100%; }
   .shop-composer .shop-composer-main,
   .shop-composer .shop-composer-submit,
   .shop-composer .shop-composer-guest{ width:auto; }
@@ -1713,3 +1714,66 @@ button.app-tab{
 @media print{
   .app-tabbar,.shop-composer{ display:none !important; }
 }
+
+/* --------------------------------------------------------------------------
+   Vault dialog — themed replacement for native alert/confirm
+   -------------------------------------------------------------------------- */
+body.vdlg-open{ overflow:hidden; }
+.vdlg{
+  position:fixed; inset:0; z-index:2000;
+  display:flex; align-items:center; justify-content:center;
+  padding:max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  pointer-events:none;
+}
+.vdlg.is-open{ pointer-events:auto; }
+.vdlg-backdrop{
+  position:absolute; inset:0;
+  background:rgba(4,6,10,0.72);
+  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  opacity:0; transition:opacity var(--v-mid) var(--v-ease);
+}
+.vdlg.is-open .vdlg-backdrop{ opacity:1; }
+.vdlg-panel{
+  position:relative; width:min(100%, 380px);
+  background:linear-gradient(180deg, var(--v-surface-2), var(--v-surface));
+  border:1px solid var(--v-line-2);
+  border-radius:var(--v-r-xl);
+  box-shadow:var(--v-sh-3);
+  padding:1.35rem 1.25rem 1.15rem;
+  transform:translateY(10px) scale(0.96);
+  opacity:0;
+  transition:transform var(--v-mid) var(--v-ease), opacity var(--v-mid) var(--v-ease);
+}
+.vdlg.is-open .vdlg-panel{ transform:none; opacity:1; }
+.vdlg-icon{
+  width:2.75rem; height:2.75rem; border-radius:14px;
+  display:grid; place-items:center;
+  background:var(--v-gold-soft); border:1px solid var(--v-gold-line);
+  color:var(--v-gold); font-size:1.25rem; margin-bottom:.9rem;
+}
+.vdlg.is-danger .vdlg-icon{
+  background:var(--v-bad-soft); border-color:rgba(255,128,149,0.28); color:var(--v-bad);
+}
+.vdlg.is-alert .vdlg-icon{
+  background:var(--v-info-soft); border-color:rgba(127,166,255,0.28); color:var(--v-info);
+}
+.vdlg-title{
+  font-size:1.0625rem; font-weight:650; letter-spacing:-0.02em;
+  margin:0 0 .35rem; color:var(--v-ink);
+}
+.vdlg-body{
+  margin:0; color:var(--v-ink-2); font-size:.9375rem; line-height:1.45;
+}
+.vdlg-actions{
+  display:flex; justify-content:flex-end; gap:.5rem; margin-top:1.25rem;
+}
+.vdlg-actions .btn{ min-width:5.5rem; }
+.vdlg-ok.btn-gold{
+  background:var(--v-gold); color:var(--v-on-gold); border-color:transparent;
+  box-shadow:var(--v-sh-gold);
+}
+.vdlg-ok.btn-gold:hover{ filter:brightness(1.05); color:var(--v-on-gold); }
+.vdlg-ok.btn-danger{
+  background:var(--v-bad); color:#1A0A0E; border-color:transparent;
+}
+.vdlg-ok.btn-danger:hover{ filter:brightness(1.06); color:#1A0A0E; }

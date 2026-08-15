@@ -63,10 +63,11 @@ def test_tracker_list_item_toggle_and_share():
 
     guest = client.post(
         f"/tracker/shared/{token}/items",
-        json={"name": "Milk", "guest_name": "Asha"},
+        json={"name": "Milk", "guest_name": "renish"},
     )
     assert guest.status_code == 201, guest.text
     assert guest.json()["status"] == "pending"
+    assert guest.json()["added_by_name"] == "Renish"
 
     detail = client.get(f"/tracker/lists/{list_id}", headers=headers).json()
     assert detail["pending_count"] == 1
@@ -272,6 +273,43 @@ def test_shop_list_bill_copy_upload():
     assert gone.status_code == 204
     assert client.get(f"/tracker/lists/{lst['id']}", headers=headers).json()["receipt_count"] == 0
 
+
+def test_tracker_add_duplicate_merges_quantity():
+    import uuid
+
+    headers = _headers(f"shop-merge-{uuid.uuid4().hex[:8]}@example.com")
+    list_id = client.post("/tracker/lists", headers=headers, json={"name": "Merge test"}).json()["id"]
+    first = client.post(
+        f"/tracker/lists/{list_id}/items",
+        headers=headers,
+        json={"name": "ulli", "quantity": 1},
+    )
+    assert first.status_code == 201, first.text
+    assert first.json().get("merged") is False
+    item_id = first.json()["id"]
+    qty1 = first.json()["quantity"]
+
+    second = client.post(
+        f"/tracker/lists/{list_id}/items",
+        headers=headers,
+        json={"name": "onion", "quantity": 2},
+    )
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == item_id
+    assert second.json().get("merged") is True
+    assert second.json()["quantity"] == qty1 + 2
+
+    again = client.post(
+        f"/tracker/lists/{list_id}/items",
+        headers=headers,
+        json={"name": "ulli", "quantity": 1},
+    )
+    assert again.json()["id"] == item_id
+    assert again.json()["merged"] is True
+
+    detail = client.get(f"/tracker/lists/{list_id}", headers=headers).json()
+    assert detail["item_count"] == 1
+    assert detail["items"][0]["quantity"] == qty1 + 3
 
 def test_tracker_list_moves_to_trash():
     import uuid

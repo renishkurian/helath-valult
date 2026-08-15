@@ -3,6 +3,7 @@ package com.rklab.healthvault.ui.components
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
@@ -50,7 +51,7 @@ enum class AiTab { ASK, PROVIDERS, LOGS }
 
 enum class ExpenseTab { INBOX, INSIGHTS, LOG, SETTINGS }
 
-enum class TrackerTab { LISTS, FRIENDS }
+enum class TrackerTab { LISTS, FRIENDS, TRASH }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
@@ -76,6 +77,13 @@ fun TrackerBottomNav(current: TrackerTab, onSelect: (TrackerTab) -> Unit) {
             onClick = { onSelect(TrackerTab.FRIENDS) },
             icon = { Icon(Icons.Filled.People, contentDescription = "People") },
             label = { Text("People") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == TrackerTab.TRASH,
+            onClick = { onSelect(TrackerTab.TRASH) },
+            icon = { Icon(Icons.Filled.Delete, contentDescription = "Trash") },
+            label = { Text("Trash") },
             colors = navColors
         )
     }

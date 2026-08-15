@@ -197,7 +197,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=13">
+<link rel="stylesheet" href="/static/vault.css?v=15">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">
@@ -266,6 +266,7 @@
 </div>
 
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>
+<script src="/static/vault-dialog.js?v=1"></script>
 <script>
 (function(){
   var box = document.getElementById("photo-lightbox");

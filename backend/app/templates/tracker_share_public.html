@@ -40,7 +40,9 @@
     {% elif err %}
     <div class="alert alert-danger">Could not add that item.</div>
     {% endif %}
-    {% if ok %}
+    {% if ok == 'merged' %}
+    <div class="alert alert-info">Already on the list — quantity for <strong>{{ request.query_params.get('name') or 'item' }}</strong> is now {{ request.query_params.get('qty') or '' }}.</div>
+    {% elif ok %}
     <div class="alert alert-success">Added.</div>
     {% endif %}
 
@@ -110,7 +112,7 @@
     </form>
   </div>
 </div>
-<script src="/static/shop-list.js?v=3"></script>
+<script src="/static/shop-list.js?v=4"></script>
 <script>
 (function(){
   var guest = document.getElementById("guest");

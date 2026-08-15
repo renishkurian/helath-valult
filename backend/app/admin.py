@@ -3230,9 +3230,10 @@ def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_
 def tracker_add_item(
     list_id: str, request: Request, name: str = Form(...),
     quantity: str = Form("1"), unit: str = Form(""), price: str = Form(""),
-    emoji: str = Form(""), category: str = Form(""),
+    emoji: str = Form(""), category: str = Form(""), notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
+    from urllib.parse import quote
     from app.routers import tracker as tr
     from app import schemas as sc
     user = _tr_user(request, db)
@@ -3240,11 +3241,17 @@ def tracker_add_item(
         return RedirectResponse("/admin/login", status_code=302)
     qty = float(quantity or 1)
     pr = float(price) if price.strip() else None
-    tr.add_item(list_id, sc.ShopItemIn(
+    item = tr.add_item(list_id, sc.ShopItemIn(
         name=name, quantity=qty, unit=unit or None, price=pr,
         emoji=emoji or None, category=category or None,
+        notes=notes.strip() or None,
     ), db=db, current_user=user)
-    return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
+    if getattr(item, "merged", False):
+        return RedirectResponse(
+            f"/admin/tracker/lists/{list_id}?ok=merged&name={quote(item.name)}&qty={item.quantity:g}",
+            status_code=302,
+        )
+    return RedirectResponse(f"/admin/tracker/lists/{list_id}?ok=1", status_code=302)
 
 
 @router.post("/tracker/lists/{list_id}/items/{item_id}/toggle")
@@ -3291,6 +3298,7 @@ def tracker_delete_item(list_id: str, item_id: str, request: Request, db: Sessio
 def tracker_edit_item(
     list_id: str, item_id: str, request: Request,
     name: str = Form(...), quantity: str = Form("1"), unit: str = Form(""), price: str = Form(""),
+    notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers import tracker as tr
@@ -3302,6 +3310,7 @@ def tracker_edit_item(
     pr = float(price) if str(price).strip() else None
     tr.update_item(list_id, item_id, sc.ShopItemUpdate(
         name=name, quantity=qty, unit=unit or None, price=pr,
+        notes=notes.strip() if notes is not None else None,
     ), db=db, current_user=user)
     return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
 

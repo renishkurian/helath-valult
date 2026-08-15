@@ -681,6 +681,14 @@ interface ApiService {
     @POST("expense-analyser/mail-pdfs/{id}/ignore")
     suspend fun ignoreExpenseAnalyserMailPdf(@Path("id") id: String): ShopStatementPdfOut
 
+    @Streaming
+    @GET("expense-analyser/mail-pdfs/{id}/view")
+    suspend fun viewExpenseAnalyserMailPdf(@Path("id") id: String): ResponseBody
+
+    @Streaming
+    @GET("expense-analyser/mail-pdfs/{id}/download")
+    suspend fun downloadExpenseAnalyserMailPdf(@Path("id") id: String): ResponseBody
+
     // ---------- Shopping List ----------
     @GET("tracker/summary")
     suspend fun trackerSummary(): ShopSummaryOut
@@ -693,6 +701,9 @@ interface ApiService {
 
     @GET("tracker/lists/{id}")
     suspend fun getShopList(@Path("id") id: String): ShopListOut
+
+    @PATCH("tracker/lists/{id}")
+    suspend fun updateShopList(@Path("id") id: String, @Body body: ShopListUpdate): ShopListOut
 
     @DELETE("tracker/lists/{id}")
     suspend fun deleteShopList(@Path("id") id: String): Response<Unit>
@@ -736,6 +747,15 @@ interface ApiService {
 
     @POST("tracker/lists/{id}/share")
     suspend fun shareShopList(@Path("id") id: String): ShopShareOut
+
+    @POST("tracker/lists/{id}/send")
+    suspend fun sendShopList(@Path("id") id: String, @Body body: ShopSendIn): ShopSendOut
+
+    @GET("tracker/sent")
+    suspend fun shopSent(): List<ShopSendOut>
+
+    @DELETE("tracker/sent/{id}")
+    suspend fun recallShopSend(@Path("id") id: String): Response<Unit>
 
     @Multipart
     @POST("tracker/lists/{id}/receipts")

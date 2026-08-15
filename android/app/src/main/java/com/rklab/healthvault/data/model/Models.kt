@@ -1228,6 +1228,12 @@ data class ShopListIn(
     val description: String? = null
 )
 
+data class ShopListUpdate(
+    val name: String? = null,
+    val description: String? = null,
+    val completed: Boolean? = null
+)
+
 data class ShopItemOut(
     val id: String,
     val list_id: String,
@@ -1243,6 +1249,7 @@ data class ShopItemOut(
     val guest_name: String? = null,
     val added_by_name: String? = null,
     val status: String = "approved",
+    val merged: Boolean = false,
     val created_at: String = ""
 )
 
@@ -1268,7 +1275,8 @@ data class ShopItemUpdate(
     val name: String? = null,
     val quantity: Double? = null,
     val unit: String? = null,
-    val price: Double? = null
+    val price: Double? = null,
+    val notes: String? = null
 )
 
 data class ShopShareOut(
@@ -1303,4 +1311,9 @@ data class ShopSendOut(
     val status: String,
     val message: String? = null,
     val sent_at: String = ""
+)
+
+data class ShopSendIn(
+    val email: String,
+    val message: String? = null
 )

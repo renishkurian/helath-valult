@@ -278,11 +278,18 @@
 
   delBtn && delBtn.addEventListener("click", function () {
     if (!state.threadId) return;
+    var run = function () {
+      api("/admin/ai/ask/threads/" + encodeURIComponent(state.threadId) + "/delete", { method: "POST" })
+        .then(function () { return loadThreads(); })
+        .then(function () { openThread(null); })
+        .catch(function () {});
+    };
+    if (window.vaultConfirm) {
+      window.vaultConfirm("Delete this chat?").then(function (ok) { if (ok) run(); });
+      return;
+    }
     if (!confirm("Delete this chat?")) return;
-    api("/admin/ai/ask/threads/" + encodeURIComponent(state.threadId) + "/delete", { method: "POST" })
-      .then(function () { return loadThreads(); })
-      .then(function () { openThread(null); })
-      .catch(function () {});
+    run();
   });
 
   var testStatus = document.getElementById("ask-test-status");

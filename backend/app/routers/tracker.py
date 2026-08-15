@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
-from app.templating import setup_templates
+from app.templating import nice_name, setup_templates
 
 from app import crypto, models, schemas
 from app.config import settings
@@ -131,7 +131,7 @@ def _owner_name(db: Session, lst: models.ShopList, cache: dict[str, str] | None 
     names = cache if cache is not None else {}
     if uid not in names:
         owner = db.query(models.User).filter(models.User.id == uid).first()
-        names[uid] = (
+        names[uid] = nice_name(
             ((owner.full_name or owner.email or "").strip() if owner else "") or "Owner"
         )
     return names[uid] or "Owner"
@@ -140,12 +140,12 @@ def _owner_name(db: Session, lst: models.ShopList, cache: dict[str, str] | None 
 def _adder_name(db: Session, item: models.ShopItem, cache: dict[str, str]) -> Optional[str]:
     guest = (item.guest_name or "").strip()
     if guest:
-        return guest
+        return nice_name(guest)
     uid = (item.added_by or "").strip()
     if uid and uid != "guest":
         if uid not in cache:
             user = db.query(models.User).filter(models.User.id == uid).first()
-            cache[uid] = ((user.full_name or user.email or "").strip() if user else "")
+            cache[uid] = nice_name((user.full_name or user.email or "").strip() if user else "")
         if cache[uid]:
             return cache[uid]
     lst = item.lst
@@ -153,12 +153,14 @@ def _adder_name(db: Session, item: models.ShopItem, cache: dict[str, str]) -> Op
     if owner_id:
         if owner_id not in cache:
             owner = db.query(models.User).filter(models.User.id == owner_id).first()
-            cache[owner_id] = ((owner.full_name or owner.email or "").strip() if owner else "")
+            cache[owner_id] = nice_name((owner.full_name or owner.email or "").strip() if owner else "")
         return cache[owner_id] or None
     return None
 
 
-def _item_out(db: Session, item: models.ShopItem, cache: dict[str, str] | None = None) -> schemas.ShopItemOut:
+def _item_out(
+    db: Session, item: models.ShopItem, cache: dict[str, str] | None = None, *, merged: bool = False,
+) -> schemas.ShopItemOut:
     names = cache if cache is not None else {}
     return schemas.ShopItemOut(
         id=item.id, list_id=item.list_id, name=item.name,
@@ -167,7 +169,7 @@ def _item_out(db: Session, item: models.ShopItem, cache: dict[str, str] | None =
         checked=bool(item.checked), emoji=item.emoji, category=item.category,
         notes=item.notes, added_by=item.added_by, guest_name=item.guest_name,
         added_by_name=_adder_name(db, item, names),
-        status=item.status or "approved", created_at=item.created_at,
+        status=item.status or "approved", merged=merged, created_at=item.created_at,
     )
 
 
@@ -638,17 +640,57 @@ def delete_receipt(
 
 # ---------- Items ----------
 
-def _add_item_row(db: Session, lst: models.ShopList, body: schemas.ShopItemIn, *, added_by: str, status: str) -> models.ShopItem:
+def _item_match_key(db: Session, name: str) -> str:
+    from app.grocery import _fold, recognize
+
+    hint = recognize(db, name or "")
+    if hint.get("matched") and hint.get("english"):
+        return _fold(str(hint["english"]))
+    return _fold(name or "")
+
+
+def _add_item_row(
+    db: Session, lst: models.ShopList, body: schemas.ShopItemIn, *, added_by: str, status: str,
+) -> tuple[models.ShopItem, bool]:
     hint = recognize(db, body.name)
     if hint.get("matched"):
         display = format_item_name(hint.get("english") or "", hint.get("malayalam"))
     else:
         display = (body.name or hint.get("english") or "").strip()
+    qty = Decimal(str(body.quantity if body.quantity not in (None, 0) else 1))
+    unit = (body.unit or "").strip() or None
+    want_key = _item_match_key(db, body.name) or _item_match_key(db, display)
+    unit_key = (unit or "").strip().casefold()
+
+    for existing in list(lst.items or []):
+        if (existing.status or "approved") != status:
+            continue
+        if existing.status == "rejected":
+            continue
+        existing_unit = (existing.unit or "").strip().casefold()
+        if existing_unit != unit_key:
+            continue
+        existing_key = _item_match_key(db, existing.name or "")
+        if not want_key or existing_key != want_key:
+            continue
+        existing.quantity = Decimal(str(existing.quantity or 0)) + qty
+        if body.price not in (None, ""):
+            existing.price = Decimal(str(body.price))
+        note = (body.notes or "").strip()
+        if note:
+            existing.notes = note
+        if existing.checked:
+            existing.checked = False
+        existing.updated_at = datetime.utcnow()
+        _recompute_total(lst)
+        _touch_list(lst)
+        return existing, True
+
     item = models.ShopItem(
         list_id=lst.id,
         name=display,
-        quantity=Decimal(str(body.quantity if body.quantity not in (None, 0) else 1)),
-        unit=(body.unit or "").strip() or None,
+        quantity=qty,
+        unit=unit,
         price=Decimal(str(body.price)) if body.price not in (None, "") else None,
         emoji=(body.emoji or hint.get("emoji") or "🛒"),
         category=(body.category or hint.get("category")),
@@ -660,7 +702,8 @@ def _add_item_row(db: Session, lst: models.ShopList, body: schemas.ShopItemIn, *
     db.add(item)
     db.flush()
     _recompute_total(lst)
-    return item
+    _touch_list(lst)
+    return item, False
 
 
 @router.post("/lists/{list_id}/items", response_model=schemas.ShopItemOut, status_code=201)
@@ -672,10 +715,10 @@ def add_item(
 ):
     require_owner(current_user)
     lst = _owned_list(db, current_user, list_id)
-    item = _add_item_row(db, lst, body, added_by=current_user.id, status="approved")
+    item, merged = _add_item_row(db, lst, body, added_by=current_user.id, status="approved")
     db.commit()
     db.refresh(item)
-    return _item_out(db, item)
+    return _item_out(db, item, merged=merged)
 
 
 @router.patch("/lists/{list_id}/items/{item_id}", response_model=schemas.ShopItemOut)
@@ -812,12 +855,12 @@ def guest_add_item(token: str, body: schemas.ShopItemIn, db: Session = Depends(g
     if guest.lower() in blocked:
         raise HTTPException(403, "You are blocked from this list")
     status = "approved" if _is_household(db, lst, guest) else "pending"
-    item = _add_item_row(db, lst, body, added_by="guest", status=status)
+    item, _merged = _add_item_row(db, lst, body, added_by="guest", status=status)
     item.guest_name = guest
     _touch_list(lst)
     db.commit()
     db.refresh(item)
-    return _item_out(db, item)
+    return _item_out(db, item, merged=_merged)
 
 
 @router.post("/shared/{token}/items/{item_id}/toggle")
@@ -1459,6 +1502,7 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
 
 @router.post("/public/{token}/items")
 async def public_add_item(token: str, request: Request, db: Session = Depends(get_db)):
+    from urllib.parse import quote
     form = await request.form()
     try:
         share, lst = _list_by_token(db, token)
@@ -1478,9 +1522,14 @@ async def public_add_item(token: str, request: Request, db: Session = Depends(ge
         unit=str(form.get("unit") or "") or None,
         guest_name=guest,
     )
-    _add_item_row(db, lst, body, added_by="guest", status=status)
+    _item, merged = _add_item_row(db, lst, body, added_by="guest", status=status)
     _touch_list(lst)
     db.commit()
+    if merged:
+        return RedirectResponse(
+            f"/shop/{token}?ok=merged&name={quote(str(_item.name))}&qty={money(_item.quantity)}",
+            status_code=302,
+        )
     return RedirectResponse(f"/shop/{token}?ok=added", status_code=302)
 
 

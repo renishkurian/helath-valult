@@ -3,6 +3,8 @@
     <cache-path name="captures" path="captures/" />
     <cache-path name="downloads" path="downloads/" />
     <cache-path name="locker" path="locker/" />
+    <cache-path name="shop" path="shop/" />
+    <cache-path name="ea-pdf" path="ea-pdf/" />
     <files-path name="documents" path="documents/" />
     <external-files-path name="backups" path="." />
 </paths>

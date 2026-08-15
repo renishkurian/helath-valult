@@ -189,4 +189,23 @@
         .catch(function () {});
     }, 2500);
   }
+
+  // Prevent double-submit on add (main form, quick-add chips, public composer).
+  Array.prototype.forEach.call(document.querySelectorAll(
+    "#shop-add-form, .shop-composer form, #shop-chips-host form"
+  ), function (form) {
+    form.addEventListener("submit", function (e) {
+      if (form.getAttribute("data-busy") === "1") {
+        e.preventDefault();
+        return;
+      }
+      form.setAttribute("data-busy", "1");
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) {
+        btn.disabled = true;
+        if (!btn.getAttribute("data-label")) btn.setAttribute("data-label", btn.textContent || "Add");
+        btn.textContent = "Adding…";
+      }
+    });
+  });
 })();

@@ -75,9 +75,14 @@ import com.rklab.healthvault.ui.theme.LineColor
 import com.rklab.healthvault.ui.theme.Navy
 import com.rklab.healthvault.ui.theme.Sage
 import com.rklab.healthvault.ui.theme.StampRed
+import com.rklab.healthvault.ui.theme.VaultGold
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
+import androidx.core.content.FileProvider
+import java.io.File
 
 private val CardShape = RoundedCornerShape(16.dp)
 private const val OPEN_STATUSES = "pending,missed,matched,corrected"
@@ -579,7 +584,7 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
             runCatching { repository.listShopPdfPasswords() }
                 .onSuccess { passwords = it }
             runCatching { repository.listExpenseAnalyserMailPdfs() }
-                .onSuccess { mailPdfs = it.filter { p -> p.status == "needs_password" || p.status == "failed" } }
+                .onSuccess { mailPdfs = it.filter { p -> p.status != "ignored" } }
         }
     }
     LaunchedEffect(Unit) { reload() }
@@ -853,9 +858,94 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                     colors = ButtonDefaults.buttonColors(containerColor = Navy),
                     modifier = Modifier.padding(top = 8.dp)
                 ) { Text("Save bank") }
-                mailPdfs.takeIf { it.isNotEmpty() }?.let { locked ->
+                mailPdfs.forEach { pdf ->
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .border(1.dp, LineColor, RoundedCornerShape(10.dp))
+                            .padding(10.dp)
+                    ) {
+                        Text(pdf.filename ?: "statement.pdf", color = Ink, fontWeight = FontWeight.Medium)
+                        Text(
+                            listOfNotNull(
+                                pdf.status,
+                                pdf.bank_hint,
+                                pdf.error?.take(80)
+                            ).joinToString(" · "),
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = {
+                                scope.launch {
+                                    try {
+                                        val name = (pdf.filename ?: "statement.pdf").ifBlank { "statement.pdf" }
+                                        val dest = File(
+                                            context.cacheDir.resolve("ea-pdf").apply { mkdirs() },
+                                            name
+                                        )
+                                        withContext(Dispatchers.IO) {
+                                            repository.downloadExpenseAnalyserMailPdf(pdf.id, dest, inline = true)
+                                        }
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            dest
+                                        )
+                                        context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                            setDataAndType(uri, "application/pdf")
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        })
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, e.message ?: "Could not open PDF", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }) { Text("View", color = VaultGold) }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    try {
+                                        val name = (pdf.filename ?: "statement.pdf").ifBlank { "statement.pdf" }
+                                        val dest = File(
+                                            context.getExternalFilesDir(null) ?: context.cacheDir,
+                                            name
+                                        )
+                                        withContext(Dispatchers.IO) {
+                                            repository.downloadExpenseAnalyserMailPdf(pdf.id, dest, inline = false)
+                                        }
+                                        val uri = FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.fileprovider",
+                                            dest
+                                        )
+                                        context.startActivity(Intent(Intent.ACTION_SEND).apply {
+                                            type = "application/pdf"
+                                            putExtra(Intent.EXTRA_STREAM, uri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }.let { Intent.createChooser(it, "Download PDF") })
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, e.message ?: "Download failed", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            }) { Text("Download", color = VaultGold) }
+                            TextButton(onClick = {
+                                scope.launch {
+                                    runCatching { repository.ignoreExpenseAnalyserMailPdf(pdf.id) }
+                                        .onSuccess {
+                                            Toast.makeText(context, "Ignored", Toast.LENGTH_SHORT).show()
+                                            reload()
+                                        }
+                                        .onFailure {
+                                            Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show()
+                                        }
+                                }
+                            }) { Text("Ignore", color = StampRed) }
+                        }
+                    }
+                }
+                if (mailPdfs.isEmpty()) {
                     Text(
-                        "${locked.size} Gmail PDF(s) still need a password or failed to parse.",
+                        "No Gmail statement PDFs tracked yet. Tap Load PDFs after connecting Gmail.",
                         color = InkSoft,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 10.dp)

@@ -14,7 +14,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -25,6 +27,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
 import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.HubBg
@@ -36,8 +39,19 @@ import com.rklab.healthvault.ui.theme.StampRed
 import com.rklab.healthvault.ui.theme.TextDark
 import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.util.FileUtil
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.URLEncoder
+import android.net.Uri
+
+private fun shopDateLabel(raw: String?): String? {
+    val value = raw?.trim().orEmpty()
+    if (value.isBlank()) return null
+    return value.take(16).replace('T', ' ')
+}
 
 @Composable
 fun ShopListScreen(
@@ -106,6 +120,9 @@ fun ShopListScreen(
                                         lst.owner_name?.takeIf { it.isNotBlank() }?.let {
                                             append(" · "); append(it)
                                         }
+                                        shopDateLabel(lst.created_at)?.let {
+                                            append(" · "); append(it.take(10))
+                                        }
                                         if (lst.pending_count > 0) append(" · ${lst.pending_count} pending")
                                         if (lst.completed) append(" · done")
                                     },
@@ -169,14 +186,19 @@ fun ShopDetailScreen(
     var lst by remember { mutableStateOf<ShopListOut?>(null) }
     var loading by remember { mutableStateOf(true) }
     var newItem by remember { mutableStateOf("") }
+    var newNotes by remember { mutableStateOf("") }
     var useAi by remember { mutableStateOf(true) }
     var suggestions by remember { mutableStateOf<List<ShopGroceryItemOut>>(emptyList()) }
     var editing by remember { mutableStateOf<ShopItemOut?>(null) }
+    var showSend by remember { mutableStateOf(false) }
+    var friends by remember { mutableStateOf<List<ShopContactOut>>(emptyList()) }
+    var adding by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
             loading = true
             runCatching { lst = repository.getShopList(listId) }
+            runCatching { friends = repository.listShopFriends() }
             loading = false
         }
     }
@@ -227,6 +249,56 @@ fun ShopDetailScreen(
             Spacer(Modifier.weight(1f))
             IconButton(onClick = {
                 scope.launch {
+                    runCatching {
+                        val current = repository.getShopList(listId)
+                        repository.updateShopList(
+                            listId,
+                            ShopListUpdate(completed = !current.completed)
+                        )
+                    }.onSuccess { reload() }
+                        .onFailure {
+                            Toast.makeText(context, it.message ?: "Could not update", Toast.LENGTH_SHORT).show()
+                        }
+                }
+            }) {
+                Icon(
+                    Icons.Filled.DoneAll,
+                    contentDescription = if (lst?.completed == true) "Reopen" else "Mark done",
+                    tint = if (lst?.completed == true) VaultGold else Ink
+                )
+            }
+            IconButton(onClick = { showSend = true }) {
+                Text("Send", color = VaultGold, style = MaterialTheme.typography.labelLarge)
+            }
+            IconButton(onClick = {
+                scope.launch {
+                    runCatching {
+                        val share = repository.shareShopList(listId)
+                        val detail = repository.getShopList(listId)
+                        val lines = mutableListOf(detail.name, share.url, "")
+                        detail.items.orEmpty().filter { it.status != "pending" }.forEach { item ->
+                            var bit = item.name
+                            if (item.quantity != 0.0) {
+                                bit += " ${item.quantity}"
+                                item.unit?.takeIf { it.isNotBlank() }?.let { bit += " $it" }
+                            }
+                            if (item.checked) bit += " ✓"
+                            lines.add(bit)
+                        }
+                        val text = lines.joinToString("\n")
+                        val uri = Uri.parse(
+                            "https://wa.me/?text=" + URLEncoder.encode(text, "UTF-8")
+                        )
+                        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    }.onFailure {
+                        Toast.makeText(context, it.message ?: "WhatsApp share failed", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }) {
+                Text("WA", color = VaultGold, style = MaterialTheme.typography.labelLarge)
+            }
+            IconButton(onClick = {
+                scope.launch {
                     runCatching { repository.shareShopList(listId) }.onSuccess { share ->
                         val send = Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
@@ -268,36 +340,66 @@ fun ShopDetailScreen(
                 lst?.owner_name?.takeIf { it.isNotBlank() }?.let {
                     append(" · Created by "); append(it)
                 }
+                shopDateLabel(lst?.created_at)?.let {
+                    append(" · "); append(it)
+                }
             },
             color = InkSoft,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
         )
-        Row(
-            Modifier.fillMaxWidth().padding(20.dp, 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            OutlinedTextField(
-                value = newItem,
-                onValueChange = { newItem = it },
-                placeholder = { Text("vazhuth or ഉള്ളി") },
-                singleLine = true,
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            IconButton(onClick = {
-                val name = newItem.trim()
-                if (name.isEmpty()) return@IconButton
-                scope.launch {
-                    runCatching { repository.addShopItem(listId, ShopItemIn(name)) }
-                        .onSuccess {
-                            newItem = ""
-                            suggestions = emptyList()
-                            reload()
+        Column(Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = newItem,
+                    onValueChange = { newItem = it },
+                    placeholder = { Text("vazhuth or ഉള്ളി") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                IconButton(onClick = {
+                    val name = newItem.trim()
+                    if (name.isEmpty() || adding) return@IconButton
+                    scope.launch {
+                        adding = true
+                        runCatching {
+                            repository.addShopItem(
+                                listId,
+                                ShopItemIn(name = name, notes = newNotes.trim().ifBlank { null })
+                            )
                         }
+                            .onSuccess { item ->
+                                newItem = ""
+                                newNotes = ""
+                                suggestions = emptyList()
+                                if (item.merged) {
+                                    Toast.makeText(
+                                        context,
+                                        "Already on the list — quantity is now ${item.quantity}",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                reload()
+                            }
+                            .onFailure {
+                                Toast.makeText(context, it.message ?: "Could not add", Toast.LENGTH_SHORT).show()
+                            }
+                        adding = false
+                    }
+                }) {
+                    Icon(Icons.Filled.Add, contentDescription = "Add", tint = VaultGold)
                 }
-            }) {
-                Icon(Icons.Filled.Add, contentDescription = "Add", tint = VaultGold)
             }
+            OutlinedTextField(
+                value = newNotes,
+                onValueChange = { newNotes = it },
+                placeholder = { Text("Notes (optional)") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp)
+            )
         }
         Row(
             Modifier.padding(horizontal = 20.dp),
@@ -321,15 +423,25 @@ fun ShopDetailScreen(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
+                            .clickable(enabled = !adding) {
+                                if (adding) return@clickable
                                 newItem = hit.english
                                 scope.launch {
+                                    adding = true
                                     runCatching { repository.addShopItem(listId, ShopItemIn(hit.english)) }
-                                        .onSuccess {
+                                        .onSuccess { item ->
                                             newItem = ""
                                             suggestions = emptyList()
+                                            if (item.merged) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Already on the list — quantity is now ${item.quantity}",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
                                             reload()
                                         }
+                                    adding = false
                                 }
                             }
                             .padding(vertical = 6.dp)
@@ -363,7 +475,38 @@ fun ShopDetailScreen(
                             )
                             receipts.forEach { rec ->
                                 Row(
-                                    Modifier.fillMaxWidth().padding(top = 6.dp),
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 6.dp)
+                                        .clickable {
+                                            scope.launch {
+                                                try {
+                                                    val name = rec.original_name ?: "bill.jpg"
+                                                    val dest = File(
+                                                        context.cacheDir.resolve("shop").apply { mkdirs() },
+                                                        name
+                                                    )
+                                                    withContext(Dispatchers.IO) {
+                                                        repository.downloadShopReceipt(listId, rec.id, dest)
+                                                    }
+                                                    val uri = FileProvider.getUriForFile(
+                                                        context,
+                                                        "${context.packageName}.fileprovider",
+                                                        dest
+                                                    )
+                                                    context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                                                        setDataAndType(uri, rec.image_mime ?: "image/*")
+                                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                                    })
+                                                } catch (e: Exception) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        e.message ?: "Could not open bill",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            }
+                                        },
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
@@ -426,11 +569,25 @@ fun ShopDetailScreen(
                                         if (isNotEmpty()) append(" · ")
                                         append(it)
                                     }
+                                    item.notes?.takeIf { it.isNotBlank() }?.let {
+                                        if (isNotEmpty()) append(" · ")
+                                        append(it)
+                                    }
                                 }
                                 if (meta.isNotBlank()) Text(meta, color = InkSoft, style = MaterialTheme.typography.bodySmall)
                             }
                             TextButton(onClick = { editing = item }) {
                                 Text("Edit", color = VaultGold)
+                            }
+                            if (item.status == "pending") {
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        runCatching { repository.rejectShopItem(listId, item.id) }
+                                        reload()
+                                    }
+                                }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Reject", tint = StampRed)
+                                }
                             }
                             IconButton(onClick = {
                                 scope.launch {
@@ -450,6 +607,7 @@ fun ShopDetailScreen(
             var qty by remember(item.id) { mutableStateOf(item.quantity.toString()) }
             var unit by remember(item.id) { mutableStateOf(item.unit ?: "") }
             var price by remember(item.id) { mutableStateOf(item.price?.toString() ?: "") }
+            var notes by remember(item.id) { mutableStateOf(item.notes ?: "") }
             AlertDialog(
                 onDismissRequest = { editing = null },
                 title = { Text("Edit item") },
@@ -462,6 +620,8 @@ fun ShopDetailScreen(
                         OutlinedTextField(value = unit, onValueChange = { unit = it }, label = { Text("Unit") }, singleLine = true)
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(value = price, onValueChange = { price = it }, label = { Text("Price") }, singleLine = true)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("Notes") }, singleLine = true)
                     }
                 },
                 confirmButton = {
@@ -475,7 +635,8 @@ fun ShopDetailScreen(
                                         name = name.trim(),
                                         quantity = qty.toDoubleOrNull(),
                                         unit = unit.trim().ifBlank { null },
-                                        price = price.toDoubleOrNull()
+                                        price = price.toDoubleOrNull(),
+                                        notes = notes.trim().ifBlank { null }
                                     )
                                 )
                             }.onSuccess {
@@ -486,6 +647,48 @@ fun ShopDetailScreen(
                     }) { Text("Save") }
                 },
                 dismissButton = { TextButton(onClick = { editing = null }) { Text("Cancel") } }
+            )
+        }
+        if (showSend) {
+            AlertDialog(
+                onDismissRequest = { showSend = false },
+                title = { Text("Send list to friend") },
+                text = {
+                    Column {
+                        Text(
+                            "Pick a person from People. They will get a copy in their inbox.",
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        val withEmail = friends.filter { !it.email.isNullOrBlank() }
+                        if (withEmail.isEmpty()) {
+                            Text("Add a friend with an email on the People tab first.", color = StampRed)
+                        } else {
+                            withEmail.forEach { friend ->
+                                TextButton(onClick = {
+                                    scope.launch {
+                                        runCatching {
+                                            repository.sendShopList(
+                                                listId,
+                                                ShopSendIn(email = friend.email!!, message = null)
+                                            )
+                                        }.onSuccess {
+                                            Toast.makeText(context, "Sent to ${friend.name}", Toast.LENGTH_SHORT).show()
+                                            showSend = false
+                                        }.onFailure {
+                                            Toast.makeText(context, it.message ?: "Send failed", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }) {
+                                    Text("${friend.name} · ${friend.email}", color = VaultGold)
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showSend = false }) { Text("Close") } }
             )
         }
     }
@@ -500,6 +703,7 @@ fun ShopFriendsScreen(
     val scope = rememberCoroutineScope()
     var friends by remember { mutableStateOf<List<ShopContactOut>>(emptyList()) }
     var inbox by remember { mutableStateOf<List<ShopSendOut>>(emptyList()) }
+    var sent by remember { mutableStateOf<List<ShopSendOut>>(emptyList()) }
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
 
@@ -507,6 +711,7 @@ fun ShopFriendsScreen(
         scope.launch {
             runCatching { friends = repository.listShopFriends() }
             runCatching { inbox = repository.shopInbox() }
+            runCatching { sent = repository.shopSent() }
         }
     }
     LaunchedEffect(Unit) { reload() }
@@ -515,7 +720,7 @@ fun ShopFriendsScreen(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("SHOPPING LIST", style = MaterialTheme.typography.labelMedium, color = VaultGold)
-                Text("Friends", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+                Text("People", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
             }
             IconButton(onClick = onOpenModules) {
                 Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
@@ -541,6 +746,25 @@ fun ShopFriendsScreen(
                                 }
                             }) { Text("Reject") }
                         }
+                    }
+                }
+            }
+        }
+        if (sent.any { it.status == "pending" }) {
+            Text("Sent", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
+            sent.filter { it.status == "pending" }.forEach { send ->
+                Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(send.list_name ?: "Shopping list", color = Ink, fontWeight = FontWeight.Medium)
+                            Text("to ${send.receiver_name ?: "someone"}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                        }
+                        TextButton(onClick = {
+                            scope.launch {
+                                runCatching { repository.recallShopSend(send.id) }
+                                reload()
+                            }
+                        }) { Text("Recall", color = StampRed) }
                     }
                 }
             }
