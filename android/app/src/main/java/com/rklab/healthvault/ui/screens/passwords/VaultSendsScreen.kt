@@ -185,12 +185,12 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                 if (requireEmailOtp) {
                     OutlinedTextField(
                         allowedEmails, { allowedEmails = it },
-                        label = { Text("Allowed emails (comma-separated)") },
+                        label = { Text("Allowed emails (optional)") },
                         modifier = Modifier.fillMaxWidth(),
                         colors = fieldColors
                     )
                     Text(
-                        "Must be Vault login emails on this allowlist.",
+                        "If set, only these addresses can get a code. Leave blank for any email.",
                         color = HubTextDim,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -204,7 +204,6 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                 .split(',', ';', '\n')
                                 .map { it.trim() }
                                 .filter { it.contains('@') }
-                            if (requireEmailOtp && emails.isEmpty()) return@launch
                             runCatching {
                                 val created = repository.createVaultSend(
                                     VaultSendCreate(
@@ -219,7 +218,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                         require_grant = requireGrant,
                                         require_email_otp = requireEmailOtp,
                                         allowed_emails = emails,
-                                        require_vault_user_email = true
+                                        require_vault_user_email = false
                                     )
                                 )
                                 val url = "$base/v/${created.token}"

@@ -504,12 +504,9 @@ def create_send(
             payload["require_grant"] = True
         if body.require_email_otp:
             emails = _normalize_allowed_emails(body.allowed_emails)
-            if not emails:
-                raise HTTPException(status_code=400, detail="Add at least one allowed email for Email OTP")
             payload["require_email_otp"] = True
-            payload["allowed_emails"] = emails
-            # Always require a Vault login email that is also on the allowlist
-            payload["require_vault_user_email"] = True
+            if emails:
+                payload["allowed_emails"] = emails
     else:
         if not (body.text or "").strip():
             raise HTTPException(status_code=400, detail="text is required")
@@ -518,11 +515,9 @@ def create_send(
             payload["require_grant"] = True
         if body.require_email_otp:
             emails = _normalize_allowed_emails(body.allowed_emails)
-            if not emails:
-                raise HTTPException(status_code=400, detail="Add at least one allowed email for Email OTP")
             payload["require_email_otp"] = True
-            payload["allowed_emails"] = emails
-            payload["require_vault_user_email"] = True
+            if emails:
+                payload["allowed_emails"] = emails
     pin = (body.pin or "").strip() or None
     if pin and len(pin) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 characters")
@@ -630,7 +625,8 @@ def _otpauth_for_send(name: str, secret: str) -> tuple[str, str]:
 
 
 def _send_req_cookie_name(token: str) -> str:
-    return f"vsr_{token[:32]}"
+    # vsrs_ = session-scoped grant cookie (browser close clears access).
+    return f"vsrs_{token[:32]}"
 
 
 def _read_request_cookie(request: Request, token: str) -> str | None:
@@ -681,7 +677,8 @@ def _email_otp_unlocked(request: Request, send: models.VaultSend, data: dict) ->
 def _validate_guest_email(data: dict, email: str, db: Session) -> str | None:
     """Return error code or None if ok.
 
-    Email OTP always requires: (1) allowlist match, (2) a Vault login account email.
+    Always: valid email format.
+    If allowed_emails is set: must be on that list. Otherwise any email is fine.
     """
     email = (email or "").strip().lower()
     if not email or "@" not in email:
@@ -689,15 +686,6 @@ def _validate_guest_email(data: dict, email: str, db: Session) -> str | None:
     allowed = _normalize_allowed_emails(data.get("allowed_emails") or [])
     if allowed and email not in allowed:
         return "not_allowed"
-    user = db.query(models.User).filter(models.User.email == email).first()
-    if not user:
-        user = (
-            db.query(models.User)
-            .filter(models.User.email.ilike(email))
-            .first()
-        )
-    if not user:
-        return "not_account"
     return None
 
 
@@ -812,6 +800,7 @@ def public_send_page(
         "otp_sent": bool(otp_sent),
         "otp_error": (otp_err or "").strip() or None,
         "otp_email": (otp_email or verified_email or "").strip(),
+        "show_request_panel": False,
     }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
@@ -821,6 +810,7 @@ def public_send_page(
             "error": bool(pin), "totp_error": False, "pin_value": pin or "", **ctx_extra,
         })
     if require_grant and not (guest_req and guest_req.status == "granted"):
+        ctx_extra["show_request_panel"] = True
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": False,
             "grant_required": True, "email_otp_required": False, "payload": None, "notes": None,
@@ -853,6 +843,12 @@ def public_send_page(
         request_id=guest_req.id if guest_req else None,
     )
     ctx_extra["email_otp_required"] = False
+    # Granted / unlocked: never show the Request access panel again this session.
+    ctx_extra["grant_required"] = False
+    ctx_extra["grant_pending"] = False
+    ctx_extra["request_ok"] = False
+    ctx_extra["request_err"] = ""
+    ctx_extra["show_request_panel"] = False
     return templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
         "grant_required": False, "payload": shown, "notes": notes,
@@ -887,6 +883,7 @@ def public_send_qr_page(
         "grant_pending": bool(guest_req and guest_req.status in ("pending", "seen")),
         "grant_denied": bool(guest_req and guest_req.status == "dismissed"),
         "grant_required": require_grant and not (guest_req and guest_req.status == "granted"),
+        "show_request_panel": False,
     }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
@@ -895,6 +892,7 @@ def public_send_qr_page(
             "totp_secret": None, "otpauth_qr": None, **ctx_extra,
         })
     if ctx_extra["grant_required"]:
+        ctx_extra["show_request_panel"] = True
         return templates.TemplateResponse(request, "vault_send_qr.html", {
             "send": row, "token": token, "pin_required": False, "error": False,
             "totp_secret": None, "otpauth_qr": None, **ctx_extra,
@@ -1060,7 +1058,7 @@ async def public_request_access(
         value=row.id,
         httponly=True,
         samesite="lax",
-        max_age=30 * 24 * 3600,
+        # Session cookie: closes with the browser so the next visit must request access again.
         secure=request.url.scheme == "https",
     )
     return resp

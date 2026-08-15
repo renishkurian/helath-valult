@@ -1489,7 +1489,6 @@ def passwords_send_create(
         require_grant=bool(require_grant),
         require_email_otp=bool(require_email_otp),
         allowed_emails=emails,
-        require_vault_user_email=True,
     ), db=db, current_user=user)
     dest = (next or "").strip()
     if dest.startswith("/admin/passwords/") and "://" not in dest:

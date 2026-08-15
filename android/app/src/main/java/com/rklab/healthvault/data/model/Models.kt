@@ -550,7 +550,7 @@ data class VaultSendCreate(
     val require_grant: Boolean = false,
     val require_email_otp: Boolean = false,
     val allowed_emails: List<String> = emptyList(),
-    val require_vault_user_email: Boolean = true
+    val require_vault_user_email: Boolean = false
 )
 data class VaultSendOut(
     val id: String,

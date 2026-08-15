@@ -49,18 +49,64 @@
           </form>
 
         {% elif grant_required %}
-          <p class="text-muted mb-0">
+          <p class="text-muted mb-3">
             The owner locked this link. Request access below — the password is only shown after they approve you.
           </p>
           {% if grant_pending %}
-          <div class="alert alert-info mt-3" role="status">
+          <div class="alert alert-info" role="status">
             <i class="bi bi-hourglass-split"></i>
             Waiting for the owner to grant access. This page updates automatically.
           </div>
           {% elif grant_denied %}
-          <div class="alert alert-danger mt-3" role="alert">
+          <div class="alert alert-danger" role="alert">
             Access was declined. Ask the owner for a new link if you still need it.
           </div>
+          {% endif %}
+
+          {% if request_ok and grant_pending %}
+          <div class="alert alert-success" role="status">
+            <i class="bi bi-check2-circle"></i>
+            Request sent. Stay on this page — when the owner grants access, the password appears here.
+          </div>
+          {% elif request_err == 'email' %}
+          <div class="alert alert-danger">Please enter a valid email, or leave it blank.</div>
+          {% elif request_err == 'photo' %}
+          <div class="alert alert-danger">Photo was too large. Try a smaller image.</div>
+          {% elif request_err == 'disabled' %}
+          <div class="alert alert-danger">Access requests are not enabled for this link.</div>
+          {% elif request_err %}
+          <div class="alert alert-danger">Could not send the request. Try again.</div>
+          {% endif %}
+
+          {% if not grant_pending and not grant_denied %}
+          <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
+                class="stack" id="req-access-form">
+            <input type="hidden" name="next" value="page">
+            <div class="row g-2">
+              <div class="col-sm-6">
+                <label class="form-label" for="req-name">Name <span class="text-muted">(optional)</span></label>
+                <input class="form-control" id="req-name" type="text" name="name" maxlength="120" autocomplete="name">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="req-email">Email <span class="text-muted">(optional)</span></label>
+                <input class="form-control" id="req-email" type="email" name="email" maxlength="255" autocomplete="email">
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="req-photo">Photo <span class="text-muted">(optional)</span></label>
+              <input class="form-control" id="req-photo" type="file" name="photo" accept="image/*" capture="user">
+              <div class="form-text">On phones you can allow the camera; otherwise pick a file.</div>
+            </div>
+            <input type="hidden" name="latitude" id="req-lat" value="">
+            <input type="hidden" name="longitude" id="req-lng" value="">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="req-geo" checked>
+              <label class="form-check-label" for="req-geo">Share approximate location if the browser allows</label>
+            </div>
+            <button class="btn btn-primary btn-lg btn-block" type="submit" id="req-submit">
+              <i class="bi bi-send"></i> Request access
+            </button>
+          </form>
           {% endif %}
 
           <div id="guest-video-panel" class="mt-3" hidden
@@ -85,14 +131,12 @@
 
         {% elif email_otp_required %}
           <p class="text-muted mb-3">
-            Enter an allowed email. We’ll send a one-time code — it must match a Vault login account on the owner’s allowlist.
+            Enter your email. We’ll send a one-time code{% if email_hint %} — it must be on the owner’s allowlist{% endif %}.
           </p>
           {% if otp_error == 'email' %}
           <div class="alert alert-danger">Enter a valid email address.</div>
           {% elif otp_error == 'not_allowed' %}
           <div class="alert alert-danger">That email is not allowed for this share.</div>
-          {% elif otp_error == 'not_account' %}
-          <div class="alert alert-danger">That email is not a Vault login account.</div>
           {% elif otp_error == 'mail' %}
           <div class="alert alert-danger">Could not send email. Ask the owner to check mail settings.</div>
           {% elif otp_error == 'bad_code' %}
@@ -133,7 +177,7 @@
               <label class="form-label" for="otp-email">Email <span class="req">*</span></label>
               <input class="form-control" id="otp-email" type="email" name="email" maxlength="255"
                      autocomplete="email" autofocus required value="{{ otp_email }}">
-              <div class="form-text">Must be on the owner’s allowlist and a Vault login email.</div>
+              <div class="form-text">{% if email_hint %}Must be on the owner’s allowlist (e.g. {{ email_hint }}).{% else %}Any email can request a code for this link.{% endif %}</div>
             </div>
             <button class="btn btn-primary btn-lg btn-block" type="submit">
               <i class="bi bi-envelope"></i> Send code
@@ -214,64 +258,6 @@
     <div class="public-foot">
       <i class="bi bi-clock-history"></i>
       This link expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC · opening is logged for the owner.
-    </div>
-    {% endif %}
-
-    {% if request_access_enabled and not pin_required and grant_required and (grant_pending or request_ok or request_err or grant_denied) %}
-    <div class="card mt-3">
-      <div class="card-header">
-        <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
-        <div>
-          <h2>Request access</h2>
-          <div class="card-sub">Notify the owner — they see your IP and browser</div>
-        </div>
-      </div>
-      <div class="card-body">
-        {% if request_ok %}
-        <div class="alert alert-success" role="status">
-          <i class="bi bi-check2-circle"></i>
-          Request sent. Stay on this page — when the owner grants access, the password appears here.
-        </div>
-        {% elif request_err == 'email' %}
-        <div class="alert alert-danger">Please enter a valid email, or leave it blank.</div>
-        {% elif request_err == 'photo' %}
-        <div class="alert alert-danger">Photo was too large. Try a smaller image.</div>
-        {% elif request_err == 'disabled' %}
-        <div class="alert alert-danger">Access requests are not enabled for this link.</div>
-        {% elif request_err %}
-        <div class="alert alert-danger">Could not send the request. Try again.</div>
-        {% endif %}
-        {% if not grant_pending and not grant_denied %}
-        <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
-              class="stack" id="req-access-form">
-          <input type="hidden" name="next" value="page">
-          <div class="row g-2">
-            <div class="col-sm-6">
-              <label class="form-label" for="req-name">Name <span class="text-muted">(optional)</span></label>
-              <input class="form-control" id="req-name" type="text" name="name" maxlength="120" autocomplete="name">
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label" for="req-email">Email <span class="text-muted">(optional)</span></label>
-              <input class="form-control" id="req-email" type="email" name="email" maxlength="255" autocomplete="email">
-            </div>
-          </div>
-          <div>
-            <label class="form-label" for="req-photo">Photo <span class="text-muted">(optional)</span></label>
-            <input class="form-control" id="req-photo" type="file" name="photo" accept="image/*" capture="user">
-            <div class="form-text">On phones you can allow the camera; otherwise pick a file.</div>
-          </div>
-          <input type="hidden" name="latitude" id="req-lat" value="">
-          <input type="hidden" name="longitude" id="req-lng" value="">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="req-geo" checked>
-            <label class="form-check-label" for="req-geo">Share approximate location if the browser allows</label>
-          </div>
-          <button class="btn btn-outline-light" type="submit" id="req-submit">
-            <i class="bi bi-send"></i> Request access
-          </button>
-        </form>
-        {% endif %}
-      </div>
     </div>
     {% endif %}
   </div>

@@ -48,16 +48,50 @@
             </button>
           </form>
         {% elif grant_required %}
-          <p class="text-muted mb-0">
+          <p class="text-muted mb-3">
             Authenticator setup is locked until the owner grants your access request.
           </p>
           {% if grant_pending %}
-          <div class="alert alert-info mt-3" role="status">
+          <div class="alert alert-info" role="status">
             <i class="bi bi-hourglass-split"></i>
             Waiting for approval. This page refreshes automatically.
           </div>
           {% elif grant_denied %}
-          <div class="alert alert-danger mt-3">Access was declined.</div>
+          <div class="alert alert-danger">Access was declined.</div>
+          {% endif %}
+          {% if request_ok and grant_pending %}
+          <div class="alert alert-success" role="status">
+            Request sent. Stay on this page until the owner grants access.
+          </div>
+          {% endif %}
+          {% if not grant_pending and not grant_denied %}
+          <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
+                class="stack" id="req-access-form">
+            <input type="hidden" name="next" value="qr">
+            <div class="row g-2">
+              <div class="col-sm-6">
+                <label class="form-label" for="req-name">Name (optional)</label>
+                <input class="form-control" id="req-name" type="text" name="name" maxlength="120">
+              </div>
+              <div class="col-sm-6">
+                <label class="form-label" for="req-email">Email (optional)</label>
+                <input class="form-control" id="req-email" type="email" name="email" maxlength="255">
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="req-photo">Photo (optional)</label>
+              <input class="form-control" id="req-photo" type="file" name="photo" accept="image/*" capture="user">
+            </div>
+            <input type="hidden" name="latitude" id="req-lat" value="">
+            <input type="hidden" name="longitude" id="req-lng" value="">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" id="req-geo" checked>
+              <label class="form-check-label" for="req-geo">Share location if allowed</label>
+            </div>
+            <button class="btn btn-primary btn-lg btn-block" type="submit" id="req-submit">
+              <i class="bi bi-send"></i> Request access
+            </button>
+          </form>
           {% endif %}
         {% else %}
           <p class="text-muted mb-3">
@@ -92,54 +126,6 @@
       <i class="bi bi-shield-lock"></i>
       This page never shows the password · expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC
     </div>
-
-    {% if request_access_enabled and not pin_required and (grant_required or grant_pending or request_ok) %}
-    <div class="card mt-3">
-      <div class="card-header">
-        <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
-        <div>
-          <h2>Request access</h2>
-          <div class="card-sub">Notify the owner with your IP and browser</div>
-        </div>
-      </div>
-      <div class="card-body">
-        {% if request_ok %}
-        <div class="alert alert-success" role="status">
-          Request sent. Stay on this page until the owner grants access.
-        </div>
-        {% endif %}
-        {% if not grant_pending and not grant_denied %}
-        <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
-              class="stack" id="req-access-form">
-          <input type="hidden" name="next" value="qr">
-          <div class="row g-2">
-            <div class="col-sm-6">
-              <label class="form-label" for="req-name">Name (optional)</label>
-              <input class="form-control" id="req-name" type="text" name="name" maxlength="120">
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label" for="req-email">Email (optional)</label>
-              <input class="form-control" id="req-email" type="email" name="email" maxlength="255">
-            </div>
-          </div>
-          <div>
-            <label class="form-label" for="req-photo">Photo (optional)</label>
-            <input class="form-control" id="req-photo" type="file" name="photo" accept="image/*" capture="user">
-          </div>
-          <input type="hidden" name="latitude" id="req-lat" value="">
-          <input type="hidden" name="longitude" id="req-lng" value="">
-          <div class="form-check">
-            <input class="form-check-input" type="checkbox" id="req-geo" checked>
-            <label class="form-check-label" for="req-geo">Share location if allowed</label>
-          </div>
-          <button class="btn btn-outline-light" type="submit" id="req-submit">
-            <i class="bi bi-send"></i> Request access
-          </button>
-        </form>
-        {% endif %}
-      </div>
-    </div>
-    {% endif %}
   </div>
 </div>
 {% if not pin_required and not grant_required and totp_secret %}

@@ -300,12 +300,12 @@ fun VaultItemScreen(
                             OutlinedTextField(
                                 value = shareAllowedEmails,
                                 onValueChange = { shareAllowedEmails = it },
-                                label = { Text("Allowed emails (comma-separated)") },
+                                label = { Text("Allowed emails (optional)") },
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = fieldColors
                             )
                             Text(
-                                "Must be Vault login emails on this allowlist.",
+                                "If set, only these addresses can get a code. Leave blank for any email.",
                                 color = HubTextDim,
                                 style = MaterialTheme.typography.bodySmall
                             )
@@ -337,11 +337,6 @@ fun VaultItemScreen(
                                     .split(',', ';', '\n')
                                     .map { it.trim() }
                                     .filter { it.contains('@') }
-                                if (shareEmailOtp && emails.isEmpty()) {
-                                    shareError = "Add at least one allowed email for Email OTP"
-                                    shareBusy = false
-                                    return@launch
-                                }
                                 runCatching {
                                     repository.createVaultSend(
                                         VaultSendCreate(
@@ -355,7 +350,7 @@ fun VaultItemScreen(
                                             require_grant = shareRequireGrant,
                                             require_email_otp = shareEmailOtp,
                                             allowed_emails = emails,
-                                            require_vault_user_email = true
+                                            require_vault_user_email = false
                                         )
                                     )
                                 }.onSuccess { created ->
