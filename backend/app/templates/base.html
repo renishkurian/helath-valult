@@ -4,15 +4,15 @@
   side_panel() macro into both the desktop sidebar and the mobile offcanvas.
 #}
 {% set modules = [
-  {'key':'health','name':'Health Vault','kicker':'Medical records','href':'/admin','icon':'bi-heart-pulse','accent':'#FF8095'},
-  {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#7FA6FF'},
-  {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#4ADE9B'},
-  {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#5EEAD4'},
-  {'key':'ai','name':'AI','kicker':'Ask & keys','href':'/admin/ai','icon':'bi-robot','accent':'#94A3B8'},
-  {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0C36A'},
-  {'key':'tracker','name':'Shopping List','kicker':'Shared carts','href':'/admin/tracker','icon':'bi-cart3','accent':'#FB923C'},
-  {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'},
-  {'key':'diary','name':'Digital Diary','kicker':'Notes & photos','href':'/admin/diary','icon':'bi-journal-richtext','accent':'#F472B6'}
+  {'key':'health','name':'Health Vault','kicker':'Medical records','href':'/admin','icon':'bi-heart-pulse','accent':'#FF5C8A'},
+  {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#4C8DFF'},
+  {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#2ED3A0'},
+  {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#22C1B8'},
+  {'key':'ai','name':'AI','kicker':'Ask & keys','href':'/admin/ai','icon':'bi-robot','accent':'#A78BFA'},
+  {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0A94E'},
+  {'key':'tracker','name':'Shopping List','kicker':'Shared carts','href':'/admin/tracker','icon':'bi-cart3','accent':'#FF8A3D'},
+  {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#7C8CF8'},
+  {'key':'diary','name':'Digital Diary','kicker':'Notes & photos','href':'/admin/diary','icon':'bi-journal-richtext','accent':'#F06BA8'}
 ] %}
 {% if session_user is defined and session_user and session_user.role == 'superadmin' %}
   {% set modules = modules + [{'key':'superadmin','name':'Super Admin','kicker':'Control plane','href':'/admin/sa','icon':'bi-shield-check','accent':'#D9B978'}] %}
@@ -126,6 +126,7 @@
   </a>
 
   {% if session_user %}
+  {% if mod_key != 'picker' %}
   <div class="dropdown">
     <button class="module-switch" type="button" id="{{ id_prefix }}-mod" data-bs-toggle="dropdown" data-bs-auto-close="true" aria-expanded="false">
       <span class="ms-ico"><i class="bi {{ current_mod.icon if current_mod else 'bi-grid' }}"></i></span>
@@ -150,6 +151,7 @@
       <li><a class="dropdown-item {% if mod_key == 'picker' %}active{% endif %}" href="/admin/modules"><i class="bi bi-columns-gap"></i><span>All modules</span></a></li>
     </ul>
   </div>
+  {% endif %}
 
   <nav class="side-nav" aria-label="{{ current_mod.name if current_mod else 'Modules' }}">
     {% if nav_items %}
@@ -163,8 +165,16 @@
       {% endfor %}
     {% else %}
       <div class="side-label">Workspace</div>
+      <a class="side-link side-link-dot {% if mod_key == 'picker' %}active{% endif %}" href="/admin/modules"
+         {% if mod_key == 'picker' %}aria-current="page"{% endif %}>
+        <span class="nav-dot" aria-hidden="true"></span>
+        <span class="truncate">All modules</span>
+      </a>
       {% for m in modules %}
-      <a class="side-link" href="{{ m.href }}"><i class="bi {{ m.icon }}"></i><span class="truncate">{{ m.name }}</span></a>
+      <a class="side-link side-link-dot" href="{{ m.href }}">
+        <span class="nav-dot" aria-hidden="true"></span>
+        <span class="truncate">{{ m.name }}</span>
+      </a>
       {% endfor %}
     {% endif %}
   </nav>
@@ -200,7 +210,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{% block title %}Vault{% endblock %}</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#0A0C11">
+<meta name="theme-color" content="#0A0B14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -210,7 +220,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=19">
+<link rel="stylesheet" href="/static/vault.css?v=21">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">

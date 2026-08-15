@@ -1,38 +1,60 @@
 {% extends "base.html" %}
 {% block title %}Modules{% endblock %}
+{% block body_class %}modules-picker{% endblock %}
 {% block content %}
 {% set blurb = {
   'health': 'Hospital cards, documents, care notes, reminders, and family profiles.',
   'passwords': 'Logins, notes, cards, identities, generator, authenticator, and Send.',
   'finance': 'Accounts, daily ledger, stats, budgets, and SMS auto-tagging.',
-  'expense': 'Gmail bank alerts, credit-card bills, and bank PDF import — match, fill gaps, then post to Money Manager.',
+  'expense': 'Gmail bank alerts, credit-card bills, and bank PDF import — match, fill gaps, post to Money Manager.',
   'ai': 'Ask about reports, card statements, and spend — plus the shared keys every module uses.',
-  'tracker': 'Grocery lists with Malayalam quick-add, live guest and family sharing, then shop together in real time.',
-  'locker': 'Aadhaar, PAN, passport, RC, insurance, and warranties — encrypted on the Pi.',
-  'urls': 'Save links with previews, categories, tags, search, and shareable pages.',
-  'diary': 'Dated notes with categories, tags, and encrypted photos — like a private journal.',
+  'locker': 'Aadhaar, PAN, passport, RC, insurance, warranties — encrypted on the Pi.',
+  'tracker': 'Shared lists, quick add, and check-off across everyone in the house.',
+  'urls': 'Saved links, tags, and quick search across everything you\'ve kept.',
+  'diary': 'Freeform entries with photos, timestamps, and private search.',
   'superadmin': 'Users, module limits, online presence, failed logins, and new account signup.'
 } %}
-<div class="page-head">
-  <div>
-    <div class="eyebrow">Workspace</div>
-    <h1 class="page-title">Your vaults</h1>
-    <p class="page-lead">One key opens the house. Open only the room you need.</p>
-  </div>
+{% set sizes = {
+  'health': 'big',
+  'passwords': '',
+  'finance': 'tall',
+  'expense': '',
+  'ai': 'wide',
+  'locker': '',
+  'tracker': '',
+  'urls': '',
+  'diary': 'wide',
+  'superadmin': 'wide'
+} %}
+
+<div class="modules-hero">
+  <div class="modules-eyebrow">Vault · {{ modules|length }} module{% if modules|length != 1 %}s{% endif %}</div>
+  <h1 class="modules-title">Your vaults</h1>
+  <p class="modules-tagline">One key opens the house. Every room stays shut until you turn its dial.</p>
 </div>
 
-<div class="module-grid">
+<div class="bento">
   {% for m in modules %}
-  <a class="module-card" href="{{ m.href }}" style="--mod-accent:{{ m.accent }};">
-    <span class="mod-num">{{ '%02d' | format(loop.index) }}</span>
-    <span class="mod-ico"><i class="bi {{ m.icon }}"></i></span>
-    <div>
-      <div class="eyebrow mb-1">{{ m.kicker }}</div>
-      <h2>{{ m.name }}</h2>
-      <p class="mt-1">{{ blurb.get(m.key, '') }}</p>
+  {% set size = sizes.get(m.key, '') %}
+  <a class="bento-card{% if size %} {{ size }}{% endif %}" href="{{ m.href }}" style="--accent: {{ m.accent }};">
+    <span class="card-glow" style="background: {{ m.accent }};" aria-hidden="true"></span>
+    <span class="dial" aria-hidden="true"></span>
+    <div class="card-top">
+      <span class="bento-icon"><i class="bi {{ m.icon }}"></i></span>
+      <span class="bento-idx">{{ '%02d' | format(loop.index) }}</span>
     </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
+    <div class="card-body">
+      <div class="bento-cat">{{ m.kicker }}</div>
+      <div class="bento-name">{{ m.name }}</div>
+      <div class="bento-desc">{{ blurb.get(m.key, '') }}</div>
+    </div>
+    <span class="open-row">
+      Open
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+    </span>
   </a>
   {% endfor %}
 </div>
+
+<footer class="modules-foot"><span class="pulse" aria-hidden="true"></span> All modules encrypted at rest on the Pi</footer>
 {% endblock %}
