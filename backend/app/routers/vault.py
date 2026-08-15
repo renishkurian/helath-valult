@@ -442,6 +442,7 @@ def create_send(
         }
         if body.include_totp and out.totp_secret:
             payload["totp_secret"] = out.totp_secret
+            payload["require_totp"] = True
     else:
         if not (body.text or "").strip():
             raise HTTPException(status_code=400, detail="text is required")
@@ -491,11 +492,36 @@ def revoke_send(send_id: str, db: Session = Depends(get_db), current_user: model
     db.commit()
 
 
+def _record_send_view(row: models.VaultSend, request: Request, db: Session) -> None:
+    db.add(models.VaultSendAccess(
+        send_id=row.id, action="view", ip=_client_ip(request),
+        user_agent=(request.headers.get("user-agent") or "")[:400] or None,
+    ))
+    row.view_count = (row.view_count or 0) + 1
+    db.commit()
+
+
+def _send_totp_gate(data: dict, code: Optional[str]) -> tuple[bool, bool]:
+    """Returns (needs_totp_gate, code_ok)."""
+    secret = (data.get("totp_secret") or "").strip()
+    if not secret or not data.get("require_totp"):
+        return False, True
+    return True, security.verify_totp(secret, code or "")
+
+
+def _otpauth_for_send(name: str, secret: str) -> tuple[str, str]:
+    from app import totp as totp_util
+    label = (name or "Vault Send").replace(" ", "_")[:64]
+    url = totp_util.otpauth_url(label, secret.replace(" ", "").upper())
+    return url, totp_util.qr_data_uri(url)
+
+
 @public_router.get("/public/{token}", response_model=schemas.VaultSendPublicOut)
 def public_send_json(
     token: str,
     request: Request,
     pin: Optional[str] = None,
+    totp: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     row = _load_valid_send(token, db)
@@ -508,13 +534,19 @@ def public_send_json(
             pin_required=True,
         )
     data = _payload(row)
+    needs_totp, totp_ok = _send_totp_gate(data, totp)
+    if needs_totp and not totp_ok:
+        return schemas.VaultSendPublicOut(
+            name=row.name,
+            send_type=row.send_type,
+            totp_secret=data.get("totp_secret"),
+            expires_at=row.expires_at,
+            has_pin=bool(row.pin_hash),
+            pin_required=False,
+            totp_required=True,
+        )
     notes = crypto.decrypt_text(row.notes_enc)
-    db.add(models.VaultSendAccess(
-        send_id=row.id, action="view", ip=_client_ip(request),
-        user_agent=(request.headers.get("user-agent") or "")[:400] or None,
-    ))
-    row.view_count = (row.view_count or 0) + 1
-    db.commit()
+    _record_send_view(row, request, db)
     return schemas.VaultSendPublicOut(
         name=row.name,
         send_type=row.send_type,
@@ -527,6 +559,7 @@ def public_send_json(
         expires_at=row.expires_at,
         has_pin=bool(row.pin_hash),
         pin_required=False,
+        totp_required=False,
     )
 
 
@@ -535,6 +568,7 @@ def public_send_page(
     token: str,
     request: Request,
     pin: Optional[str] = None,
+    totp: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     try:
@@ -544,18 +578,27 @@ def public_send_page(
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
         return templates.TemplateResponse(request, "vault_send_public.html", {
-            "send": row, "token": token, "pin_required": True, "payload": None, "notes": None, "error": bool(pin),
+            "send": row, "token": token, "pin_required": True, "totp_required": False,
+            "payload": None, "notes": None, "error": bool(pin), "totp_error": False,
+            "otpauth_url": None, "otpauth_qr": None, "pin_value": pin or "",
         })
     data = _payload(row)
+    needs_totp, totp_ok = _send_totp_gate(data, totp)
+    if needs_totp and not totp_ok:
+        secret = (data.get("totp_secret") or "").strip()
+        otpauth_url, otpauth_qr = _otpauth_for_send(row.name, secret)
+        return templates.TemplateResponse(request, "vault_send_public.html", {
+            "send": row, "token": token, "pin_required": False, "totp_required": True,
+            "payload": {"totp_secret": secret, "name": data.get("name") or row.name},
+            "notes": None, "error": False, "totp_error": bool(totp),
+            "otpauth_url": otpauth_url, "otpauth_qr": otpauth_qr, "pin_value": pin or "",
+        })
     notes = crypto.decrypt_text(row.notes_enc)
-    db.add(models.VaultSendAccess(
-        send_id=row.id, action="view", ip=_client_ip(request),
-        user_agent=(request.headers.get("user-agent") or "")[:400] or None,
-    ))
-    row.view_count = (row.view_count or 0) + 1
-    db.commit()
+    _record_send_view(row, request, db)
     return templates.TemplateResponse(request, "vault_send_public.html", {
-        "send": row, "token": token, "pin_required": False, "payload": data, "notes": notes, "error": False,
+        "send": row, "token": token, "pin_required": False, "totp_required": False,
+        "payload": data, "notes": notes, "error": False, "totp_error": False,
+        "otpauth_url": None, "otpauth_qr": None, "pin_value": pin or "",
     })
 
 

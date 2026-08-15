@@ -137,7 +137,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
                     ) {
                         Checkbox(checked = includeTotp, onCheckedChange = { includeTotp = it })
-                        Text("Include authenticator key", color = HubText)
+                        Text("Require authenticator to view password", color = HubText)
                     }
                 }
                 Spacer(Modifier.height(8.dp))

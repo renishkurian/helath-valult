@@ -46,6 +46,51 @@
               <i class="bi bi-unlock-fill"></i> Open
             </button>
           </form>
+
+        {% elif totp_required %}
+          {% if totp_error %}
+          <div class="alert alert-danger" role="alert">
+            <i class="bi bi-exclamation-triangle"></i>
+            <span>Incorrect authenticator code</span>
+          </div>
+          {% endif %}
+          <p class="text-muted mb-3">
+            Add this key in your authenticator app, then enter the 6-digit code to view the password.
+          </p>
+          <div class="stack mb-3">
+            {% if otpauth_qr %}
+            <div class="text-center">
+              <img src="{{ otpauth_qr }}" alt="Authenticator QR code" width="180" height="180"
+                   style="background:#fff;border-radius:12px;padding:8px;">
+              <div class="form-text mt-2">Scan with Google Authenticator, Authy, or similar.</div>
+            </div>
+            {% endif %}
+            <div>
+              <div class="form-label">Authenticator key</div>
+              <div class="secret-cell">
+                <span class="secret-plain js-totp-text" data-secret="{{ payload.totp_secret }}" data-shown="0">••••••••</span>
+                <button type="button" class="secret-btn" id="totp-toggle" aria-label="Show authenticator key" title="Show">
+                  <i class="bi bi-eye"></i>
+                </button>
+                <button type="button" class="secret-btn" id="totp-copy" aria-label="Copy authenticator key" title="Copy">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+          <form method="get" action="/vault/public/{{ token }}/page" class="stack">
+            {% if pin_value %}<input type="hidden" name="pin" value="{{ pin_value }}">{% endif %}
+            <div>
+              <label class="form-label" for="totp">Authenticator code <span class="req">*</span></label>
+              <input class="form-control mono" id="totp" type="text" name="totp" inputmode="numeric"
+                     pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required
+                     placeholder="000000">
+            </div>
+            <button class="btn btn-primary btn-lg btn-block" type="submit">
+              <i class="bi bi-shield-lock"></i> Unlock password
+            </button>
+          </form>
+
         {% else %}
           <div class="stack">
             {% if payload.text %}
@@ -92,7 +137,7 @@
                   <i class="bi bi-clipboard"></i>
                 </button>
               </div>
-              <div class="form-text mt-1">Add this key to an authenticator app to generate login codes.</div>
+              <div class="form-text mt-1">Keep this in your authenticator app for future login codes.</div>
             </div>
             {% endif %}
             {% if notes %}
@@ -114,7 +159,7 @@
     {% endif %}
   </div>
 </div>
-{% if not pin_required and payload and (payload.password or payload.totp_secret) %}
+{% if (totp_required or (not pin_required and payload and (payload.password or payload.totp_secret))) %}
 <script>
 (function(){
   var ICO_EYE = '<i class="bi bi-eye"></i>';

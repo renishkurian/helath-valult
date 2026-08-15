@@ -801,6 +801,7 @@ class VaultSendPublicOut(BaseModel):
     expires_at: datetime
     has_pin: bool = False
     pin_required: bool = False
+    totp_required: bool = False
 
 
 # ---------- Finance / Money Manager ----------
