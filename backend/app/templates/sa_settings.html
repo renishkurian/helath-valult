@@ -29,6 +29,11 @@
   <i class="bi bi-check2-circle"></i>
   <span>Login rate limit saved. {% if rate_limit_on %}Lockout after {{ login_max_attempts }} tries for {{ login_lockout_minutes }} minutes.{% else %}Lockout is off.{% endif %}</span>
 </div>
+{% elif saved == 'mail' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Mail settings saved. {% if mail_mode == 'smtp' %}Custom SMTP is active.{% else %}System mailer is active (default).{% endif %}</span>
+</div>
 {% endif %}
 {% if err == 'fcm' %}
 <div class="alert alert-danger" role="alert">
@@ -210,6 +215,82 @@
         {% if rate_limit_env_fallback %}
         <p class="text-faint small mt-3 mb-0">Using the Pi <code>.env</code> defaults until you save here.</p>
         {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico {% if mail_ready %}good{% else %}gold{% endif %}"><i class="bi bi-envelope"></i></span>
+        <div>
+          <h2>Outbound mail</h2>
+          <div class="card-sub">Email OTP for shared password links</div>
+        </div>
+        <span class="badge {% if mail_ready %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if mail_ready %}Ready{% else %}Check host{% endif %}</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">Default is the <strong>system mailer</strong> (env / local SMTP). Switch to custom SMTP only if you need a specific provider for every vault.</p>
+        <form method="post" action="/admin/sa/settings/mail" class="stack">
+          <div>
+            <label class="form-label">Mailer</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="mail_mode" id="mail-system" value="system" {% if mail_mode != 'smtp' %}checked{% endif %}>
+              <label class="form-check-label" for="mail-system">System mailer (default)</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="mail_mode" id="mail-smtp" value="smtp" {% if mail_mode == 'smtp' %}checked{% endif %}>
+              <label class="form-check-label" for="mail-smtp">Custom SMTP for all users</label>
+            </div>
+          </div>
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="form-label" for="smtp_host">SMTP host</label>
+              <input class="form-control" id="smtp_host" type="text" name="smtp_host" value="{{ smtp_host }}"
+                     placeholder="smtp.example.com" autocomplete="off">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="smtp_port">Port</label>
+              <input class="form-control" id="smtp_port" type="number" name="smtp_port" value="{{ smtp_port }}" min="1" max="65535">
+            </div>
+          </div>
+          <div>
+            <label class="form-label" for="smtp_from">From address</label>
+            <input class="form-control" id="smtp_from" type="email" name="smtp_from" value="{{ smtp_from }}"
+                   placeholder="vault@example.com" autocomplete="off">
+          </div>
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label" for="smtp_user">Username</label>
+              <input class="form-control" id="smtp_user" type="text" name="smtp_user" value="{{ smtp_user }}" autocomplete="off">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="smtp_password">Password</label>
+              <input class="form-control" id="smtp_password" type="password" name="smtp_password" autocomplete="new-password"
+                     placeholder="{{ 'unchanged' if smtp_has_password else 'SMTP password' }}">
+            </div>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="smtp_tls" value="1" id="smtp_tls" {% if smtp_tls %}checked{% endif %}>
+            <label class="form-check-label" for="smtp_tls">Use STARTTLS (typical on 587)</label>
+          </div>
+          <div class="form-text">System mode uses <code>SYSTEM_SMTP_*</code> / <code>SYSTEM_MAIL_FROM</code> from the Pi <code>.env</code> when custom fields are empty.</div>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save mail</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-info-circle"></i></span>
+        <div><h2>Email OTP</h2></div>
+      </div>
+      <div class="card-body text-muted" style="font-size:.875rem;">
+        <p>When a vault owner enables <strong>Email OTP</strong> on a share, guests enter an allowed email and receive a one-time code.</p>
+        <p class="mb-0">Active mode: <strong>{{ mail_mode }}</strong>{% if mail_from %} · from {{ mail_from }}{% endif %}</p>
       </div>
     </div>
   </div>

@@ -378,6 +378,7 @@ def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
         item_id=item_id,
         requires_totp=bool(data.get("require_totp") and data.get("totp_secret")),
         requires_grant=bool(data.get("require_grant")),
+        requires_email_otp=bool(data.get("require_email_otp")),
         created_at=row.created_at,
     )
 
@@ -501,12 +502,27 @@ def create_send(
             payload["require_totp"] = True
         if body.require_grant:
             payload["require_grant"] = True
+        if body.require_email_otp:
+            emails = _normalize_allowed_emails(body.allowed_emails)
+            if not emails:
+                raise HTTPException(status_code=400, detail="Add at least one allowed email for Email OTP")
+            payload["require_email_otp"] = True
+            payload["allowed_emails"] = emails
+            # Always require a Vault login email that is also on the allowlist
+            payload["require_vault_user_email"] = True
     else:
         if not (body.text or "").strip():
             raise HTTPException(status_code=400, detail="text is required")
         payload = {"text": body.text.strip()}
         if body.require_grant:
             payload["require_grant"] = True
+        if body.require_email_otp:
+            emails = _normalize_allowed_emails(body.allowed_emails)
+            if not emails:
+                raise HTTPException(status_code=400, detail="Add at least one allowed email for Email OTP")
+            payload["require_email_otp"] = True
+            payload["allowed_emails"] = emails
+            payload["require_vault_user_email"] = True
     pin = (body.pin or "").strip() or None
     if pin and len(pin) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 characters")
@@ -552,12 +568,49 @@ def revoke_send(send_id: str, db: Session = Depends(get_db), current_user: model
     db.commit()
 
 
-def _record_send_view(row: models.VaultSend, request: Request, db: Session) -> None:
+def _normalize_allowed_emails(raw) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        parts = raw.replace(";", ",").replace("\n", ",").split(",")
+    else:
+        parts = list(raw)
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in parts:
+        e = (p or "").strip().lower()
+        if not e or "@" not in e or e in seen:
+            continue
+        seen.add(e)
+        out.append(e)
+    return out[:40]
+
+
+def _record_send_view(
+    row: models.VaultSend,
+    request: Request,
+    db: Session,
+    *,
+    action: str = "view",
+    email: str | None = None,
+    request_id: str | None = None,
+) -> None:
     db.add(models.VaultSendAccess(
-        send_id=row.id, action="view", ip=_client_ip(request),
+        send_id=row.id,
+        action=action,
+        ip=_client_ip(request),
         user_agent=(request.headers.get("user-agent") or "")[:400] or None,
+        email=(email or None),
+        request_id=request_id,
     ))
-    row.view_count = (row.view_count or 0) + 1
+    if action == "password_viewed":
+        row.view_count = (row.view_count or 0) + 1
+        if request_id:
+            req = db.query(models.VaultSendRequest).filter(models.VaultSendRequest.id == request_id).first()
+            if req and req.send_id == row.id and req.viewed_at is None:
+                req.viewed_at = datetime.utcnow()
+    else:
+        row.view_count = (row.view_count or 0) + 1
     db.commit()
 
 
@@ -609,6 +662,45 @@ def _grant_unlocked(request: Request, send: models.VaultSend, data: dict, db: Se
     return bool(row and row.status == "granted")
 
 
+def _email_otp_cookie_name(token: str) -> str:
+    return f"vse_{token[:32]}"
+
+
+def _email_otp_unlocked(request: Request, send: models.VaultSend, data: dict) -> tuple[bool, str | None]:
+    if not data.get("require_email_otp"):
+        return True, None
+    email = (request.cookies.get(_email_otp_cookie_name(send.token)) or "").strip().lower()
+    if not email or "@" not in email:
+        return False, None
+    allowed = _normalize_allowed_emails(data.get("allowed_emails") or [])
+    if allowed and email not in allowed:
+        return False, None
+    return True, email
+
+
+def _validate_guest_email(data: dict, email: str, db: Session) -> str | None:
+    """Return error code or None if ok.
+
+    Email OTP always requires: (1) allowlist match, (2) a Vault login account email.
+    """
+    email = (email or "").strip().lower()
+    if not email or "@" not in email:
+        return "email"
+    allowed = _normalize_allowed_emails(data.get("allowed_emails") or [])
+    if allowed and email not in allowed:
+        return "not_allowed"
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        user = (
+            db.query(models.User)
+            .filter(models.User.email.ilike(email))
+            .first()
+        )
+    if not user:
+        return "not_account"
+    return None
+
+
 @public_router.get("/public/{token}", response_model=schemas.VaultSendPublicOut)
 def public_send_json(
     token: str,
@@ -639,6 +731,17 @@ def public_send_json(
             grant_required=True,
             request_access_enabled=True,
         )
+    email_ok, verified_email = _email_otp_unlocked(request, row, data)
+    if not email_ok:
+        return schemas.VaultSendPublicOut(
+            name=row.name,
+            send_type=row.send_type,
+            expires_at=row.expires_at,
+            has_pin=bool(row.pin_hash),
+            pin_required=False,
+            email_otp_required=True,
+            request_access_enabled=require_grant,
+        )
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
         return schemas.VaultSendPublicOut(
@@ -651,7 +754,13 @@ def public_send_json(
             request_access_enabled=require_grant,
         )
     notes = crypto.decrypt_text(row.notes_enc)
-    _record_send_view(row, request, db)
+    guest_req = _guest_request(request, row, db) if require_grant else None
+    _record_send_view(
+        row, request, db,
+        action="password_viewed",
+        email=verified_email,
+        request_id=guest_req.id if guest_req else None,
+    )
     return schemas.VaultSendPublicOut(
         name=row.name,
         send_type=row.send_type,
@@ -676,6 +785,9 @@ def public_send_page(
     totp: Optional[str] = None,
     req_ok: Optional[str] = None,
     req_err: Optional[str] = None,
+    otp_sent: Optional[str] = None,
+    otp_err: Optional[str] = None,
+    otp_email: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     try:
@@ -685,37 +797,60 @@ def public_send_page(
     data = _payload(row)
     require_grant = bool(data.get("require_grant"))
     guest_req = _guest_request(request, row, db) if require_grant else None
+    email_ok, verified_email = _email_otp_unlocked(request, row, data)
     ctx_extra = {
         "request_ok": bool(req_ok),
         "request_err": (req_err or "").strip(),
         "request_access_enabled": require_grant,
         "grant_pending": bool(guest_req and guest_req.status in ("pending", "seen")),
         "grant_denied": bool(guest_req and guest_req.status == "dismissed"),
+        "email_otp_enabled": bool(data.get("require_email_otp")),
+        "email_otp_required": bool(data.get("require_email_otp")) and not email_ok,
+        "email_hint": ", ".join(_normalize_allowed_emails(data.get("allowed_emails") or [])[:3]),
+        "otp_sent": bool(otp_sent),
+        "otp_error": (otp_err or "").strip() or None,
+        "otp_email": (otp_email or verified_email or "").strip(),
     }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": True, "totp_required": False,
-            "grant_required": False, "payload": None, "notes": None,
+            "grant_required": False, "email_otp_required": False, "payload": None, "notes": None,
             "error": bool(pin), "totp_error": False, "pin_value": pin or "", **ctx_extra,
         })
     if require_grant and not (guest_req and guest_req.status == "granted"):
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": False,
-            "grant_required": True, "payload": None, "notes": None,
+            "grant_required": True, "email_otp_required": False, "payload": None, "notes": None,
+            "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
+        })
+    if not email_ok:
+        return templates.TemplateResponse(request, "vault_send_public.html", {
+            "send": row, "token": token, "pin_required": False, "totp_required": False,
+            "grant_required": False, "payload": None, "notes": None,
             "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
         })
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": True,
-            "grant_required": False, "payload": {"name": data.get("name") or row.name},
+            "grant_required": False, "email_otp_required": False,
+            "payload": {"name": data.get("name") or row.name},
             "notes": None, "error": False, "totp_error": bool(totp),
             "pin_value": pin or "", **ctx_extra,
         })
     notes = crypto.decrypt_text(row.notes_enc)
-    shown = {k: v for k, v in data.items() if k not in ("totp_secret", "require_grant", "require_totp")}
-    _record_send_view(row, request, db)
+    shown = {k: v for k, v in data.items() if k not in (
+        "totp_secret", "require_grant", "require_totp", "require_email_otp",
+        "allowed_emails", "require_vault_user_email",
+    )}
+    _record_send_view(
+        row, request, db,
+        action="password_viewed",
+        email=verified_email,
+        request_id=guest_req.id if guest_req else None,
+    )
+    ctx_extra["email_otp_required"] = False
     return templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
         "grant_required": False, "payload": shown, "notes": notes,
@@ -769,9 +904,34 @@ def public_send_qr_page(
     })
 
 
-def _notify_send_request(db: Session, owner_id: str, req: models.VaultSendRequest, send_name: str) -> int:
+def _notify_send_request(
+    db: Session,
+    owner_id: str,
+    req: models.VaultSendRequest,
+    send_name: str,
+    send_token: str = "",
+) -> int:
     from app.push import send_fcm
+    from app.send_request_events import send_request_hub
     from app.server_settings import fcm_service_account
+
+    # Live update any open web admin tabs (SSE), independent of FCM.
+    send_request_hub.publish(
+        owner_id,
+        {
+            "id": req.id,
+            "send_id": req.send_id,
+            "send_name": send_name,
+            "send_token": send_token,
+            "name": req.name,
+            "email": req.email,
+            "ip": req.ip,
+            "has_photo": bool(req.photo_path),
+            "status": req.status,
+            "created_at": req.created_at.isoformat() if req.created_at else "",
+        },
+    )
+
     account = fcm_service_account(db)
     tokens = db.query(models.DeviceToken).filter(models.DeviceToken.user_id == owner_id).all()
     if not tokens or not account:
@@ -805,7 +965,9 @@ def _request_out(row: models.VaultSendRequest, send: models.VaultSend | None = N
         longitude=row.longitude,
         has_photo=bool(row.photo_path),
         status=row.status,
+        video_status=(row.video_status or "none"),
         created_at=row.created_at,
+        viewed_at=row.viewed_at,
     )
 
 
@@ -884,7 +1046,7 @@ async def public_request_access(
 
     db.commit()
     db.refresh(row)
-    _notify_send_request(db, send.user_id, row, send.name)
+    _notify_send_request(db, send.user_id, row, send.name, send.token)
 
     wants_json = "application/json" in (request.headers.get("accept") or "")
     if wants_json:
@@ -897,6 +1059,99 @@ async def public_request_access(
         httponly=True,
         samesite="lax",
         max_age=30 * 24 * 3600,
+        secure=request.url.scheme == "https",
+    )
+    return resp
+
+
+@public_router.post("/public/{token}/email-otp")
+async def public_send_email_otp(
+    token: str,
+    request: Request,
+    email: str = Form(""),
+    code: str = Form(""),
+    pin: str = Form(""),
+    step: str = Form("send"),
+    db: Session = Depends(get_db),
+):
+    """step=send → mail OTP; step=verify → set cookie and redirect to page."""
+    from urllib.parse import quote
+
+    def _page(**extra):
+        q = []
+        if pin:
+            q.append(f"pin={quote(pin)}")
+        for k, v in extra.items():
+            if v is None or v is False or v == "":
+                continue
+            q.append(f"{k}={quote(str(v))}")
+        dest = f"/vault/public/{token}/page"
+        if q:
+            dest += "?" + "&".join(q)
+        return RedirectResponse(dest, status_code=302)
+
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        return _send_gone_page(request, HTTPException(410, "Send not found"))
+    data = _payload(send)
+    if not data.get("require_email_otp"):
+        return _page()
+    if send.pin_hash and not (pin and security.verify_password(pin, send.pin_hash)):
+        return RedirectResponse(f"/vault/public/{token}/page", status_code=302)
+    if not _grant_unlocked(request, send, data, db):
+        return _page()
+
+    mail = (email or "").strip().lower()
+    step = (step or "send").strip().lower()
+
+    if step == "send":
+        err = _validate_guest_email(data, mail, db)
+        if err:
+            return _page(otp_err=err)
+        from app.mailer import mail_ready, send_vault_otp
+        if not mail_ready(db):
+            return _page(otp_err="mail")
+        code_plain = f"{secrets.randbelow(1_000_000):06d}"
+        db.query(models.VaultSendEmailOtp).filter(models.VaultSendEmailOtp.send_id == send.id).delete()
+        db.add(models.VaultSendEmailOtp(
+            send_id=send.id,
+            email=mail,
+            code_hash=security.hash_password(code_plain),
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+        ))
+        db.commit()
+        if not send_vault_otp(mail, code_plain, send.name, db=db):
+            return _page(otp_err="mail", otp_email=mail)
+        return _page(otp_sent=1, otp_email=mail)
+
+    # verify
+    err = _validate_guest_email(data, mail, db)
+    if err:
+        return _page(otp_err=err, otp_email=mail)
+    row = (
+        db.query(models.VaultSendEmailOtp)
+        .filter(
+            models.VaultSendEmailOtp.send_id == send.id,
+            models.VaultSendEmailOtp.email == mail,
+        )
+        .order_by(models.VaultSendEmailOtp.created_at.desc())
+        .first()
+    )
+    if not row or row.expires_at < datetime.utcnow() or not security.verify_password((code or "").strip(), row.code_hash):
+        return _page(otp_err="bad_code", otp_email=mail, otp_sent=1)
+    db.delete(row)
+    db.commit()
+    resp = RedirectResponse(
+        f"/vault/public/{token}/page" + (f"?pin={pin}" if pin else ""),
+        status_code=302,
+    )
+    resp.set_cookie(
+        key=_email_otp_cookie_name(token),
+        value=mail,
+        httponly=True,
+        samesite="lax",
+        max_age=24 * 3600,
         secure=request.url.scheme == "https",
     )
     return resp

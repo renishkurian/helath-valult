@@ -83,6 +83,8 @@ fun VaultItemScreen(
     var shareOneTime by remember { mutableStateOf(false) }
     var shareIncludeTotp by remember { mutableStateOf(false) }
     var shareRequireGrant by remember { mutableStateOf(false) }
+    var shareEmailOtp by remember { mutableStateOf(false) }
+    var shareAllowedEmails by remember { mutableStateOf("") }
     var shareBusy by remember { mutableStateOf(false) }
     var shareError by remember { mutableStateOf<String?>(null) }
     var shareReady by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
@@ -182,6 +184,8 @@ fun VaultItemScreen(
                 shareOneTime = false
                 shareIncludeTotp = false
                 shareRequireGrant = false
+                shareEmailOtp = false
+                shareAllowedEmails = ""
                 shareError = null
                 shareReady = null
                 showShare = true
@@ -288,6 +292,24 @@ fun VaultItemScreen(
                             Checkbox(checked = shareRequireGrant, onCheckedChange = { shareRequireGrant = it })
                             Text("Require access request — hide password until I grant", color = HubText)
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareEmailOtp, onCheckedChange = { shareEmailOtp = it })
+                            Text("Require Email OTP to view password", color = HubText)
+                        }
+                        if (shareEmailOtp) {
+                            OutlinedTextField(
+                                value = shareAllowedEmails,
+                                onValueChange = { shareAllowedEmails = it },
+                                label = { Text("Allowed emails (comma-separated)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors
+                            )
+                            Text(
+                                "Must be Vault login emails on this allowlist.",
+                                color = HubTextDim,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                         shareError?.let { Text(it, color = StampRed, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
@@ -311,6 +333,15 @@ fun VaultItemScreen(
                             scope.launch {
                                 shareBusy = true
                                 shareError = null
+                                val emails = shareAllowedEmails
+                                    .split(',', ';', '\n')
+                                    .map { it.trim() }
+                                    .filter { it.contains('@') }
+                                if (shareEmailOtp && emails.isEmpty()) {
+                                    shareError = "Add at least one allowed email for Email OTP"
+                                    shareBusy = false
+                                    return@launch
+                                }
                                 runCatching {
                                     repository.createVaultSend(
                                         VaultSendCreate(
@@ -321,7 +352,10 @@ fun VaultItemScreen(
                                             expires_in_hours = shareHours.toIntOrNull() ?: 48,
                                             max_views = if (shareOneTime) 1 else null,
                                             include_totp = shareIncludeTotp && currentItem.has_totp,
-                                            require_grant = shareRequireGrant
+                                            require_grant = shareRequireGrant,
+                                            require_email_otp = shareEmailOtp,
+                                            allowed_emails = emails,
+                                            require_vault_user_email = true
                                         )
                                     )
                                 }.onSuccess { created ->

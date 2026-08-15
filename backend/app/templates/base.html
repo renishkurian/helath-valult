@@ -288,6 +288,44 @@
   <img id="photo-lightbox-img" alt="Receipt photo">
 </div>
 
+{% if session_user %}
+<div class="modal fade" id="send-request-modal" tabindex="-1" aria-labelledby="send-request-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
+        <h2 class="modal-title" id="send-request-modal-title">Send access request</h2>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2" id="send-request-modal-who">Someone asked for access.</p>
+        <p class="text-muted small mb-3" id="send-request-modal-meta"></p>
+        <p class="text-muted small mb-0">Grant unlocks the password for that guest’s browser. Dismiss rejects the request.</p>
+      </div>
+      <div class="modal-footer">
+        <form method="post" id="send-request-dismiss-form" action="#">
+          <input type="hidden" name="next" value="">
+          <button class="btn btn-ghost" type="submit">Dismiss</button>
+        </form>
+        <a class="btn btn-outline-light" id="send-request-open" href="/admin/passwords/sends">Open Send</a>
+        <form method="post" id="send-request-grant-form" action="#">
+          <input type="hidden" name="next" value="">
+          <button class="btn btn-primary" type="submit">
+            <i class="bi bi-check2-circle"></i> Grant access
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="send-request-toast" class="alert alert-warning position-fixed shadow"
+     style="display:none;z-index:1080;right:1rem;bottom:1rem;max-width:22rem;cursor:pointer"
+     role="status" hidden>
+  <i class="bi bi-person-raised-hand"></i>
+  <span id="send-request-toast-text">New access request</span>
+</div>
+{% endif %}
+
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>
 <script src="/static/vault-dialog.js?v=1"></script>
 <script>
@@ -388,6 +426,97 @@
     el.after(toggle);
   });
 })();
+{% if session_user %}
+(function(){
+  var modalEl = document.getElementById("send-request-modal");
+  var toast = document.getElementById("send-request-toast");
+  if (!modalEl || typeof bootstrap === "undefined") return;
+  var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  var seen = {};
+  var shownId = null;
+  var who = document.getElementById("send-request-modal-who");
+  var meta = document.getElementById("send-request-modal-meta");
+  var grantForm = document.getElementById("send-request-grant-form");
+  var dismissForm = document.getElementById("send-request-dismiss-form");
+  var openLink = document.getElementById("send-request-open");
+  var toastText = document.getElementById("send-request-toast-text");
+
+  function fill(req){
+    var label = (req.name || req.email || req.ip || "Someone");
+    who.textContent = label + " asked for access to “" + (req.send_name || "a share") + "”.";
+    meta.textContent = [req.ip, req.has_photo ? "photo attached" : null, (req.created_at || "").replace("T", " ").slice(0, 16)]
+      .filter(Boolean).join(" · ");
+    var here = window.location.pathname + window.location.search;
+    grantForm.action = "/admin/passwords/send-requests/" + encodeURIComponent(req.id) + "/grant";
+    dismissForm.action = "/admin/passwords/send-requests/" + encodeURIComponent(req.id) + "/dismiss";
+    grantForm.querySelector('input[name="next"]').value = here;
+    dismissForm.querySelector('input[name="next"]').value = here;
+    openLink.href = "/admin/passwords/sends";
+    shownId = req.id;
+  }
+
+  function showReq(req){
+    if (!req || !req.id || seen[req.id]) return;
+    seen[req.id] = true;
+    fill(req);
+    modal.show();
+    if (toast && toastText) {
+      toastText.textContent = (req.name || req.email || req.ip || "Someone") + " requested “" + (req.send_name || "share") + "”";
+      toast.hidden = false;
+      toast.style.display = "block";
+    }
+    if (window.Notification && Notification.permission === "granted") {
+      try {
+        new Notification("Send access request", {
+          body: (req.name || req.email || req.ip || "Someone") + " asked for “" + (req.send_name || "share") + "”",
+          tag: "vault-send-req-" + req.id
+        });
+      } catch (e) {}
+    } else if (window.Notification && Notification.permission === "default") {
+      Notification.requestPermission().catch(function(){});
+    }
+  }
+
+  if (toast) {
+    toast.addEventListener("click", function(){
+      if (shownId) modal.show();
+      else window.location.href = "/admin/passwords/sends";
+    });
+  }
+
+  function poll(){
+    fetch("/admin/passwords/send-requests/pending.json", { credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data || !data.ok || !data.requests || !data.requests.length) return;
+        data.requests.forEach(function(r){ showReq(r); });
+      })
+      .catch(function(){});
+  }
+
+  function connectSse(){
+    if (typeof EventSource === "undefined") {
+      poll();
+      setInterval(poll, 5000);
+      return;
+    }
+    var es = new EventSource("/admin/passwords/send-requests/stream");
+    es.addEventListener("snapshot", function(ev){
+      try {
+        var data = JSON.parse(ev.data || "{}");
+        (data.requests || []).forEach(function(r){ showReq(r); });
+      } catch (e) {}
+    });
+    es.addEventListener("send_request", function(ev){
+      try { showReq(JSON.parse(ev.data || "{}")); } catch (e) {}
+    });
+    es.onerror = function(){
+      // Browser will reconnect; also soft-poll once after a gap.
+    };
+  }
+  connectSse();
+})();
+{% endif %}
 </script>
 {% block scripts %}{% endblock %}
 </body>

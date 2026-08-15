@@ -54,6 +54,14 @@ class Settings:
 
     # Folder Syncthing / a USB disk can watch. Empty = no on-disk snapshot.
     BACKUP_DIR: Path | None = Path(p).resolve() if (p := os.getenv("BACKUP_DIR", "").strip()) else None
+
+    # Optional system mailer (Super Admin default). Custom SMTP overrides in Server settings.
+    SYSTEM_SMTP_HOST: str = os.getenv("SYSTEM_SMTP_HOST", "127.0.0.1").strip()
+    SYSTEM_SMTP_PORT: int = int(os.getenv("SYSTEM_SMTP_PORT", "25"))
+    SYSTEM_SMTP_USER: str = os.getenv("SYSTEM_SMTP_USER", "").strip()
+    SYSTEM_SMTP_PASSWORD: str = os.getenv("SYSTEM_SMTP_PASSWORD", "")
+    SYSTEM_MAIL_FROM: str = os.getenv("SYSTEM_MAIL_FROM", "vault@localhost").strip() or "vault@localhost"
+    SYSTEM_SMTP_TLS: bool = os.getenv("SYSTEM_SMTP_TLS", "").strip().lower() in ("1", "true", "yes")
     SHARE_IDLE_DAYS: int = int(os.getenv("SHARE_IDLE_DAYS", "14"))
     OCR_LANGS: str = os.getenv("OCR_LANGS", "eng+mal+tam+hin")
 

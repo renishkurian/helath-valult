@@ -774,6 +774,9 @@ class VaultSendCreate(BaseModel):
     max_views: Optional[int] = Field(default=None, ge=1)
     include_totp: bool = False
     require_grant: bool = False
+    require_email_otp: bool = False
+    allowed_emails: List[str] = []
+    require_vault_user_email: bool = False
 
 
 class VaultSendOut(BaseModel):
@@ -789,6 +792,7 @@ class VaultSendOut(BaseModel):
     item_id: Optional[str] = None
     requires_totp: bool = False
     requires_grant: bool = False
+    requires_email_otp: bool = False
     created_at: datetime
 
 
@@ -806,6 +810,7 @@ class VaultSendPublicOut(BaseModel):
     pin_required: bool = False
     totp_required: bool = False
     grant_required: bool = False
+    email_otp_required: bool = False
     request_access_enabled: bool = False
 
 
@@ -822,7 +827,15 @@ class VaultSendRequestOut(BaseModel):
     longitude: Optional[str] = None
     has_photo: bool = False
     status: str
+    video_status: str = "none"
     created_at: datetime
+    viewed_at: Optional[datetime] = None
+
+
+class VaultVideoSignalIn(BaseModel):
+    type: str  # offer | answer | ice | hangup
+    sdp: Optional[str] = None
+    candidate: Optional[dict] = None
 
 
 # ---------- Finance / Money Manager ----------

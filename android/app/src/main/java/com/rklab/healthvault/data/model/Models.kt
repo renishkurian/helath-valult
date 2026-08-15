@@ -547,7 +547,10 @@ data class VaultSendCreate(
     val expires_in_hours: Int = 48,
     val max_views: Int? = null,
     val include_totp: Boolean = false,
-    val require_grant: Boolean = false
+    val require_grant: Boolean = false,
+    val require_email_otp: Boolean = false,
+    val allowed_emails: List<String> = emptyList(),
+    val require_vault_user_email: Boolean = true
 )
 data class VaultSendOut(
     val id: String,
@@ -562,6 +565,7 @@ data class VaultSendOut(
     val item_id: String? = null,
     val requires_totp: Boolean = false,
     val requires_grant: Boolean = false,
+    val requires_email_otp: Boolean = false,
     val created_at: String
 )
 
@@ -578,7 +582,8 @@ data class VaultSendRequestOut(
     val longitude: String? = null,
     val has_photo: Boolean = false,
     val status: String = "pending",
-    val created_at: String = ""
+    val created_at: String = "",
+    val viewed_at: String? = null
 )
 
 data class PersonUpdate(

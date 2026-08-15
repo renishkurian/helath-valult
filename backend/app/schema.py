@@ -74,6 +74,14 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "login_challenges": [
         ("kind", "VARCHAR(20) NOT NULL DEFAULT 'app'"),
     ],
+    "vault_send_requests": [
+        ("viewed_at", "DATETIME"),
+        ("video_status", "VARCHAR(20) NOT NULL DEFAULT 'none'"),
+    ],
+    "vault_send_accesses": [
+        ("email", "VARCHAR(255)"),
+        ("request_id", "VARCHAR(32)"),
+    ],
     "expense_analyser_connections": [
         ("enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("hour", "INTEGER NOT NULL DEFAULT 6"),

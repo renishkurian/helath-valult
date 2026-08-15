@@ -324,16 +324,19 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
     from app.server_settings import (
         FCM_SERVICE_ACCOUNT_KEY, GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY,
         LOGIN_LOCKOUT_MINUTES_KEY, LOGIN_MAX_ATTEMPTS_KEY,
+        SMTP_FROM_KEY, SMTP_HOST_KEY, SMTP_PASSWORD_KEY, SMTP_PORT_KEY, SMTP_TLS_KEY, SMTP_USER_KEY,
         fcm_service_account, get_plain, get_secret,
         login_lockout_minutes, login_max_attempts, rate_limit_enabled,
         recaptcha_ready, recaptcha_secret, recaptcha_site_key, recaptcha_wanted,
     )
+    from app.mailer import mail_config
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
     redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
     gmail_redirect_uri = str(request.base_url).rstrip("/") + "/admin/expense-analyser/google/callback"
     fcm = fcm_service_account(db)
+    mail_cfg = mail_config(db)
     return templates.TemplateResponse("sa_settings.html", _sa_ctx(
         request, user, "sa_settings",
         google_client_id=get_plain(db, GOOGLE_CLIENT_ID_KEY),
@@ -358,6 +361,15 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
         login_max_attempts=login_max_attempts(db),
         login_lockout_minutes=login_lockout_minutes(db),
         rate_limit_env_fallback=not get_plain(db, LOGIN_MAX_ATTEMPTS_KEY) and not get_plain(db, LOGIN_LOCKOUT_MINUTES_KEY),
+        mail_mode=mail_cfg["mode"],
+        mail_ready=bool(mail_cfg.get("host")),
+        mail_from=mail_cfg.get("from_addr") or "",
+        smtp_host=get_plain(db, SMTP_HOST_KEY) or "",
+        smtp_port=get_plain(db, SMTP_PORT_KEY) or "587",
+        smtp_user=get_plain(db, SMTP_USER_KEY) or "",
+        smtp_from=get_plain(db, SMTP_FROM_KEY) or "",
+        smtp_tls=get_plain(db, SMTP_TLS_KEY) != "0",
+        smtp_has_password=bool(get_secret(db, SMTP_PASSWORD_KEY)),
     ))
 
 
@@ -438,3 +450,26 @@ async def sa_settings_lockout(request: Request, db: Session = Depends(get_db)):
     )))
     db.commit()
     return RedirectResponse("/admin/sa/settings?saved=lockout", status_code=302)
+
+
+@router.post("/settings/mail")
+async def sa_settings_mail(request: Request, db: Session = Depends(get_db)):
+    from app.server_settings import (
+        MAIL_MODE_KEY, SMTP_FROM_KEY, SMTP_HOST_KEY, SMTP_PASSWORD_KEY,
+        SMTP_PORT_KEY, SMTP_TLS_KEY, SMTP_USER_KEY,
+        clamp_int, put_plain, put_secret,
+    )
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    form = await request.form()
+    mode = str(form.get("mail_mode") or "system").strip().lower()
+    put_plain(db, MAIL_MODE_KEY, "smtp" if mode == "smtp" else "system")
+    put_plain(db, SMTP_HOST_KEY, str(form.get("smtp_host") or ""))
+    put_plain(db, SMTP_PORT_KEY, str(clamp_int(form.get("smtp_port"), 587, 1, 65535)))
+    put_plain(db, SMTP_USER_KEY, str(form.get("smtp_user") or ""))
+    put_plain(db, SMTP_FROM_KEY, str(form.get("smtp_from") or ""))
+    put_plain(db, SMTP_TLS_KEY, "1" if form.get("smtp_tls") else "0")
+    put_secret(db, SMTP_PASSWORD_KEY, str(form.get("smtp_password") or ""))
+    db.commit()
+    return RedirectResponse("/admin/sa/settings?saved=mail", status_code=302)

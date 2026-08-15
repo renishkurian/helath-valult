@@ -18,6 +18,14 @@ LOGIN_MAX_ATTEMPTS_KEY = "login_max_attempts"
 LOGIN_LOCKOUT_MINUTES_KEY = "login_lockout_minutes"
 LOGIN_RATE_LIMIT_ENABLED_KEY = "login_rate_limit_enabled"
 
+MAIL_MODE_KEY = "mail_mode"
+SMTP_HOST_KEY = "smtp_host"
+SMTP_PORT_KEY = "smtp_port"
+SMTP_USER_KEY = "smtp_user"
+SMTP_PASSWORD_KEY = "smtp_password"
+SMTP_FROM_KEY = "smtp_from"
+SMTP_TLS_KEY = "smtp_tls"
+
 LOGIN_ATTEMPTS_MIN, LOGIN_ATTEMPTS_MAX = 1, 50
 LOGIN_LOCKOUT_MIN, LOGIN_LOCKOUT_MAX = 1, 1440
 

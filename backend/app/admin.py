@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, Request, UploadFile, File, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -1467,6 +1467,8 @@ def passwords_send_create(
     max_views: str = Form(""),
     include_totp: Optional[str] = Form(None),
     require_grant: Optional[str] = Form(None),
+    require_email_otp: Optional[str] = Form(None),
+    allowed_emails: str = Form(""),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -1479,11 +1481,15 @@ def passwords_send_create(
     raw_views = (max_views or "").strip()
     if raw_views.isdigit() and int(raw_views) >= 1:
         views = int(raw_views)
+    emails = [p.strip() for p in (allowed_emails or "").replace(";", ",").replace("\n", ",").split(",") if p.strip()]
     send = create_send(sc.VaultSendCreate(
         name=name, send_type=send_type, text=text or None, item_id=item_id or None,
         pin=pin or None, expires_in_hours=expires_in_hours, max_views=views,
         include_totp=bool(include_totp),
         require_grant=bool(require_grant),
+        require_email_otp=bool(require_email_otp),
+        allowed_emails=emails,
+        require_vault_user_email=True,
     ), db=db, current_user=user)
     dest = (next or "").strip()
     if dest.startswith("/admin/passwords/") and "://" not in dest:
@@ -1501,6 +1507,100 @@ def _safe_admin_next(next: str, fallback: str = "/admin/passwords/sends") -> str
     if dest.startswith("/admin/passwords") and "://" not in dest:
         return dest
     return fallback
+
+
+@router.get("/passwords/send-requests/pending.json")
+def passwords_send_requests_pending_json(request: Request, db: Session = Depends(get_db)):
+    """Session-auth snapshot for Access request popups (fallback / initial load)."""
+    from app.routers.vault import list_send_requests
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"ok": False, "requests": []}, status_code=401)
+    rows = list_send_requests(status="pending", db=db, current_user=user)
+    return {
+        "ok": True,
+        "requests": [
+            {
+                "id": r.id,
+                "send_id": r.send_id,
+                "send_name": r.send_name,
+                "send_token": r.send_token,
+                "name": r.name,
+                "email": r.email,
+                "ip": r.ip,
+                "has_photo": r.has_photo,
+                "status": r.status,
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+            }
+            for r in rows[:10]
+        ],
+    }
+
+
+@router.get("/passwords/send-requests/stream")
+async def passwords_send_requests_stream(request: Request, db: Session = Depends(get_db)):
+    """Server-Sent Events: push new access requests to open admin tabs."""
+    import asyncio
+    import json as _json
+
+    from app.deps import vault_id
+    from app.routers.vault import list_send_requests
+    from app.send_request_events import send_request_hub
+
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    owner = vault_id(user)
+
+    async def gen():
+        from app.database import SessionLocal
+
+        q = await send_request_hub.subscribe(owner)
+        try:
+            db_snap = SessionLocal()
+            try:
+                rows = list_send_requests(status="pending", db=db_snap, current_user=user)
+                snap = [
+                    {
+                        "id": r.id,
+                        "send_id": r.send_id,
+                        "send_name": r.send_name,
+                        "send_token": r.send_token,
+                        "name": r.name,
+                        "email": r.email,
+                        "ip": r.ip,
+                        "has_photo": r.has_photo,
+                        "status": r.status,
+                        "created_at": r.created_at.isoformat() if r.created_at else "",
+                    }
+                    for r in rows[:10]
+                ]
+                yield f"event: snapshot\ndata: {_json.dumps({'requests': snap})}\n\n"
+            except Exception:
+                yield f"event: snapshot\ndata: {_json.dumps({'requests': []})}\n\n"
+            finally:
+                db_snap.close()
+
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=20.0)
+                    yield f"event: send_request\ndata: {_json.dumps(payload)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            await send_request_hub.unsubscribe(owner, q)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/passwords/send-requests/{request_id}/grant")

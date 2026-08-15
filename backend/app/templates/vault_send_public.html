@@ -63,6 +63,64 @@
           </div>
           {% endif %}
 
+        {% elif email_otp_required %}
+          <p class="text-muted mb-3">
+            Enter an allowed email. We’ll send a one-time code — it must match a Vault login account on the owner’s allowlist.
+          </p>
+          {% if otp_error == 'email' %}
+          <div class="alert alert-danger">Enter a valid email address.</div>
+          {% elif otp_error == 'not_allowed' %}
+          <div class="alert alert-danger">That email is not allowed for this share.</div>
+          {% elif otp_error == 'not_account' %}
+          <div class="alert alert-danger">That email is not a Vault login account.</div>
+          {% elif otp_error == 'mail' %}
+          <div class="alert alert-danger">Could not send email. Ask the owner to check mail settings.</div>
+          {% elif otp_error == 'bad_code' %}
+          <div class="alert alert-danger">Incorrect or expired code. Try again.</div>
+          {% elif otp_error %}
+          <div class="alert alert-danger">Could not verify email. Try again.</div>
+          {% endif %}
+          {% if otp_sent %}
+          <div class="alert alert-success" role="status">
+            <i class="bi bi-envelope-check"></i>
+            Code sent{% if otp_email %} to {{ otp_email }}{% endif %}. Check your inbox.
+          </div>
+          <form method="post" action="/vault/public/{{ token }}/email-otp" class="stack">
+            {% if pin_value %}<input type="hidden" name="pin" value="{{ pin_value }}">{% endif %}
+            <input type="hidden" name="step" value="verify">
+            <input type="hidden" name="email" value="{{ otp_email }}">
+            <div>
+              <label class="form-label" for="otp-code">Email code <span class="req">*</span></label>
+              <input class="form-control mono" id="otp-code" type="text" name="code" inputmode="numeric"
+                     pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required
+                     placeholder="000000">
+            </div>
+            <button class="btn btn-primary btn-lg btn-block" type="submit">
+              <i class="bi bi-shield-check"></i> Verify &amp; continue
+            </button>
+          </form>
+          <form method="post" action="/vault/public/{{ token }}/email-otp" class="mt-3">
+            {% if pin_value %}<input type="hidden" name="pin" value="{{ pin_value }}">{% endif %}
+            <input type="hidden" name="step" value="send">
+            <input type="hidden" name="email" value="{{ otp_email }}">
+            <button class="btn btn-ghost btn-sm" type="submit">Resend code</button>
+          </form>
+          {% else %}
+          <form method="post" action="/vault/public/{{ token }}/email-otp" class="stack">
+            {% if pin_value %}<input type="hidden" name="pin" value="{{ pin_value }}">{% endif %}
+            <input type="hidden" name="step" value="send">
+            <div>
+              <label class="form-label" for="otp-email">Email <span class="req">*</span></label>
+              <input class="form-control" id="otp-email" type="email" name="email" maxlength="255"
+                     autocomplete="email" autofocus required value="{{ otp_email }}">
+              <div class="form-text">Must be on the owner’s allowlist and a Vault login email.</div>
+            </div>
+            <button class="btn btn-primary btn-lg btn-block" type="submit">
+              <i class="bi bi-envelope"></i> Send code
+            </button>
+          </form>
+          {% endif %}
+
         {% elif totp_required %}
           {% if totp_error %}
           <div class="alert alert-danger" role="alert">
@@ -198,7 +256,7 @@
     {% endif %}
   </div>
 </div>
-{% if not pin_required and not totp_required and not grant_required and payload and payload.password %}
+{% if not pin_required and not totp_required and not grant_required and not email_otp_required and payload and payload.password %}
 <script>
 (function(){
   var ICO_EYE = '<i class="bi bi-eye"></i>';

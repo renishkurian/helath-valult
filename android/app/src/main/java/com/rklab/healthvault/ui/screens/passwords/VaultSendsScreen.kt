@@ -59,6 +59,8 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     var oneTime by remember { mutableStateOf(false) }
     var includeTotp by remember { mutableStateOf(false) }
     var requireGrant by remember { mutableStateOf(false) }
+    var requireEmailOtp by remember { mutableStateOf(false) }
+    var allowedEmails by remember { mutableStateOf("") }
     val fieldColors = vaultFieldColors()
     val selectedItem = items.firstOrNull { it.id == itemId }
     val canIncludeTotp = sendType == "login" && selectedItem?.has_totp == true
@@ -173,11 +175,36 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                     Checkbox(checked = requireGrant, onCheckedChange = { requireGrant = it })
                     Text("Require access request — hide secret until I grant", color = HubText)
                 }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = requireEmailOtp, onCheckedChange = { requireEmailOtp = it })
+                    Text("Require Email OTP to view password", color = HubText)
+                }
+                if (requireEmailOtp) {
+                    OutlinedTextField(
+                        allowedEmails, { allowedEmails = it },
+                        label = { Text("Allowed emails (comma-separated)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = fieldColors
+                    )
+                    Text(
+                        "Must be Vault login emails on this allowlist.",
+                        color = HubTextDim,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 VaultPrimaryButton(
                     text = "Create send",
                     onClick = {
                         scope.launch {
+                            val emails = allowedEmails
+                                .split(',', ';', '\n')
+                                .map { it.trim() }
+                                .filter { it.contains('@') }
+                            if (requireEmailOtp && emails.isEmpty()) return@launch
                             runCatching {
                                 val created = repository.createVaultSend(
                                     VaultSendCreate(
@@ -189,7 +216,10 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                         expires_in_hours = hours.toIntOrNull() ?: 48,
                                         max_views = if (oneTime) 1 else null,
                                         include_totp = includeTotp && canIncludeTotp,
-                                        require_grant = requireGrant
+                                        require_grant = requireGrant,
+                                        require_email_otp = requireEmailOtp,
+                                        allowed_emails = emails,
+                                        require_vault_user_email = true
                                     )
                                 )
                                 val url = "$base/v/${created.token}"
@@ -201,7 +231,9 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
                                 })
-                                name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false; requireGrant = false; reload()
+                                name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false
+                                requireGrant = false; requireEmailOtp = false; allowedEmails = ""
+                                reload()
                             }
                         }
                     }
@@ -288,6 +320,13 @@ private fun AccessRequestCard(
             color = HubTextDim,
             style = MaterialTheme.typography.bodySmall
         )
+        req.viewed_at?.takeIf { it.isNotBlank() }?.let { viewed ->
+            Text(
+                "Password viewed · ${viewed.take(16)}",
+                color = VaultGold,
+                style = MaterialTheme.typography.bodySmall
+            )
+        }
         req.user_agent?.takeIf { it.isNotBlank() }?.let { ua ->
             Text(
                 ua.take(96) + if (ua.length > 96) "…" else "",

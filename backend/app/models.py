@@ -568,9 +568,11 @@ class VaultSendAccess(Base):
     __tablename__ = "vault_send_accesses"
     id = Column(String(32), primary_key=True, default=gen_id)
     send_id = Column(String(32), ForeignKey("vault_sends.id"), nullable=False, index=True)
-    action = Column(String(20), nullable=False, default="view")
+    action = Column(String(20), nullable=False, default="view")  # view | password_viewed
     ip = Column(String(64), nullable=True)
     user_agent = Column(String(400), nullable=True)
+    email = Column(String(255), nullable=True)
+    request_id = Column(String(32), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     send = relationship("VaultSend", back_populates="accesses")
 
@@ -590,10 +592,23 @@ class VaultSendRequest(Base):
     photo_path = Column(String(500), nullable=True)  # encrypted relative path
     photo_mime = Column(String(80), nullable=True)
     status = Column(String(20), default="pending", nullable=False)  # pending | seen | granted | dismissed
+    video_status = Column(String(20), default="none", nullable=False)  # none | requested | live | ended
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     decided_at = Column(DateTime, nullable=True)
+    viewed_at = Column(DateTime, nullable=True)  # password actually shown to this guest
 
     send = relationship("VaultSend")
+
+
+class VaultSendEmailOtp(Base):
+    """Pending email OTP for a Send that requires email verification."""
+    __tablename__ = "vault_send_email_otps"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    send_id = Column(String(32), ForeignKey("vault_sends.id"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    code_hash = Column(String(255), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 # ---------- Finance / Money Manager ----------
