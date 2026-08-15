@@ -74,7 +74,7 @@
         <a class="btn btn-sm btn-outline-light" href="/admin/finance/accounts/{{ a.id }}">
           <i class="bi bi-receipt"></i> <span class="d-none d-md-inline">Statement</span>
         </a>
-        <form method="post" action="/admin/finance/accounts/{{ a.id }}/delete" onsubmit="return confirm('Archive {{ a.name }}?');">
+        <form method="post" action="/admin/finance/accounts/{{ a.id }}/delete" data-confirm="Archive {{ a.name }}?">
           <button class="btn btn-sm btn-outline-danger btn-icon" type="submit" aria-label="Remove {{ a.name }}">
             <i class="bi bi-archive"></i>
           </button>

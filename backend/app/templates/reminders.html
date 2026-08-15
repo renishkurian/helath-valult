@@ -106,7 +106,7 @@
             {% endif %}
           </td>
           <td class="table-actions">
-            <form method="post" action="/admin/reminders/{{ r.id }}/delete" onsubmit="return confirm('Delete this reminder?');">
+            <form method="post" action="/admin/reminders/{{ r.id }}/delete" data-confirm="Delete this reminder?">
               <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
             </form>
           </td>

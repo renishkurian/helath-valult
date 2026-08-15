@@ -118,7 +118,7 @@
                   </td>
                   <td class="table-actions">
                     {% if not link.revoked %}
-                    <form method="post" action="/admin/activity/share/{{ link.id }}/revoke" onsubmit="return confirm('Revoke this link?');">
+                    <form method="post" action="/admin/activity/share/{{ link.id }}/revoke" data-confirm="Revoke this link?">
                       <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-octagon"></i> Revoke</button>
                     </form>
                     {% endif %}

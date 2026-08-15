@@ -185,7 +185,7 @@
               <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
                 <i class="bi bi-download"></i> Download
               </a>
-              <form method="post" action="/admin/documents/{{ doc.id }}/delete" onsubmit="return confirm('Delete this document?');">
+              <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Delete this document?">
                 <input type="hidden" name="person_id" value="{{ active_person.id }}">
                 <input type="hidden" name="category" value="{{ category or '' }}">
                 <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Delete {{ doc.title | nice }}">

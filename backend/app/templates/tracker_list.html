@@ -172,7 +172,7 @@
           <span>{{ rec.original_name or 'PDF' }}</span>
         </a>
         {% endif %}
-        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/receipts/{{ rec.id }}/delete" onsubmit="return confirm('Remove this bill copy?');">
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/receipts/{{ rec.id }}/delete" data-confirm="Remove this bill copy?">
           <button class="shop-bill-x" type="submit" aria-label="Remove"><i class="bi bi-x"></i></button>
         </form>
       </div>
@@ -256,7 +256,7 @@
       </span>
       <span class="row-side">{% if item.price %}{{ inr(item.price) }}{% endif %}</span>
       <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/delete" onsubmit="return confirm('Remove this item?');">
+      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/delete" data-confirm="Remove this item?">
         <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
       </form>
     </div>
@@ -304,7 +304,7 @@
 </div>
 {% endif %}
 
-<form class="mt-4" method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" onsubmit="return confirm('Move this list to trash?');">
+<form class="mt-4" method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" data-confirm="Move this list to trash?">
   <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
 </form>
 </div>

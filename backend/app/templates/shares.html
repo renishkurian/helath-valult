@@ -35,7 +35,7 @@
         <span class="badge badge-bad"><i class="bi bi-slash-circle"></i> Revoked</span>
       {% else %}
         <span class="badge badge-good"><i class="bi bi-check2-circle"></i> Active</span>
-        <form method="post" action="/admin/shares/{{ item.link.id }}/revoke" onsubmit="return confirm('Revoke this link? It will stop working immediately.');">
+        <form method="post" action="/admin/shares/{{ item.link.id }}/revoke" data-confirm="Revoke this link? It will stop working immediately.">
           <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-x-octagon"></i> Revoke</button>
         </form>
       {% endif %}

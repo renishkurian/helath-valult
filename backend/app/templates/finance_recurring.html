@@ -71,7 +71,7 @@
             {% if e.active and e.status!='completed' %}<i class="bi bi-pause"></i> Pause{% else %}<i class="bi bi-play"></i> Resume{% endif %}
           </button>
         </form>
-        <form method="post" action="/admin/finance/recurring/{{ e.id }}/delete" onsubmit="return confirm('Remove {{ e.name }}? Past entries stay.');">
+        <form method="post" action="/admin/finance/recurring/{{ e.id }}/delete" data-confirm="Remove {{ e.name }}? Past entries stay.">
           <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
         </form>
       </div>

@@ -35,7 +35,7 @@
     <div class="portrait-go d-flex align-items-center gap-2 w-100">
       <span><i class="bi bi-folder2-open"></i> Open file</span>
       {% if p.relation | enum_value != 'self' %}
-      <form class="ms-auto position-relative z-2" method="post" action="/admin/people/{{ p.id }}/delete" onsubmit="return confirm('Remove {{ p.name | nice }}?');">
+      <form class="ms-auto position-relative z-2" method="post" action="/admin/people/{{ p.id }}/delete" data-confirm="Remove {{ p.name | nice }}?">
         <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Remove {{ p.name | nice }}" title="Remove {{ p.name | nice }}">
           <i class="bi bi-trash3"></i>
         </button>

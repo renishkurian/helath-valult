@@ -95,14 +95,14 @@
               {% if u.totp_enabled %}
               <span class="badge badge-good">2FA</span>
               <form method="post" action="/admin/sa/users/{{ u.id }}/disable-2fa" class="d-inline"
-                    onsubmit="return confirm('Turn off 2FA for this account?');">
+                    data-confirm="Turn off 2FA for this account?">
                 <button class="btn btn-ghost btn-sm" type="submit">Clear 2FA</button>
               </form>
               {% endif %}
               {% if u.app_approve %}
               <span class="badge badge-info">app</span>
               <form method="post" action="/admin/sa/users/{{ u.id }}/disable-app-approve" class="d-inline"
-                    onsubmit="return confirm('Turn off app approval for this account?');">
+                    data-confirm="Turn off app approval for this account?">
                 <button class="btn btn-ghost btn-sm" type="submit">Clear app</button>
               </form>
               {% endif %}
@@ -118,7 +118,7 @@
             </form>
             {% else %}
             <form method="post" action="/admin/sa/users/{{ u.id }}/block"
-                  onsubmit="return confirm('Block this account? They will not be able to sign in.');">
+                  data-confirm="Block this account? They will not be able to sign in.">
               <button class="btn btn-ghost btn-sm" type="submit">Block</button>
             </form>
             {% endif %}

@@ -106,7 +106,7 @@
       </div>
     </span>
     <div class="row-actions">
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" onsubmit="return confirm('Move this list to trash?');">
+      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" data-confirm="Move this list to trash?">
         <button class="btn btn-ghost" type="submit" aria-label="Move to trash" title="Move to trash"><i class="bi bi-trash3"></i></button>
       </form>
     </div>

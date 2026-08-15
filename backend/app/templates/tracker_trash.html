@@ -13,7 +13,7 @@
   </div>
   {% if lists %}
   <div class="page-actions">
-    <form method="post" action="/admin/tracker/trash/empty" onsubmit="return confirm('Permanently delete everything in trash?');">
+    <form method="post" action="/admin/tracker/trash/empty" data-confirm="Permanently delete everything in trash?">
       <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Empty trash</button>
     </form>
   </div>
@@ -43,7 +43,7 @@
         <form method="post" action="/admin/tracker/lists/{{ lst.id }}/restore">
           <button class="btn btn-outline-light btn-sm" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
         </form>
-        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/permanent" onsubmit="return confirm('Delete forever?');">
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/permanent" data-confirm="Delete forever?">
           <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-x-lg"></i> Delete</button>
         </form>
       </div>

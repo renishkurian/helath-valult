@@ -140,7 +140,7 @@
             <form method="post" action="/admin/ai/providers/{{ k.id }}/test">
               <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-lightning"></i> Test</button>
             </form>
-            <form method="post" action="/admin/ai/providers/{{ k.id }}/delete" onsubmit="return confirm('Remove this provider?');">
+            <form method="post" action="/admin/ai/providers/{{ k.id }}/delete" data-confirm="Remove this provider?">
               <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
             </form>
           </div>

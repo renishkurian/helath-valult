@@ -43,7 +43,7 @@
           <form method="post" action="/admin/expense-analyser/sync">
             <button class="btn btn-primary" type="submit" {% if status.syncing %}disabled{% endif %}>{% if status.syncing %}Syncing…{% else %}Sync now{% endif %}</button>
           </form>
-          <form method="post" action="/admin/expense-analyser/disconnect" onsubmit="return confirm('Disconnect Gmail from Expense Analyser?');">
+          <form method="post" action="/admin/expense-analyser/disconnect" data-confirm="Disconnect Gmail from Expense Analyser?">
             <button class="btn btn-outline-danger" type="submit">Disconnect</button>
           </form>
         </div>

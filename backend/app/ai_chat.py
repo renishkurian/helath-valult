@@ -27,14 +27,16 @@ CHAT_TIMEOUT = 60
 
 SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money Manager, Expense Analyser, Shopping List, Document Vault, URL Vault, Password Vault).
 
+Language: The user may write in English, Malayalam script, or Manglish (Malayalam in Latin letters, e.g. “kazhinja maasam enna vaangiya?”, “atta podi koode list undaakkan”). Understand all three. Reply in the same style the user used when helpful (short Manglish is fine); otherwise use clear English. Always keep vault facts accurate.
+
 Answer only from the VAULT SNAPSHOT attached to each turn. Do not invent hospitals, reports, transactions, balances, shopping items, or dates. If the snapshot does not contain the answer, say what is missing and which module to open.
 
 When the user asks for:
 - hospital reports / labs / bills: list matching Health Vault documents (title, date, category, amount, person). Group by hospital.
 - a credit-card (or any account) statement for a month: list that account's transactions for the month with date, payee, category, amount, and a total. Say if the account was not found.
 - spend / income: use Money Manager ledger figures. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant.
-- shopping / groceries / “did I buy X”: use the Shopping List section (list names, item names, checked/purchased dates). Prefer item names over merchant payees when answering product questions (oil, rice, atta, etc.).
-- create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
+- shopping / groceries / “did I buy X” / “X vaangiya?”: use the Shopping List section and any Manglish glossary hints. Prefer item names over merchant payees for products (oil/enna, rice/ari, atta, etc.).
+- create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named, including Manglish). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
 - IDs / Aadhaar / PAN: you may name the Document Vault item and expiry, never an ID number (those are omitted on purpose).
 - passwords / logins: you may name entries. Never claim to know a password.
 
@@ -46,10 +48,10 @@ Creating a shopping list — after your normal markdown answer, if (and only if)
 
 Rules for vault-action:
 - type must be create_shop_list
-- name: short English title
+- name: short English title (OK to keep a Manglish nickname in the markdown answer)
 - items: 1–60 objects with name (required), optional quantity (number), optional unit
-- Recognise Malayalam / misspellings into English grocery names when the snapshot or common Kerala groceries make that clear (atta/mav podi → Wheat Flour, sharkara → Jaggery, etc.)
-- Do NOT emit vault-action for pure questions (e.g. “did I buy oil last month?”)
+- Put the canonical English grocery name in items[].name when known (ulli→Onion, enna→Coconut Oil, sharkara→Jaggery, atta/mav podi→Wheat Flour, ari→Rice, paal→Milk). Use the snapshot Manglish glossary when present.
+- Do NOT emit vault-action for pure questions (e.g. “did I buy oil last month?” / “enna vaangiya?”)
 - Do NOT invent purchases that are not in the snapshot; for history-based lists, prefer frequent checked items from the months asked
 
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
@@ -133,16 +135,27 @@ _MONTH_NAME.update({name.lower(): i for i, name in enumerate(calendar.month_abbr
 
 
 def detect_months(question: str, today: datetime | None = None) -> list[str]:
-    """YYYY-MM values mentioned or implied in the question."""
+    """YYYY-MM values mentioned or implied in the question (English + common Manglish)."""
     today = today or datetime.utcnow()
     this = f"{today:%Y-%m}"
     q = (question or "").lower()
+    # Fold Malayalam virama so script forms match more easily in regex-less checks later
+    q_flat = q.replace("\u0d4d", "")
     found: list[str] = []
     if re.search(r"\b(this month|current month)\b", q):
         found.append(this)
+    if re.search(r"\b(ee\s*maasam|ee\s*masam|ippo[l]?athe?\s*maasam)\b", q):
+        found.append(this)
     if re.search(r"\blast month\b", q):
         found.append(_shift_month(this, -1))
-    # last/past N months (including “two”)
+    # Manglish / Malayalam: kazhinja maasam, korsa maasam, കഴിഞ്ഞ മാസം
+    if re.search(
+        r"\b(kazhinja|kazinja|kors[a]?|poyi)\s*maa?sam\b|"
+        r"കഴിഞ്ഞ\s*മാസ|കഴിഞ്ഞമാസ",
+        q_flat,
+    ):
+        found.append(_shift_month(this, -1))
+    # last/past N months (including “two” / Manglish randu/moonnu maasam)
     span = None
     m = re.search(r"\b(?:last|past)\s+(\d{1,2})\s+months?\b", q)
     if m:
@@ -151,6 +164,12 @@ def detect_months(question: str, today: datetime | None = None) -> list[str]:
         span = 2
     elif re.search(r"\b(?:last|past)\s+three\s+months?\b", q):
         span = 3
+    elif re.search(r"\b(randu|rendu|2)\s*maa?sam\b|രണ്ട്?\s*മാസ", q_flat):
+        span = 2
+    elif re.search(r"\b(moonnu|munnu|3)\s*maa?sam\b|മൂന്ന്?\s*മാസ", q_flat):
+        span = 3
+    elif re.search(r"\b(naalu|nalu|4)\s*maa?sam\b|നാല്?\s*മാസ", q_flat):
+        span = 4
     if span:
         for i in range(1, span + 1):
             found.append(_shift_month(this, -i))
@@ -188,6 +207,50 @@ def detect_months(question: str, today: datetime | None = None) -> list[str]:
             seen.add(ym)
             out.append(ym)
     return out
+
+
+def _manglish_query_hints(question: str) -> list[str]:
+    """Map Manglish / Malayalam tokens in the question to English grocery names."""
+    from app.grocery import SEED_KEYS, _all_catalog, _fold
+
+    q = question or ""
+    q_fold = _fold(q)
+    if len(q_fold) < 3 and not re.search(r"[\u0d00-\u0d7f]", q):
+        return []
+    hits: list[str] = []
+    seen: set[str] = set()
+
+    # Prefer longer Manglish keys first so "pachamulaku" wins over "mulaku"
+    for key, english in sorted(SEED_KEYS.items(), key=lambda kv: -len(kv[0])):
+        kf = _fold(key)
+        if len(kf) < 3:
+            continue
+        matched = False
+        if re.search(rf"\b{re.escape(key)}\b", q, re.I):
+            matched = True
+        elif len(kf) >= 5 and kf in q_fold:
+            matched = True
+        if matched:
+            line = f"{key} → {english}"
+            if line not in seen:
+                seen.add(line)
+                hits.append(line)
+
+    for row in _all_catalog():
+        en = row.get("english") or ""
+        ml = row.get("malayalam") or ""
+        if ml and ml in q:
+            line = f"{ml} → {en}"
+            if line not in seen:
+                seen.add(line)
+                hits.append(line)
+        en_fold = _fold(en)
+        if len(en_fold) >= 4 and en_fold in q_fold:
+            line = f"{en} (catalog)"
+            if line not in seen:
+                seen.add(line)
+                hits.append(line)
+    return hits[:40]
 
 
 def _match_names(question: str, names: list[str], min_len: int = 4) -> list[str]:
@@ -623,7 +686,16 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     # ---- Shopping List ----
     lines.append("")
     lines.append("## Shopping List")
+    manglish_hits = _manglish_query_hints(q)
+    if manglish_hits:
+        lines.append("Manglish / Malayalam grocery hints from this question:")
+        for h in manglish_hits:
+            lines.append(f"- {h}")
     lines.extend(_shopping_snapshot_lines(db, uid, months, today, q))
+    # Compact glossary so the model can resolve common Manglish even when not in the question
+    from app.grocery import SEED_KEYS
+    gloss = sorted({f"{k}={v}" for k, v in SEED_KEYS.items()}, key=lambda s: s.lower())
+    lines.append("Manglish grocery glossary (subset): " + ", ".join(gloss[:80]))
 
     # ---- Locker ----
     lines.append("")

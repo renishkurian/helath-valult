@@ -190,7 +190,7 @@
       <div class="fw-semibold">Delete this document</div>
       <div class="small text-faint">Removes the entry and every attached file from disk. This cannot be undone.</div>
     </div>
-    <form class="ms-auto" method="post" action="/admin/locker/{{ item.id }}/delete" onsubmit="return confirm('Delete this document and its files?');">
+    <form class="ms-auto" method="post" action="/admin/locker/{{ item.id }}/delete" data-confirm="Delete this document and its files?">
       <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete document</button>
     </form>
   </div>

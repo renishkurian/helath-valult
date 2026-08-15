@@ -203,6 +203,9 @@ SEED_KEYS = {
     "parippu": "Toor Dal", "kadala": "Chickpeas", "uzhunnu": "Urad Dal",
     "chaya": "Tea Powder", "chaaya": "Tea Powder", "kappi": "Coffee Powder",
     "mathi": "Sardine", "ayala": "Mackerel", "karimeen": "Pearl Spot",
+    "atta": "Wheat Flour (Atta)", "attapodi": "Wheat Flour (Atta)", "gothambupodi": "Wheat Flour (Atta)",
+    "mav": "Wheat Flour (Atta)", "mavpodi": "Wheat Flour (Atta)", "maavpodi": "Wheat Flour (Atta)",
+    "coconutoil": "Coconut Oil", "velichennai": "Coconut Oil",
 }
 
 PARSER_TO_FINANCE = {

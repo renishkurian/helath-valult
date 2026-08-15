@@ -34,6 +34,19 @@ def test_detect_months():
     two = detect_months("create a list from my last 2 months purchase history", today)
     assert "2026-07" in two and "2026-06" in two
     assert "2026-07" in detect_months("past two months of groceries", today)
+    assert "2026-07" in detect_months("kazhinja maasam enna vaangiya?", today)
+    randu = detect_months("randu maasam purchase history vech list undaakkan", today)
+    assert "2026-07" in randu and "2026-06" in randu
+
+
+def test_manglish_query_hints():
+    from app.ai_chat import _manglish_query_hints
+    hits = _manglish_query_hints("list il ulli sharkara enna atta podi vekkanam")
+    joined = " ".join(hits).lower()
+    assert "onion" in joined
+    assert "jaggery" in joined
+    assert "oil" in joined or "coconut" in joined
+    assert "wheat" in joined or "atta" in joined
 
 
 def test_context_includes_hospital_and_card_not_secrets():

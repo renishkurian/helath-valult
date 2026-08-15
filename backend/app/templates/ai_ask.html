@@ -71,7 +71,7 @@
       <label class="visually-hidden" for="ask-input">Message</label>
       <div class="ask-box">
         <textarea id="ask-input" rows="1" maxlength="8000"
-          placeholder="Ask about a hospital, a card statement, spend…"
+          placeholder="English, Manglish, or Malayalam — e.g. kazhinja maasam enna vaangiya?"
           {% if not summary.has_default %}disabled{% endif %}></textarea>
         <button class="ask-send" type="submit" id="ask-send" aria-label="Send"
           {% if not summary.has_default %}disabled{% endif %}>
@@ -90,5 +90,5 @@
 </div>
 <div class="ask-rail-mask" id="ask-rail-mask" hidden></div>
 <script id="ask-ai-boot" type="application/json">{{ boot|safe }}</script>
-<script src="/static/ask-ai.js?v=3"></script>
+<script src="/static/ask-ai.js?v=5"></script>
 {% endblock %}

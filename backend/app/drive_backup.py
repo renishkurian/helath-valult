@@ -105,10 +105,8 @@ def run_backup(db: Session, user: models.User) -> dict:
     if not client_id or not client_secret:
         raise RuntimeError("Google Drive is not configured on this server")
     refresh = crypto.decrypt_text(row.refresh_token_enc) or ""
-    from app.routers.backup import _build_zip
-    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
-    locker_items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(user)).all()
-    blob = crypto.encrypt_backup(_build_zip(people, locker_items), password)
+    from app.routers.backup import build_vault_backup
+    blob = crypto.encrypt_backup(build_vault_backup(db, user), password)
     name = f"healthvault-{datetime.now().strftime('%Y%m%d-%H%M')}.hvbak"
     try:
         token = gdrive.refresh_access_token(client_id, client_secret, refresh)

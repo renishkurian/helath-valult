@@ -57,6 +57,8 @@
       <div class="card-body">
         <p class="text-muted">
           Point Syncthing or a USB disk at <code>BACKUP_DIR</code> on the Pi, then snapshot here.
+          Full vault export includes Health, Locker, Passwords, Money Manager, URLs, Shopping List,
+          Expense Analyser, and Ask AI (same archive Drive uses).
         </p>
         {% if backup_dir %}
           <div class="group-label">Backup directory</div>
@@ -198,7 +200,7 @@
 
         <p class="text-faint small mt-3 mb-0">
           Files land in a Drive folder named <strong>Health Vault Backups</strong>, encrypted with your backup password.
-          The Pi uploads them even if the phone is off.
+          Each upload is a full vault snapshot (all modules). The Pi uploads them even if the phone is off.
         </p>
       </div>
     </div>
