@@ -639,15 +639,76 @@ def bank_hint_from_text(*parts: str | None) -> str | None:
 def _pdf_part_key(part: dict[str, Any]) -> str:
     aid = (part.get("attachment_id") or "").strip()
     if aid:
-        return aid[:255]
+        return aid
     name = (part.get("filename") or "statement.pdf").strip() or "statement.pdf"
     return f"inline:{name}"[:255]
+
+
+def _download_gmail_pdf_bytes(
+    token: str,
+    message_id: str,
+    attachment_id: str,
+    *,
+    filename: str | None = None,
+) -> tuple[bytes, str]:
+    """Fetch PDF bytes from Gmail; recover a full attachment id if the stored one was truncated."""
+    mid = (message_id or "").strip()
+    aid = (attachment_id or "").strip()
+    if not mid or not aid or aid.startswith("inline:"):
+        return b"", aid
+
+    first_exc: BaseException | None = None
+    try:
+        data = gmail.get_attachment_bytes(token, mid, aid)
+        if data:
+            return data, aid
+    except Exception as exc:  # noqa: BLE001
+        first_exc = exc
+
+    try:
+        msg = gmail.get_message(token, mid)
+    except Exception as exc:  # noqa: BLE001
+        if first_exc is not None:
+            raise first_exc from exc
+        raise
+
+    want_name = (filename or "").strip().lower()
+    parts = gmail.extract_pdf_parts(msg)
+    ordered: list[dict[str, Any]] = []
+    for part in parts:
+        paid = (part.get("attachment_id") or "").strip()
+        pname = (part.get("filename") or "").strip().lower()
+        if paid and (paid == aid or paid.startswith(aid)):
+            ordered.insert(0, part)
+        elif want_name and pname == want_name:
+            ordered.append(part)
+        elif part.get("data") and not paid and want_name and pname == want_name:
+            ordered.append(part)
+
+    for part in ordered:
+        paid = (part.get("attachment_id") or "").strip()
+        raw = part.get("data")
+        if raw and not paid:
+            return raw, aid
+        if not paid:
+            continue
+        try:
+            data = gmail.get_attachment_bytes(token, mid, paid)
+        except Exception as exc:  # noqa: BLE001
+            first_exc = first_exc or exc
+            continue
+        if data:
+            return data, paid
+
+    if first_exc is not None:
+        raise first_exc
+    return b"", aid
 
 
 def _mail_pdf_row(
     db: Session, uid: str, message_id: str, attachment_id: str,
 ) -> models.ShopStatementPdf | None:
-    return (
+    row = (
         db.query(models.ShopStatementPdf)
         .filter(
             models.ShopStatementPdf.user_id == uid,
@@ -656,6 +717,23 @@ def _mail_pdf_row(
         )
         .first()
     )
+    if row or not attachment_id or attachment_id.startswith("inline:"):
+        return row
+    # Older rows may have truncated attachment ids (VARCHAR 255 / [:255]).
+    for cand in (
+        db.query(models.ShopStatementPdf)
+        .filter(
+            models.ShopStatementPdf.user_id == uid,
+            models.ShopStatementPdf.gmail_message_id == message_id,
+        )
+        .all()
+    ):
+        stored = (cand.gmail_attachment_id or "").strip()
+        if not stored or stored.startswith("inline:"):
+            continue
+        if attachment_id.startswith(stored) or stored.startswith(attachment_id):
+            return cand
+    return None
 
 
 def _upsert_mail_pdf(
@@ -680,6 +758,8 @@ def _upsert_mail_pdf(
             user_id=uid, gmail_message_id=mid, gmail_attachment_id=key,
         )
         db.add(row)
+    else:
+        row.gmail_attachment_id = key
     row.filename = filename
     row.subject = (mail.get("subject") or None)
     row.from_addr = (mail.get("from_addr") or None)
@@ -704,7 +784,11 @@ def _download_pdf_bytes(token: str, mail: dict[str, Any], part: dict[str, Any]) 
     mid = mail.get("id")
     if not aid or not mid or str(aid).startswith("inline:"):
         return b""
-    data = gmail.get_attachment_bytes(token, str(mid), str(aid))
+    data, resolved = _download_gmail_pdf_bytes(
+        token, str(mid), str(aid), filename=part.get("filename"),
+    )
+    if resolved and resolved != aid:
+        part["attachment_id"] = resolved
     if len(data) > MAX_PDF:
         raise ValueError("PDF is larger than 10 MB")
     return data
@@ -926,13 +1010,18 @@ def fetch_mail_pdf_bytes(db: Session, user: models.User, pdf_id: str) -> tuple[b
         raise RuntimeError("This PDF was embedded in the email and cannot be re-downloaded")
     token = _access_token(db, conn)
     try:
-        data = gmail.get_attachment_bytes(token, mid, aid)
+        data, resolved = _download_gmail_pdf_bytes(
+            token, mid, aid, filename=row.filename,
+        )
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(f"Could not download from Gmail: {exc}") from exc
     if not data:
         raise RuntimeError("Empty PDF attachment")
     if len(data) > MAX_PDF:
         raise RuntimeError("PDF is larger than 10 MB")
+    if resolved and resolved != aid:
+        row.gmail_attachment_id = resolved
+        db.commit()
     name = (row.filename or "statement.pdf").strip() or "statement.pdf"
     if not name.lower().endswith(".pdf"):
         name = f"{name}.pdf"

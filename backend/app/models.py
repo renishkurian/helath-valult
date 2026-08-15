@@ -1113,7 +1113,8 @@ class ShopStatementPdf(Base):
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     gmail_message_id = Column(String(128), nullable=False, index=True)
-    gmail_attachment_id = Column(String(255), nullable=True)
+    # Gmail attachmentIds are often longer than 255 chars; truncating breaks re-download.
+    gmail_attachment_id = Column(Text, nullable=True)
     filename = Column(String(255), nullable=True)
     subject = Column(String(500), nullable=True)
     from_addr = Column(String(255), nullable=True)

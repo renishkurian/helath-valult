@@ -1,4 +1,5 @@
 """Expense Analyser — separate from Money Manager."""
+import urllib.error
 import uuid
 from decimal import Decimal
 
@@ -656,6 +657,74 @@ def test_mail_pdf_download_and_view(monkeypatch):
     admin_dl = session.get(f"/admin/expense-analyser/mail-pdfs/{pdf_id}/download")
     assert admin_dl.status_code == 200
     assert admin_dl.content == raw_pdf
+
+
+def test_mail_pdf_fetch_recovers_truncated_attachment_id(monkeypatch):
+    from app import expense_analyser as ea
+    from app.database import SessionLocal
+
+    full_aid = "A" * 300
+    truncated = full_aid[:255]
+    raw_pdf = b"%PDF-1.4 recovered"
+    calls: list[str] = []
+
+    def fake_get_attachment(_token, _mid, aid):
+        calls.append(aid)
+        if aid == truncated:
+            raise urllib.error.HTTPError(
+                url="https://gmail.googleapis.com/x",
+                code=400,
+                msg="Bad Request",
+                hdrs=None,
+                fp=None,
+            )
+        if aid == full_aid:
+            return raw_pdf
+        raise AssertionError(f"unexpected aid {aid!r}")
+
+    def fake_get_message(_token, mid):
+        assert mid == "m-trunc-1"
+        return {
+            "id": mid,
+            "payload": {
+                "parts": [{
+                    "filename": "SBI.pdf",
+                    "mimeType": "application/pdf",
+                    "body": {"attachmentId": full_aid, "size": len(raw_pdf)},
+                }],
+            },
+        }
+
+    monkeypatch.setattr("app.gmail.get_attachment_bytes", fake_get_attachment)
+    monkeypatch.setattr("app.gmail.get_message", fake_get_message)
+    monkeypatch.setattr("app.expense_analyser._access_token", lambda *a, **k: "tok")
+
+    db = SessionLocal()
+    try:
+        _, email = _headers("ea-trunc-aid@example.com")
+        user = db.query(models.User).filter(models.User.email == email).first()
+        row = ea.get_or_create(db, user)
+        row.refresh_token_enc = "x"
+        pdf = models.ShopStatementPdf(
+            user_id=user.id,
+            gmail_message_id="m-trunc-1",
+            gmail_attachment_id=truncated,
+            filename="SBI.pdf",
+            status="needs_password",
+        )
+        db.add(pdf)
+        db.commit()
+        db.refresh(pdf)
+
+        data, name = ea.fetch_mail_pdf_bytes(db, user, pdf.id)
+        assert data == raw_pdf
+        assert name == "SBI.pdf"
+        db.refresh(pdf)
+        assert pdf.gmail_attachment_id == full_aid
+        assert calls[0] == truncated
+        assert full_aid in calls
+    finally:
+        db.close()
 
 
 def test_admin_settings_shows_bank_passwords():

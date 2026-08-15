@@ -132,9 +132,10 @@ def list_message_ids_paged(
 
 
 def get_attachment_bytes(access_token: str, message_id: str, attachment_id: str) -> bytes:
+    # Attachment ids often contain "/" and "+" — encode the whole id as one path segment.
     url = (
-        f"{GMAIL_API}/messages/{urllib.parse.quote(message_id)}"
-        f"/attachments/{urllib.parse.quote(attachment_id)}"
+        f"{GMAIL_API}/messages/{urllib.parse.quote(message_id, safe='')}"
+        f"/attachments/{urllib.parse.quote(attachment_id, safe='')}"
     )
     data = _request_json(url, access_token)
     raw = data.get("data") or ""
@@ -151,7 +152,10 @@ def get_attachment(access_token: str, message_id: str, attachment_id: str) -> st
 
 def get_message(access_token: str, message_id: str) -> dict[str, Any]:
     q = urllib.parse.urlencode({"format": "full"})
-    return _request_json(f"{GMAIL_API}/messages/{urllib.parse.quote(message_id)}?{q}", access_token)
+    return _request_json(
+        f"{GMAIL_API}/messages/{urllib.parse.quote(message_id, safe='')}?{q}",
+        access_token,
+    )
 
 
 def _header(headers: list[dict[str, str]], name: str) -> str | None:
