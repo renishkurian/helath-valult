@@ -220,7 +220,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=26">
+<link rel="stylesheet" href="/static/vault.css?v=27">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">
@@ -518,13 +518,18 @@
             '<button class="btn btn-sm btn-ghost" type="submit">Dismiss</button>' +
           '</form>' +
         '</div>' +
-      '</div>';
+      '</div>' +
+      '<div class="js-send-chat mt-3" data-role="admin" data-request-id="' + escapeHtml(req.id) + '"></div>';
     list.insertBefore(el, list.firstChild);
     var vbtn = el.querySelector(".js-request-video");
     if (vbtn && window.VaultSendVideo) {
       vbtn.addEventListener("click", function () {
         VaultSendVideo.admin({ requestId: req.id, next: next });
       });
+    }
+    if (window.VaultSendChat && typeof VaultSendChat.mount === "function") {
+      var chatEl = el.querySelector(".js-send-chat");
+      if (chatEl) VaultSendChat.mount(chatEl);
     }
     return true;
   }
@@ -559,7 +564,22 @@
   });
 
   function showReq(req){
-    if (!req || !req.id || seen[req.id]) return;
+    if (!req || !req.id) return;
+    if (req.chat_from === "guest") {
+      injectRequestCard(req);
+      if (toast && toastText) {
+        var whoLabel = req.name || req.email || req.ip || "Someone";
+        toastText.textContent = whoLabel + ": " + (req.chat_preview || "sent a message");
+        toast.hidden = false;
+        toast.style.display = "block";
+      }
+      focusRequest(req.id);
+      if (window.VaultSendChat && typeof VaultSendChat.refresh === "function") {
+        VaultSendChat.refresh(req.id);
+      }
+      return;
+    }
+    if (seen[req.id]) return;
     seen[req.id] = true;
     injectRequestCard(req);
     fill(req);
@@ -634,6 +654,9 @@
 })();
 {% endif %}
 </script>
+{% if session_user %}
+<script src="/static/vault-send-chat.js?v=1"></script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

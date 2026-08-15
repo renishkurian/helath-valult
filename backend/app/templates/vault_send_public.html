@@ -6,11 +6,10 @@
 <title>{{ send.name }} — Send</title>
 <meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
-{% if grant_required and grant_pending and video_status not in ('requested', 'live') %}<meta http-equiv="refresh" content="5">{% endif %}
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=6">
+<link rel="stylesheet" href="/static/vault.css?v=27">
 </head>
 <body>
 <div class="public-wrap">
@@ -57,6 +56,7 @@
             <i class="bi bi-hourglass-split"></i>
             Waiting for the owner to grant access. This page updates automatically.
           </div>
+          <div class="js-send-chat mt-3" data-role="guest" data-token="{{ token }}"></div>
           {% elif grant_denied %}
           <div class="alert alert-danger" role="alert">
             Access was declined. Ask the owner for a new link if you still need it.
@@ -321,6 +321,7 @@
 })();
 </script>
 {% if grant_pending or video_status in ('requested', 'live') %}
+<script src="/static/vault-send-chat.js?v=1"></script>
 <script src="/static/vault-send-video.js?v=2"></script>
 <script>
 VaultSendVideo.guest({ token: {{ token|tojson }} });

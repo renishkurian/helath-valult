@@ -1706,6 +1706,42 @@ def passwords_send_request_photo(request_id: str, request: Request, db: Session 
     return send_request_photo(request_id, db=db, current_user=user)
 
 
+@router.get("/passwords/send-requests/{request_id}/chat")
+def passwords_send_request_chat_list(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import list_send_request_chat
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    after = request.query_params.get("after") or None
+    try:
+        return list_send_request_chat(request_id, after=after, db=db, current_user=user)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
+
+@router.post("/passwords/send-requests/{request_id}/chat")
+async def passwords_send_request_chat_post(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import post_send_request_chat
+    from app import schemas as app_schemas
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    try:
+        body = await request.json()
+        out = post_send_request_chat(
+            request_id,
+            body=app_schemas.VaultSendChatIn(text=str((body or {}).get("text") or "")),
+            db=db,
+            current_user=user,
+        )
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    except Exception as exc:
+        detail = getattr(exc, "errors", lambda: None)() or str(exc)
+        return JSONResponse({"detail": detail}, status_code=400)
+    return JSONResponse(out)
+
+
 @router.post("/passwords/send-requests/{request_id}/face")
 async def passwords_send_request_face(request_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.vault import capture_send_request_face

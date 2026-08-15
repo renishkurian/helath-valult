@@ -133,6 +133,8 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_shop_lists_deleted_at", "shop_lists", "deleted_at"),
     ("ix_shop_lists_finance_txn_id", "shop_lists", "finance_txn_id"),
     ("ix_shop_lists_finance_category_id", "shop_lists", "finance_category_id"),
+    ("ix_vault_send_chat_messages_request_id", "vault_send_chat_messages", "request_id"),
+    ("ix_vault_send_chat_messages_created_at", "vault_send_chat_messages", "created_at"),
 ]
 
 

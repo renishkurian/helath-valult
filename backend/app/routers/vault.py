@@ -1122,6 +1122,120 @@ def public_request_status(token: str, request: Request, db: Session = Depends(ge
     }
 
 
+def _chat_out(row: models.VaultSendChatMessage) -> schemas.VaultSendChatOut:
+    return schemas.VaultSendChatOut(
+        id=row.id,
+        from_role=row.from_role,
+        body=row.body,
+        created_at=row.created_at,
+    )
+
+
+def _normalize_chat_text(raw: str) -> str:
+    text = (raw or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        raise HTTPException(400, "Message is empty")
+    if len(text) > 1000:
+        raise HTTPException(400, "Message is too long")
+    return text
+
+
+def _list_chat_messages(
+    request_id: str,
+    db: Session,
+    *,
+    after: Optional[str] = None,
+    limit: int = 80,
+) -> list[models.VaultSendChatMessage]:
+    q = (
+        db.query(models.VaultSendChatMessage)
+        .filter(models.VaultSendChatMessage.request_id == request_id)
+        .order_by(models.VaultSendChatMessage.created_at.asc(), models.VaultSendChatMessage.id.asc())
+    )
+    rows = q.all()
+    if after:
+        # Return only messages after the given id (stable for polling).
+        seen = False
+        filtered: list[models.VaultSendChatMessage] = []
+        for row in rows:
+            if seen:
+                filtered.append(row)
+            elif row.id == after:
+                seen = True
+        rows = filtered
+    if limit > 0 and len(rows) > limit:
+        rows = rows[-limit:]
+    return rows
+
+
+def _post_chat_message(
+    row: models.VaultSendRequest,
+    *,
+    from_role: str,
+    text: str,
+    db: Session,
+) -> models.VaultSendChatMessage:
+    if row.status not in ("pending", "seen"):
+        raise HTTPException(400, "Chat is only available while the access request is pending")
+    body = _normalize_chat_text(text)
+    msg = models.VaultSendChatMessage(
+        request_id=row.id,
+        from_role=from_role,
+        body=body,
+    )
+    db.add(msg)
+    if from_role == "admin" and row.status == "pending":
+        row.status = "seen"
+    db.commit()
+    db.refresh(msg)
+    return msg
+
+
+@public_router.get("/public/{token}/chat")
+def public_send_chat_list(
+    token: str,
+    request: Request,
+    after: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        raise HTTPException(410, "Send not found")
+    row = _guest_request(request, send, db)
+    if not row:
+        return {"ok": False, "status": None, "messages": []}
+    messages = _list_chat_messages(row.id, db, after=after)
+    return {
+        "ok": True,
+        "status": row.status,
+        "messages": [_chat_out(m).model_dump(mode="json") for m in messages],
+    }
+
+
+@public_router.post("/public/{token}/chat")
+async def public_send_chat_post(token: str, request: Request, db: Session = Depends(get_db)):
+    try:
+        send = _load_valid_send(token, db)
+    except HTTPException:
+        raise HTTPException(410, "Send not found")
+    row = _guest_request(request, send, db)
+    if not row or row.status not in ("pending", "seen"):
+        raise HTTPException(400, "No pending access request")
+    body = await request.json()
+    msg = _post_chat_message(row, from_role="guest", text=str((body or {}).get("text") or ""), db=db)
+    # Nudge owner tabs (same hub as new access requests).
+    try:
+        from app.send_request_events import send_request_hub
+        payload = _request_out(row, send).model_dump(mode="json")
+        payload["chat_preview"] = msg.body[:120]
+        payload["chat_from"] = "guest"
+        send_request_hub.publish(row.user_id, payload)
+    except Exception:
+        pass
+    return {"ok": True, "message": _chat_out(msg).model_dump(mode="json")}
+
+
 @public_router.post("/public/{token}/video/accept")
 def public_video_accept(token: str, request: Request, db: Session = Depends(get_db)):
     """Guest accepts live video and marks the session live."""
@@ -1472,6 +1586,36 @@ def admin_video_signals(
         "status": row.status,
         "messages": video_signal_hub.drain(row.id, "admin"),
     }
+
+
+@router.get("/send-requests/{request_id}/chat")
+def list_send_request_chat(
+    request_id: str,
+    after: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    messages = _list_chat_messages(row.id, db, after=after)
+    return {
+        "ok": True,
+        "status": row.status,
+        "messages": [_chat_out(m).model_dump(mode="json") for m in messages],
+    }
+
+
+@router.post("/send-requests/{request_id}/chat")
+def post_send_request_chat(
+    request_id: str,
+    body: schemas.VaultSendChatIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _owned_send_request(request_id, db, current_user)
+    msg = _post_chat_message(row, from_role="admin", text=body.text, db=db)
+    return {"ok": True, "message": _chat_out(msg).model_dump(mode="json")}
 
 
 @router.get("/send-requests/{request_id}/photo")

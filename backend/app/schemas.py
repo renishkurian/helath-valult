@@ -841,6 +841,17 @@ class VaultVideoSignalIn(BaseModel):
     candidate: Optional[dict] = None
 
 
+class VaultSendChatIn(BaseModel):
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class VaultSendChatOut(BaseModel):
+    id: str
+    from_role: str  # admin | guest
+    body: str
+    created_at: datetime
+
+
 # ---------- Finance / Money Manager ----------
 class FinanceAccountIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)

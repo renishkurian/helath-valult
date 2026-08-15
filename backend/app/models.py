@@ -601,6 +601,24 @@ class VaultSendRequest(Base):
     viewed_at = Column(DateTime, nullable=True)  # password actually shown to this guest
 
     send = relationship("VaultSend")
+    chat_messages = relationship(
+        "VaultSendChatMessage",
+        back_populates="request",
+        cascade="all, delete-orphan",
+        order_by="VaultSendChatMessage.created_at",
+    )
+
+
+class VaultSendChatMessage(Base):
+    """Short chat between owner and guest while an access request is pending."""
+    __tablename__ = "vault_send_chat_messages"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    request_id = Column(String(32), ForeignKey("vault_send_requests.id"), nullable=False, index=True)
+    from_role = Column(String(10), nullable=False)  # admin | guest
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    request = relationship("VaultSendRequest", back_populates="chat_messages")
 
 
 class VaultSendEmailOtp(Base):
