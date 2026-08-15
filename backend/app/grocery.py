@@ -157,13 +157,17 @@ GROUP_LABELS = {
     "meat": "Meat · ഇറച്ചി",
     "snacks": "Snacks · പലഹാരം",
     "household": "Household · വീട്",
+    "custom": "Custom · കസ്റ്റം",
 }
 
 GROUP_ICONS = {
     "vegetables": "🥬", "fruits": "🍎", "spices": "🌶️", "dals": "🫘",
     "grains": "🍚", "essentials": "🧂", "dairy": "🥛", "fish": "🐟",
-    "meat": "🍗", "snacks": "🥨", "household": "🧴",
+    "meat": "🍗", "snacks": "🥨", "household": "🧴", "custom": "⭐",
 }
+
+CATALOG_CATEGORIES = tuple(GROUP_LABELS.keys())
+VALID_SCOPES = ("personal", "global")
 
 FREQUENT = {
     "onion", "big onion", "tomato", "potato", "garlic", "ginger",
@@ -289,39 +293,127 @@ def _entry_keys(row: dict) -> list[str]:
     keys = [_fold(row.get("english") or ""), _fold(row.get("malayalam") or "")]
     for alias in _aliases_for().get((row.get("english") or "").lower(), []):
         keys.append(alias)
+    for alias in row.get("aliases") or []:
+        keys.append(_fold(alias) if isinstance(alias, str) else "")
     return [k for k in dict.fromkeys(keys) if k]
 
 
-def grouped_quick_add() -> list[dict]:
-    groups = []
+def _parse_aliases(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    parts = []
+    for chunk in str(raw).replace(";", ",").split(","):
+        t = chunk.strip()
+        if t:
+            parts.append(t)
+    return parts
+
+
+def _catalog_row_from_db(row: models.ShopCatalogItem) -> dict:
+    aliases = _parse_aliases(row.aliases)
+    cat = (row.category or "custom").strip().lower()
+    if cat not in GROUP_LABELS:
+        cat = "custom"
+    base = {
+        "english": (row.english or "").strip(),
+        "malayalam": (row.malayalam or "").strip() or None,
+        "emoji": (row.emoji or "🛒").strip() or "🛒",
+        "category": cat,
+        "aliases": aliases,
+        "catalog_id": row.id,
+        "scope": row.scope or "personal",
+        "custom": True,
+    }
+    base["aliases"] = _entry_keys(base)  # folded keys for chip search
+    # Keep raw alias strings for display/edit separately via aliases_raw if needed
+    return base
+
+
+def load_user_catalog(db: Session | None, user_id: str | None) -> list[dict]:
+    """Personal items for this vault plus all global items."""
+    if db is None or not user_id:
+        return []
+    from sqlalchemy import or_
+
+    rows = (
+        db.query(models.ShopCatalogItem)
+        .filter(
+            or_(
+                models.ShopCatalogItem.scope == "global",
+                models.ShopCatalogItem.user_id == user_id,
+            )
+        )
+        .order_by(models.ShopCatalogItem.english)
+        .all()
+    )
+    return [_catalog_row_from_db(r) for r in rows]
+
+
+def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> list[dict]:
+    by_cat: dict[str, list[dict]] = {k: [] for k in QUICK_ADD}
+    by_cat["custom"] = []
+    seen: set[tuple[str, str]] = set()
+
     for key, items in QUICK_ADD.items():
+        for it in items:
+            en = (it.get("english") or "").strip()
+            entry = {
+                **it,
+                "category": key,
+                "aliases": _entry_keys({**it, "category": key}),
+                "star": en.lower() in FREQUENT,
+                "custom": False,
+            }
+            by_cat[key].append(entry)
+            seen.add((key, en.lower()))
+
+    for row in load_user_catalog(db, user_id):
+        cat = row["category"]
+        en = (row.get("english") or "").strip()
+        if not en:
+            continue
+        slot = (cat, en.lower())
+        if slot in seen:
+            # Prefer user/global override: replace seed chip in that category
+            for i, existing in enumerate(by_cat.get(cat) or []):
+                if (existing.get("english") or "").lower() == en.lower():
+                    by_cat[cat][i] = {
+                        **row,
+                        "star": en.lower() in FREQUENT,
+                    }
+                    break
+            continue
+        seen.add(slot)
+        by_cat.setdefault(cat, []).append({
+            **row,
+            "star": True,
+        })
+
+    groups = []
+    order = list(QUICK_ADD.keys()) + (["custom"] if by_cat.get("custom") else [])
+    for key in order:
+        entries = by_cat.get(key) or []
+        if not entries:
+            continue
         groups.append({
             "key": key,
             "label": GROUP_LABELS.get(key, key.title()),
             "icon": GROUP_ICONS.get(key, "🛒"),
             # Use "entries" — Jinja treats dict.items as dict.items(), which 500s the list page.
-            "entries": [
-                {
-                    **it,
-                    "category": key,
-                    "aliases": _entry_keys({**it, "category": key}),
-                    "star": (it.get("english") or "").lower() in FREQUENT,
-                }
-                for it in items
-            ],
+            "entries": entries,
         })
     return groups
 
 
-def catalog_payload() -> dict:
-    return {"groups": grouped_quick_add()}
+def catalog_payload(db: Session | None = None, user_id: str | None = None) -> dict:
+    return {"groups": grouped_quick_add(db, user_id)}
 
 
-def catalog_json_text() -> str:
+def catalog_json_text(db: Session | None = None, user_id: str | None = None) -> str:
     """JSON safe to embed in a <script type=\"application/json\"> tag."""
     import json
 
-    return json.dumps(catalog_payload(), ensure_ascii=False).replace("<", "\\u003c")
+    return json.dumps(catalog_payload(db, user_id), ensure_ascii=False).replace("<", "\\u003c")
 
 
 def format_item_name(english: str, malayalam: Optional[str] = None) -> str:
@@ -374,7 +466,7 @@ def seed_dictionary(db: Session) -> None:
         db.commit()
 
 
-def _candidate_rows(db: Session) -> list[dict]:
+def _candidate_rows(db: Session, user_id: str | None = None) -> list[dict]:
     seed_dictionary(db)
     by_en: dict[str, dict] = {}
     for row in _all_catalog():
@@ -401,6 +493,22 @@ def _candidate_rows(db: Session) -> list[dict]:
             slot["keys"].append(extra)
         if row.malayalam and not slot.get("malayalam"):
             slot["malayalam"] = row.malayalam
+    for row in load_user_catalog(db, user_id):
+        en = (row.get("english") or "").strip()
+        if not en:
+            continue
+        slot = by_en.setdefault(en.lower(), {
+            "english": en,
+            "malayalam": row.get("malayalam"),
+            "emoji": row.get("emoji") or "🛒",
+            "category": row.get("category"),
+            "keys": list(row.get("aliases") or []),
+        })
+        for key in row.get("aliases") or []:
+            if key and key not in slot["keys"]:
+                slot["keys"].append(key)
+        if row.get("malayalam") and not slot.get("malayalam"):
+            slot["malayalam"] = row.get("malayalam")
     return list(by_en.values())
 
 
@@ -451,14 +559,14 @@ def _score_row(q: str, q_fold: str, row: dict) -> int:
     return best
 
 
-def suggest(db: Session, name: str, limit: int = 12) -> list[dict]:
+def suggest(db: Session, name: str, limit: int = 12, user_id: str | None = None) -> list[dict]:
     raw = (name or "").strip()
     if not raw:
         return []
     q = _bare_name(raw).lower()
     q_fold = _fold(q) or _fold(raw)
     scored: list[tuple[int, dict]] = []
-    for row in _candidate_rows(db):
+    for row in _candidate_rows(db, user_id=user_id):
         score = _score_row(q, q_fold, row)
         if score < 65:
             continue

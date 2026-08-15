@@ -418,6 +418,12 @@ def _export_shopping(db: Session, zf: zipfile.ZipFile, owner: str) -> dict:
             "last_4_digits": p.last_4_digits,
         } for p in pdf_pw],
         "dict": dict_out,
+        "catalog": [{
+            "english": c.english, "malayalam": c.malayalam, "emoji": c.emoji,
+            "category": c.category, "scope": c.scope, "aliases": c.aliases,
+        } for c in db.query(models.ShopCatalogItem).filter(
+            models.ShopCatalogItem.user_id == owner
+        ).all()],
     }
 
 
@@ -522,7 +528,7 @@ def _restore_modules(db: Session, owner: str, zf: zipfile.ZipFile, manifest: dic
     restored = {
         "people": 0, "documents": 0, "cards": 0,
         "locker": 0, "passwords": 0, "finance_accounts": 0, "finance_txns": 0,
-        "urls": 0, "shop_lists": 0, "shop_items": 0, "ea_items": 0, "ai_threads": 0,
+        "urls": 0, "shop_lists": 0, "shop_items": 0, "shop_catalog": 0, "ea_items": 0, "ai_threads": 0,
     }
     for person_entry in manifest.get("people", []):
         _restore_person(db, owner, zf, person_entry, restored)
@@ -1007,6 +1013,34 @@ def _restore_shopping(db: Session, owner: str, zf: zipfile.ZipFile, shop: dict, 
             malayalam=d.get("malayalam"), emoji=d.get("emoji") or "🛒",
             category=d.get("category"), source=d.get("source") or "backup",
         ))
+    for c in shop.get("catalog") or []:
+        en = (c.get("english") or "").strip()
+        if not en:
+            continue
+        scope = (c.get("scope") or "personal").strip().lower()
+        if scope not in ("personal", "global"):
+            scope = "personal"
+        exists = (
+            db.query(models.ShopCatalogItem)
+            .filter(
+                models.ShopCatalogItem.user_id == owner,
+                models.ShopCatalogItem.english == en,
+                models.ShopCatalogItem.category == (c.get("category") or "custom"),
+            )
+            .first()
+        )
+        if exists:
+            continue
+        db.add(models.ShopCatalogItem(
+            user_id=owner,
+            english=en,
+            malayalam=c.get("malayalam"),
+            emoji=c.get("emoji") or "🛒",
+            category=c.get("category") or "custom",
+            scope=scope,
+            aliases=c.get("aliases"),
+        ))
+        restored["shop_catalog"] = restored.get("shop_catalog", 0) + 1
 
     dest_dir = settings.STORAGE_DIR / owner / "shop"
     dest_dir.mkdir(parents=True, exist_ok=True)

@@ -3224,10 +3224,11 @@ def tracker_list_live(list_id: str, request: Request, db: Session = Depends(get_
 def tracker_suggest_admin(request: Request, q: str = "", limit: int = 8, db: Session = Depends(get_db)):
     """Session-auth suggest for the web Shopping List UI (cookie login)."""
     from app.grocery import suggest
+    from app.deps import vault_id
     user = _tr_user(request, db)
     if not user:
         return JSONResponse({"error": "auth"}, status_code=401)
-    rows = suggest(db, q or "", limit=limit)
+    rows = suggest(db, q or "", limit=limit, user_id=vault_id(user))
     return JSONResponse(rows)
 
 
@@ -3235,19 +3236,21 @@ def tracker_suggest_admin(request: Request, q: str = "", limit: int = 8, db: Ses
 def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
     from app.grocery import catalog_json_text, catalog_payload
+    from app.deps import vault_id
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     lst = tr.get_list(list_id, db=db, current_user=user)
     items = lst.items or []
     friends = tr.list_friends(db=db, current_user=user)
-    catalog = catalog_payload()
+    uid = vault_id(user)
+    catalog = catalog_payload(db, uid)
     return templates.TemplateResponse("tracker_list.html", _tr_ctx(
         request, user, "tr_lists", lst=lst,
         pending=[i for i in items if i.status == "pending"],
         approved=[i for i in items if i.status != "pending"],
         friends=friends, groups=catalog["groups"],
-        catalog_json=catalog_json_text(),
+        catalog_json=catalog_json_text(db, uid),
         suggest_url="/admin/tracker/suggest",
         receipts=lst.receipts or [],
         revision=lst.revision,
@@ -3701,6 +3704,90 @@ def tracker_delete_friend(contact_id: str, request: Request, db: Session = Depen
         return RedirectResponse("/admin/login", status_code=302)
     tr.delete_friend(contact_id, db=db, current_user=user)
     return RedirectResponse("/admin/tracker/friends", status_code=302)
+
+
+@router.get("/tracker/catalog", response_class=HTMLResponse)
+def tracker_catalog(request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    from app.grocery import CATALOG_CATEGORIES, GROUP_LABELS
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = tr.list_catalog(db=db, current_user=user)
+    cats = [(k, GROUP_LABELS.get(k, k.title())) for k in CATALOG_CATEGORIES]
+    return templates.TemplateResponse("tracker_catalog.html", _tr_ctx(
+        request, user, "tr_catalog", items=items, categories=cats,
+    ))
+
+
+@router.post("/tracker/catalog")
+def tracker_add_catalog(
+    request: Request,
+    english: str = Form(...),
+    malayalam: str = Form(""),
+    emoji: str = Form("🛒"),
+    category: str = Form("custom"),
+    scope: str = Form("personal"),
+    aliases: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.add_catalog_item(sc.ShopCatalogItemIn(
+            english=english, malayalam=malayalam or None, emoji=emoji or "🛒",
+            category=category, scope=scope, aliases=aliases or None,
+        ), db=db, current_user=user)
+    except Exception as e:
+        from urllib.parse import quote
+        msg = getattr(e, "detail", None) or str(e) or "Could not save"
+        return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
+
+@router.post("/tracker/catalog/{item_id}/update")
+def tracker_update_catalog(
+    item_id: str,
+    request: Request,
+    english: str = Form(...),
+    malayalam: str = Form(""),
+    emoji: str = Form("🛒"),
+    category: str = Form("custom"),
+    scope: str = Form("personal"),
+    aliases: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    from urllib.parse import quote
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.update_catalog_item(item_id, sc.ShopCatalogItemIn(
+            english=english, malayalam=malayalam or None, emoji=emoji or "🛒",
+            category=category, scope=scope, aliases=aliases or None,
+        ), db=db, current_user=user)
+    except Exception as e:
+        msg = getattr(e, "detail", None) or str(e) or "Could not update"
+        return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
+
+@router.post("/tracker/catalog/{item_id}/delete")
+def tracker_delete_catalog(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.delete_catalog_item(item_id, db=db, current_user=user)
+    except Exception:
+        return RedirectResponse("/admin/tracker/catalog?err=not+found", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
 
 
 @router.get("/tracker/more", response_class=HTMLResponse)

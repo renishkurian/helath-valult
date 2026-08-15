@@ -18,8 +18,8 @@ from app.database import get_db
 from app.deps import get_current_user, require_owner, vault_id
 from app.extract import enhance_scan
 from app.grocery import (
-    catalog_payload, format_item_name, grouped_quick_add, money, PARSER_TO_FINANCE,
-    recognize, seed_dictionary, suggest,
+    CATALOG_CATEGORIES, VALID_SCOPES, _fold, catalog_payload, format_item_name,
+    grouped_quick_add, money, PARSER_TO_FINANCE, recognize, seed_dictionary, suggest,
 )
 
 router = APIRouter(prefix="/tracker", tags=["tracker"])
@@ -1074,13 +1074,178 @@ def recall_send(
 
 # ---------- Grocery ----------
 
+def _catalog_out(row: models.ShopCatalogItem, owner: str) -> schemas.ShopCatalogItemOut:
+    return schemas.ShopCatalogItemOut(
+        id=row.id,
+        english=row.english,
+        malayalam=row.malayalam,
+        emoji=row.emoji or "🛒",
+        category=row.category or "custom",
+        scope=row.scope or "personal",
+        aliases=row.aliases,
+        mine=row.user_id == owner,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _normalize_catalog_fields(
+    english: str,
+    malayalam: Optional[str],
+    emoji: Optional[str],
+    category: str,
+    scope: str,
+    aliases: Optional[str],
+) -> dict:
+    en = (english or "").strip()
+    if not en:
+        raise HTTPException(400, "Name is required")
+    cat = (category or "custom").strip().lower()
+    if cat not in CATALOG_CATEGORIES:
+        cat = "custom"
+    sc = (scope or "personal").strip().lower()
+    if sc not in VALID_SCOPES:
+        sc = "personal"
+    al = (aliases or "").strip() or None
+    return {
+        "english": en[:255],
+        "malayalam": ((malayalam or "").strip() or None),
+        "emoji": ((emoji or "🛒").strip() or "🛒")[:16],
+        "category": cat,
+        "scope": sc,
+        "aliases": al[:500] if al else None,
+    }
+
+
+def _sync_dict_for_global(db: Session, row: models.ShopCatalogItem) -> None:
+    """Global chips also feed recognition for everyone via ShopDictItem."""
+    if (row.scope or "") != "global":
+        return
+    keys = {_fold(row.english)}
+    if row.malayalam:
+        keys.add(_fold(row.malayalam))
+    for part in (row.aliases or "").replace(";", ",").split(","):
+        f = _fold(part.strip())
+        if f:
+            keys.add(f)
+    keys = {k for k in keys if k}
+    for key in keys:
+        exists = db.query(models.ShopDictItem).filter(models.ShopDictItem.key == key).first()
+        if exists:
+            if exists.source == "seed":
+                continue
+            exists.english = row.english
+            exists.malayalam = row.malayalam
+            exists.emoji = row.emoji or "🛒"
+            exists.category = row.category
+            continue
+        db.add(models.ShopDictItem(
+            key=key,
+            english=row.english,
+            malayalam=row.malayalam,
+            emoji=row.emoji or "🛒",
+            source="user",
+            category=row.category,
+        ))
+
+
+@router.get("/catalog", response_model=list[schemas.ShopCatalogItemOut])
+def list_catalog(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    owner = _uid(current_user)
+    from sqlalchemy import or_
+
+    rows = (
+        db.query(models.ShopCatalogItem)
+        .filter(
+            or_(
+                models.ShopCatalogItem.scope == "global",
+                models.ShopCatalogItem.user_id == owner,
+            )
+        )
+        .order_by(models.ShopCatalogItem.scope.desc(), models.ShopCatalogItem.english)
+        .all()
+    )
+    return [_catalog_out(r, owner) for r in rows]
+
+
+@router.post("/catalog", response_model=schemas.ShopCatalogItemOut, status_code=201)
+def add_catalog_item(
+    body: schemas.ShopCatalogItemIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    owner = _uid(current_user)
+    fields = _normalize_catalog_fields(
+        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases,
+    )
+    row = models.ShopCatalogItem(user_id=owner, **fields)
+    db.add(row)
+    db.flush()
+    _sync_dict_for_global(db, row)
+    db.commit()
+    db.refresh(row)
+    return _catalog_out(row, owner)
+
+
+@router.put("/catalog/{item_id}", response_model=schemas.ShopCatalogItemOut)
+def update_catalog_item(
+    item_id: str,
+    body: schemas.ShopCatalogItemIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    owner = _uid(current_user)
+    row = (
+        db.query(models.ShopCatalogItem)
+        .filter(models.ShopCatalogItem.id == item_id, models.ShopCatalogItem.user_id == owner)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Catalog item not found")
+    fields = _normalize_catalog_fields(
+        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases,
+    )
+    for k, v in fields.items():
+        setattr(row, k, v)
+    row.updated_at = datetime.utcnow()
+    _sync_dict_for_global(db, row)
+    db.commit()
+    db.refresh(row)
+    return _catalog_out(row, owner)
+
+
+@router.delete("/catalog/{item_id}", status_code=204)
+def delete_catalog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    owner = _uid(current_user)
+    row = (
+        db.query(models.ShopCatalogItem)
+        .filter(models.ShopCatalogItem.id == item_id, models.ShopCatalogItem.user_id == owner)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Catalog item not found")
+    db.delete(row)
+    db.commit()
+    return None
+
+
 @router.get("/quick-add")
 def quick_add(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     seed_dictionary(db)
-    return {"groups": grouped_quick_add()}
+    return {"groups": grouped_quick_add(db, _uid(current_user))}
 
 
 @router.post("/recognize", response_model=schemas.ShopGroceryItemOut)
@@ -1099,7 +1264,10 @@ def suggest_items(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    return [schemas.ShopGroceryItemOut(**row) for row in suggest(db, q, limit=limit)]
+    return [
+        schemas.ShopGroceryItemOut(**row)
+        for row in suggest(db, q, limit=limit, user_id=_uid(current_user))
+    ]
 
 
 # ---------- PDF passwords ----------
@@ -1479,8 +1647,8 @@ def ignore_one(
 @router.get("/public/{token}/suggest")
 def public_suggest(token: str, q: str = "", limit: int = 8, db: Session = Depends(get_db)):
     """Public-share typeahead — no login, token gates access to the list."""
-    _list_by_token(db, token)
-    return suggest(db, q or "", limit=limit)
+    _share, lst = _list_by_token(db, token, bump=False)
+    return suggest(db, q or "", limit=limit, user_id=lst.user_id)
 
 
 @router.get("/public/{token}/page", response_class=HTMLResponse)
@@ -1491,7 +1659,7 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
         db.commit()
     except HTTPException:
         return HTMLResponse("<h1>List not found</h1>", status_code=404)
-    catalog = catalog_payload()
+    catalog = catalog_payload(db, lst.user_id)
     names: dict[str, str] = {}
     return templates.TemplateResponse(request, "tracker_share_public.html", {
         "list": lst,
@@ -1500,7 +1668,7 @@ def public_page(token: str, request: Request, db: Session = Depends(get_db), err
         "token": token,
         "err": err,
         "ok": ok,
-        "catalog_json": catalog_json_text(),
+        "catalog_json": catalog_json_text(db, lst.user_id),
         "suggest_url": f"/tracker/public/{token}/suggest",
         "groups": catalog["groups"],
         "revision": _list_revision(lst),

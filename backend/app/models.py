@@ -1161,3 +1161,18 @@ class ShopDictItem(Base):
     source = Column(String(20), default="seed", nullable=False)  # seed | user
     category = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ShopCatalogItem(Base):
+    """User-managed Quick Add chips — personal (vault) or global (all users)."""
+    __tablename__ = "shop_catalog_items"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    scope = Column(String(20), default="personal", nullable=False, index=True)  # personal | global
+    english = Column(String(255), nullable=False)
+    malayalam = Column(String(255), nullable=True)
+    emoji = Column(String(16), default="🛒")
+    category = Column(String(80), nullable=False, default="essentials", index=True)
+    aliases = Column(Text, nullable=True)  # comma-separated extra match keys
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

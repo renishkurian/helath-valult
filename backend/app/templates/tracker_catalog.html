@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}Quick add items{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Shopping List</div>
+    <h1 class="page-title">Quick add items</h1>
+    <p class="page-lead">
+      Add chips that appear under Quick add on every list.
+      <strong>Personal</strong> stays in your vault;
+      <strong>Global</strong> shows for every user on this server.
+    </p>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') %}
+<div class="alert alert-success mb-4" role="status">Saved.</div>
+{% endif %}
+{% if request.query_params.get('err') %}
+<div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+<div class="surface mb-4">
+  <div class="section-head"><h2>Add item</h2></div>
+  <form method="post" action="/admin/tracker/catalog" class="row g-2 align-items-end">
+    <div class="col-md-3">
+      <label class="form-label" for="c-en">English name</label>
+      <input class="form-control" id="c-en" name="english" required maxlength="255" placeholder="e.g. Vazhuthananga">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label" for="c-ml">Malayalam</label>
+      <input class="form-control" id="c-ml" name="malayalam" maxlength="255" placeholder="optional">
+    </div>
+    <div class="col-md-1">
+      <label class="form-label" for="c-emoji">Emoji</label>
+      <input class="form-control" id="c-emoji" name="emoji" maxlength="16" value="🛒">
+    </div>
+    <div class="col-md-2">
+      <label class="form-label" for="c-cat">Category</label>
+      <select class="form-select" id="c-cat" name="category">
+        {% for key, label in categories %}
+        <option value="{{ key }}" {% if key == 'custom' %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-2">
+      <label class="form-label" for="c-scope">Visibility</label>
+      <select class="form-select" id="c-scope" name="scope">
+        <option value="personal" selected>Personal — only me</option>
+        <option value="global">Global — all users</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" type="submit">Add</button>
+    </div>
+    <div class="col-12">
+      <label class="form-label" for="c-aliases">Aliases (comma-separated)</label>
+      <input class="form-control" id="c-aliases" name="aliases" maxlength="500"
+        placeholder="Manglish spellings, e.g. vazhuth, vazhuthananga">
+    </div>
+  </form>
+</div>
+
+{% if items %}
+<div class="list-rows">
+  {% for it in items %}
+  <div class="list-row align-items-start flex-wrap gap-2">
+    <span class="row-body flex-grow-1">
+      <span class="row-title">{{ it.emoji or '🛒' }} {{ it.english }}{% if it.malayalam %} ({{ it.malayalam }}){% endif %}</span>
+      <span class="row-meta">
+        {{ it.category }}
+        · {% if it.scope == 'global' %}<span class="badge badge-info">Global</span>{% else %}<span class="badge">Personal</span>{% endif %}
+        {% if not it.mine %} · from another vault{% endif %}
+        {% if it.aliases %} · aliases: {{ it.aliases }}{% endif %}
+      </span>
+    </span>
+    {% if it.mine %}
+    <details class="w-100">
+      <summary class="btn btn-ghost btn-sm">Edit</summary>
+      <form method="post" action="/admin/tracker/catalog/{{ it.id }}/update" class="row g-2 mt-2">
+        <div class="col-md-3">
+          <label class="form-label">English</label>
+          <input class="form-control" name="english" value="{{ it.english }}" required maxlength="255">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Malayalam</label>
+          <input class="form-control" name="malayalam" value="{{ it.malayalam or '' }}" maxlength="255">
+        </div>
+        <div class="col-md-1">
+          <label class="form-label">Emoji</label>
+          <input class="form-control" name="emoji" value="{{ it.emoji or '🛒' }}" maxlength="16">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Category</label>
+          <select class="form-select" name="category">
+            {% for key, label in categories %}
+            <option value="{{ key }}" {% if key == it.category %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label">Visibility</label>
+          <select class="form-select" name="scope">
+            <option value="personal" {% if it.scope != 'global' %}selected{% endif %}>Personal</option>
+            <option value="global" {% if it.scope == 'global' %}selected{% endif %}>Global</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex align-items-end gap-2">
+          <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Aliases</label>
+          <input class="form-control" name="aliases" value="{{ it.aliases or '' }}" maxlength="500">
+        </div>
+      </form>
+    </details>
+    <form method="post" action="/admin/tracker/catalog/{{ it.id }}/delete" data-confirm="Remove this Quick add item?">
+      <button class="btn btn-ghost text-danger" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
+    </form>
+    {% else %}
+    <span class="row-meta text-muted">You can use it; only the creator can edit.</span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+  <i class="bi bi-stars"></i>
+  <p>No custom Quick add items yet. Built-in Kerala groceries stay available on every list.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1552,6 +1552,28 @@ class ShopContactOut(BaseModel):
     created_at: datetime
 
 
+class ShopCatalogItemIn(BaseModel):
+    english: str = Field(min_length=1, max_length=255)
+    malayalam: Optional[str] = Field(default=None, max_length=255)
+    emoji: Optional[str] = Field(default="🛒", max_length=16)
+    category: str = Field(default="custom", max_length=80)
+    scope: str = Field(default="personal", max_length=20)  # personal | global
+    aliases: Optional[str] = Field(default=None, max_length=500)
+
+
+class ShopCatalogItemOut(BaseModel):
+    id: str
+    english: str
+    malayalam: Optional[str] = None
+    emoji: Optional[str] = None
+    category: str
+    scope: str
+    aliases: Optional[str] = None
+    mine: bool = True
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
 class ShopSendIn(BaseModel):
     email: EmailStr
     message: Optional[str] = None
