@@ -1463,6 +1463,9 @@ def passwords_send_create(
     item_id: str = Form(""),
     pin: str = Form(""),
     expires_in_hours: int = Form(48),
+    max_views: str = Form(""),
+    include_totp: Optional[str] = Form(None),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers.vault import create_send
@@ -1470,20 +1473,39 @@ def passwords_send_create(
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    create_send(sc.VaultSendCreate(
+    views = None
+    raw_views = (max_views or "").strip()
+    if raw_views.isdigit() and int(raw_views) >= 1:
+        views = int(raw_views)
+    send = create_send(sc.VaultSendCreate(
         name=name, send_type=send_type, text=text or None, item_id=item_id or None,
-        pin=pin or None, expires_in_hours=expires_in_hours,
+        pin=pin or None, expires_in_hours=expires_in_hours, max_views=views,
+        include_totp=bool(include_totp),
     ), db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/passwords/") and "://" not in dest:
+        q = f"?send={send.token}"
+        if send.has_pin:
+            q += "&pin=1"
+        return RedirectResponse(dest + q, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
 
 @router.post("/passwords/sends/{send_id}/revoke")
-def passwords_send_revoke(send_id: str, request: Request, db: Session = Depends(get_db)):
+def passwords_send_revoke(
+    send_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers.vault import revoke_send
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     revoke_send(send_id, db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/passwords/") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
 
@@ -1509,7 +1531,7 @@ def passwords_trash_empty(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/passwords/{item_id}", response_class=HTMLResponse)
 def password_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
-    from app.routers.vault import get_item, item_totp, item_history, list_folders
+    from app.routers.vault import get_item, item_totp, item_history, list_folders, list_item_sends
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1519,8 +1541,12 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
         totp = item_totp(item_id, db=db, current_user=user)
     history = item_history(item_id, db=db, current_user=user)
     folders = list_folders(db=db, current_user=user)
+    sends = list_item_sends(item_id, db=db, current_user=user)
+    send_token = request.query_params.get("send")
     return templates.TemplateResponse("password_item.html", _pw_ctx(
         request, user, "pw_vault", item=item, totp=totp, history=history, folders=folders,
+        sends=sends, send_token=send_token, send_has_pin=bool(request.query_params.get("pin")),
+        public_base=str(request.base_url).rstrip("/"),
     ))
 
 

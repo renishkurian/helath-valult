@@ -545,7 +545,8 @@ data class VaultSendCreate(
     val notes: String? = null,
     val pin: String? = null,
     val expires_in_hours: Int = 48,
-    val max_views: Int? = null
+    val max_views: Int? = null,
+    val include_totp: Boolean = false
 )
 data class VaultSendOut(
     val id: String,
@@ -557,6 +558,7 @@ data class VaultSendOut(
     val view_count: Int = 0,
     val revoked: Boolean = false,
     val has_pin: Boolean = false,
+    val item_id: String? = null,
     val created_at: String
 )
 

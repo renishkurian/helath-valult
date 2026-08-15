@@ -360,6 +360,8 @@ def empty_trash(db: Session = Depends(get_db), current_user: models.User = Depen
 
 # ---------- Sends ----------
 def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
+    data = _payload(row)
+    item_id = data.get("item_id") if isinstance(data.get("item_id"), str) else None
     return schemas.VaultSendOut(
         id=row.id,
         token=row.token,
@@ -370,6 +372,7 @@ def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
         view_count=row.view_count or 0,
         revoked=bool(row.revoked),
         has_pin=bool(row.pin_hash),
+        item_id=item_id,
         created_at=row.created_at,
     )
 
@@ -406,6 +409,14 @@ def list_sends(db: Session = Depends(get_db), current_user: models.User = Depend
     return [_send_out(r) for r in rows]
 
 
+def list_item_sends(item_id: str, db: Session, current_user: models.User) -> list[schemas.VaultSendOut]:
+    """Active sends that snapshot a specific vault login."""
+    return [
+        s for s in list_sends(db=db, current_user=current_user)
+        if s.item_id == item_id and not s.revoked
+    ]
+
+
 @router.post("/sends", response_model=schemas.VaultSendOut, status_code=201)
 def create_send(
     body: schemas.VaultSendCreate,
@@ -421,15 +432,21 @@ def create_send(
         item = _owned_item(body.item_id, db, current_user)
         out = _to_out(item)
         payload = {
+            "item_id": out.id,
             "username": out.username,
             "password": out.password,
             "uris": out.uris,
             "name": out.name,
         }
+        if body.include_totp and out.totp_secret:
+            payload["totp_secret"] = out.totp_secret
     else:
         if not (body.text or "").strip():
             raise HTTPException(status_code=400, detail="text is required")
         payload = {"text": body.text.strip()}
+    pin = (body.pin or "").strip() or None
+    if pin and len(pin) < 4:
+        raise HTTPException(status_code=400, detail="PIN must be at least 4 characters")
     row = models.VaultSend(
         user_id=vault_id(current_user),
         token=secrets.token_urlsafe(24),
@@ -437,7 +454,7 @@ def create_send(
         send_type=send_type,
         payload_enc=crypto.encrypt_text(json.dumps(payload)),
         notes_enc=crypto.encrypt_text(body.notes),
-        pin_hash=security.hash_password(body.pin) if body.pin else None,
+        pin_hash=security.hash_password(pin) if pin else None,
         expires_at=datetime.utcnow() + timedelta(hours=body.expires_in_hours),
         max_views=body.max_views,
     )
@@ -503,6 +520,7 @@ def public_send_json(
         username=data.get("username"),
         password=data.get("password"),
         uris=data.get("uris") or [],
+        totp_secret=data.get("totp_secret"),
         notes=notes,
         expires_at=row.expires_at,
         has_pin=bool(row.pin_hash),

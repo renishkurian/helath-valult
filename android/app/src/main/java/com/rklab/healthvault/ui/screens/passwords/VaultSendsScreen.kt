@@ -46,6 +46,8 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     var itemId by remember { mutableStateOf(prefillItemId) }
     var pin by remember { mutableStateOf("") }
     var hours by remember { mutableStateOf("48") }
+    var oneTime by remember { mutableStateOf(false) }
+    var includeTotp by remember { mutableStateOf(false) }
     val fieldColors = vaultFieldColors()
 
     fun reload() {
@@ -115,13 +117,29 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
-                    pin, { pin = it }, label = { Text("PIN (optional)") },
+                    pin, { pin = it }, label = { Text("Access code / OTP (optional)") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
                 )
                 OutlinedTextField(
                     hours, { hours = it.filter(Char::isDigit) }, label = { Text("Expires in hours") },
                     modifier = Modifier.fillMaxWidth(), singleLine = true, colors = fieldColors
                 )
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = oneTime, onCheckedChange = { oneTime = it })
+                    Text("One-time view", color = HubText)
+                }
+                if (sendType == "login") {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = includeTotp, onCheckedChange = { includeTotp = it })
+                        Text("Include authenticator key", color = HubText)
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 VaultPrimaryButton(
                     text = "Create send",
@@ -135,7 +153,9 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                         text = text.ifBlank { null },
                                         item_id = itemId,
                                         pin = pin.ifBlank { null },
-                                        expires_in_hours = hours.toIntOrNull() ?: 48
+                                        expires_in_hours = hours.toIntOrNull() ?: 48,
+                                        max_views = if (oneTime) 1 else null,
+                                        include_totp = includeTotp && sendType == "login"
                                     )
                                 )
                                 val url = "$base/v/${created.token}"
@@ -144,7 +164,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, url)
                                 })
-                                name = ""; text = ""; pin = ""; reload()
+                                name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false; reload()
                             }
                         }
                     }

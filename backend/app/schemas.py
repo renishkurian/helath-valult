@@ -772,6 +772,7 @@ class VaultSendCreate(BaseModel):
     pin: Optional[str] = Field(default=None, min_length=4, max_length=12)
     expires_in_hours: int = Field(default=48, ge=1, le=24 * 30)
     max_views: Optional[int] = Field(default=None, ge=1)
+    include_totp: bool = False
 
 
 class VaultSendOut(BaseModel):
@@ -784,6 +785,7 @@ class VaultSendOut(BaseModel):
     view_count: int
     revoked: bool
     has_pin: bool = False
+    item_id: Optional[str] = None
     created_at: datetime
 
 
@@ -794,6 +796,7 @@ class VaultSendPublicOut(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     uris: List[str] = []
+    totp_secret: Optional[str] = None
     notes: Optional[str] = None
     expires_at: datetime
     has_pin: bool = False
