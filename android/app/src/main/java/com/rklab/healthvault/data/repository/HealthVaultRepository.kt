@@ -65,18 +65,25 @@ class HealthVaultRepository(
         if (res.totp_required) throw TotpNeeded(res.totp_token.orEmpty())
         tokenManager.saveTokens(res.access_token, res.refresh_token)
         runCatching { me() }
+        com.rklab.healthvault.push.DevicePush.sync(appContext.applicationContext as android.app.Application)
     }
 
     suspend fun verifyTotp(totpToken: String, code: String) {
         val res = api.totpVerify(TotpVerifyIn(totpToken, code))
         tokenManager.saveTokens(res.access_token, res.refresh_token)
         runCatching { me() }
+        com.rklab.healthvault.push.DevicePush.sync(appContext.applicationContext as android.app.Application)
     }
 
     suspend fun register(email: String, password: String, fullName: String) {
         val res = api.register(RegisterRequest(email, password, fullName))
         tokenManager.saveTokens(res.access_token, res.refresh_token)
         runCatching { me() }
+        com.rklab.healthvault.push.DevicePush.sync(appContext.applicationContext as android.app.Application)
+    }
+
+    suspend fun registerDevice(body: DeviceTokenIn) {
+        api.registerDevice(body)
     }
 
     fun logout() {
@@ -181,6 +188,7 @@ class HealthVaultRepository(
     suspend fun revokeVaultSend(id: String) = api.revokeVaultSend(id)
     suspend fun listVaultSendRequests(status: String? = "pending") = api.listVaultSendRequests(status)
     suspend fun markVaultSendRequestSeen(id: String) = api.markVaultSendRequestSeen(id)
+    suspend fun grantVaultSendRequest(id: String) = api.grantVaultSendRequest(id)
     suspend fun dismissVaultSendRequest(id: String) = api.dismissVaultSendRequest(id)
     suspend fun downloadVaultSendRequestPhoto(id: String, destination: java.io.File): java.io.File {
         val body = api.downloadVaultSendRequestPhoto(id)

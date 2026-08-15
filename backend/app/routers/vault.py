@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -377,6 +377,7 @@ def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
         has_pin=bool(row.pin_hash),
         item_id=item_id,
         requires_totp=bool(data.get("require_totp") and data.get("totp_secret")),
+        requires_grant=bool(data.get("require_grant")),
         created_at=row.created_at,
     )
 
@@ -498,10 +499,14 @@ def create_send(
         if body.include_totp and out.totp_secret:
             payload["totp_secret"] = out.totp_secret
             payload["require_totp"] = True
+        if body.require_grant:
+            payload["require_grant"] = True
     else:
         if not (body.text or "").strip():
             raise HTTPException(status_code=400, detail="text is required")
         payload = {"text": body.text.strip()}
+        if body.require_grant:
+            payload["require_grant"] = True
     pin = (body.pin or "").strip() or None
     if pin and len(pin) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 characters")
@@ -571,6 +576,39 @@ def _otpauth_for_send(name: str, secret: str) -> tuple[str, str]:
     return url, totp_util.qr_data_uri(url)
 
 
+def _send_req_cookie_name(token: str) -> str:
+    return f"vsr_{token[:32]}"
+
+
+def _read_request_cookie(request: Request, token: str) -> str | None:
+    rid = (request.cookies.get(_send_req_cookie_name(token)) or "").strip()
+    return rid or None
+
+
+def _guest_request(
+    request: Request, send: models.VaultSend, db: Session
+) -> models.VaultSendRequest | None:
+    rid = _read_request_cookie(request, send.token)
+    if not rid:
+        return None
+    return (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.id == rid,
+            models.VaultSendRequest.send_id == send.id,
+        )
+        .first()
+    )
+
+
+def _grant_unlocked(request: Request, send: models.VaultSend, data: dict, db: Session) -> bool:
+    """True when secrets may be revealed (no grant gate, or this browser was granted)."""
+    if not data.get("require_grant"):
+        return True
+    row = _guest_request(request, send, db)
+    return bool(row and row.status == "granted")
+
+
 @public_router.get("/public/{token}", response_model=schemas.VaultSendPublicOut)
 def public_send_json(
     token: str,
@@ -580,6 +618,8 @@ def public_send_json(
     db: Session = Depends(get_db),
 ):
     row = _load_valid_send(token, db)
+    data = _payload(row)
+    require_grant = bool(data.get("require_grant"))
     if row.pin_hash and not (pin and security.verify_password(pin, row.pin_hash)):
         return schemas.VaultSendPublicOut(
             name=row.name,
@@ -587,8 +627,18 @@ def public_send_json(
             expires_at=row.expires_at,
             has_pin=True,
             pin_required=True,
+            request_access_enabled=require_grant,
         )
-    data = _payload(row)
+    if not _grant_unlocked(request, row, data, db):
+        return schemas.VaultSendPublicOut(
+            name=row.name,
+            send_type=row.send_type,
+            expires_at=row.expires_at,
+            has_pin=bool(row.pin_hash),
+            pin_required=False,
+            grant_required=True,
+            request_access_enabled=True,
+        )
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
         return schemas.VaultSendPublicOut(
@@ -598,6 +648,7 @@ def public_send_json(
             has_pin=bool(row.pin_hash),
             pin_required=False,
             totp_required=True,
+            request_access_enabled=require_grant,
         )
     notes = crypto.decrypt_text(row.notes_enc)
     _record_send_view(row, request, db)
@@ -613,6 +664,7 @@ def public_send_json(
         has_pin=bool(row.pin_hash),
         pin_required=False,
         totp_required=False,
+        request_access_enabled=require_grant,
     )
 
 
@@ -630,34 +682,44 @@ def public_send_page(
         row = _load_valid_send(token, db)
     except HTTPException as exc:
         return _send_gone_page(request, exc)
+    data = _payload(row)
+    require_grant = bool(data.get("require_grant"))
+    guest_req = _guest_request(request, row, db) if require_grant else None
     ctx_extra = {
         "request_ok": bool(req_ok),
         "request_err": (req_err or "").strip(),
+        "request_access_enabled": require_grant,
+        "grant_pending": bool(guest_req and guest_req.status in ("pending", "seen")),
+        "grant_denied": bool(guest_req and guest_req.status == "dismissed"),
     }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": True, "totp_required": False,
-            "payload": None, "notes": None, "error": bool(pin), "totp_error": False,
-            "pin_value": pin or "", **ctx_extra,
+            "grant_required": False, "payload": None, "notes": None,
+            "error": bool(pin), "totp_error": False, "pin_value": pin or "", **ctx_extra,
         })
-    data = _payload(row)
+    if require_grant and not (guest_req and guest_req.status == "granted"):
+        return templates.TemplateResponse(request, "vault_send_public.html", {
+            "send": row, "token": token, "pin_required": False, "totp_required": False,
+            "grant_required": True, "payload": None, "notes": None,
+            "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
+        })
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
         return templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": True,
-            "payload": {"name": data.get("name") or row.name},
+            "grant_required": False, "payload": {"name": data.get("name") or row.name},
             "notes": None, "error": False, "totp_error": bool(totp),
             "pin_value": pin or "", **ctx_extra,
         })
     notes = crypto.decrypt_text(row.notes_enc)
-    # Do not expose totp_secret on the password page — setup is via /qr only.
-    shown = {k: v for k, v in data.items() if k != "totp_secret"}
+    shown = {k: v for k, v in data.items() if k not in ("totp_secret", "require_grant", "require_totp")}
     _record_send_view(row, request, db)
     return templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
-        "payload": shown, "notes": notes, "error": False, "totp_error": False,
-        "pin_value": pin or "", **ctx_extra,
+        "grant_required": False, "payload": shown, "notes": notes,
+        "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
     })
 
 
@@ -679,11 +741,25 @@ def public_send_qr_page(
     secret = (data.get("totp_secret") or "").strip()
     if not secret or not data.get("require_totp"):
         return HTMLResponse("<h1>No authenticator setup for this send</h1>", status_code=404)
-    ctx_extra = {"request_ok": bool(req_ok), "request_err": (req_err or "").strip()}
+    require_grant = bool(data.get("require_grant"))
+    guest_req = _guest_request(request, row, db) if require_grant else None
+    ctx_extra = {
+        "request_ok": bool(req_ok),
+        "request_err": (req_err or "").strip(),
+        "request_access_enabled": require_grant,
+        "grant_pending": bool(guest_req and guest_req.status in ("pending", "seen")),
+        "grant_denied": bool(guest_req and guest_req.status == "dismissed"),
+        "grant_required": require_grant and not (guest_req and guest_req.status == "granted"),
+    }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
         return templates.TemplateResponse(request, "vault_send_qr.html", {
             "send": row, "token": token, "pin_required": True, "error": bool(pin),
+            "totp_secret": None, "otpauth_qr": None, **ctx_extra,
+        })
+    if ctx_extra["grant_required"]:
+        return templates.TemplateResponse(request, "vault_send_qr.html", {
+            "send": row, "token": token, "pin_required": False, "error": False,
             "totp_secret": None, "otpauth_qr": None, **ctx_extra,
         })
     _url, otpauth_qr = _otpauth_for_send(row.name, secret)
@@ -757,6 +833,10 @@ async def public_request_access(
     except HTTPException:
         return _redir("req_err=gone")
 
+    data = _payload(send)
+    if not data.get("require_grant"):
+        return _redir("req_err=disabled")
+
     display_name = (name or "").strip()[:120] or None
     mail = (email or "").strip()[:255] or None
     if mail and "@" not in mail:
@@ -808,8 +888,18 @@ async def public_request_access(
 
     wants_json = "application/json" in (request.headers.get("accept") or "")
     if wants_json:
-        return {"ok": True, "id": row.id}
-    return _redir("req_ok=1")
+        resp = JSONResponse({"ok": True, "id": row.id})
+    else:
+        resp = _redir("req_ok=1")
+    resp.set_cookie(
+        key=_send_req_cookie_name(token),
+        value=row.id,
+        httponly=True,
+        samesite="lax",
+        max_age=30 * 24 * 3600,
+        secure=request.url.scheme == "https",
+    )
+    return resp
 
 
 @router.get("/send-requests", response_model=list[schemas.VaultSendRequestOut])
@@ -855,6 +945,33 @@ def mark_send_request_seen(
         row.decided_at = datetime.utcnow()
         db.commit()
         db.refresh(row)
+    return _request_out(row)
+
+
+@router.post("/send-requests/{request_id}/grant", response_model=schemas.VaultSendRequestOut)
+def grant_send_request(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Allow this guest's browser (cookie) to unlock the send secrets."""
+    require_owner(current_user)
+    row = (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.id == request_id,
+            models.VaultSendRequest.user_id == vault_id(current_user),
+        )
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Request not found")
+    if row.status == "dismissed":
+        raise HTTPException(400, "Request was dismissed")
+    row.status = "granted"
+    row.decided_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
     return _request_out(row)
 
 

@@ -58,6 +58,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     var hours by remember { mutableStateOf("48") }
     var oneTime by remember { mutableStateOf(false) }
     var includeTotp by remember { mutableStateOf(false) }
+    var requireGrant by remember { mutableStateOf(false) }
     val fieldColors = vaultFieldColors()
     val selectedItem = items.firstOrNull { it.id == itemId }
     val canIncludeTotp = sendType == "login" && selectedItem?.has_totp == true
@@ -165,6 +166,13 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                         Text("Require authenticator to view password", color = HubText)
                     }
                 }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = requireGrant, onCheckedChange = { requireGrant = it })
+                    Text("Require access request — hide secret until I grant", color = HubText)
+                }
                 Spacer(Modifier.height(8.dp))
                 VaultPrimaryButton(
                     text = "Create send",
@@ -180,7 +188,8 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                         pin = pin.ifBlank { null },
                                         expires_in_hours = hours.toIntOrNull() ?: 48,
                                         max_views = if (oneTime) 1 else null,
-                                        include_totp = includeTotp && canIncludeTotp
+                                        include_totp = includeTotp && canIncludeTotp,
+                                        require_grant = requireGrant
                                     )
                                 )
                                 val url = "$base/v/${created.token}"
@@ -192,7 +201,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                     type = "text/plain"
                                     putExtra(Intent.EXTRA_TEXT, shareText)
                                 })
-                                name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false; reload()
+                                name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false; requireGrant = false; reload()
                             }
                         }
                     }
@@ -307,6 +316,14 @@ private fun AccessRequestCard(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (req.status == "pending" || req.status == "seen") {
+                TextButton(onClick = {
+                    scope.launch {
+                        runCatching { repository.grantVaultSendRequest(req.id) }
+                        onChanged()
+                    }
+                }) { Text("Grant access", color = VaultGold) }
+            }
             if (req.status == "pending") {
                 TextButton(onClick = {
                     scope.launch {
@@ -358,6 +375,7 @@ private fun SendCard(
             SendBadge("Expires ${send.expires_at.take(16)}")
             if (send.has_pin) SendBadge("Access code")
             if (send.requires_totp) SendBadge("Authenticator")
+            if (send.requires_grant) SendBadge("Grant required")
             send.max_views?.let { SendBadge(if (it == 1) "One-time" else "Max $it views") }
         }
         Spacer(Modifier.height(8.dp))

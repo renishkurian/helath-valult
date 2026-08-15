@@ -45,6 +45,7 @@ class HealthVaultApp : Application() {
             SyncWorker.enqueue(this)
             com.rklab.healthvault.util.ReminderScheduler.rescheduleAll(this)
             com.rklab.healthvault.util.EmiScheduler.rescheduleAll(this)
+            com.rklab.healthvault.push.DevicePush.sync(this)
         }
 
         createReminderNotificationChannel()

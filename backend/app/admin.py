@@ -1466,6 +1466,7 @@ def passwords_send_create(
     expires_in_hours: int = Form(48),
     max_views: str = Form(""),
     include_totp: Optional[str] = Form(None),
+    require_grant: Optional[str] = Form(None),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -1482,6 +1483,7 @@ def passwords_send_create(
         name=name, send_type=send_type, text=text or None, item_id=item_id or None,
         pin=pin or None, expires_in_hours=expires_in_hours, max_views=views,
         include_totp=bool(include_totp),
+        require_grant=bool(require_grant),
     ), db=db, current_user=user)
     dest = (next or "").strip()
     if dest.startswith("/admin/passwords/") and "://" not in dest:
@@ -1494,24 +1496,44 @@ def passwords_send_create(
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
 
+def _safe_admin_next(next: str, fallback: str = "/admin/passwords/sends") -> str:
+    dest = (next or "").strip()
+    if dest.startswith("/admin/passwords") and "://" not in dest:
+        return dest
+    return fallback
+
+
+@router.post("/passwords/send-requests/{request_id}/grant")
+async def passwords_send_request_grant(request_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.vault import grant_send_request
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    grant_send_request(request_id, db=db, current_user=user)
+    return RedirectResponse(_safe_admin_next(str(form.get("next") or "")), status_code=302)
+
+
 @router.post("/passwords/send-requests/{request_id}/dismiss")
-def passwords_send_request_dismiss(request_id: str, request: Request, db: Session = Depends(get_db)):
+async def passwords_send_request_dismiss(request_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.vault import dismiss_send_request
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
     dismiss_send_request(request_id, db=db, current_user=user)
-    return RedirectResponse("/admin/passwords/sends", status_code=302)
+    return RedirectResponse(_safe_admin_next(str(form.get("next") or "")), status_code=302)
 
 
 @router.post("/passwords/send-requests/{request_id}/seen")
-def passwords_send_request_seen(request_id: str, request: Request, db: Session = Depends(get_db)):
+async def passwords_send_request_seen(request_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.vault import mark_send_request_seen
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
     mark_send_request_seen(request_id, db=db, current_user=user)
-    return RedirectResponse("/admin/passwords/sends", status_code=302)
+    return RedirectResponse(_safe_admin_next(str(form.get("next") or "")), status_code=302)
 
 
 @router.get("/passwords/send-requests/{request_id}/photo")
@@ -1563,7 +1585,7 @@ def passwords_trash_empty(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/passwords/{item_id}", response_class=HTMLResponse)
 def password_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
-    from app.routers.vault import get_item, item_totp, item_history, list_folders, list_item_sends
+    from app.routers.vault import get_item, item_totp, item_history, list_folders, list_item_sends, list_send_requests
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1574,10 +1596,14 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
     history = item_history(item_id, db=db, current_user=user)
     folders = list_folders(db=db, current_user=user)
     sends = list_item_sends(item_id, db=db, current_user=user)
+    send_ids = {s.id for s in sends}
+    all_requests = list_send_requests(status="all", db=db, current_user=user)
+    send_requests = [r for r in all_requests if r.send_id in send_ids]
     send_token = request.query_params.get("send")
     return templates.TemplateResponse("password_item.html", _pw_ctx(
         request, user, "pw_vault", item=item, totp=totp, history=history, folders=folders,
-        sends=sends, send_token=send_token, send_has_pin=bool(request.query_params.get("pin")),
+        sends=sends, send_requests=send_requests,
+        send_token=send_token, send_has_pin=bool(request.query_params.get("pin")),
         send_has_totp=bool(request.query_params.get("totp")),
         public_base=str(request.base_url).rstrip("/"),
     ))

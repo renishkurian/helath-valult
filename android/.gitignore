@@ -13,3 +13,4 @@ app/release/
 *.keystore
 !debug.keystore
 release.keystore
+app/google-services.json

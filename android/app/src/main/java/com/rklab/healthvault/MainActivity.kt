@@ -97,7 +97,25 @@ class MainActivity : FragmentActivity() {
                             } else pinError = true
                         }
                     )
-                    AuthState.Authenticated -> HealthVaultNavGraph(repository = app.repository)
+                    AuthState.Authenticated -> {
+                        LaunchedEffect(Unit) {
+                            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                                val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                                    this@MainActivity,
+                                    android.Manifest.permission.POST_NOTIFICATIONS
+                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                if (!granted) {
+                                    androidx.core.app.ActivityCompat.requestPermissions(
+                                        this@MainActivity,
+                                        arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                                        4101
+                                    )
+                                }
+                            }
+                            com.rklab.healthvault.push.DevicePush.sync(app)
+                        }
+                        HealthVaultNavGraph(repository = app.repository)
+                    }
                 }
             }
         }

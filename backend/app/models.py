@@ -589,7 +589,7 @@ class VaultSendRequest(Base):
     longitude = Column(String(32), nullable=True)
     photo_path = Column(String(500), nullable=True)  # encrypted relative path
     photo_mime = Column(String(80), nullable=True)
-    status = Column(String(20), default="pending", nullable=False)  # pending | seen | dismissed
+    status = Column(String(20), default="pending", nullable=False)  # pending | seen | granted | dismissed
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     decided_at = Column(DateTime, nullable=True)
 

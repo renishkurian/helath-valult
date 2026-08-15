@@ -4,6 +4,21 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val googleServicesFile = file("google-services.json")
+if (!googleServicesFile.exists()) {
+    val example = file("google-services.json.example")
+    if (example.exists()) {
+        example.copyTo(googleServicesFile)
+        logger.warn(
+            "Copied google-services.json.example → google-services.json. " +
+                "Replace it with the real file from Firebase Console (same project as Super Admin FCM) for push."
+        )
+    }
+}
+if (googleServicesFile.exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
     namespace = "com.rklab.healthvault"
     compileSdk = 34
@@ -105,6 +120,10 @@ dependencies {
 
     // Background reminders + offline sync
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // FCM — needs google-services.json from the same Firebase project as server FCM SA
+    implementation(platform("com.google.firebase:firebase-bom:33.1.2"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     // Biometric authentication
     implementation("androidx.biometric:biometric:1.2.0-alpha05")

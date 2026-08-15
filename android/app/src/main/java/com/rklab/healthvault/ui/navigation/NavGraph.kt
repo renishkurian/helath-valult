@@ -187,10 +187,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val start = startDestination ?: return
 
     var pendingWebLogin by remember { mutableStateOf<LoginChallengeOut?>(null) }
+    var pendingSendRequest by remember { mutableStateOf<com.rklab.healthvault.data.model.VaultSendRequestOut?>(null) }
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(repository.isLoggedIn, start, lifecycleOwner) {
         if (!repository.isLoggedIn || start == Routes.LOGIN || start == Routes.SERVER_SETUP) {
             pendingWebLogin = null
+            pendingSendRequest = null
             return@LaunchedEffect
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -210,8 +212,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     if (next != null) LoginChallengeNotifier.show(context, next)
                 }
                 runCatching {
-                    repository.listVaultSendRequests("pending").take(3).forEach {
-                        VaultSendRequestNotifier.show(context, it)
+                    val pending = repository.listVaultSendRequests("pending")
+                    pending.take(3).forEach { VaultSendRequestNotifier.show(context, it) }
+                    if (pendingSendRequest == null) {
+                        pendingSendRequest = pending.firstOrNull()
+                    } else if (pending.none { it.id == pendingSendRequest?.id }) {
+                        pendingSendRequest = pending.firstOrNull()
                     }
                 }
                 if (app.pendingOpenVaultSends) {
@@ -1037,6 +1043,20 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             repository = repository,
             challenge = challenge,
             onDone = { pendingWebLogin = null }
+        )
+    }
+    pendingSendRequest?.takeIf { pendingWebLogin == null }?.let { req ->
+        com.rklab.healthvault.ui.screens.passwords.VaultSendRequestDialog(
+            repository = repository,
+            request = req,
+            onOpenSend = {
+                navController.navigate(Routes.VAULT) {
+                    popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                    launchSingleTop = true
+                }
+                navController.navigate(Routes.vaultSends())
+            },
+            onDone = { pendingSendRequest = null }
         )
     }
 }

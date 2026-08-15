@@ -387,6 +387,9 @@ interface ApiService {
     @POST("vault/send-requests/{id}/seen")
     suspend fun markVaultSendRequestSeen(@Path("id") id: String): VaultSendRequestOut
 
+    @POST("vault/send-requests/{id}/grant")
+    suspend fun grantVaultSendRequest(@Path("id") id: String): VaultSendRequestOut
+
     @POST("vault/send-requests/{id}/dismiss")
     suspend fun dismissVaultSendRequest(@Path("id") id: String): VaultSendRequestOut
 

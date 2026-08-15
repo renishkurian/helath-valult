@@ -6,6 +6,7 @@
 <title>{{ send.name }} — Send</title>
 <meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
+{% if grant_required and grant_pending %}<meta http-equiv="refresh" content="5">{% endif %}
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
@@ -46,6 +47,21 @@
               <i class="bi bi-unlock-fill"></i> Open
             </button>
           </form>
+
+        {% elif grant_required %}
+          <p class="text-muted mb-0">
+            The owner locked this link. Request access below — the password is only shown after they approve you.
+          </p>
+          {% if grant_pending %}
+          <div class="alert alert-info mt-3" role="status">
+            <i class="bi bi-hourglass-split"></i>
+            Waiting for the owner to grant access. This page refreshes automatically.
+          </div>
+          {% elif grant_denied %}
+          <div class="alert alert-danger mt-3" role="alert">
+            Access was declined. Ask the owner for a new link if you still need it.
+          </div>
+          {% endif %}
 
         {% elif totp_required %}
           {% if totp_error %}
@@ -123,6 +139,7 @@
     </div>
     {% endif %}
 
+    {% if request_access_enabled and not pin_required and (grant_required or grant_pending or request_ok or request_err) %}
     <div class="card mt-3">
       <div class="card-header">
         <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
@@ -134,15 +151,19 @@
       <div class="card-body">
         {% if request_ok %}
         <div class="alert alert-success" role="status">
-          <i class="bi bi-check2-circle"></i> Request sent. The owner was notified.
+          <i class="bi bi-check2-circle"></i>
+          Request sent. Stay on this page — when the owner grants access, the password appears here.
         </div>
         {% elif request_err == 'email' %}
         <div class="alert alert-danger">Please enter a valid email, or leave it blank.</div>
         {% elif request_err == 'photo' %}
         <div class="alert alert-danger">Photo was too large. Try a smaller image.</div>
+        {% elif request_err == 'disabled' %}
+        <div class="alert alert-danger">Access requests are not enabled for this link.</div>
         {% elif request_err %}
         <div class="alert alert-danger">Could not send the request. Try again.</div>
         {% endif %}
+        {% if not grant_pending and not grant_denied %}
         <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
               class="stack" id="req-access-form">
           <input type="hidden" name="next" value="page">
@@ -171,11 +192,13 @@
             <i class="bi bi-send"></i> Request access
           </button>
         </form>
+        {% endif %}
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
-{% if not pin_required and not totp_required and payload and payload.password %}
+{% if not pin_required and not totp_required and not grant_required and payload and payload.password %}
 <script>
 (function(){
   var ICO_EYE = '<i class="bi bi-eye"></i>';

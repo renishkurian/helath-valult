@@ -53,4 +53,8 @@ object VaultSendRequestNotifier {
             NotificationManagerCompat.from(context).notify(req.id.hashCode(), builder.build())
         }
     }
+
+    fun cancel(context: Context, requestId: String) {
+        NotificationManagerCompat.from(context).cancel(requestId.hashCode())
+    }
 }

@@ -82,6 +82,22 @@ time, `network_security_config.xml` permits cleartext traffic app-wide
 This only matters if you point the app at a plain `http://` address — if
 your server's behind HTTPS, traffic is encrypted regardless.
 
+## Push notifications (FCM)
+
+Super Admin → Server settings storing an FCM **service account** only lets the
+**server** send pushes. The Android app must also:
+
+1. Use a `google-services.json` from the **same** Firebase project as that
+   service account (Firebase Console → Project settings → Your apps → Android
+   package `com.rklab.healthvault` → Download `google-services.json`).
+2. Place it at `android/app/google-services.json` (gitignored; an example
+   placeholder is auto-copied for local builds until you replace it).
+3. Rebuild/install the app, sign in once, and allow notifications when asked.
+
+After that, login-approve and Send access-request pushes reach the device even
+when the app is in the background. With the app open, pending access requests
+also show an in-app dialog and poll every few seconds (no FCM required for that path).
+
 ## What's implemented
 
 - **Server setup** — configure the API address after install (LAN IP,

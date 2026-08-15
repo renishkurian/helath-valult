@@ -82,6 +82,7 @@ fun VaultItemScreen(
     var shareHours by remember { mutableStateOf("48") }
     var shareOneTime by remember { mutableStateOf(false) }
     var shareIncludeTotp by remember { mutableStateOf(false) }
+    var shareRequireGrant by remember { mutableStateOf(false) }
     var shareBusy by remember { mutableStateOf(false) }
     var shareError by remember { mutableStateOf<String?>(null) }
     var shareReady by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
@@ -180,6 +181,7 @@ fun VaultItemScreen(
                 shareHours = "48"
                 shareOneTime = false
                 shareIncludeTotp = false
+                shareRequireGrant = false
                 shareError = null
                 shareReady = null
                 showShare = true
@@ -282,6 +284,10 @@ fun VaultItemScreen(
                                 Text("Require authenticator to view password", color = HubText)
                             }
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareRequireGrant, onCheckedChange = { shareRequireGrant = it })
+                            Text("Require access request — hide password until I grant", color = HubText)
+                        }
                         shareError?.let { Text(it, color = StampRed, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
@@ -314,7 +320,8 @@ fun VaultItemScreen(
                                             pin = sharePin.ifBlank { null },
                                             expires_in_hours = shareHours.toIntOrNull() ?: 48,
                                             max_views = if (shareOneTime) 1 else null,
-                                            include_totp = shareIncludeTotp && currentItem.has_totp
+                                            include_totp = shareIncludeTotp && currentItem.has_totp,
+                                            require_grant = shareRequireGrant
                                         )
                                     )
                                 }.onSuccess { created ->

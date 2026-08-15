@@ -6,6 +6,7 @@
 <title>{{ send.name }} — Authenticator setup</title>
 <meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
+{% if grant_required and grant_pending %}<meta http-equiv="refresh" content="5">{% endif %}
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
@@ -46,6 +47,18 @@
               <i class="bi bi-unlock-fill"></i> Open setup
             </button>
           </form>
+        {% elif grant_required %}
+          <p class="text-muted mb-0">
+            Authenticator setup is locked until the owner grants your access request.
+          </p>
+          {% if grant_pending %}
+          <div class="alert alert-info mt-3" role="status">
+            <i class="bi bi-hourglass-split"></i>
+            Waiting for approval. This page refreshes automatically.
+          </div>
+          {% elif grant_denied %}
+          <div class="alert alert-danger mt-3">Access was declined.</div>
+          {% endif %}
         {% else %}
           <p class="text-muted mb-3">
             Scan the QR or enter the key in Google Authenticator, Authy, or a similar app.
@@ -80,6 +93,7 @@
       This page never shows the password · expires {{ send.expires_at.strftime('%d %b %Y, %H:%M') }} UTC
     </div>
 
+    {% if request_access_enabled and not pin_required and (grant_required or grant_pending or request_ok) %}
     <div class="card mt-3">
       <div class="card-header">
         <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
@@ -90,8 +104,11 @@
       </div>
       <div class="card-body">
         {% if request_ok %}
-        <div class="alert alert-success" role="status">Request sent to the owner.</div>
+        <div class="alert alert-success" role="status">
+          Request sent. Stay on this page until the owner grants access.
+        </div>
         {% endif %}
+        {% if not grant_pending and not grant_denied %}
         <form method="post" action="/vault/public/{{ token }}/request-access" enctype="multipart/form-data"
               class="stack" id="req-access-form">
           <input type="hidden" name="next" value="qr">
@@ -119,11 +136,13 @@
             <i class="bi bi-send"></i> Request access
           </button>
         </form>
+        {% endif %}
       </div>
     </div>
+    {% endif %}
   </div>
 </div>
-{% if not pin_required and totp_secret %}
+{% if not pin_required and not grant_required and totp_secret %}
 <script>
 (function(){
   var ICO_EYE = '<i class="bi bi-eye"></i>';
