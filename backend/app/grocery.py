@@ -615,6 +615,35 @@ def recognize(db: Session, name: str) -> dict:
     }
 
 
+def translate_via_dictionary(
+    db: Session,
+    text: str,
+    user_id: str | None = None,
+    min_score: int = 85,
+) -> dict | None:
+    """Map Manglish / Malayalam to a catalog English name when confidence is high."""
+    raw = (text or "").strip()
+    if len(raw) < 2:
+        return None
+    hits = suggest(db, raw, limit=1, user_id=user_id)
+    if not hits or hits[0].get("score", 0) < min_score:
+        return None
+    hit = hits[0]
+    en = (hit.get("english") or "").strip()
+    if not en:
+        return None
+    same = raw.lower() == en.lower() or (_fold(raw) and _fold(raw) == _fold(en))
+    return {
+        "english": en,
+        "malayalam": hit.get("malayalam"),
+        "emoji": hit.get("emoji") or "🛒",
+        "category": hit.get("category") or "custom",
+        "source": "unchanged" if same else "dictionary",
+        "manglish": raw,
+        "score": hit.get("score"),
+    }
+
+
 def _dict_out(row: models.ShopDictItem) -> dict:
     return {
         "english": row.english,

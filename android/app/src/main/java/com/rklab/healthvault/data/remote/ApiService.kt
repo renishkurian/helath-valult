@@ -434,6 +434,62 @@ interface ApiService {
         @Path("fileId") fileId: String
     ): ResponseBody
 
+    // ---------- Digital Diary ----------
+    @GET("diary/summary")
+    suspend fun diarySummary(): DiarySummaryOut
+
+    @GET("diary/categories")
+    suspend fun listDiaryCategories(): List<DiaryCategoryOut>
+
+    @GET("diary")
+    suspend fun listDiaryEntries(
+        @Query("category_id") categoryId: String? = null,
+        @Query("q") q: String? = null,
+        @Query("pinned") pinned: Boolean = false
+    ): List<DiaryEntryOut>
+
+    @Multipart
+    @POST("diary")
+    suspend fun createDiaryEntry(
+        @Part("title") title: RequestBody,
+        @Part("body") body: RequestBody?,
+        @Part("entry_date") entryDate: RequestBody?,
+        @Part("category_id") categoryId: RequestBody?,
+        @Part("tags") tags: RequestBody?,
+        @Part("mood") mood: RequestBody?,
+        @Part("pinned") pinned: RequestBody?,
+        @Part images: List<MultipartBody.Part>
+    ): DiaryEntryOut
+
+    @GET("diary/{id}")
+    suspend fun getDiaryEntry(@Path("id") id: String): DiaryEntryOut
+
+    @PATCH("diary/{id}")
+    suspend fun updateDiaryEntry(@Path("id") id: String, @Body body: DiaryEntryUpdate): DiaryEntryOut
+
+    @DELETE("diary/{id}")
+    suspend fun deleteDiaryEntry(@Path("id") id: String): Response<Unit>
+
+    @Multipart
+    @POST("diary/{id}/images")
+    suspend fun addDiaryImages(
+        @Path("id") id: String,
+        @Part images: List<MultipartBody.Part>
+    ): DiaryEntryOut
+
+    @Streaming
+    @GET("diary/{id}/images/{imageId}/download")
+    suspend fun downloadDiaryImage(
+        @Path("id") id: String,
+        @Path("imageId") imageId: String
+    ): ResponseBody
+
+    @DELETE("diary/{id}/images/{imageId}")
+    suspend fun deleteDiaryImage(
+        @Path("id") id: String,
+        @Path("imageId") imageId: String
+    ): Response<Unit>
+
     // ---------- Money Manager ----------
     @GET("finance/summary")
     suspend fun financeSummary(@Query("year_month") yearMonth: String? = null): FinanceSummaryOut
@@ -750,6 +806,30 @@ interface ApiService {
 
     @POST("tracker/lists/{id}/send")
     suspend fun sendShopList(@Path("id") id: String, @Body body: ShopSendIn): ShopSendOut
+
+    @POST("tracker/lists/{id}/post-finance")
+    suspend fun postShopListFinance(
+        @Path("id") id: String,
+        @Body body: ShopListPostFinanceIn
+    ): ShopListPostFinanceOut
+
+    @GET("tracker/quick-add")
+    suspend fun shopQuickAdd(): ShopQuickAddResponse
+
+    @GET("tracker/catalog")
+    suspend fun listShopCatalog(): List<ShopCatalogItemOut>
+
+    @POST("tracker/catalog")
+    suspend fun addShopCatalogItem(@Body body: ShopCatalogItemIn): ShopCatalogItemOut
+
+    @PUT("tracker/catalog/{id}")
+    suspend fun updateShopCatalogItem(
+        @Path("id") id: String,
+        @Body body: ShopCatalogItemIn
+    ): ShopCatalogItemOut
+
+    @DELETE("tracker/catalog/{id}")
+    suspend fun deleteShopCatalogItem(@Path("id") id: String): Response<Unit>
 
     @GET("tracker/sent")
     suspend fun shopSent(): List<ShopSendOut>

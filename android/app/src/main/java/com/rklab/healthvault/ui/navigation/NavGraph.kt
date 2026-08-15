@@ -40,6 +40,8 @@ import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserSettingsScreen
 import com.rklab.healthvault.ui.screens.expense.ExpenseAnalyserSyncLogScreen
 import com.rklab.healthvault.ui.screens.finance.*
 import com.rklab.healthvault.ui.screens.locker.*
+import com.rklab.healthvault.ui.screens.diary.*
+import com.rklab.healthvault.ui.screens.tracker.ShopCatalogScreen
 import com.rklab.healthvault.ui.screens.tracker.ShopDetailScreen
 import com.rklab.healthvault.ui.screens.tracker.ShopFriendsScreen
 import com.rklab.healthvault.ui.screens.tracker.ShopListScreen
@@ -88,6 +90,10 @@ private object Routes {
     const val LOCKER_EXPIRING = "locker_expiring"
     const val LOCKER_ADD = "locker_add?type={type}"
     const val LOCKER_ITEM = "locker_item/{itemId}"
+    const val DIARY = "diary"
+    const val DIARY_PINNED = "diary_pinned"
+    const val DIARY_ADD = "diary_add"
+    const val DIARY_ENTRY = "diary_entry/{entryId}"
     const val URLS = "urls"
     const val URLS_FAVORITES = "urls_favorites"
     const val URLS_MANAGE = "urls_manage"
@@ -102,11 +108,13 @@ private object Routes {
     const val EXPENSE_SETTINGS = "expense_settings"
     const val TRACKER = "tracker"
     const val TRACKER_FRIENDS = "tracker_friends"
+    const val TRACKER_CATALOG = "tracker_catalog"
     const val TRACKER_TRASH = "tracker_trash"
     const val TRACKER_LIST = "tracker_list/{listId}"
 
     fun lockerAdd(type: String? = null) = "locker_add?type=${type ?: ""}"
     fun lockerItem(itemId: String) = "locker_item/$itemId"
+    fun diaryEntry(entryId: String) = "diary_entry/$entryId"
     fun urlsAdd(categoryId: String? = null) = "urls_add?categoryId=${categoryId ?: ""}"
     fun urlsItem(itemId: String) = "urls_item/$itemId"
     fun trackerList(listId: String) = "tracker_list/$listId"
@@ -202,10 +210,11 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
     val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
+    val diaryTabs = setOf(Routes.DIARY, Routes.DIARY_PINNED)
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
     val aiTabs = setOf(Routes.AI, Routes.AI_PROVIDERS, Routes.AI_LOGS)
     val expenseTabs = setOf(Routes.EXPENSE, Routes.EXPENSE_INSIGHTS, Routes.EXPENSE_LOG, Routes.EXPENSE_SETTINGS)
-    val trackerTabs = setOf(Routes.TRACKER, Routes.TRACKER_FRIENDS, Routes.TRACKER_TRASH)
+    val trackerTabs = setOf(Routes.TRACKER, Routes.TRACKER_FRIENDS, Routes.TRACKER_CATALOG, Routes.TRACKER_TRASH)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
     val onLockerItem = currentRoute?.startsWith("locker_item/") == true
     val onLockerAdd = currentRoute?.startsWith("locker_add") == true
@@ -219,12 +228,14 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             if (currentRoute in trackerTabs || onTrackerList) {
                 val current = when (currentRoute) {
                     Routes.TRACKER_FRIENDS -> TrackerTab.FRIENDS
+                    Routes.TRACKER_CATALOG -> TrackerTab.CATALOG
                     Routes.TRACKER_TRASH -> TrackerTab.TRASH
                     else -> TrackerTab.LISTS
                 }
                 TrackerBottomNav(current = current) { tab ->
                     val route = when (tab) {
                         TrackerTab.FRIENDS -> Routes.TRACKER_FRIENDS
+                        TrackerTab.CATALOG -> Routes.TRACKER_CATALOG
                         TrackerTab.TRASH -> Routes.TRACKER_TRASH
                         TrackerTab.LISTS -> Routes.TRACKER
                     }
@@ -462,6 +473,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onDiary = {
+                        navController.navigate(Routes.DIARY) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onSettings = { navController.navigate(Routes.SETTINGS) },
                     onScanQr = { navController.navigate(Routes.QR_SCAN) },
                     onVaultHealth = {
@@ -485,6 +502,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     repository = repository,
                     onOpenModules = { navController.navigate(Routes.MODULES) },
                     onOpenList = { navController.navigate(Routes.trackerList(it)) }
+                )
+            }
+            composable(Routes.TRACKER_CATALOG) {
+                ShopCatalogScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
                 )
             }
             composable(Routes.TRACKER_TRASH) {
@@ -541,6 +564,40 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 LockerItemScreen(
                     repository = repository,
                     itemId = entry.arguments?.getString("itemId").orEmpty(),
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(Routes.DIARY) {
+                DiaryListScreen(
+                    repository = repository,
+                    onOpenEntry = { navController.navigate(Routes.diaryEntry(it)) },
+                    onAdd = { navController.navigate(Routes.DIARY_ADD) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.DIARY_PINNED) {
+                DiaryListScreen(
+                    repository = repository,
+                    onOpenEntry = { navController.navigate(Routes.diaryEntry(it)) },
+                    onAdd = { navController.navigate(Routes.DIARY_ADD) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    pinnedOnly = true
+                )
+            }
+            composable(Routes.DIARY_ADD) {
+                DiaryAddScreen(
+                    repository = repository,
+                    onDone = { navController.popBackStack() },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                Routes.DIARY_ENTRY,
+                arguments = listOf(navArgument("entryId") { type = NavType.StringType })
+            ) { entry ->
+                DiaryEntryScreen(
+                    repository = repository,
+                    entryId = entry.arguments?.getString("entryId").orEmpty(),
                     onBack = { navController.popBackStack() }
                 )
             }

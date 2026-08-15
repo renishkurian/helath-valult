@@ -28,6 +28,22 @@ def require_owner(user: models.User) -> models.User:
     return user
 
 
+def require_enabled_module(module_key: str):
+    """FastAPI dependency factory: 403 when Super Admin disabled this module for the vault."""
+
+    def _dep(
+        current_user: models.User = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> models.User:
+        from app import modules as mod
+
+        if not mod.is_enabled(db, current_user, module_key):
+            raise HTTPException(status_code=403, detail="This module is disabled for your account")
+        return current_user
+
+    return _dep
+
+
 def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),

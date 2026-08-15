@@ -13,10 +13,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto
-from app.deps import get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
 from app.extract import enhance_scan, file_sha256
 
-router = APIRouter(prefix="/locker", tags=["locker"])
+router = APIRouter(prefix="/locker", tags=["locker"], dependencies=[Depends(require_enabled_module("locker"))])
 
 LOCKER_TYPES = [
     ("aadhaar", "Aadhaar"),

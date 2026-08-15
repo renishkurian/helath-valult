@@ -11,10 +11,14 @@
   {'key':'ai','name':'AI','kicker':'Ask & keys','href':'/admin/ai','icon':'bi-robot','accent':'#94A3B8'},
   {'key':'locker','name':'Document Vault','kicker':'IDs & papers','href':'/admin/locker','icon':'bi-safe2','accent':'#F0C36A'},
   {'key':'tracker','name':'Shopping List','kicker':'Shared carts','href':'/admin/tracker','icon':'bi-cart3','accent':'#FB923C'},
-  {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'}
+  {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#C0A8FF'},
+  {'key':'diary','name':'Digital Diary','kicker':'Notes & photos','href':'/admin/diary','icon':'bi-journal-richtext','accent':'#F472B6'}
 ] %}
 {% if session_user is defined and session_user and session_user.role == 'superadmin' %}
   {% set modules = modules + [{'key':'superadmin','name':'Super Admin','kicker':'Control plane','href':'/admin/sa','icon':'bi-shield-check','accent':'#D9B978'}] %}
+{% endif %}
+{% if session_user is defined and session_user and session_user.enabled_module_keys is defined and session_user.enabled_module_keys %}
+  {% set modules = modules | selectattr('key', 'in', session_user.enabled_module_keys) | list %}
 {% endif %}
 {% set person_q = ('?person=' ~ active_person_id) if active_person_id else '' %}
 
@@ -74,6 +78,14 @@
     {'key':'url_add','label':'Add link','short':'Add','href':'/admin/urls/add','icon':'bi-plus-lg'},
     {'key':'url_fav','label':'Favorites','short':'Stars','href':'/admin/urls?favorite=1','icon':'bi-star'},
     {'key':'url_manage','label':'Categories & tags','short':'More','href':'/admin/urls/manage','icon':'bi-sliders'}
+  ] %}
+{% elif active_module == 'diary' %}
+  {% set mod_key = 'diary' %}
+  {% set nav_items = [
+    {'key':'dy_home','label':'All entries','short':'Diary','href':'/admin/diary','icon':'bi-journal-richtext'},
+    {'key':'dy_add','label':'New entry','short':'Write','href':'/admin/diary/add','icon':'bi-plus-lg'},
+    {'key':'dy_pinned','label':'Pinned','short':'Pin','href':'/admin/diary?pinned=1','icon':'bi-pin-angle'},
+    {'key':'dy_manage','label':'Categories','short':'Cats','href':'/admin/diary/manage','icon':'bi-folder'}
   ] %}
 {% elif active_module == 'superadmin' %}
   {% set mod_key = 'superadmin' %}

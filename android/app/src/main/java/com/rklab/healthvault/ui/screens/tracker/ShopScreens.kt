@@ -1,14 +1,29 @@
 package com.rklab.healthvault.ui.screens.tracker
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -19,8 +34,32 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -28,7 +67,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
-import com.rklab.healthvault.data.model.*
+import com.rklab.healthvault.data.model.FinanceAccountOut
+import com.rklab.healthvault.data.model.FinanceCategoryOut
+import com.rklab.healthvault.data.model.ShopContactOut
+import com.rklab.healthvault.data.model.ShopGroceryItemOut
+import com.rklab.healthvault.data.model.ShopItemIn
+import com.rklab.healthvault.data.model.ShopItemOut
+import com.rklab.healthvault.data.model.ShopItemUpdate
+import com.rklab.healthvault.data.model.ShopListIn
+import com.rklab.healthvault.data.model.ShopListOut
+import com.rklab.healthvault.data.model.ShopListPostFinanceIn
+import com.rklab.healthvault.data.model.ShopListUpdate
+import com.rklab.healthvault.data.model.ShopQuickAddGroup
+import com.rklab.healthvault.data.model.ShopSendIn
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.HubBg
 import com.rklab.healthvault.ui.theme.HubGlass
@@ -45,7 +96,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.URLEncoder
-import android.net.Uri
+import androidx.compose.material3.ExposedDropdownMenu
 
 private fun shopDateLabel(raw: String?): String? {
     val value = raw?.trim().orEmpty()
@@ -53,6 +104,7 @@ private fun shopDateLabel(raw: String?): String? {
     return value.take(16).replace('T', ' ')
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ShopListScreen(
     repository: HealthVaultRepository,
@@ -61,10 +113,13 @@ fun ShopListScreen(
 ) {
     val scope = rememberCoroutineScope()
     var lists by remember { mutableStateOf<List<ShopListOut>>(emptyList()) }
+    var categories by remember { mutableStateOf<List<FinanceCategoryOut>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var showCreate by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
+    var newCategoryId by remember { mutableStateOf<String?>(null) }
+    var catOpen by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
@@ -72,6 +127,14 @@ fun ShopListScreen(
             error = null
             runCatching { lists = repository.listShopLists() }
                 .onFailure { error = it.message ?: "Could not load lists" }
+            runCatching {
+                categories = repository.listFinanceCategories()
+                    .filter { it.kind == "expense" && it.parent_id.isNullOrBlank() }
+                if (newCategoryId == null) {
+                    newCategoryId = categories.firstOrNull { it.name == "Groceries" }?.id
+                        ?: categories.firstOrNull()?.id
+                }
+            }
             loading = false
         }
     }
@@ -117,6 +180,9 @@ fun ShopListScreen(
                                 Text(
                                     buildString {
                                         append("${lst.item_count} items")
+                                        lst.finance_category_name?.takeIf { it.isNotBlank() }?.let {
+                                            append(" · "); append(it)
+                                        }
                                         lst.owner_name?.takeIf { it.isNotBlank() }?.let {
                                             append(" · "); append(it)
                                         }
@@ -124,6 +190,7 @@ fun ShopListScreen(
                                             append(" · "); append(it.take(10))
                                         }
                                         if (lst.pending_count > 0) append(" · ${lst.pending_count} pending")
+                                        if (lst.finance_txn_id != null) append(" · in ledger")
                                         if (lst.completed) append(" · done")
                                     },
                                     color = InkSoft,
@@ -145,23 +212,51 @@ fun ShopListScreen(
     }
 
     if (showCreate) {
+        val selectedCat = categories.firstOrNull { it.id == newCategoryId }
         AlertDialog(
             onDismissRequest = { showCreate = false },
             title = { Text("New list") },
             text = {
-                OutlinedTextField(
-                    value = newName,
-                    onValueChange = { newName = it },
-                    label = { Text("Name") },
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (categories.isNotEmpty()) {
+                        ExposedDropdownMenuBox(expanded = catOpen, onExpandedChange = { catOpen = it }) {
+                            OutlinedTextField(
+                                value = selectedCat?.name ?: "Groceries",
+                                onValueChange = {},
+                                readOnly = true,
+                                label = { Text("Money Manager category") },
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(catOpen) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(expanded = catOpen, onDismissRequest = { catOpen = false }) {
+                                categories.forEach { c ->
+                                    DropdownMenuItem(
+                                        text = { Text(c.name) },
+                                        onClick = { newCategoryId = c.id; catOpen = false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val name = newName.trim()
                     if (name.isEmpty()) return@TextButton
                     scope.launch {
-                        runCatching { repository.createShopList(ShopListIn(name)) }
+                        runCatching {
+                            repository.createShopList(
+                                ShopListIn(name = name, finance_category_id = newCategoryId)
+                            )
+                        }
                             .onSuccess {
                                 newName = ""
                                 showCreate = false
@@ -175,6 +270,7 @@ fun ShopListScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ShopDetailScreen(
     repository: HealthVaultRepository,
@@ -193,12 +289,39 @@ fun ShopDetailScreen(
     var showSend by remember { mutableStateOf(false) }
     var friends by remember { mutableStateOf<List<ShopContactOut>>(emptyList()) }
     var adding by remember { mutableStateOf(false) }
+    var quickGroups by remember { mutableStateOf<List<ShopQuickAddGroup>>(emptyList()) }
+    var quickCat by remember { mutableStateOf("all") }
+    var accounts by remember { mutableStateOf<List<FinanceAccountOut>>(emptyList()) }
+    var categories by remember { mutableStateOf<List<FinanceCategoryOut>>(emptyList()) }
+    var postAccountId by remember { mutableStateOf<String?>(null) }
+    var postCategoryId by remember { mutableStateOf<String?>(null) }
+    var accountOpen by remember { mutableStateOf(false) }
+    var categoryOpen by remember { mutableStateOf(false) }
+    var posting by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
             loading = true
             runCatching { lst = repository.getShopList(listId) }
+                .onSuccess { detail ->
+                    if (postCategoryId == null) {
+                        postCategoryId = detail.finance_category_id
+                    }
+                }
             runCatching { friends = repository.listShopFriends() }
+            runCatching { quickGroups = repository.shopQuickAdd().groups }
+            runCatching {
+                accounts = repository.listFinanceAccounts().filter { !it.archived }
+                if (postAccountId == null) postAccountId = accounts.firstOrNull()?.id
+            }
+            runCatching {
+                categories = repository.listFinanceCategories()
+                    .filter { it.kind == "expense" && it.parent_id.isNullOrBlank() }
+                if (postCategoryId == null) {
+                    postCategoryId = categories.firstOrNull { it.name == "Groceries" }?.id
+                        ?: categories.firstOrNull()?.id
+                }
+            }
             loading = false
         }
     }
@@ -458,6 +581,231 @@ fun ShopDetailScreen(
                 contentPadding = PaddingValues(20.dp, 8.dp, 20.dp, 24.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                if (lst?.finance_txn_id != null) {
+                    item {
+                        Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("In Money Manager", color = VaultGold, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    buildString {
+                                        append("This trip was posted")
+                                        lst?.finance_category_name?.let { append(" as $it") }
+                                        append(".")
+                                    },
+                                    color = InkSoft,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                } else if (accounts.isNotEmpty()) {
+                    item {
+                        Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Import to Money Manager", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    "Post the list total to an account + category (e.g. Home + Groceries).",
+                                    color = InkSoft,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                val selectedAccount = accounts.firstOrNull { it.id == postAccountId }
+                                val selectedCategory = categories.firstOrNull { it.id == postCategoryId }
+                                ExposedDropdownMenuBox(
+                                    expanded = accountOpen,
+                                    onExpandedChange = { accountOpen = it }
+                                ) {
+                                    OutlinedTextField(
+                                        value = selectedAccount?.name ?: "Account",
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("Account") },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(accountOpen) },
+                                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                                    )
+                                    ExposedDropdownMenu(
+                                        expanded = accountOpen,
+                                        onDismissRequest = { accountOpen = false }
+                                    ) {
+                                        accounts.forEach { a ->
+                                            DropdownMenuItem(
+                                                text = { Text(a.name) },
+                                                onClick = { postAccountId = a.id; accountOpen = false }
+                                            )
+                                        }
+                                    }
+                                }
+                                if (categories.isNotEmpty()) {
+                                    ExposedDropdownMenuBox(
+                                        expanded = categoryOpen,
+                                        onExpandedChange = { categoryOpen = it }
+                                    ) {
+                                        OutlinedTextField(
+                                            value = selectedCategory?.name ?: "Category",
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = { Text("Category") },
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(categoryOpen) },
+                                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = categoryOpen,
+                                            onDismissRequest = { categoryOpen = false }
+                                        ) {
+                                            categories.forEach { c ->
+                                                DropdownMenuItem(
+                                                    text = { Text(c.name) },
+                                                    onClick = {
+                                                        postCategoryId = c.id
+                                                        categoryOpen = false
+                                                        scope.launch {
+                                                            runCatching {
+                                                                repository.updateShopList(
+                                                                    listId,
+                                                                    ShopListUpdate(finance_category_id = c.id)
+                                                                )
+                                                            }.onSuccess { reload() }
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                Button(
+                                    onClick = {
+                                        val accountId = postAccountId ?: return@Button
+                                        if (posting) return@Button
+                                        scope.launch {
+                                            posting = true
+                                            runCatching {
+                                                repository.postShopListFinance(
+                                                    listId,
+                                                    ShopListPostFinanceIn(
+                                                        account_id = accountId,
+                                                        category_id = postCategoryId
+                                                    )
+                                                )
+                                            }.onSuccess {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Posted ₹${it.amount ?: 0} to Money Manager",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                reload()
+                                            }.onFailure {
+                                                Toast.makeText(
+                                                    context,
+                                                    it.message ?: "Could not import",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                            posting = false
+                                        }
+                                    },
+                                    enabled = !posting && (lst?.total_amount ?: 0.0) > 0,
+                                    colors = ButtonDefaults.buttonColors(containerColor = Navy),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        if ((lst?.total_amount ?: 0.0) > 0)
+                                            "Import ₹${"%.2f".format(lst?.total_amount)}"
+                                        else
+                                            "Add prices to import"
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (quickGroups.isNotEmpty()) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Quick add", color = Ink, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilterChip(
+                                    selected = quickCat == "all",
+                                    onClick = { quickCat = "all" },
+                                    label = { Text("All") }
+                                )
+                                quickGroups.forEach { g ->
+                                    FilterChip(
+                                        selected = quickCat == g.key,
+                                        onClick = { quickCat = g.key },
+                                        label = { Text("${g.icon} ${g.label.substringBefore(" · ").trim()}") }
+                                    )
+                                }
+                            }
+                            val visible = if (quickCat == "all") quickGroups else quickGroups.filter { it.key == quickCat }
+                            visible.forEach { group ->
+                                Text(
+                                    "${group.icon} ${group.label}",
+                                    color = InkSoft,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    group.entries.forEach { entry ->
+                                        AssistChip(
+                                            onClick = {
+                                                if (adding) return@AssistChip
+                                                scope.launch {
+                                                    adding = true
+                                                    runCatching {
+                                                        repository.addShopItem(
+                                                            listId,
+                                                            ShopItemIn(
+                                                                name = entry.english,
+                                                                emoji = entry.emoji,
+                                                                category = entry.category ?: group.key
+                                                            )
+                                                        )
+                                                    }.onSuccess { item ->
+                                                        if (item.merged) {
+                                                            Toast.makeText(
+                                                                context,
+                                                                "Already on the list — quantity is now ${item.quantity}",
+                                                                Toast.LENGTH_SHORT
+                                                            ).show()
+                                                        }
+                                                        reload()
+                                                    }.onFailure {
+                                                        Toast.makeText(
+                                                            context,
+                                                            it.message ?: "Could not add",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    adding = false
+                                                }
+                                            },
+                                            label = {
+                                                Text(
+                                                    buildString {
+                                                        append(entry.emoji ?: "🛒")
+                                                        append(" ")
+                                                        append(entry.english.uppercase())
+                                                        entry.malayalam?.takeIf { it.isNotBlank() }?.let {
+                                                            append(" ($it)")
+                                                        }
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 item {
                     Surface(shape = RoundedCornerShape(14.dp), color = HubGlass, modifier = Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(12.dp)) {

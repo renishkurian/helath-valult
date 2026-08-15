@@ -15,14 +15,14 @@ from app.templating import nice_name, setup_templates
 from app import crypto, models, schemas
 from app.config import settings
 from app.database import get_db
-from app.deps import get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
 from app.extract import enhance_scan
 from app.grocery import (
     CATALOG_CATEGORIES, VALID_SCOPES, _fold, catalog_payload, format_item_name,
     grouped_quick_add, money, PARSER_TO_FINANCE, recognize, seed_dictionary, suggest,
 )
 
-router = APIRouter(prefix="/tracker", tags=["tracker"])
+router = APIRouter(prefix="/tracker", tags=["tracker"], dependencies=[Depends(require_enabled_module("tracker"))])
 templates = setup_templates()
 
 MAX_PDF = 10 * 1024 * 1024
@@ -1363,6 +1363,22 @@ def add_catalog_item(
     db.commit()
     db.refresh(row)
     return _catalog_out(row, owner)
+
+
+@router.post("/catalog/translate", response_model=schemas.ShopCatalogTranslateOut)
+def translate_catalog_item(
+    body: schemas.ShopCatalogTranslateIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import ai_chat
+    q = (body.q or body.text or "").strip()
+    try:
+        return schemas.ShopCatalogTranslateOut(**ai_chat.translate_manglish_catalog(db, current_user, q))
+    except LookupError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.put("/catalog/{item_id}", response_model=schemas.ShopCatalogItemOut)

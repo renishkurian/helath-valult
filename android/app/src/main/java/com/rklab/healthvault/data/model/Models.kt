@@ -18,9 +18,12 @@ data class UserOut(
     val role: String = "owner",
     val vault_owner_id: String? = null,
     val totp_enabled: Boolean = false,
-    val app_approve: Boolean = false
+    val app_approve: Boolean = false,
+    val enabled_modules: List<String>? = null
 ) {
     val isViewer: Boolean get() = role == "viewer"
+    fun moduleEnabled(key: String): Boolean =
+        enabled_modules == null || enabled_modules.contains(key)
 }
 
 data class AppApproveIn(val enabled: Boolean)
@@ -799,6 +802,58 @@ data class LockerSummaryOut(
     val types: List<LockerTypeOut> = emptyList()
 )
 
+// ---------- Digital Diary ----------
+data class DiaryCategoryOut(
+    val id: String,
+    val name: String,
+    val color: String? = null,
+    val sort_order: Int = 0,
+    val is_default: Boolean = false,
+    val count: Int = 0
+)
+
+data class DiaryImageOut(
+    val id: String,
+    val entry_id: String,
+    val original_filename: String,
+    val file_type: String? = null,
+    val file_size: Long? = null,
+    val created_at: String = ""
+)
+
+data class DiaryEntryOut(
+    val id: String,
+    val title: String,
+    val body: String? = null,
+    val entry_date: String = "",
+    val category_id: String? = null,
+    val category_name: String? = null,
+    val category_color: String? = null,
+    val tags: String? = null,
+    val mood: String? = null,
+    val pinned: Boolean = false,
+    val image_count: Int = 0,
+    val images: List<DiaryImageOut> = emptyList(),
+    val created_at: String = "",
+    val updated_at: String? = null
+)
+
+data class DiaryEntryUpdate(
+    val title: String? = null,
+    val body: String? = null,
+    val entry_date: String? = null,
+    val category_id: String? = null,
+    val tags: String? = null,
+    val mood: String? = null,
+    val pinned: Boolean? = null
+)
+
+data class DiarySummaryOut(
+    val total: Int = 0,
+    val pinned: Int = 0,
+    val categories: List<DiaryCategoryOut> = emptyList()
+)
+
 // ---------- URL Vault ----------
 data class UrlCategoryOut(
     val id: String,
@@ -1205,6 +1260,9 @@ data class ShopListOut(
     val receipt_count: Int = 0,
     val share_token: String? = null,
     val owner_name: String? = null,
+    val finance_category_id: String? = null,
+    val finance_category_name: String? = null,
+    val finance_txn_id: String? = null,
     val created_at: String = "",
     val updated_at: String? = null,
     val completed_at: String? = null,
@@ -1225,13 +1283,71 @@ data class ShopReceiptOut(
 
 data class ShopListIn(
     val name: String,
-    val description: String? = null
+    val description: String? = null,
+    val finance_category_id: String? = null
 )
 
 data class ShopListUpdate(
     val name: String? = null,
     val description: String? = null,
-    val completed: Boolean? = null
+    val completed: Boolean? = null,
+    val finance_category_id: String? = null
+)
+
+data class ShopListPostFinanceIn(
+    val account_id: String,
+    val category_id: String? = null
+)
+
+data class ShopListPostFinanceOut(
+    val ok: Boolean = false,
+    val finance_txn_id: String? = null,
+    val amount: Double? = null,
+    val account_id: String? = null,
+    val category_id: String? = null
+)
+
+data class ShopQuickAddEntry(
+    val english: String = "",
+    val malayalam: String? = null,
+    val emoji: String? = "🛒",
+    val category: String? = null,
+    val aliases: List<String>? = null,
+    val star: Boolean = false,
+    val custom: Boolean = false
+)
+
+data class ShopQuickAddGroup(
+    val key: String = "",
+    val label: String = "",
+    val icon: String = "🛒",
+    val entries: List<ShopQuickAddEntry> = emptyList()
+)
+
+data class ShopQuickAddResponse(
+    val groups: List<ShopQuickAddGroup> = emptyList()
+)
+
+data class ShopCatalogItemIn(
+    val english: String,
+    val malayalam: String? = null,
+    val emoji: String? = "🛒",
+    val category: String = "custom",
+    val scope: String = "personal",
+    val aliases: String? = null
+)
+
+data class ShopCatalogItemOut(
+    val id: String,
+    val english: String,
+    val malayalam: String? = null,
+    val emoji: String? = "🛒",
+    val category: String = "custom",
+    val scope: String = "personal",
+    val aliases: String? = null,
+    val mine: Boolean = true,
+    val created_at: String = "",
+    val updated_at: String? = null
 )
 
 data class ShopItemOut(

@@ -15,10 +15,10 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crypto, security
-from app.deps import get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
 from app.templating import setup_templates
 
-router = APIRouter(prefix="/vault", tags=["vault"])
+router = APIRouter(prefix="/vault", tags=["vault"], dependencies=[Depends(require_enabled_module("passwords"))])
 templates = setup_templates()
 
 _ALLOWED_TYPES = {t.value for t in models.VaultItemType}

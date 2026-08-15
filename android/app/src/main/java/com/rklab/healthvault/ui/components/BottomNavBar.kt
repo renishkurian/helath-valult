@@ -51,7 +51,7 @@ enum class AiTab { ASK, PROVIDERS, LOGS }
 
 enum class ExpenseTab { INBOX, INSIGHTS, LOG, SETTINGS }
 
-enum class TrackerTab { LISTS, FRIENDS, TRASH }
+enum class TrackerTab { LISTS, FRIENDS, CATALOG, TRASH }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
@@ -77,6 +77,13 @@ fun TrackerBottomNav(current: TrackerTab, onSelect: (TrackerTab) -> Unit) {
             onClick = { onSelect(TrackerTab.FRIENDS) },
             icon = { Icon(Icons.Filled.People, contentDescription = "People") },
             label = { Text("People") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == TrackerTab.CATALOG,
+            onClick = { onSelect(TrackerTab.CATALOG) },
+            icon = { Icon(Icons.Filled.Star, contentDescription = "Quick add") },
+            label = { Text("Chips") },
             colors = navColors
         )
         NavigationBarItem(

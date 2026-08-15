@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from app import expense_analyser as ea
 from app import models, schemas
 from app.database import get_db
-from app.deps import get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
 
-router = APIRouter(prefix="/expense-analyser", tags=["expense-analyser"])
+router = APIRouter(prefix="/expense-analyser", tags=["expense-analyser"], dependencies=[Depends(require_enabled_module("expense"))])
 
 
 def _item_out(row: models.ExpenseAnalyserItem) -> schemas.ExpenseAnalyserItemOut:

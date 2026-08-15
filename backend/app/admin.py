@@ -44,12 +44,26 @@ def get_session_user(request: Request, db: Session = Depends(get_db)) -> Optiona
         return None
     from app.login_guard import touch_last_seen
     touch_last_seen(user)
+    from app import modules as mod
+    # Attached for Jinja module picker / sidebar filtering
+    user.enabled_module_keys = mod.enabled_keys(db, user)
     return user
 
 
 def require_login(request: Request, db: Session) -> Optional[models.User]:
     """Returns the user, or None if not logged in (caller should redirect)."""
     return get_session_user(request, db)
+
+
+def require_module(request: Request, db: Session, module_key: str):
+    """Login + module gate. Returns (user, redirect_response_or_none)."""
+    user = require_login(request, db)
+    if not user:
+        return None, RedirectResponse("/admin/login", status_code=302)
+    from app import modules as mod
+    if not mod.is_enabled(db, user, module_key):
+        return None, RedirectResponse("/admin/modules", status_code=302)
+    return user, None
 
 
 def card_out(card: models.HospitalCard) -> dict:
@@ -3243,6 +3257,30 @@ def tracker_suggest_admin(request: Request, q: str = "", limit: int = 8, db: Ses
     return JSONResponse(rows)
 
 
+@router.post("/tracker/catalog/translate")
+async def tracker_catalog_translate(request: Request, db: Session = Depends(get_db)):
+    """Manglish / Malayalam → English for Quick add (dictionary first, then AI)."""
+    from app import ai_chat
+    user = _tr_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Not signed in"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    q = (body.get("q") or body.get("text") or "").strip()
+    try:
+        return JSONResponse(ai_chat.translate_manglish_catalog(db, user, q))
+    except LookupError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+    except ValueError as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"detail": str(exc) or "Translate failed"}, status_code=400)
+
+
 @router.get("/tracker/lists/{list_id}", response_class=HTMLResponse)
 def tracker_list_page(list_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
@@ -3901,3 +3939,188 @@ def tracker_recall_send(send_id: str, request: Request, db: Session = Depends(ge
         return RedirectResponse("/admin/login", status_code=302)
     tr.recall_send(send_id, db=db, current_user=user)
     return RedirectResponse("/admin/tracker/more", status_code=302)
+
+
+# ---------- Digital Diary ----------
+def _dy_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "diary", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _dy_user(request, db):
+    return require_login(request, db)
+
+
+@router.get("/diary", response_class=HTMLResponse)
+def diary_home(
+    request: Request,
+    category_id: str = "",
+    q: str = "",
+    pinned: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = dy.diary_summary(db=db, current_user=user)
+    entries = dy.list_entries(
+        category_id=category_id or None, q=q or None, pinned=bool(pinned),
+        db=db, current_user=user,
+    )
+    return templates.TemplateResponse("diary.html", _dy_ctx(
+        request, user, "dy_pinned" if pinned else "dy_home",
+        summary=summary, entries=entries,
+        category_id=category_id, q=q, pinned=bool(pinned),
+    ))
+
+
+@router.get("/diary/add", response_class=HTMLResponse)
+def diary_add_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    cats = dy.list_categories(db=db, current_user=user)
+    return templates.TemplateResponse("diary_add.html", _dy_ctx(
+        request, user, "dy_add", categories=cats,
+        today=__import__("datetime").datetime.utcnow().strftime("%Y-%m-%d"),
+    ))
+
+
+@router.post("/diary/add")
+async def diary_add(
+    request: Request,
+    title: str = Form(...),
+    body: str = Form(""),
+    entry_date: str = Form(""),
+    category_id: str = Form(""),
+    tags: str = Form(""),
+    mood: str = Form(""),
+    pinned: str = Form(""),
+    images: list[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    await dy.create_entry(
+        title=title, body=body or None, entry_date=entry_date or None,
+        category_id=category_id or None, tags=tags or None, mood=mood or None,
+        pinned=bool(pinned), images=images or [], db=db, current_user=user,
+    )
+    return RedirectResponse("/admin/diary", status_code=302)
+
+
+@router.get("/diary/manage", response_class=HTMLResponse)
+def diary_manage(request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    cats = dy.list_categories(db=db, current_user=user)
+    return templates.TemplateResponse("diary_manage.html", _dy_ctx(
+        request, user, "dy_manage", categories=cats,
+    ))
+
+
+@router.post("/diary/categories")
+def diary_category_add(
+    request: Request,
+    name: str = Form(...),
+    color: str = Form("#5B8CFF"),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    from app import schemas as sc
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    dy.create_category(sc.DiaryCategoryIn(name=name, color=color or None), db=db, current_user=user)
+    return RedirectResponse("/admin/diary/manage", status_code=302)
+
+
+@router.post("/diary/categories/{category_id}/delete")
+def diary_category_delete(category_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    dy.delete_category(category_id, db=db, current_user=user)
+    return RedirectResponse("/admin/diary/manage", status_code=302)
+
+
+@router.get("/diary/{entry_id}", response_class=HTMLResponse)
+def diary_entry_page(entry_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    entry = dy.get_entry(entry_id, db=db, current_user=user)
+    cats = dy.list_categories(db=db, current_user=user)
+    return templates.TemplateResponse("diary_entry.html", _dy_ctx(
+        request, user, "dy_home", entry=entry, categories=cats,
+    ))
+
+
+@router.post("/diary/{entry_id}")
+async def diary_entry_update(
+    entry_id: str,
+    request: Request,
+    title: str = Form(...),
+    body: str = Form(""),
+    entry_date: str = Form(""),
+    category_id: str = Form(""),
+    tags: str = Form(""),
+    mood: str = Form(""),
+    pinned: str = Form(""),
+    images: list[UploadFile] = File(None),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    from app import schemas as sc
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    dy.update_entry(entry_id, sc.DiaryEntryUpdate(
+        title=title, body=body or None, entry_date=entry_date or None,
+        category_id=category_id or None, tags=tags or None, mood=mood or None,
+        pinned=bool(pinned),
+    ), db=db, current_user=user)
+    if images and any(getattr(f, "filename", None) for f in images):
+        await dy.add_images(entry_id, images=images, db=db, current_user=user)
+    return RedirectResponse(f"/admin/diary/{entry_id}", status_code=302)
+
+
+@router.get("/diary/{entry_id}/images/{image_id}")
+def diary_image(entry_id: str, image_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return dy.download_image(entry_id, image_id, db=db, current_user=user)
+
+
+@router.post("/diary/{entry_id}/images/{image_id}/delete")
+def diary_image_delete(entry_id: str, image_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    dy.delete_image(entry_id, image_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/diary/{entry_id}", status_code=302)
+
+
+@router.post("/diary/{entry_id}/delete")
+def diary_delete(entry_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    dy.delete_entry(entry_id, db=db, current_user=user)
+    return RedirectResponse("/admin/diary", status_code=302)

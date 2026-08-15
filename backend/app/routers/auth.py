@@ -85,8 +85,15 @@ async def refresh(
 
 
 @router.get("/me", response_model=schemas.UserOut)
-def me(current_user: models.User = Depends(get_current_user)):
-    return current_user
+def me(
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from app import modules as mod
+
+    out = schemas.UserOut.model_validate(current_user)
+    out.enabled_modules = mod.enabled_keys(db, current_user)
+    return out
 
 
 @router.post("/invite", response_model=schemas.UserOut, status_code=201)

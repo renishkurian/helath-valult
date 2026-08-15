@@ -22,6 +22,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("totp_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("app_approve", "BOOLEAN NOT NULL DEFAULT 0"),
         ("blocked", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("enabled_modules", "TEXT"),
         ("last_seen_at", "DATETIME"),
     ],
     "people": [

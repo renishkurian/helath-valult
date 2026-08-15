@@ -1298,3 +1298,111 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         "action": action,
         "messages": detail["messages"] if detail else [],
     }
+
+
+_CATALOG_TRANSLATE_SYSTEM = """You translate Kerala grocery names from Manglish (Malayalam in Latin letters)
+or Malayalam script into a short English grocery label for a shopping-list catalog.
+
+Reply with JSON only — no markdown fences, no commentary:
+{"english":"...","malayalam":"...","emoji":"...","category":"..."}
+
+Rules:
+- english: common Indian English grocery name (e.g. Brinjal not Eggplant when Kerala-typical)
+- malayalam: Malayalam script when you know it, else empty string
+- emoji: one grocery emoji
+- category: one of vegetables, fruits, spices, dals, grains, essentials, dairy, fish, meat, snacks, household, custom
+- If the input is already clear English, keep english as that name (title case)
+"""
+
+
+def _parse_translate_json(raw: str) -> dict:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("AI did not return JSON")
+    data = json.loads(text[start : end + 1])
+    if not isinstance(data, dict):
+        raise ValueError("AI JSON was not an object")
+    return data
+
+
+def translate_manglish_catalog(db: Session, user: models.User, text: str) -> dict:
+    """Dictionary-first Manglish → English; AI fallback when no strong match."""
+    import time
+    from app import ai_usage
+    from app.grocery import CATALOG_CATEGORIES, translate_via_dictionary
+
+    raw = (text or "").strip()
+    if len(raw) < 2:
+        raise ValueError("Type at least 2 characters")
+
+    hit = translate_via_dictionary(db, raw, user_id=_uid(user))
+    if hit and hit.get("source") in ("dictionary", "unchanged"):
+        return hit
+
+    bundle = ap.get_default_bundle(db, user)
+    if not bundle:
+        raise LookupError("Add an AI provider first (Ask AI → Providers)")
+
+    started = time.monotonic()
+    try:
+        result = complete_chat(
+            kind=bundle["kind"],
+            api_key=bundle.get("api_key"),
+            model=bundle.get("model"),
+            base_url=bundle.get("base_url"),
+            system=_CATALOG_TRANSLATE_SYSTEM,
+            messages=[{"role": "user", "content": raw}],
+        )
+        latency = int((time.monotonic() - started) * 1000)
+        parsed = _parse_translate_json(result.get("content") or "")
+        en = (parsed.get("english") or "").strip()
+        if not en:
+            raise ValueError("AI returned an empty English name")
+        cat = (parsed.get("category") or "custom").strip().lower()
+        if cat not in CATALOG_CATEGORIES:
+            cat = "custom"
+        ml = (parsed.get("malayalam") or "").strip() or None
+        emoji = (parsed.get("emoji") or "🛒").strip() or "🛒"
+        same = raw.lower() == en.lower()
+        out = {
+            "english": en,
+            "malayalam": ml,
+            "emoji": emoji[:16],
+            "category": cat,
+            "source": "unchanged" if same else "ai",
+            "manglish": raw,
+        }
+        ai_usage.record(
+            db, user,
+            client="catalog_translate",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=result.get("model") or bundle.get("model"),
+            prompt_tokens=result.get("prompt_tokens"),
+            completion_tokens=result.get("completion_tokens"),
+            total_tokens=result.get("total_tokens"),
+            latency_ms=latency,
+            ok=True,
+            request_text=raw,
+            response_text=json.dumps(out, ensure_ascii=False),
+        )
+        return out
+    except Exception as exc:
+        latency = int((time.monotonic() - started) * 1000)
+        ai_usage.record(
+            db, user,
+            client="catalog_translate",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=bundle.get("model"),
+            latency_ms=latency,
+            ok=False,
+            error=str(exc)[:200],
+            request_text=raw,
+        )
+        raise

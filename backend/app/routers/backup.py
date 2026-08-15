@@ -72,6 +72,7 @@ def build_vault_backup(
         "shopping": {},
         "expense_analyser": {},
         "ai": {},
+        "diary": {},
     }
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -116,6 +117,10 @@ def build_vault_backup(
             manifest["ai"] = _export_ai(db, owner)
             if any(manifest["ai"].values()):
                 manifest["modules"].append("ai")
+
+            manifest["diary"] = _export_diary(db, owner, zf)
+            if any(manifest["diary"].values()):
+                manifest["modules"].append("diary")
 
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, default=_json_default))
     return buf.getvalue()
@@ -361,6 +366,34 @@ def _export_urls(db: Session, owner: str) -> dict:
     }
 
 
+def _export_diary(db: Session, owner: str, zf: zipfile.ZipFile) -> dict:
+    cats = db.query(models.DiaryCategory).filter(models.DiaryCategory.user_id == owner).all()
+    entries = db.query(models.DiaryEntry).filter(models.DiaryEntry.user_id == owner).all()
+    cat_name = {c.id: c.name for c in cats}
+    out_entries = []
+    for e in entries:
+        folder = f"diary/{e.id}"
+        images = []
+        for img in e.images or []:
+            arc = _write_enc_file(zf, f"{folder}/{img.original_filename}", img.file_path)
+            if arc:
+                images.append({"filename": img.original_filename, "file_type": img.file_type, "arc": arc})
+        out_entries.append({
+            "title": e.title,
+            "body": crypto.decrypt_text(e.body_enc),
+            "entry_date": e.entry_date,
+            "category": cat_name.get(e.category_id),
+            "tags": e.tags,
+            "mood": e.mood,
+            "pinned": bool(e.pinned),
+            "images": images,
+        })
+    return {
+        "categories": [{"name": c.name, "color": c.color, "sort_order": c.sort_order or 0} for c in cats],
+        "entries": out_entries,
+    }
+
+
 def _export_shopping(db: Session, zf: zipfile.ZipFile, owner: str) -> dict:
     lists = db.query(models.ShopList).filter(models.ShopList.user_id == owner).all()
     contacts = db.query(models.ShopContact).filter(models.ShopContact.user_id == owner).all()
@@ -529,6 +562,7 @@ def _restore_modules(db: Session, owner: str, zf: zipfile.ZipFile, manifest: dic
         "people": 0, "documents": 0, "cards": 0,
         "locker": 0, "passwords": 0, "finance_accounts": 0, "finance_txns": 0,
         "urls": 0, "shop_lists": 0, "shop_items": 0, "shop_catalog": 0, "ea_items": 0, "ai_threads": 0,
+        "diary": 0,
     }
     for person_entry in manifest.get("people", []):
         _restore_person(db, owner, zf, person_entry, restored)
@@ -552,6 +586,9 @@ def _restore_modules(db: Session, owner: str, zf: zipfile.ZipFile, manifest: dic
     ai = manifest.get("ai") or {}
     if ai:
         _restore_ai(db, owner, ai, restored)
+    diary = manifest.get("diary") or {}
+    if diary:
+        _restore_diary(db, owner, zf, diary, restored)
     db.commit()
     return restored
 
@@ -745,6 +782,58 @@ def _restore_locker(db: Session, owner: str, zf: zipfile.ZipFile, item: dict, re
             file_size=len(raw),
         ))
     restored["locker"] += 1
+
+
+def _restore_diary(db: Session, owner: str, zf: zipfile.ZipFile, diary: dict, restored: dict) -> None:
+    cat_ids: dict[str, str] = {}
+    for c in diary.get("categories") or []:
+        name = (c.get("name") or "").strip()
+        if not name:
+            continue
+        row = models.DiaryCategory(
+            user_id=owner,
+            name=name,
+            color=c.get("color"),
+            sort_order=c.get("sort_order") or 0,
+            is_default=False,
+        )
+        db.add(row)
+        db.flush()
+        cat_ids[name] = row.id
+    dest_dir = settings.STORAGE_DIR / owner / "diary"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    for e in diary.get("entries") or []:
+        row = models.DiaryEntry(
+            user_id=owner,
+            title=e.get("title") or "Restored",
+            body_enc=crypto.encrypt_text(e.get("body")),
+            entry_date=e.get("entry_date") or datetime.utcnow().strftime("%Y-%m-%d"),
+            category_id=cat_ids.get(e.get("category") or ""),
+            tags=e.get("tags"),
+            mood=e.get("mood"),
+            pinned=bool(e.get("pinned")),
+        )
+        db.add(row)
+        db.flush()
+        for idx, img in enumerate(e.get("images") or []):
+            arc = img.get("arc") if isinstance(img, dict) else img
+            if not arc:
+                continue
+            try:
+                raw = zf.read(arc)
+            except KeyError:
+                continue
+            enc_path = dest_dir / f"{row.id}_{idx}.enc"
+            enc_path.write_bytes(crypto.encrypt_bytes(raw))
+            fname = img.get("filename") if isinstance(img, dict) else str(arc).split("/")[-1]
+            db.add(models.DiaryImage(
+                entry_id=row.id,
+                original_filename=fname or f"photo_{idx}.jpg",
+                file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
+                file_type=(img.get("file_type") if isinstance(img, dict) else None) or "image/jpeg",
+                file_size=len(raw),
+            ))
+        restored["diary"] += 1
 
 
 def _restore_passwords(db: Session, owner: str, pw: dict, restored: dict) -> None:

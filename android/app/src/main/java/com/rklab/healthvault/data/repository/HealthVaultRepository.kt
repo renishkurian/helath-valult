@@ -180,6 +180,51 @@ class HealthVaultRepository(
     suspend fun createVaultSend(body: VaultSendCreate) = api.createVaultSend(body)
     suspend fun revokeVaultSend(id: String) = api.revokeVaultSend(id)
     suspend fun lockerSummary() = api.lockerSummary()
+    suspend fun diarySummary() = api.diarySummary()
+    suspend fun listDiaryCategories() = api.listDiaryCategories()
+    suspend fun listDiaryEntries(
+        categoryId: String? = null,
+        q: String? = null,
+        pinned: Boolean = false
+    ) = api.listDiaryEntries(categoryId, q, pinned)
+    suspend fun getDiaryEntry(id: String) = api.getDiaryEntry(id)
+    suspend fun updateDiaryEntry(id: String, body: DiaryEntryUpdate) = api.updateDiaryEntry(id, body)
+    suspend fun deleteDiaryEntry(id: String) { api.deleteDiaryEntry(id) }
+    suspend fun createDiaryEntry(
+        title: String,
+        body: String?,
+        entryDate: String?,
+        categoryId: String?,
+        tags: String?,
+        mood: String?,
+        pinned: Boolean,
+        images: List<File>
+    ): DiaryEntryOut {
+        fun text(v: String?) = v?.toRequestBody("text/plain".toMediaTypeOrNull())
+        val parts = images.map { file ->
+            val mime = when (file.extension.lowercase()) {
+                "png" -> "image/png"
+                "webp" -> "image/webp"
+                "gif" -> "image/gif"
+                else -> "image/jpeg"
+            }
+            MultipartBody.Part.createFormData(
+                "images",
+                file.name,
+                file.asRequestBody(mime.toMediaTypeOrNull())
+            )
+        }
+        return api.createDiaryEntry(
+            title = title.toRequestBody("text/plain".toMediaTypeOrNull()),
+            body = text(body),
+            entryDate = text(entryDate),
+            categoryId = text(categoryId),
+            tags = text(tags),
+            mood = text(mood),
+            pinned = text(if (pinned) "true" else "false"),
+            images = parts
+        )
+    }
     suspend fun listLockerTypes() = api.listLockerTypes()
     suspend fun listLockerItems(
         docType: String? = null,
@@ -756,6 +801,14 @@ class HealthVaultRepository(
     suspend fun deleteShopItem(listId: String, itemId: String) { api.deleteShopItem(listId, itemId) }
     suspend fun shareShopList(id: String) = api.shareShopList(id)
     suspend fun sendShopList(id: String, body: ShopSendIn) = api.sendShopList(id, body)
+    suspend fun postShopListFinance(id: String, body: ShopListPostFinanceIn) =
+        api.postShopListFinance(id, body)
+    suspend fun shopQuickAdd() = api.shopQuickAdd()
+    suspend fun listShopCatalog() = api.listShopCatalog()
+    suspend fun addShopCatalogItem(body: ShopCatalogItemIn) = api.addShopCatalogItem(body)
+    suspend fun updateShopCatalogItem(id: String, body: ShopCatalogItemIn) =
+        api.updateShopCatalogItem(id, body)
+    suspend fun deleteShopCatalogItem(id: String) { api.deleteShopCatalogItem(id) }
     suspend fun shopSent() = api.shopSent()
     suspend fun recallShopSend(id: String) { api.recallShopSend(id) }
     suspend fun uploadShopReceipt(listId: String, file: File, mime: String = "image/jpeg"): ShopReceiptOut {

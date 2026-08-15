@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -115,6 +116,7 @@ fun ModulePickerScreen(
     onLocker: () -> Unit,
     onTracker: () -> Unit,
     onUrls: () -> Unit,
+    onDiary: () -> Unit,
     onSettings: () -> Unit,
     onScanQr: () -> Unit = {},
     onVaultHealth: () -> Unit = {}
@@ -166,7 +168,7 @@ fun ModulePickerScreen(
                 letterSpacing = 1.2.sp,
                 modifier = Modifier.padding(start = 2.dp, bottom = 10.dp)
             )
-            HubTile(
+            if (state.moduleOn("health")) HubTile(
                 glow = HubTeal,
                 onClick = onHealth,
                 modifier = Modifier
@@ -209,9 +211,10 @@ fun ModulePickerScreen(
                     accentStat = reminderAccent(state.nextReminderLabel)
                 )
             }
+            if (state.moduleOn("passwords") || state.moduleOn("finance")) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HubTile(
+                if (state.moduleOn("passwords")) HubTile(
                     glow = HubViolet,
                     onClick = onPasswords,
                     modifier = Modifier
@@ -234,7 +237,7 @@ fun ModulePickerScreen(
                     }
                     TileFooter(stat = "Generator")
                 }
-                HubTile(
+                if (state.moduleOn("finance")) HubTile(
                     glow = HubRose,
                     onClick = onFinance,
                     modifier = Modifier
@@ -258,6 +261,8 @@ fun ModulePickerScreen(
                     TileFooter(stat = state.financeFooter)
                 }
             }
+            }
+            if (state.moduleOn("expense")) {
             Spacer(Modifier.height(12.dp))
             HubTile(
                 glow = HubMint,
@@ -299,6 +304,8 @@ fun ModulePickerScreen(
                     )
                 }
             }
+            }
+            if (state.moduleOn("ai")) {
             Spacer(Modifier.height(12.dp))
             HubTile(
                 glow = HubSlate,
@@ -339,6 +346,8 @@ fun ModulePickerScreen(
                     )
                 }
             }
+            }
+            if (state.moduleOn("tracker")) {
             Spacer(Modifier.height(12.dp))
             HubTile(
                 glow = HubAmber,
@@ -380,9 +389,11 @@ fun ModulePickerScreen(
                     )
                 }
             }
+            }
+            if (state.moduleOn("locker") || state.moduleOn("urls")) {
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HubTile(
+                if (state.moduleOn("locker")) HubTile(
                     glow = HubAmber,
                     onClick = onLocker,
                     modifier = Modifier
@@ -405,7 +416,7 @@ fun ModulePickerScreen(
                     }
                     TileFooter(stat = "IDs & papers")
                 }
-                HubTile(
+                if (state.moduleOn("urls")) HubTile(
                     glow = HubSky,
                     onClick = onUrls,
                     modifier = Modifier
@@ -427,6 +438,49 @@ fun ModulePickerScreen(
                         )
                     }
                     TileFooter(stat = if (state.urlFavorites > 0) "${state.urlFavorites} favorites" else "Categories & tags")
+                }
+            }
+            }
+            if (state.moduleOn("diary")) {
+                Spacer(Modifier.height(12.dp))
+                HubTile(
+                    glow = HubRose,
+                    onClick = onDiary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(132.dp),
+                    contentDescription = "Open Digital Diary, ${state.diaryCount} entries"
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        TileIcon(Icons.Outlined.AutoStories, HubRose)
+                        Text(
+                            "${state.diaryCount} entries",
+                            color = HubRose,
+                            fontFamily = MonoFont,
+                            fontSize = 9.sp,
+                            modifier = Modifier
+                                .clip(ChipShape)
+                                .background(HubRose.copy(alpha = 0.12f))
+                                .border(1.dp, HubRose.copy(alpha = 0.25f), ChipShape)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    Column {
+                        Text("Digital Diary", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "Notes, categories, and photos",
+                            color = HubTextDim,
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }

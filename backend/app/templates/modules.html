@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Modules{% endblock %}
 {% block content %}
+{% set blurb = {
+  'health': 'Hospital cards, documents, care notes, reminders, and family profiles.',
+  'passwords': 'Logins, notes, cards, identities, generator, authenticator, and Send.',
+  'finance': 'Accounts, daily ledger, stats, budgets, and SMS auto-tagging.',
+  'expense': 'Gmail bank alerts, credit-card bills, and bank PDF import — match, fill gaps, then post to Money Manager.',
+  'ai': 'Ask about reports, card statements, and spend — plus the shared keys every module uses.',
+  'tracker': 'Grocery lists with Malayalam quick-add, live guest and family sharing, then shop together in real time.',
+  'locker': 'Aadhaar, PAN, passport, RC, insurance, and warranties — encrypted on the Pi.',
+  'urls': 'Save links with previews, categories, tags, search, and shareable pages.',
+  'diary': 'Dated notes with categories, tags, and encrypted photos — like a private journal.',
+  'superadmin': 'Users, module limits, online presence, failed logins, and new account signup.'
+} %}
 <div class="page-head">
   <div>
     <div class="eyebrow">Workspace</div>
@@ -10,105 +22,17 @@
 </div>
 
 <div class="module-grid">
-  <a class="module-card" href="/admin" style="--mod-accent:#FF8095;">
-    <span class="mod-num">01</span>
-    <span class="mod-ico"><i class="bi bi-heart-pulse"></i></span>
+  {% for m in modules %}
+  <a class="module-card" href="{{ m.href }}" style="--mod-accent:{{ m.accent }};">
+    <span class="mod-num">{{ '%02d' | format(loop.index) }}</span>
+    <span class="mod-ico"><i class="bi {{ m.icon }}"></i></span>
     <div>
-      <div class="eyebrow mb-1">Medical records</div>
-      <h2>Health Vault</h2>
-      <p class="mt-1">Hospital cards, documents, care notes, reminders, and family profiles.</p>
+      <div class="eyebrow mb-1">{{ m.kicker }}</div>
+      <h2>{{ m.name }}</h2>
+      <p class="mt-1">{{ blurb.get(m.key, '') }}</p>
     </div>
     <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
   </a>
-
-  <a class="module-card" href="/admin/passwords" style="--mod-accent:#7FA6FF;">
-    <span class="mod-num">02</span>
-    <span class="mod-ico"><i class="bi bi-shield-lock"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Secrets</div>
-      <h2>Password Vault</h2>
-      <p class="mt-1">Logins, notes, cards, identities, generator, authenticator, and Send.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  <a class="module-card" href="/admin/finance" style="--mod-accent:#4ADE9B;">
-    <span class="mod-num">03</span>
-    <span class="mod-ico"><i class="bi bi-wallet2"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Money</div>
-      <h2>Money Manager</h2>
-      <p class="mt-1">Accounts, daily ledger, stats, budgets, and SMS auto-tagging.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  <a class="module-card" href="/admin/expense-analyser" style="--mod-accent:#5EEAD4;">
-    <span class="mod-num">04</span>
-    <span class="mod-ico"><i class="bi bi-envelope-open"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Spend from mail</div>
-      <h2>Expense Analyser</h2>
-      <p class="mt-1">Gmail bank alerts, credit-card bills, and bank PDF import — match, fill gaps, then post to Money Manager.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  <a class="module-card" href="/admin/ai" style="--mod-accent:#94A3B8;">
-    <span class="mod-num">05</span>
-    <span class="mod-ico"><i class="bi bi-robot"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Ask &amp; keys</div>
-      <h2>AI</h2>
-      <p class="mt-1">Ask about reports, card statements, and spend — plus the shared keys every module uses.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  <a class="module-card" href="/admin/tracker" style="--mod-accent:#FB923C;">
-    <span class="mod-num">06</span>
-    <span class="mod-ico"><i class="bi bi-cart3"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Shared carts</div>
-      <h2>Shopping List</h2>
-      <p class="mt-1">Grocery lists with Malayalam quick-add, live guest and family sharing, then shop together in real time.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  <a class="module-card" href="/admin/locker" style="--mod-accent:#F0C36A;">
-    <span class="mod-num">07</span>
-    <span class="mod-ico"><i class="bi bi-safe2"></i></span>
-    <div>
-      <div class="eyebrow mb-1">IDs &amp; papers</div>
-      <h2>Document Vault</h2>
-      <p class="mt-1">Aadhaar, PAN, passport, RC, insurance, and warranties — encrypted on the Pi.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  <a class="module-card" href="/admin/urls" style="--mod-accent:#C0A8FF;">
-    <span class="mod-num">08</span>
-    <span class="mod-ico"><i class="bi bi-link-45deg"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Bookmarks</div>
-      <h2>URL Vault</h2>
-      <p class="mt-1">Save links with previews, categories, tags, search, and shareable pages.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-
-  {% if session_user.role == 'superadmin' %}
-  <a class="module-card" href="/admin/sa" style="--mod-accent:#D9B978;">
-    <span class="mod-num">09</span>
-    <span class="mod-ico"><i class="bi bi-shield-check"></i></span>
-    <div>
-      <div class="eyebrow mb-1">Control plane</div>
-      <h2>Super Admin</h2>
-      <p class="mt-1">Users, online presence, failed logins, and new account signup.</p>
-    </div>
-    <span class="mod-go">Open <i class="bi bi-arrow-right"></i></span>
-  </a>
-  {% endif %}
+  {% endfor %}
 </div>
 {% endblock %}

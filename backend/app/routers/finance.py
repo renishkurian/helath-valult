@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto
-from app.deps import get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
 from app.extract import enhance_scan
 from app.finance_ai import (
     EXPENSE_CATEGORIES,
@@ -23,7 +23,7 @@ from app.finance_ai import (
     build_description, classify_message, split_messages,
 )
 
-router = APIRouter(prefix="/finance", tags=["finance"])
+router = APIRouter(prefix="/finance", tags=["finance"], dependencies=[Depends(require_enabled_module("finance"))])
 
 ASSET_TYPES = {"cash", "bank", "wallet", "investment", "other"}
 LIABILITY_TYPES = {"credit_card", "loan"}

@@ -22,10 +22,17 @@
 
 <div class="surface mb-4">
   <div class="section-head"><h2>Add item</h2></div>
-  <form method="post" action="/admin/tracker/catalog" class="row g-2 align-items-end">
+  <form method="post" action="/admin/tracker/catalog" class="row g-2 align-items-end" id="catalog-add-form">
+    <div class="col-12">
+      <label class="shop-ai-toggle mb-1">
+        <input type="checkbox" id="c-ai-translate" checked>
+        <span>AI translate Manglish → English</span>
+      </label>
+      <p class="small text-muted mb-2" id="c-ai-status" aria-live="polite"></p>
+    </div>
     <div class="col-md-3">
       <label class="form-label" for="c-en">English name</label>
-      <input class="form-control" id="c-en" name="english" required maxlength="255" placeholder="e.g. Vazhuthananga">
+      <input class="form-control" id="c-en" name="english" required maxlength="255" placeholder="e.g. Vazhuthananga" autocomplete="off">
     </div>
     <div class="col-md-2">
       <label class="form-label" for="c-ml">Malayalam</label>
@@ -129,4 +136,111 @@
   <p>No custom Quick add items yet. Built-in Kerala groceries stay available on every list.</p>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var en = document.getElementById("c-en");
+  var ml = document.getElementById("c-ml");
+  var emoji = document.getElementById("c-emoji");
+  var cat = document.getElementById("c-cat");
+  var aliases = document.getElementById("c-aliases");
+  var toggle = document.getElementById("c-ai-translate");
+  var status = document.getElementById("c-ai-status");
+  if (!en || !toggle) return;
+
+  var timer = null;
+  var seq = 0;
+  var lastApplied = "";
+  var lastQuery = "";
+
+  function setStatus(msg) {
+    if (status) status.textContent = msg || "";
+  }
+
+  function appendAlias(raw) {
+    if (!aliases || !raw) return;
+    var fold = raw.toLowerCase().trim();
+    var parts = (aliases.value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+    var exists = parts.some(function (p) { return p.toLowerCase() === fold; });
+    if (!exists) {
+      parts.push(raw.trim());
+      aliases.value = parts.join(", ");
+    }
+  }
+
+  function applyResult(data, typed) {
+    if (!data || !data.english) return;
+    if (data.source === "unchanged") {
+      setStatus("Already English");
+      lastApplied = data.english;
+      lastQuery = typed;
+      return;
+    }
+    en.value = data.english;
+    lastApplied = data.english;
+    lastQuery = typed;
+    if (ml && data.malayalam && !(ml.value || "").trim()) ml.value = data.malayalam;
+    if (emoji && data.emoji) emoji.value = data.emoji;
+    if (cat && data.category) cat.value = data.category;
+    appendAlias(data.manglish || typed);
+    var via = data.source === "ai" ? "AI" : "dictionary";
+    setStatus("Translated via " + via + ": " + data.english);
+  }
+
+  function runTranslate() {
+    if (!toggle.checked) return;
+    var q = (en.value || "").trim();
+    if (q.length < 2) {
+      setStatus("");
+      return;
+    }
+    if (q === lastApplied || q === lastQuery) return;
+    var my = ++seq;
+    setStatus("Translating…");
+    fetch("/admin/tracker/catalog/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ q: q })
+    }).then(function (r) {
+      return r.json().then(function (body) {
+        return { ok: r.ok, body: body };
+      });
+    }).then(function (res) {
+      if (my !== seq) return;
+      if (!res.ok) {
+        setStatus((res.body && res.body.detail) || "Translate failed");
+        return;
+      }
+      // Only apply if the field still matches what we asked for
+      if ((en.value || "").trim() !== q) return;
+      applyResult(res.body, q);
+    }).catch(function () {
+      if (my !== seq) return;
+      setStatus("Translate failed");
+    });
+  }
+
+  function schedule() {
+    if (!toggle.checked) {
+      setStatus("");
+      return;
+    }
+    clearTimeout(timer);
+    timer = setTimeout(runTranslate, 700);
+  }
+
+  en.addEventListener("input", schedule);
+  en.addEventListener("blur", function () {
+    clearTimeout(timer);
+    runTranslate();
+  });
+  toggle.addEventListener("change", function () {
+    if (toggle.checked) schedule();
+    else setStatus("");
+  });
+})();
+</script>
 {% endblock %}

@@ -4,12 +4,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.database import engine, SessionLocal
 from app.config import settings
 from app.schema import ensure_schema
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker, diary
 from app.scheduler import lifespan
 from app import admin, admin_sa, models
 from app.templating import setup_templates
@@ -19,10 +20,36 @@ ensure_schema(engine)
 from app.accounts import ensure_superadmin
 ensure_superadmin()
 
+
+class ModuleAccessMiddleware(BaseHTTPMiddleware):
+    """Block /admin module pages when Super Admin disabled them for this vault.
+
+    Must sit inside SessionMiddleware so ``request.session`` is available.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/admin"):
+            from app import modules as mod
+
+            key = mod.admin_module_for_path(path)
+            if key:
+                user_id = request.session.get("user_id")
+                if user_id:
+                    db = SessionLocal()
+                    try:
+                        user = db.query(models.User).filter(models.User.id == user_id).first()
+                        if user and not mod.is_enabled(db, user, key):
+                            return RedirectResponse("/admin/modules", status_code=302)
+                    finally:
+                        db.close()
+        return await call_next(request)
+
+
 app = FastAPI(
     title="Vault API",
-    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, Shopping List, AI, Documents, and URLs.",
-    version="1.1.0",
+    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, Shopping List, AI, Documents, URLs, and Digital Diary.",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -34,9 +61,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Session cookie support for the /admin web UI (separate from the JWT-based
-# mobile API auth). Uses the same secret as JWT signing — fine since these
-# cookies never leave the browser and are httponly by default.
+# Inner module gate, then Session outside it (last add_middleware = outermost).
+app.add_middleware(ModuleAccessMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.JWT_SECRET, session_cookie="healthvault_admin_session")
 
 app.include_router(auth.router)
@@ -58,6 +84,7 @@ app.include_router(ai.router)
 app.include_router(locker.router)
 app.include_router(tracker.router)
 app.include_router(urls.router)
+app.include_router(diary.router)
 app.include_router(admin.router)
 app.include_router(admin_sa.router)
 

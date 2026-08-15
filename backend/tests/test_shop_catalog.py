@@ -1,12 +1,13 @@
 """Quick Add catalog — personal vs global chips."""
 import uuid
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
 from app import models
 from app.database import SessionLocal
 from app.deps import vault_id
-from app.grocery import grouped_quick_add
+from app.grocery import grouped_quick_add, translate_via_dictionary
 from app.main import app
 
 client = TestClient(app)
@@ -66,3 +67,69 @@ def test_personal_and_global_quick_add():
     listed = client.get("/tracker/catalog", headers=h2).json()
     assert any(i["english"] == "Shared Snack" for i in listed)
     assert not any(i["english"] == "Vazhuth Special" for i in listed)
+
+
+def test_translate_via_dictionary_manglish():
+    db = SessionLocal()
+    try:
+        hit = translate_via_dictionary(db, "vazhuthananga")
+        assert hit is not None
+        assert hit["english"] == "Brinjal"
+        assert hit["source"] == "dictionary"
+        same = translate_via_dictionary(db, "Brinjal")
+        assert same is not None
+        assert same["source"] == "unchanged"
+    finally:
+        db.close()
+
+
+def test_catalog_translate_api_dictionary():
+    headers, _ = _headers("tr")
+    r = client.post("/tracker/catalog/translate", headers=headers, json={"q": "ulli"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["english"] == "Onion"
+    assert body["source"] == "dictionary"
+    assert body["manglish"] == "ulli"
+
+
+def test_catalog_translate_api_ai_fallback():
+    headers, _ = _headers("ai")
+    fake = {
+        "content": '{"english":"Drumstick Leaves","malayalam":"മുരിങ്ങയില","emoji":"🌿","category":"vegetables"}',
+        "kind": "openrouter",
+        "model": "test-model",
+        "prompt_tokens": 10,
+        "completion_tokens": 8,
+        "total_tokens": 18,
+    }
+    with patch("app.ai_providers.get_default_bundle", return_value={
+        "kind": "openrouter", "api_key": "sk-test", "model": "test-model",
+        "base_url": "https://example.com/v1", "name": "Test",
+    }), patch("app.ai_chat.complete_chat", return_value=fake):
+        r = client.post("/tracker/catalog/translate", headers=headers, json={
+            "q": "muringayila xyzunique",
+        })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["english"] == "Drumstick Leaves"
+    assert body["source"] == "ai"
+    assert body["malayalam"] == "മുരിങ്ങയില"
+
+
+def test_admin_catalog_page_has_ai_translate():
+    headers, email = _headers("page")
+    # Hit API first so middleware is warm, then cookie-login on a fresh client
+    assert client.get("/tracker/catalog", headers=headers).status_code == 200
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303), login.text[:300]
+    page = session.get("/admin/tracker/catalog")
+    assert page.status_code == 200, page.text[:500]
+    assert "AI translate Manglish" in page.text
+    assert 'id="c-ai-translate"' in page.text
+    assert "/admin/tracker/catalog/translate" in page.text

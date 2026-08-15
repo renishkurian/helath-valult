@@ -103,6 +103,60 @@ def sa_users(request: Request, q: str = "", role: str = "", cleared: str = "", n
     ))
 
 
+@router.get("/users/{user_id}/modules", response_class=HTMLResponse)
+def sa_user_modules(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import modules as mod
+
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    # Edit vault owner's list (viewers inherit)
+    owner = target
+    if target.role == models.UserRole.viewer.value and target.vault_owner_id:
+        owner = db.query(models.User).filter(models.User.id == target.vault_owner_id).first() or target
+    current = mod.parse_enabled_modules(owner.enabled_modules)
+    enabled = set(current) if current is not None else set(mod.DEFAULT_MODULE_KEYS)
+    return templates.TemplateResponse("sa_user_modules.html", _sa_ctx(
+        request, user, "sa_users",
+        target=target, owner=owner,
+        module_keys=mod.DEFAULT_MODULE_KEYS,
+        module_labels=mod.MODULE_LABELS,
+        enabled=enabled,
+        all_enabled=(current is None),
+    ))
+
+
+@router.post("/users/{user_id}/modules")
+async def sa_user_modules_save(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import modules as mod
+
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    owner = target
+    if target.role == models.UserRole.viewer.value and target.vault_owner_id:
+        owner = db.query(models.User).filter(models.User.id == target.vault_owner_id).first() or target
+    if owner.role == models.UserRole.superadmin.value:
+        return RedirectResponse(f"/admin/sa/users/{owner.id}/modules?notice=sa", status_code=302)
+    form = await request.form()
+    if form.get("all_modules"):
+        owner.enabled_modules = None
+    else:
+        chosen = [k for k in mod.DEFAULT_MODULE_KEYS if form.get(f"mod_{k}")]
+        owner.enabled_modules = mod.serialize_enabled_modules(chosen or list(mod.DEFAULT_MODULE_KEYS))
+    db.commit()
+    return RedirectResponse(
+        f"/admin/sa/users?notice=modules&who={quote(owner.email)}",
+        status_code=302,
+    )
+
+
 @router.post("/users/{user_id}/disable-2fa")
 def sa_disable_2fa(user_id: str, request: Request, db: Session = Depends(get_db)):
     from app import totp as totp_util

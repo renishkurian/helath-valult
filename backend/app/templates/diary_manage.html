@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Diary categories{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/diary"><i class="bi bi-chevron-left"></i> Diary</a>
+    </div>
+    <h1 class="page-title">Categories</h1>
+    <p class="page-lead">Tag entries under Personal, Work, Travel, or your own labels.</p>
+  </div>
+</div>
+
+<div class="row g-4" style="max-width:900px;">
+  <div class="col-lg-7">
+    <div class="table-card">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Name</th><th>Entries</th><th></th></tr></thead>
+          <tbody>
+            {% for c in categories %}
+            <tr>
+              <td>
+                <span class="badge badge-soft" style="border-color:{{ c.color or '#8B95A8' }};">{{ c.name }}</span>
+                {% if c.is_default %}<span class="text-faint ms-1" style="font-size:.7rem;">default</span>{% endif %}
+              </td>
+              <td class="mono">{{ c.count }}</td>
+              <td class="text-end">
+                <form method="post" action="/admin/diary/categories/{{ c.id }}/delete"
+                      data-confirm="Delete category {{ c.name }}? Entries stay uncategorized.">
+                  <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="3"><div class="empty-state"><div class="empty-title">No categories</div></div></td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <form class="card" method="post" action="/admin/diary/categories">
+      <h2 class="h6 mb-3">Add category</h2>
+      <div class="mb-3">
+        <label class="form-label">Name</label>
+        <input class="form-control" name="name" required maxlength="80" placeholder="Memories">
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Color</label>
+        <input class="form-control form-control-color" type="color" name="color" value="#F472B6">
+      </div>
+      <button class="btn btn-primary" type="submit">Add</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

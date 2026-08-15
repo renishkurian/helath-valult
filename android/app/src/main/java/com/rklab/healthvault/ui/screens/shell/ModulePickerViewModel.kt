@@ -39,8 +39,12 @@ data class HubUiState(
     val urlFavorites: Int = 0,
     val trackerOpen: Int = 0,
     val eaPending: Int = 0,
-    val eaConnected: Boolean = false
-)
+    val eaConnected: Boolean = false,
+    val diaryCount: Int = 0,
+    val enabledModules: List<String>? = null
+) {
+    fun moduleOn(key: String): Boolean = enabledModules == null || enabledModules.contains(key)
+}
 
 class ModulePickerViewModel(private val repository: HealthVaultRepository) : ViewModel() {
 
@@ -60,6 +64,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                     val urlsDef = async { runCatching { repository.urlSummary() }.getOrNull() }
                     val trackerDef = async { runCatching { repository.trackerSummary() }.getOrNull() }
                     val eaDef = async { runCatching { repository.expenseAnalyserStatus() }.getOrNull() }
+                    val diaryDef = async { runCatching { repository.diarySummary() }.getOrNull() }
                     val remindersDef = async {
                         runCatching { repository.listReminders(upcomingOnly = true) }.getOrDefault(emptyList())
                     }
@@ -72,6 +77,7 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                     val urls = urlsDef.await()
                     val tracker = trackerDef.await()
                     val ea = eaDef.await()
+                    val diary = diaryDef.await()
                     val reminders = remindersDef.await().sortedBy { it.remind_at }
 
                     val firstName = user?.full_name?.trim()?.substringBefore(" ")?.takeIf { it.isNotBlank() }
@@ -103,7 +109,9 @@ class ModulePickerViewModel(private val repository: HealthVaultRepository) : Vie
                         urlFavorites = urls?.favorites ?: 0,
                         trackerOpen = tracker?.open_lists ?: 0,
                         eaPending = (ea?.pending ?: 0) + (ea?.corrected ?: 0) + (ea?.missed ?: 0),
-                        eaConnected = ea?.connected == true
+                        eaConnected = ea?.connected == true,
+                        diaryCount = diary?.total ?: 0,
+                        enabledModules = user?.enabled_modules
                     )
                 }
             } catch (_: Exception) {

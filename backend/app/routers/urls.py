@@ -13,11 +13,11 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crypto
-from app.deps import get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
 from app.og import fetch_preview, hostname_of, normalize_url
 from app.templating import setup_templates
 
-router = APIRouter(prefix="/urls", tags=["urls"])
+router = APIRouter(prefix="/urls", tags=["urls"], dependencies=[Depends(require_enabled_module("urls"))])
 templates = setup_templates()
 
 DEFAULT_CATEGORIES = [

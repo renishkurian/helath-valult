@@ -76,6 +76,8 @@ class User(Base):
     totp_enabled = Column(Boolean, default=False, nullable=False)
     app_approve = Column(Boolean, default=False, nullable=False)
     blocked = Column(Boolean, default=False, nullable=False, index=True)
+    # JSON list of module keys the vault may open; null = all default modules.
+    enabled_modules = Column(Text, nullable=True)
     last_seen_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -851,6 +853,56 @@ class LockerFile(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     item = relationship("LockerItem", back_populates="files")
+
+
+class DiaryCategory(Base):
+    """User-managed Digital Diary category (Personal, Work, Travel, …)."""
+    __tablename__ = "diary_categories"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(80), nullable=False)
+    color = Column(String(16), nullable=True)
+    sort_order = Column(Integer, default=0, nullable=False)
+    is_default = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    entries = relationship("DiaryEntry", back_populates="category")
+
+
+class DiaryEntry(Base):
+    """A diary note: title, encrypted body, optional category/tags/mood, photos."""
+    __tablename__ = "diary_entries"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    category_id = Column(String(32), ForeignKey("diary_categories.id"), nullable=True, index=True)
+    entry_date = Column(String(20), nullable=False, index=True)  # ISO date
+    title = Column(String(255), nullable=False, index=True)
+    body_enc = Column(Text, nullable=True)
+    tags = Column(String(500), nullable=True)  # comma-separated
+    mood = Column(String(40), nullable=True)
+    pinned = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    category = relationship("DiaryCategory", back_populates="entries")
+    images = relationship(
+        "DiaryImage", back_populates="entry", cascade="all, delete-orphan",
+        order_by="DiaryImage.created_at",
+    )
+
+
+class DiaryImage(Base):
+    __tablename__ = "diary_images"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    entry_id = Column(String(32), ForeignKey("diary_entries.id"), nullable=False, index=True)
+    original_filename = Column(String(255), nullable=False)
+    file_path = Column(String(500), nullable=False)
+    file_type = Column(String(100), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    content_hash = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    entry = relationship("DiaryEntry", back_populates="images")
 
 
 url_item_tags = Table(

@@ -14,6 +14,7 @@ CLIENT_LABELS = {
     "expense_analyser": "Expense Analyser",
     "connection_test": "Connection test",
     "provider_test": "Provider test",
+    "catalog_translate": "Catalog translate",
 }
 
 _REQUEST_LIMIT = 8000

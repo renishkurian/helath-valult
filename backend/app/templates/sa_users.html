@@ -40,6 +40,11 @@
   <i class="bi bi-check2-circle"></i>
   <span>App approval turned off for <strong>{{ who }}</strong>. Password is enough unless 2FA is still on.</span>
 </div>
+{% elif notice == 'modules' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Updated enabled modules for <strong>{{ who }}</strong>.</span>
+</div>
 {% elif notice == 'self' %}
 <div class="alert alert-danger" role="alert">
   <i class="bi bi-exclamation-triangle"></i>
@@ -113,14 +118,20 @@
             {% if u.id == session_user.id %}
             <span class="text-faint">you</span>
             {% elif u.blocked %}
-            <form method="post" action="/admin/sa/users/{{ u.id }}/unblock">
-              <button class="btn btn-outline-light btn-sm" type="submit">Unblock</button>
-            </form>
+            <div class="d-flex gap-1 flex-wrap">
+              <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
+              <form method="post" action="/admin/sa/users/{{ u.id }}/unblock">
+                <button class="btn btn-outline-light btn-sm" type="submit">Unblock</button>
+              </form>
+            </div>
             {% else %}
-            <form method="post" action="/admin/sa/users/{{ u.id }}/block"
-                  data-confirm="Block this account? They will not be able to sign in.">
-              <button class="btn btn-ghost btn-sm" type="submit">Block</button>
-            </form>
+            <div class="d-flex gap-1 flex-wrap">
+              <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
+              <form method="post" action="/admin/sa/users/{{ u.id }}/block"
+                    data-confirm="Block this account? They will not be able to sign in.">
+                <button class="btn btn-ghost btn-sm" type="submit">Block</button>
+              </form>
+            </div>
             {% endif %}
           </td>
           <td class="mono text-muted">{{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') if u.last_seen_at else '—' }}</td>

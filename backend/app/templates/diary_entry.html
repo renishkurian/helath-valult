@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/diary"><i class="bi bi-chevron-left"></i> Diary</a>
+    </div>
+    <h1 class="page-title">{{ entry.title }}</h1>
+    <p class="page-lead">{{ entry.entry_date }}{% if entry.category_name %} · {{ entry.category_name }}{% endif %}{% if entry.mood %} · {{ entry.mood }}{% endif %}</p>
+  </div>
+</div>
+
+<form class="card mb-4" method="post" action="/admin/diary/{{ entry.id }}" enctype="multipart/form-data" style="max-width:720px;">
+  <div class="row g-3">
+    <div class="col-12">
+      <label class="form-label">Title</label>
+      <input class="form-control" name="title" required value="{{ entry.title }}" maxlength="255">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Date</label>
+      <input class="form-control" type="date" name="entry_date" value="{{ entry.entry_date }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Category</label>
+      <select class="form-select" name="category_id">
+        <option value="">None</option>
+        {% for c in categories %}
+        <option value="{{ c.id }}" {% if entry.category_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12">
+      <label class="form-label">Description</label>
+      <textarea class="form-control" name="body" rows="10">{{ entry.body or '' }}</textarea>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Tags</label>
+      <input class="form-control" name="tags" value="{{ entry.tags or '' }}">
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">Mood</label>
+      <input class="form-control" name="mood" value="{{ entry.mood or '' }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label">Add photos</label>
+      <input class="form-control" type="file" name="images" accept="image/*" multiple>
+    </div>
+    <div class="col-12">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" name="pinned" value="1" id="pinned" {% if entry.pinned %}checked{% endif %}>
+        <label class="form-check-label" for="pinned">Pinned</label>
+      </div>
+    </div>
+    <div class="col-12 d-flex gap-2 flex-wrap">
+      <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save</button>
+      <a class="btn btn-ghost" href="/admin/diary">Back</a>
+    </div>
+  </div>
+</form>
+
+{% if entry.images %}
+<div class="card mb-4" style="max-width:720px;">
+  <h2 class="h6 mb-3">Photos</h2>
+  <div class="row g-3">
+    {% for img in entry.images %}
+    <div class="col-6 col-md-4">
+      <a href="/admin/diary/{{ entry.id }}/images/{{ img.id }}" target="_blank" rel="noopener">
+        <img src="/admin/diary/{{ entry.id }}/images/{{ img.id }}" alt="{{ img.original_filename }}"
+             style="width:100%;height:140px;object-fit:cover;border-radius:12px;border:1px solid var(--stroke);">
+      </a>
+      <form class="mt-2" method="post" action="/admin/diary/{{ entry.id }}/images/{{ img.id }}/delete"
+            data-confirm="Remove this photo?">
+        <button class="btn btn-ghost btn-sm" type="submit">Remove</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<form method="post" action="/admin/diary/{{ entry.id }}/delete" data-confirm="Delete this diary entry and its photos?">
+  <button class="btn btn-ghost text-danger" type="submit"><i class="bi bi-trash3"></i> Delete entry</button>
+</form>
+{% endblock %}

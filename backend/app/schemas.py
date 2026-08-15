@@ -44,9 +44,15 @@ class UserOut(BaseModel):
     vault_owner_id: Optional[str] = None
     totp_enabled: bool = False
     app_approve: bool = False
+    enabled_modules: Optional[List[str]] = None
 
     class Config:
         from_attributes = True
+
+
+class ModulesUpdateIn(BaseModel):
+    """Super Admin: set which modules a vault owner may open. Null/empty = all."""
+    enabled_modules: Optional[List[str]] = None
 
 
 class AppApproveIn(BaseModel):
@@ -1212,6 +1218,64 @@ class LockerSummaryOut(BaseModel):
     types: List[LockerTypeOut] = []
 
 
+# ---------- Digital Diary ----------
+class DiaryCategoryIn(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    color: Optional[str] = Field(default=None, max_length=16)
+    sort_order: Optional[int] = None
+
+
+class DiaryCategoryOut(BaseModel):
+    id: str
+    name: str
+    color: Optional[str] = None
+    sort_order: int = 0
+    is_default: bool = False
+    count: int = 0
+
+
+class DiaryImageOut(BaseModel):
+    id: str
+    entry_id: str
+    original_filename: str
+    file_type: Optional[str] = None
+    file_size: Optional[int] = None
+    created_at: datetime
+
+
+class DiaryEntryUpdate(BaseModel):
+    title: Optional[str] = None
+    body: Optional[str] = None
+    entry_date: Optional[str] = None
+    category_id: Optional[str] = None
+    tags: Optional[str] = None
+    mood: Optional[str] = None
+    pinned: Optional[bool] = None
+
+
+class DiaryEntryOut(BaseModel):
+    id: str
+    title: str
+    body: Optional[str] = None
+    entry_date: str
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
+    category_color: Optional[str] = None
+    tags: Optional[str] = None
+    mood: Optional[str] = None
+    pinned: bool = False
+    image_count: int = 0
+    images: List[DiaryImageOut] = []
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+
+class DiarySummaryOut(BaseModel):
+    total: int = 0
+    pinned: int = 0
+    categories: List[DiaryCategoryOut] = []
+
+
 # ---------- URL Vault ----------
 class UrlCategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
@@ -1570,6 +1634,21 @@ class ShopCatalogItemIn(BaseModel):
     category: str = Field(default="custom", max_length=80)
     scope: str = Field(default="personal", max_length=20)  # personal | global
     aliases: Optional[str] = Field(default=None, max_length=500)
+
+
+class ShopCatalogTranslateIn(BaseModel):
+    q: str = ""
+    text: str = ""
+
+
+class ShopCatalogTranslateOut(BaseModel):
+    english: str
+    malayalam: Optional[str] = None
+    emoji: str = "🛒"
+    category: str = "custom"
+    source: str
+    manglish: str
+    score: Optional[int] = None
 
 
 class ShopCatalogItemOut(BaseModel):

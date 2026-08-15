@@ -7,9 +7,9 @@ from sqlalchemy.orm import Session
 from app import ai_chat, ai_providers as ap
 from app import models, schemas
 from app.database import get_db
-from app.deps import get_current_user, require_owner
+from app.deps import require_enabled_module, get_current_user, require_owner
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+router = APIRouter(prefix="/ai", tags=["ai"], dependencies=[Depends(require_enabled_module("ai"))])
 
 
 def _out(row: models.AiProvider) -> schemas.AiProviderOut:
