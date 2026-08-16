@@ -600,7 +600,9 @@ def delete_document(
     require_owner(current_user)
     doc = _get_owned_document(document_id, db, current_user)
     # Delete all associated files from disk
-    for f in doc.files:
+    for f in list(doc.files or []):
+        if not f.file_path:
+            continue
         enc_path = settings.STORAGE_DIR / f.file_path
         if enc_path.exists():
             enc_path.unlink()
@@ -612,10 +614,20 @@ def delete_document(
     # Delete archived version files + rows, and any share links / audit rows pointing at this doc
     versions = db.query(models.DocumentVersion).filter(models.DocumentVersion.document_id == doc.id).all()
     for v in versions:
-        for entry in json.loads(v.files_json):
-            p = settings.STORAGE_DIR / entry["file_path"]
-            if p.exists():
-                p.unlink()
+        try:
+            entries = json.loads(v.files_json or "[]")
+        except Exception:
+            entries = []
+        if isinstance(entries, list):
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                rel = entry.get("file_path")
+                if not rel:
+                    continue
+                p = settings.STORAGE_DIR / rel
+                if p.exists():
+                    p.unlink()
         db.delete(v)
     share_ids = [row.id for row in db.query(models.ShareLink).filter(models.ShareLink.document_id == doc.id).all()]
     if share_ids:
@@ -625,5 +637,19 @@ def delete_document(
     db.query(models.LabReading).filter(models.LabReading.document_id == doc.id).delete()
     db.query(models.Favorite).filter(models.Favorite.document_id == doc.id).delete()
     db.query(models.RecentOpen).filter(models.RecentOpen.document_id == doc.id).delete()
+    db.query(models.SharePackItem).filter(models.SharePackItem.document_id == doc.id).delete()
+    # Nullable FKs — detach rather than delete the parent rows.
+    db.query(models.Reminder).filter(models.Reminder.document_id == doc.id).update(
+        {models.Reminder.document_id: None}, synchronize_session=False
+    )
+    db.query(models.Medicine).filter(models.Medicine.document_id == doc.id).update(
+        {models.Medicine.document_id: None}, synchronize_session=False
+    )
+    db.query(models.VaccinationRecord).filter(models.VaccinationRecord.document_id == doc.id).update(
+        {models.VaccinationRecord.document_id: None}, synchronize_session=False
+    )
+    db.query(models.Claim).filter(models.Claim.document_id == doc.id).update(
+        {models.Claim.document_id: None}, synchronize_session=False
+    )
     db.delete(doc)
     db.commit()

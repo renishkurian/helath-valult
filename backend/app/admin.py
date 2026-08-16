@@ -858,16 +858,13 @@ def documents_delete(
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    doc = (
-        db.query(models.Document).join(models.Person)
-        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user)).first()
-    )
-    if doc:
-        enc_path = settings.STORAGE_DIR / doc.file_path
-        if enc_path.exists():
-            enc_path.unlink()
-        db.delete(doc)
-        db.commit()
+    # Reuse API delete so DocumentFile / versions / shares / favorites are cleaned up.
+    from app.routers.documents import delete_document
+    try:
+        delete_document(document_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (403, 404):
+            raise
     if category:
         return RedirectResponse(f"/admin/documents?person={person_id}&category={category}", status_code=302)
     return RedirectResponse(f"/admin?person={person_id}", status_code=302)
