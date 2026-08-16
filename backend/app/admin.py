@@ -4428,6 +4428,7 @@ async def expense_analyser_post_item(item_id: str, request: Request, db: Session
             subcategory_id=str(form.get("subcategory_id") or "") or None,
             new_category=str(form.get("new_category") or "").strip() or None,
             new_subcategory=str(form.get("new_subcategory") or "").strip() or None,
+            payee=str(form.get("payee") or "").strip() or None,
         )
     except (LookupError, RuntimeError) as exc:
         return RedirectResponse(f"/admin/expense-analyser?err={exc}", status_code=302)

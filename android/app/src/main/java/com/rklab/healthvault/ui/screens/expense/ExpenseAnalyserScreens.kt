@@ -257,12 +257,16 @@ fun ExpenseAnalyserInboxScreen(
                         item = item,
                         accounts = accounts,
                         categories = categories,
-                        onPost = { accountId, categoryId ->
+                        onPost = { accountId, categoryId, payee ->
                             scope.launch {
                                 runCatching {
                                     repository.postExpenseAnalyserItem(
                                         item.id,
-                                        ExpenseAnalyserPostIn(account_id = accountId, category_id = categoryId)
+                                        ExpenseAnalyserPostIn(
+                                            account_id = accountId,
+                                            category_id = categoryId,
+                                            payee = payee
+                                        )
                                     )
                                 }.onSuccess {
                                     Toast.makeText(context, "Posted to Money Manager", Toast.LENGTH_SHORT).show()
@@ -305,7 +309,7 @@ private fun InboxCard(
     item: ExpenseAnalyserItemOut,
     accounts: List<FinanceAccountOut>,
     categories: List<FinanceCategoryOut>,
-    onPost: (accountId: String?, categoryId: String?) -> Unit,
+    onPost: (accountId: String?, categoryId: String?, payee: String?) -> Unit,
     onIgnore: () -> Unit
 ) {
     val kind = if (item.direction == "credit") "income" else "expense"
@@ -314,6 +318,7 @@ private fun InboxCard(
     var categoryId by remember(item.id) {
         mutableStateOf(parents.firstOrNull { it.name.equals(item.suggested_category?.substringBefore(" / "), true) }?.id)
     }
+    var payee by remember(item.id) { mutableStateOf(itemTitle(item)) }
     var accountOpen by remember { mutableStateOf(false) }
     var categoryOpen by remember { mutableStateOf(false) }
     val amountColor = if (item.direction == "credit") IncomeBlue else ExpenseRed
@@ -370,6 +375,14 @@ private fun InboxCard(
         }
         if (canPost) {
             Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = payee,
+                onValueChange = { payee = it.take(255) },
+                label = { Text("Title / payee") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box {
                     OutlinedButton(onClick = { accountOpen = true }) {
@@ -396,7 +409,7 @@ private fun InboxCard(
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
-                    onClick = { onPost(accountId, categoryId) },
+                    onClick = { onPost(accountId, categoryId, payee.trim().ifBlank { null }) },
                     colors = ButtonDefaults.buttonColors(containerColor = Navy),
                     enabled = item.amount != null && item.amount > 0
                 ) { Text("Post") }

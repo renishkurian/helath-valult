@@ -1609,6 +1609,8 @@ class ExpenseAnalyserPostIn(BaseModel):
     subcategory_id: Optional[str] = None
     new_category: Optional[str] = None
     new_subcategory: Optional[str] = None
+    # Ledger payee / title shown in Money Manager (override email subject junk).
+    payee: Optional[str] = Field(default=None, max_length=255)
 
 
 class ExpenseAnalyserRetagIn(BaseModel):

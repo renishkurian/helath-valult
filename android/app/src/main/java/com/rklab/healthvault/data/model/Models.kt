@@ -1295,7 +1295,8 @@ data class ExpenseAnalyserPostIn(
     val category_id: String? = null,
     val subcategory_id: String? = null,
     val new_category: String? = null,
-    val new_subcategory: String? = null
+    val new_subcategory: String? = null,
+    val payee: String? = null
 )
 
 data class ExpenseAnalyserPostOut(

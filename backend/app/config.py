@@ -64,6 +64,8 @@ class Settings:
     SYSTEM_SMTP_TLS: bool = os.getenv("SYSTEM_SMTP_TLS", "").strip().lower() in ("1", "true", "yes")
     SHARE_IDLE_DAYS: int = int(os.getenv("SHARE_IDLE_DAYS", "14"))
     OCR_LANGS: str = os.getenv("OCR_LANGS", "eng+mal+tam+hin")
+    # Calendar day for Ask AI / finance “today” (household is India by default).
+    VAULT_TIMEZONE: str = os.getenv("VAULT_TIMEZONE", "Asia/Kolkata").strip() or "Asia/Kolkata"
 
 settings = Settings()
 settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)

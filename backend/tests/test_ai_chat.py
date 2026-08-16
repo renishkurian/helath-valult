@@ -115,6 +115,51 @@ def test_context_includes_hospital_and_card_not_secrets():
     assert "omitted" in ctx.lower()
 
 
+def test_today_money_manager_block_in_context():
+    from app.ai_chat import vault_today
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        acc = models.FinanceAccount(
+            user_id=uid, name="Cash", account_type="cash",
+        )
+        db.add(acc)
+        db.flush()
+        cat = models.FinanceCategory(user_id=uid, name="Transport", kind="expense")
+        db.add(cat)
+        db.flush()
+        day = vault_today()
+        db.add(models.FinanceTransaction(
+            user_id=uid, account_id=acc.id, category_id=cat.id,
+            txn_type="expense", amount=Decimal("962.00"),
+            txn_date=day, payee="Be A Bank Employee", payment_method="credit_card",
+        ))
+        db.add(models.FinanceTransaction(
+            user_id=uid, account_id=acc.id, category_id=cat.id,
+            txn_type="expense", amount=Decimal("88.00"),
+            txn_date=day, payee="HDFC Bank", payment_method="upi",
+        ))
+        # Diary petrol must not replace ledger “today”
+        from app import crypto
+        db.add(models.DiaryEntry(
+            user_id=uid, title="Petrol", body_enc=crypto.encrypt_text("Petrol | 250"),
+            entry_date="2026-08-15",
+        ))
+        db.commit()
+        ctx = build_vault_context(db, user, "What is the todays total expense")
+    finally:
+        db.close()
+
+    assert f"Today (Money Manager) {day}" in ctx
+    assert "1,050.00" in ctx or "1050.00" in ctx.replace(",", "")
+    assert "Be A Bank Employee" in ctx
+    assert "HDFC Bank" in ctx
+    assert "not Money Manager ledger spend" in ctx
+
+
 def test_chat_requires_provider():
     headers, _ = _headers()
     r = client.post("/ai/chat", headers=headers, json={"message": "How much did we spend?"})

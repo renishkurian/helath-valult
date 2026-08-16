@@ -258,6 +258,41 @@ def test_post_creates_category_and_subcategory():
         db.close()
 
 
+def test_post_custom_payee_overrides_email_title():
+    headers, email = _headers()
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        item = models.ExpenseAnalyserItem(
+            user_id=uid,
+            gmail_message_id="g-custom-payee",
+            kind="alert",
+            subject="Email Id Registered With SBI To",
+            direction="debit",
+            amount=Decimal("500.00"),
+            payee="Email Id Registered With SBI To",
+            txn_date="2026-08-16",
+            payment_method="debit_card",
+            status="pending",
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        txn = post_to_finance(
+            db, user, item.id,
+            account_id=accounts[0]["id"],
+            payee="FED ATM",
+        )
+        assert txn.payee == "FED ATM"
+        db.refresh(item)
+        assert item.payee == "FED ATM"
+        assert item.status == "posted"
+    finally:
+        db.close()
+
+
 def test_clear_inbox_removes_all_items():
     headers, email = _headers()
     db = SessionLocal()

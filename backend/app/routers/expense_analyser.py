@@ -112,6 +112,7 @@ def post_item(
             subcategory_id=body.subcategory_id,
             new_category=body.new_category,
             new_subcategory=body.new_subcategory,
+            payee=body.payee,
         )
     except LookupError as exc:
         raise HTTPException(404, str(exc)) from exc

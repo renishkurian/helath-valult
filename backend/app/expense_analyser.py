@@ -1449,6 +1449,7 @@ def post_to_finance(
     subcategory_id: str | None = None,
     new_category: str | None = None,
     new_subcategory: str | None = None,
+    payee: str | None = None,
 ) -> models.FinanceTransaction:
     """Create a Money Manager transaction from an analyser item (explicit bridge)."""
     from app.routers import finance as fn
@@ -1460,6 +1461,10 @@ def post_to_finance(
         raise RuntimeError("Item needs an amount before posting")
     if item.kind == "bill":
         raise RuntimeError("Post bill line items, not the statement header")
+
+    custom_payee = (payee or "").strip() or None
+    if custom_payee:
+        item.payee = finance_ai.normalize_payee(custom_payee) or custom_payee[:255]
 
     fn.ensure_defaults(db, user)
     uid = vault_id(user)
