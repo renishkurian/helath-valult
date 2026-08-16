@@ -381,6 +381,13 @@
               <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
                 <i class="bi bi-download"></i> Download
               </a>
+              <form class="d-inline" method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
+                <input type="hidden" name="person_id" value="{{ active_person.id }}">
+                <input type="hidden" name="category" value="">
+                <button class="btn btn-ghost btn-sm text-danger" type="submit">
+                  <i class="bi bi-trash3"></i> Delete
+                </button>
+              </form>
             </td>
           </tr>
           {% else %}
