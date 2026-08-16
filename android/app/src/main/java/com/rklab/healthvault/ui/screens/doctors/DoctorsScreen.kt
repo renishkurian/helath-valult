@@ -193,7 +193,7 @@ private fun DoctorBizCard(
         colors = CardDefaults.cardColors(containerColor = HubDock),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
                     modifier = Modifier
