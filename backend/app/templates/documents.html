@@ -99,7 +99,7 @@
               <i class="bi {{ cat_icons.get(doc.category, 'bi-file-earmark') }}"></i>
             </div>
             <div class="min-w-0">
-              <div class="hv-file-name mono truncate">{{ doc.title | nice }}</div>
+              <div class="hv-file-name mono truncate">{{ doc.title | nice }}{% if doc.file_count and doc.file_count > 1 %} <span class="text-faint">({{ doc.file_count }} files)</span>{% endif %}</div>
               <div class="hv-file-meta">{{ ddate }}{% if doc.hospital_name and doc.category != 'insurance' %} · {{ doc.hospital_name | nice }}{% endif %}</div>
             </div>
           </div>
@@ -183,7 +183,7 @@
         <i class="bi {{ cat_icons.get(doc.category, 'bi-file-earmark') }}"></i>
       </div>
       <div class="min-w-0">
-        <div class="hv-file-name truncate">{{ doc.title | nice }}</div>
+        <div class="hv-file-name truncate">{{ doc.title | nice }}{% if doc.file_count and doc.file_count > 1 %} <span class="text-faint">({{ doc.file_count }} files)</span>{% endif %}</div>
         <div class="hv-file-meta">
           <span class="hv-tag-pill" style="color:{{ cat_colors.get(doc.category, '#8B95A8') }}">
             <span class="dot" style="background:{{ cat_colors.get(doc.category, '#8B95A8') }}"></span>

@@ -9,7 +9,7 @@
       Health Vault
     </div>
     <h1 class="page-title">Reminders</h1>
-    <p class="page-lead">Appointments, refills, and follow-ups for everyone in the household.</p>
+    <p class="page-lead">Appointments, refills, and follow-ups for everyone in the household. Your phone gets a notification at the chosen time when the Vault app is signed in.</p>
   </div>
   <div class="page-actions">
     <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder" aria-controls="add-reminder">
@@ -99,10 +99,11 @@
           </td>
           <td class="mono text-muted">{{ r.remind_at.strftime('%d %b, %I:%M %p') }}</td>
           <td>
-            {% if r.repeat_rule and r.repeat_rule != 'none' %}
-              <span class="badge badge-info"><i class="bi bi-arrow-repeat"></i> {{ r.repeat_rule | nice }}</span>
+            {% set rule = r.repeat_rule.value if r.repeat_rule is not none else 'none' %}
+            {% if rule and rule != 'none' %}
+              <span class="badge badge-info"><i class="bi bi-arrow-repeat"></i> {{ rule | nice }}</span>
             {% else %}
-              <span class="text-faint">{{ r.repeat_rule | nice }}</span>
+              <span class="text-faint">None</span>
             {% endif %}
           </td>
           <td class="table-actions">

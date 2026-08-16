@@ -97,23 +97,37 @@ def card_out(card: models.HospitalCard) -> dict:
 
 
 def doc_out(doc: models.Document) -> dict:
+    file_count = len(doc.files) if doc.files else (1 if doc.file_path else 0)
     return {
         "id": doc.id, "person_id": doc.person_id, "category": doc.category.value, "title": doc.title,
         "hospital_name": doc.hospital_name, "doc_date": doc.doc_date,
         "expiry_date": doc.expiry_date, "tags": doc.tags, "amount": doc.amount,
         "file_size": doc.file_size or 0, "created_at": doc.created_at,
         "file_type": (doc.file_type or "").split(";")[0].strip().lower(),
+        "file_count": file_count,
         "notes": crypto.decrypt_text(doc.notes_enc),
     }
 
 
-def _admin_document_bytes(doc: models.Document) -> tuple[bytes, str, str]:
-    """Decrypt the first attached file for admin download/view. Returns (bytes, mime, filename)."""
+def _admin_pick_file(doc: models.Document, file_id: str | None = None):
+    """Return the DocumentFile (or None for legacy single-file docs)."""
     if doc.files:
-        first = doc.files[0]
-        enc_path = settings.STORAGE_DIR / first.file_path
-        mime = first.file_type or "application/octet-stream"
-        fname = first.original_filename
+        if file_id:
+            target = next((f for f in doc.files if f.id == file_id), None)
+            if not target:
+                raise FileNotFoundError("File not found")
+            return target
+        return doc.files[0]
+    return None
+
+
+def _admin_document_bytes(doc: models.Document, file_id: str | None = None) -> tuple[bytes, str, str]:
+    """Decrypt an attached file for admin download/view. Returns (bytes, mime, filename)."""
+    picked = _admin_pick_file(doc, file_id)
+    if picked is not None:
+        enc_path = settings.STORAGE_DIR / picked.file_path
+        mime = picked.file_type or "application/octet-stream"
+        fname = picked.original_filename
     elif doc.file_path:
         enc_path = settings.STORAGE_DIR / doc.file_path
         mime = doc.file_type or "application/octet-stream"
@@ -125,16 +139,20 @@ def _admin_document_bytes(doc: models.Document) -> tuple[bytes, str, str]:
     return crypto.decrypt_bytes(enc_path.read_bytes()), mime, fname
 
 
-def _admin_save_document_bytes(doc: models.Document, raw: bytes, mime: str) -> None:
-    """Overwrite the first attached encrypted file (legacy path or DocumentFile)."""
-    if doc.files:
-        first = doc.files[0]
-        enc_path = settings.STORAGE_DIR / first.file_path
+def _admin_save_document_bytes(
+    doc: models.Document, raw: bytes, mime: str, file_id: str | None = None
+) -> None:
+    """Overwrite an attached encrypted file (legacy path or DocumentFile)."""
+    picked = _admin_pick_file(doc, file_id)
+    if picked is not None:
+        enc_path = settings.STORAGE_DIR / picked.file_path
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
-        first.file_type = mime
-        first.file_size = len(raw)
-        doc.file_type = mime
-        doc.file_size = len(raw)
+        picked.file_type = mime
+        picked.file_size = len(raw)
+        # Keep document-level mime/size in sync with the first page.
+        if not file_id or (doc.files and doc.files[0].id == picked.id):
+            doc.file_type = mime
+            doc.file_size = len(raw)
         return
     if doc.file_path:
         enc_path = settings.STORAGE_DIR / doc.file_path
@@ -1195,7 +1213,7 @@ async def documents_add(
 
 
 @router.get("/documents/{document_id}/download")
-def documents_download(request: Request, document_id: str, db: Session = Depends(get_db)):
+def documents_download(request: Request, document_id: str, file: str | None = None, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1206,7 +1224,7 @@ def documents_download(request: Request, document_id: str, db: Session = Depends
     if not doc:
         return RedirectResponse("/admin", status_code=302)
     try:
-        plain, mime, fname = _admin_document_bytes(doc)
+        plain, mime, fname = _admin_document_bytes(doc, file)
     except FileNotFoundError:
         return RedirectResponse("/admin", status_code=302)
     safe = fname.replace('"', "")
@@ -1217,7 +1235,12 @@ def documents_download(request: Request, document_id: str, db: Session = Depends
 
 
 @router.get("/documents/{document_id}/view")
-def documents_view(request: Request, document_id: str, db: Session = Depends(get_db)):
+def documents_view(
+    request: Request,
+    document_id: str,
+    file: str | None = None,
+    db: Session = Depends(get_db),
+):
     """Raw file bytes (inline). Prefer /viewer for the UI page."""
     user = require_login(request, db)
     if not user:
@@ -1233,7 +1256,7 @@ def documents_view(request: Request, document_id: str, db: Session = Depends(get
     if not doc:
         raise HTTPException(404, "Document not found")
     try:
-        plain, mime, fname = _admin_document_bytes(doc)
+        plain, mime, fname = _admin_document_bytes(doc, file)
     except FileNotFoundError:
         raise HTTPException(404, "File not found")
     safe = fname.replace('"', "")
@@ -1247,8 +1270,13 @@ def documents_view(request: Request, document_id: str, db: Session = Depends(get
 
 
 @router.get("/documents/{document_id}/viewer", response_class=HTMLResponse)
-def documents_viewer_page(request: Request, document_id: str, db: Session = Depends(get_db)):
-    """Full-window document viewer with rotate/save for images."""
+def documents_viewer_page(
+    request: Request,
+    document_id: str,
+    file: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """Full-window document viewer with rotate/save for images and multi-file paging."""
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1264,9 +1292,33 @@ def documents_viewer_page(request: Request, document_id: str, db: Session = Depe
         raise HTTPException(404, "Document not found")
     person = doc.person
     out = doc_out(doc)
-    mime = out.get("file_type") or ""
+
+    file_rows = list(doc.files or [])
+    files_meta = [
+        {
+            "id": f.id,
+            "name": f.original_filename,
+            "mime": (f.file_type or "").split(";")[0].strip().lower(),
+            "size": f.file_size or 0,
+            "index": idx + 1,
+        }
+        for idx, f in enumerate(file_rows)
+    ]
+    current = None
+    if files_meta:
+        current = next((f for f in files_meta if f["id"] == file), None) if file else files_meta[0]
+        if current is None:
+            current = files_meta[0]
+    current_id = current["id"] if current else None
+    mime = (current["mime"] if current else out.get("file_type")) or ""
     is_image = mime.startswith("image/")
     is_pdf = mime == "application/pdf"
+    idx = (current["index"] - 1) if current else 0
+    prev_file = files_meta[idx - 1] if current and idx > 0 else None
+    next_file = files_meta[idx + 1] if current and idx + 1 < len(files_meta) else None
+    file_q = f"?file={current_id}" if current_id else ""
+    view_url = f"/admin/documents/{document_id}/view{file_q}"
+
     return templates.TemplateResponse("document_viewer.html", {
         "request": request,
         "session_user": user,
@@ -1275,9 +1327,14 @@ def documents_viewer_page(request: Request, document_id: str, db: Session = Depe
         "active_person": person,
         "active_person_id": person.id if person else None,
         "doc": out,
+        "files": files_meta,
+        "current_file": current,
+        "prev_file": prev_file,
+        "next_file": next_file,
         "is_image": is_image,
         "is_pdf": is_pdf,
-        "file_url": f"/admin/documents/{document_id}/view",
+        "file_url": view_url,
+        "download_url": f"/admin/documents/{document_id}/download{file_q}",
         "cache_bust": int(datetime.utcnow().timestamp()),
         "saved": request.query_params.get("ok") == "1",
         "rotated": request.query_params.get("rotated") == "1",
@@ -1387,6 +1444,7 @@ def documents_rotate(
     request: Request,
     document_id: str,
     degrees: int = Form(90),
+    file: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.imaging import rotate_image_bytes
@@ -1403,16 +1461,18 @@ def documents_rotate(
     )
     if not doc:
         raise HTTPException(404, "Document not found")
+    file_id = (file or "").strip() or None
     try:
-        plain, mime, _fname = _admin_document_bytes(doc)
+        plain, mime, _fname = _admin_document_bytes(doc, file_id)
         rotated, new_mime = rotate_image_bytes(plain, degrees, mime)
-        _admin_save_document_bytes(doc, rotated, new_mime)
+        _admin_save_document_bytes(doc, rotated, new_mime, file_id)
         db.commit()
     except FileNotFoundError:
         raise HTTPException(404, "File not found")
     except HTTPException:
         raise
-    return RedirectResponse(f"/admin/documents/{document_id}/viewer?rotated=1", status_code=302)
+    q = f"?rotated=1&file={file_id}" if file_id else "?rotated=1"
+    return RedirectResponse(f"/admin/documents/{document_id}/viewer{q}", status_code=302)
 
 
 @router.post("/documents/{document_id}/delete")
@@ -1635,6 +1695,9 @@ def reminders_add(
         )
         db.add(reminder)
         db.commit()
+        db.refresh(reminder)
+        from app.routers.reminders import push_reminder_schedule
+        push_reminder_schedule(db, user, reminder)
     return RedirectResponse(f"/admin/reminders?person={person_id}", status_code=302)
 
 
@@ -1649,8 +1712,11 @@ def reminders_delete(request: Request, reminder_id: str, db: Session = Depends(g
     )
     person_id = r.person_id if r else None
     if r:
+        rid = r.id
         db.delete(r)
         db.commit()
+        from app.routers.reminders import push_reminder_cancel
+        push_reminder_cancel(db, user, rid)
     return RedirectResponse(f"/admin/reminders?person={person_id}" if person_id else "/admin/reminders", status_code=302)
 
 

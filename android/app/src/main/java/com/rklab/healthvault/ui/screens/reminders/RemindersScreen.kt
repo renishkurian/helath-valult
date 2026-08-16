@@ -35,7 +35,11 @@ fun RemindersScreen(repository: HealthVaultRepository, activePersonId: String?) 
     val context = LocalContext.current
     var showAddDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { viewModel.load() }
+    LaunchedEffect(Unit) {
+        viewModel.loadAndReschedule {
+            ReminderScheduler.rescheduleAll(context)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {

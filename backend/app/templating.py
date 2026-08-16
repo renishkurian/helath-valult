@@ -38,9 +38,14 @@ def nice_name(value) -> str:
     """Display names in title case. Leaves emails and filenames alone."""
     if value is None:
         return ""
+    # SQLAlchemy / Python enums → use their stored value (e.g. RepeatRule.none → "none")
+    if hasattr(value, "value") and not isinstance(value, (str, bytes)):
+        value = value.value
     text = str(value).strip()
     if not text:
         return ""
+    if text.startswith("RepeatRule."):
+        text = text.split(".", 1)[-1]
     if "@" in text:
         return text
     if "." in text and " " not in text:

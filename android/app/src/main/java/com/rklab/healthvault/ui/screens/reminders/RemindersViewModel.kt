@@ -32,6 +32,20 @@ class RemindersViewModel(private val repository: HealthVaultRepository) : ViewMo
         }
     }
 
+    /** Call from UI with a Context so local alarms stay in sync after load. */
+    fun loadAndReschedule(reschedule: () -> Unit) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(loading = true)
+            try {
+                val reminders = repository.listReminders(upcomingOnly = true)
+                _state.value = _state.value.copy(loading = false, reminders = reminders.sortedBy { it.remind_at })
+                reschedule()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(loading = false, error = "Couldn't load reminders.")
+            }
+        }
+    }
+
     fun addReminder(
         personId: String,
         title: String,

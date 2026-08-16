@@ -15,12 +15,14 @@
     <p class="page-lead">
       {% if doc.hospital_name %}{{ doc.hospital_name | nice }} · {% endif %}
       {% if doc.doc_date %}{{ doc.doc_date }}{% else %}{{ doc.created_at.strftime('%Y-%m-%d') }}{% endif %}
-      {% if doc.file_size %} · {{ (doc.file_size / 1024) | round(0) | int }} KB{% endif %}
+      {% if current_file and current_file.size %} · {{ (current_file.size / 1024) | round(0) | int }} KB
+      {% elif doc.file_size %} · {{ (doc.file_size / 1024) | round(0) | int }} KB{% endif %}
+      {% if files|length > 1 %} · {{ files|length }} files{% endif %}
     </p>
   </div>
   <div class="page-actions">
     <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/edit"><i class="bi bi-pencil"></i> Edit</a>
-    <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/download"><i class="bi bi-download"></i> Download</a>
+    <a class="btn btn-outline-light" href="{{ download_url }}"><i class="bi bi-download"></i> Download</a>
     {% if active_person %}
     <a class="btn btn-ghost" href="/admin/documents?person={{ active_person.id }}{% if doc.category %}&category={{ doc.category }}{% endif %}"><i class="bi bi-arrow-left"></i> Back</a>
     {% endif %}
@@ -31,36 +33,79 @@
 <div class="alert alert-success py-2">Rotated image saved.</div>
 {% endif %}
 
+{% if files|length > 1 %}
+<nav class="doc-file-pager mb-3" aria-label="Files in this document">
+  <div class="doc-file-pager-nav">
+    {% if prev_file %}
+    <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/viewer?file={{ prev_file.id }}" title="Previous file">
+      <i class="bi bi-chevron-left"></i> Previous
+    </a>
+    {% else %}
+    <button class="btn btn-outline-light" type="button" disabled><i class="bi bi-chevron-left"></i> Previous</button>
+    {% endif %}
+    <span class="doc-file-pager-count mono">
+      File {{ current_file.index }} / {{ files|length }}
+    </span>
+    {% if next_file %}
+    <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/viewer?file={{ next_file.id }}" title="Next file">
+      Next <i class="bi bi-chevron-right"></i>
+    </a>
+    {% else %}
+    <button class="btn btn-outline-light" type="button" disabled>Next <i class="bi bi-chevron-right"></i></button>
+    {% endif %}
+  </div>
+  <div class="doc-file-chips" role="list">
+    {% for f in files %}
+    <a class="doc-file-chip {% if current_file and f.id == current_file.id %}active{% endif %}"
+       role="listitem"
+       href="/admin/documents/{{ doc.id }}/viewer?file={{ f.id }}"
+       title="{{ f.name }}">
+      <span class="mono">{{ f.index }}</span>
+      <span class="truncate">{{ f.name }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  {% if current_file %}
+  <p class="doc-file-current text-faint small mb-0">
+    <i class="bi bi-file-earmark"></i> {{ current_file.name }}
+  </p>
+  {% endif %}
+</nav>
+{% endif %}
+
 <div class="card">
   <div class="card-body">
     {% if is_image %}
     <div class="doc-viewer-toolbar mb-3 d-flex flex-wrap gap-2 align-items-center">
       <form method="post" action="/admin/documents/{{ doc.id }}/rotate">
+        {% if current_file %}<input type="hidden" name="file" value="{{ current_file.id }}">{% endif %}
         <input type="hidden" name="degrees" value="90">
         <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-clockwise"></i> Rotate 90° &amp; save</button>
       </form>
       <form method="post" action="/admin/documents/{{ doc.id }}/rotate">
+        {% if current_file %}<input type="hidden" name="file" value="{{ current_file.id }}">{% endif %}
         <input type="hidden" name="degrees" value="180">
         <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-repeat"></i> Rotate 180° &amp; save</button>
       </form>
       <form method="post" action="/admin/documents/{{ doc.id }}/rotate">
+        {% if current_file %}<input type="hidden" name="file" value="{{ current_file.id }}">{% endif %}
         <input type="hidden" name="degrees" value="270">
         <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Rotate 270° &amp; save</button>
       </form>
       <span class="text-faint small ms-md-auto">Rotation is written to the encrypted file.</span>
     </div>
     <div class="doc-viewer-frame">
-      <img src="{{ file_url }}?t={{ cache_bust }}" alt="{{ doc.title | nice }}">
+      <img src="{{ file_url }}{% if '?' in file_url %}&{% else %}?{% endif %}t={{ cache_bust }}" alt="{{ current_file.name if current_file else doc.title | nice }}">
     </div>
     {% elif is_pdf %}
     <div class="doc-viewer-frame doc-viewer-pdf">
-      <iframe src="{{ file_url }}" title="{{ doc.title | nice }}"></iframe>
+      <iframe src="{{ file_url }}" title="{{ current_file.name if current_file else doc.title | nice }}"></iframe>
     </div>
     {% else %}
     <div class="empty-state py-5">
       <div class="empty-title">Preview not available</div>
       <p>This file type can’t be shown here. Download it instead.</p>
-      <a class="btn btn-primary" href="/admin/documents/{{ doc.id }}/download"><i class="bi bi-download"></i> Download</a>
+      <a class="btn btn-primary" href="{{ download_url }}"><i class="bi bi-download"></i> Download</a>
     </div>
     {% endif %}
   </div>

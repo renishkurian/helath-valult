@@ -2742,3 +2742,32 @@ body{
 .doc-viewer-pdf{ padding:0; display:block; }
 .doc-viewer-pdf iframe{ width:100%; height:min(78dvh, 920px); border:0; background:#fff; }
 .doc-viewer-toolbar .btn{ border-radius:10px; }
+
+.doc-file-pager{
+  display:flex; flex-direction:column; gap:.75rem;
+  padding:1rem 1.1rem; border-radius:var(--v-r-lg);
+  background:var(--v-surface); border:1px solid var(--v-line);
+}
+.doc-file-pager-nav{
+  display:flex; align-items:center; justify-content:space-between; gap:.75rem; flex-wrap:wrap;
+}
+.doc-file-pager-count{
+  font-size:.875rem; color:var(--v-ink-2); letter-spacing:.02em;
+}
+.doc-file-chips{
+  display:flex; flex-wrap:wrap; gap:.5rem;
+}
+.doc-file-chip{
+  display:inline-flex; align-items:center; gap:.45rem; max-width:100%;
+  padding:.4rem .7rem; border-radius:10px;
+  border:1px solid var(--v-line); background:var(--v-surface-2);
+  color:var(--v-ink-2); text-decoration:none; font-size:.75rem;
+  transition:border-color .15s, color .15s, background .15s;
+}
+.doc-file-chip span.truncate{ max-width:14rem; }
+.doc-file-chip:hover{ border-color:var(--v-line-2); color:var(--v-ink); }
+.doc-file-chip.active{
+  border-color:rgba(217,185,120,.55); color:var(--v-gold);
+  background:rgba(217,185,120,.1);
+}
+.doc-file-current{ display:flex; align-items:center; gap:.35rem; }

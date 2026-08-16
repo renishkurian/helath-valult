@@ -93,11 +93,26 @@ object ReminderScheduler {
         return from.plusSeconds(days * 86400)
     }
 
-    private fun parseIso(iso: String): Instant? = try {
-        LocalDateTime.parse(iso, DateTimeFormatter.ISO_DATE_TIME)
-            .atZone(ZoneId.systemDefault()).toInstant()
-    } catch (_: Exception) {
-        try { Instant.parse(iso) } catch (_: Exception) { null }
+    private fun parseIso(iso: String): Instant? {
+        val cleaned = iso.trim().replace(' ', 'T')
+        return try {
+            Instant.parse(cleaned)
+        } catch (_: Exception) {
+            val patterns = listOf(
+                DateTimeFormatter.ISO_DATE_TIME,
+                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm"),
+                DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS"),
+            )
+            for (fmt in patterns) {
+                try {
+                    return LocalDateTime.parse(cleaned, fmt).atZone(ZoneId.systemDefault()).toInstant()
+                } catch (_: Exception) {
+                    // try next
+                }
+            }
+            null
+        }
     }
 }
 

@@ -50,6 +50,7 @@ def create_reminder(
     db.add(reminder)
     db.commit()
     db.refresh(reminder)
+    push_reminder_schedule(db, current_user, reminder)
     return reminder
 
 
@@ -65,6 +66,57 @@ def _get_owned_reminder(reminder_id: str, db: Session, current_user: models.User
     return r
 
 
+def push_reminder_schedule(db: Session, user: models.User, rem: models.Reminder) -> int:
+    """Tell signed-in phones to set a local AlarmManager notification for this reminder."""
+    from app.push import send_fcm
+    from app.server_settings import fcm_service_account
+
+    account = fcm_service_account(db)
+    tokens = (
+        db.query(models.DeviceToken)
+        .filter(models.DeviceToken.user_id.in_([user.id, vault_id(user)]))
+        .all()
+    )
+    if not tokens or not account:
+        return 0
+    remind_iso = rem.remind_at.isoformat() if hasattr(rem.remind_at, "isoformat") else str(rem.remind_at)
+    title = rem.title or "Vault reminder"
+    body = rem.description or f"Due {remind_iso}"
+    data = {
+        "type": "reminder_schedule",
+        "id": rem.id,
+        "title": title,
+        "body": body,
+        "remind_at": remind_iso,
+        "repeat_rule": rem.repeat_rule.value if hasattr(rem.repeat_rule, "value") else str(rem.repeat_rule),
+    }
+    sent = 0
+    for tok in tokens:
+        if send_fcm(tok.token, title, body, data=data, account=account):
+            sent += 1
+    return sent
+
+
+def push_reminder_cancel(db: Session, user: models.User, reminder_id: str) -> int:
+    from app.push import send_fcm
+    from app.server_settings import fcm_service_account
+
+    account = fcm_service_account(db)
+    tokens = (
+        db.query(models.DeviceToken)
+        .filter(models.DeviceToken.user_id.in_([user.id, vault_id(user)]))
+        .all()
+    )
+    if not tokens or not account:
+        return 0
+    data = {"type": "reminder_cancel", "id": reminder_id, "title": "Reminder cancelled", "body": ""}
+    sent = 0
+    for tok in tokens:
+        if send_fcm(tok.token, "Reminder cancelled", "", data=data, account=account):
+            sent += 1
+    return sent
+
+
 @router.patch("/{reminder_id}", response_model=schemas.ReminderOut)
 def update_reminder(
     reminder_id: str,
@@ -78,6 +130,10 @@ def update_reminder(
         setattr(r, field, value)
     db.commit()
     db.refresh(r)
+    if r.is_active:
+        push_reminder_schedule(db, current_user, r)
+    else:
+        push_reminder_cancel(db, current_user, r.id)
     return r
 
 
@@ -99,6 +155,10 @@ def complete_reminder(
         r.is_active = False
     db.commit()
     db.refresh(r)
+    if r.is_active:
+        push_reminder_schedule(db, current_user, r)
+    else:
+        push_reminder_cancel(db, current_user, r.id)
     return r
 
 
@@ -110,8 +170,10 @@ def delete_reminder(
 ):
     require_owner(current_user)
     r = _get_owned_reminder(reminder_id, db, current_user)
+    rid = r.id
     db.delete(r)
     db.commit()
+    push_reminder_cancel(db, current_user, rid)
 
 
 @router.post("/dispatch")
@@ -147,12 +209,36 @@ def dispatch_due_reminders(
     sent = 0
     payload = []
     for rem in due:
+        remind_iso = rem.remind_at.isoformat() if hasattr(rem.remind_at, "isoformat") else str(rem.remind_at)
         payload.append({
             "id": rem.id, "title": rem.title, "description": rem.description,
-            "remind_at": rem.remind_at.isoformat() if hasattr(rem.remind_at, "isoformat") else str(rem.remind_at),
+            "remind_at": remind_iso,
             "repeat_rule": rem.repeat_rule.value,
         })
         for tok in tokens:
-            if send_fcm(tok.token, rem.title, rem.description or "", account=account):
+            if send_fcm(
+                tok.token,
+                rem.title,
+                rem.description or "",
+                data={
+                    "type": "reminder_due",
+                    "id": rem.id,
+                    "title": rem.title,
+                    "body": rem.description or "",
+                    "remind_at": remind_iso,
+                    "repeat_rule": rem.repeat_rule.value,
+                },
+                account=account,
+            ):
                 sent += 1
+        # Advance / deactivate so we don't re-push every cron tick.
+        nxt = _next_occurrence(rem.remind_at, rem.repeat_rule)
+        if nxt is not None:
+            rem.remind_at = nxt
+            rem.is_active = True
+            push_reminder_schedule(db, current_user, rem)
+        else:
+            rem.is_active = False
+            push_reminder_cancel(db, current_user, rem.id)
+    db.commit()
     return {"due": payload, "pushed": sent}

@@ -1,9 +1,12 @@
-# Health Vault API
+# Vault Hub API
 
-FastAPI backend for the Health Vault Android app. Stores hospital ID cards,
-medical documents (bills, reports, prescriptions, medicine photos), family
-member profiles, and reminders — with sensitive fields and files encrypted
-at rest.
+FastAPI backend for Vault Hub (Health Vault, Password Vault, Money Manager,
+Expense Analyser, AI, Document Vault, Shopping List, URL Vault, Digital Diary).
+Sensitive fields and files are encrypted at rest with `MASTER_KEY`. Browser
+admin UI and Android app share this API.
+
+Module overview and public share links: see the **[root README](../README.md)**.
+
 
 ## Quick start (local test)
 
@@ -106,33 +109,40 @@ Tables are created automatically on first run.
 
 ## Admin web UI
 
-`http://<your-pi>:8000/admin` — a browser version of the app, styled to
-match the mobile app's design system (parchment background, navy ID cards,
-folder tabs, ledger-style document lists). Log in with the same
-email/password as any account you've registered (via the app or
-`/auth/register`).
+`http://<your-pi>:8000/admin` — browser UI for every enabled module (same
+accounts as the Android app). Log in with email/password; optional TOTP,
+app-approve, and QR login when configured.
 
-Covers everything the API supports:
-- Dashboard: family switcher, hospital ID cards, expiry alerts, folders,
-  recent documents
-- Family: add/remove family members
-- Per-person hospital cards: add/delete (patient ID stored encrypted)
-- Documents: upload/download/delete, filtered by category
-- Reminders: add/delete, with repeat rules
+Covers:
+- **Module picker** — open only what Super Admin enabled for the vault
+- **Health** — family, cards, documents, care, reminders, shares, ICE, audit, storage
+- **Passwords** — items, generator, health report, Sends (grant / email OTP / requests)
+- **Finance** — accounts, ledger, budgets, EMIs, SMS inbox
+- **Expense Analyser** — Gmail sync, PDF statements, insights
+- **AI, Locker, Shopping List, URLs, Diary** — as in the [root README](../README.md)
+- **Super Admin** — users, modules, presence, failed logins, server settings (OAuth, FCM, mail, lockout)
 
-It uses its own signed session cookie (separate from the mobile app's JWT),
-so logging in on the web doesn't log you out of the phone and vice versa.
-Session cookies are signed with `JWT_SECRET` — make sure that's set to
-something real in `.env` before exposing this beyond localhost.
+It uses a signed session cookie (separate from the mobile JWT), so web and
+phone sessions do not invalidate each other. Cookies are signed with
+`JWT_SECRET`.
 
-**This is unauthenticated to the wider internet only by your network setup**
-— it has login, but no rate limiting or 2FA. Keep it behind WireGuard/LAN
-only, same as you would want for the API itself.
+Public share pages (doc, pack, Send, shop, URL, ICE) do not require login.
+Keep admin behind LAN / WireGuard / your tunnel edge the same way you would
+the API.
+
 
 ## API overview
 
-All endpoints except `/auth/register` and `/auth/login` require
-`Authorization: Bearer <access_token>`.
+Interactive docs: `http://localhost:8000/docs` (Swagger).
+
+Auth: register / login / refresh / me; optional TOTP; app-approve and QR
+challenges; viewer invites; device tokens for FCM.
+
+Most module routes require `Authorization: Bearer <access_token>` and respect
+per-vault module enablement. Public exceptions include share / Send / shop /
+ICE pages and short-link redirects (`/s`, `/p`, `/v`, `/u`, `/shop`, `/ice`).
+
+Core health-oriented examples:
 
 | Method | Path                          | Purpose                                  |
 |--------|-------------------------------|-------------------------------------------|
@@ -165,18 +175,21 @@ All endpoints except `/auth/register` and `/auth/login` require
 | POST   | `/auth/invite`                 | Create a view-only login for this vault |
 | GET    | `/audit`                       | Who viewed/downloaded/shared what |
 
-`category` for documents is one of: `hospital_card`, `prescription`,
+Additional prefixes (see Swagger for full lists): `/vault`, `/finance`,
+`/expense-analyser`, `/ai`, `/locker`, `/tracker`, `/urls`, `/diary`,
+`/storage`, `/health` (care APIs).
+
+`category` for health documents is one of: `hospital_card`, `prescription`,
 `lab_report`, `insurance`, `vaccination`, `bill`, `medicine`, `other`.
 
-## Notes / next steps worth considering
+## Notes
 
-- Add rate limiting on `/auth/login` (e.g. slowapi) before exposing this
-  outside your WireGuard network.
-- The reminder model stores `repeat_rule` but this API doesn't send
-  notifications itself — the Android app schedules local notifications via
-  WorkManager based on `remind_at`. If you want push reminders that fire
-  even when the phone hasn't synced recently, that'd need a small scheduler
-  job on the Pi plus FCM, which isn't included here.
-- Consider a periodic `storage/` backup (restic/rclone) to somewhere off the
-  Pi — encrypted files are useless without the DB, and vice versa, so back
-  up both together.
+- Prefer LAN / WireGuard / your tunnel edge for admin and API access.
+- Login lockout and optional reCAPTCHA are configurable in Super Admin →
+  Server settings; TOTP and app-approve further harden accounts.
+- The reminder model stores `repeat_rule`; the Android app schedules local
+  notifications. Server-side push for care reminders is not a separate
+  product feature beyond FCM used for login-approve and Send requests.
+- Back up `storage/` and the database together — encrypted files need the
+  DB (and `MASTER_KEY`) to be useful.
+- Feature inventory lives in the **[root README](../README.md)**.

@@ -69,6 +69,48 @@ class VaultFirebaseMessagingService : FirebaseMessagingService() {
                     LoginChallengeNotifier.show(app, challenge)
                 }
             }
+            "reminder_schedule" -> {
+                val id = data["id"].orEmpty()
+                if (id.isBlank()) return
+                val title = data["title"].orEmpty().ifBlank { "Vault reminder" }
+                val body = data["body"].orEmpty()
+                val remindAt = data["remind_at"].orEmpty()
+                if (remindAt.isBlank()) return
+                val repeat = runCatching {
+                    com.rklab.healthvault.data.model.RepeatRule.valueOf(
+                        data["repeat_rule"].orEmpty().uppercase().ifBlank { "NONE" }
+                    )
+                }.getOrDefault(com.rklab.healthvault.data.model.RepeatRule.NONE)
+                // Schedule local alarm — do not show a tray notification until the due time.
+                com.rklab.healthvault.util.ReminderScheduler.schedule(
+                    app, id, title, body, remindAt, repeat
+                )
+            }
+            "reminder_cancel" -> {
+                val id = data["id"].orEmpty()
+                if (id.isNotBlank()) {
+                    com.rklab.healthvault.util.ReminderScheduler.cancel(app, id)
+                }
+            }
+            "reminder_due" -> {
+                val title = data["title"].orEmpty().ifBlank { "Vault reminder" }
+                val body = data["body"].orEmpty()
+                GenericPushNotifier.show(app, title, body)
+                val id = data["id"].orEmpty()
+                val remindAt = data["remind_at"].orEmpty()
+                val repeat = runCatching {
+                    com.rklab.healthvault.data.model.RepeatRule.valueOf(
+                        data["repeat_rule"].orEmpty().uppercase().ifBlank { "NONE" }
+                    )
+                }.getOrDefault(com.rklab.healthvault.data.model.RepeatRule.NONE)
+                if (id.isNotBlank() && remindAt.isNotBlank() && repeat != com.rklab.healthvault.data.model.RepeatRule.NONE) {
+                    com.rklab.healthvault.util.ReminderScheduler.schedule(
+                        app, id, title, body, remindAt, repeat
+                    )
+                } else if (id.isNotBlank() && repeat == com.rklab.healthvault.data.model.RepeatRule.NONE) {
+                    com.rklab.healthvault.util.ReminderScheduler.cancel(app, id)
+                }
+            }
             else -> {
                 // Generic / reminder-style data pushes: show title+body if present.
                 val title = data["title"].orEmpty().ifBlank {

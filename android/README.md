@@ -102,25 +102,28 @@ is delayed.
 
 ## What's implemented
 
-- **Server setup** — configure the API address after install (LAN IP,
-  WireGuard IP, or domain), tested live against `/health` before saving;
-  changeable anytime from Settings. No rebuild required to point at a
-  different server.
-- **Login / Register** — JWT auth against the backend, tokens stored in
-  `EncryptedSharedPreferences` (Android Keystore-backed), not plain prefs.
-- **Home dashboard** — family switcher, the hospital ID card(s) for whoever's
-  selected, expiry alerts, folder tiles by document category, recent
-  documents.
-- **Family** — add/remove family members (spouse, child, parent, other);
-  each gets managed independently, all under your one account.
-- **Cards** — a person can have any number of hospital cards; add/view/
-  long-press-to-delete. Patient ID numbers are encrypted server-side.
-- **Documents** — camera capture or gallery/file picker, categorized as
-  hospital card / prescription / lab report / insurance / vaccination /
-  bill / medicine / other. Tap to download-and-open in any installed viewer.
-- **Search** — search by hospital name across both cards and documents.
-- **Reminders** — add a reminder (medicine, appointment, etc.) with optional
-  repeat; schedules a local notification via WorkManager.
+Full module list: **[root README](../README.md)**. On Android specifically:
+
+- **Server setup** — configure API address after install (LAN, WireGuard, or
+  domain); live `/health` probe; changeable from Settings / Login
+- **Auth** — register / login; JWT in Keystore-backed encrypted prefs;
+  refresh-token retry on 401; optional TOTP; QR login approve; app-approve
+  for web logins
+- **Module hub** — Health, Passwords, Finance, Expense Analyser, AI, Locker,
+  Shopping List, URLs, Diary (respects server enablement)
+- **Health** — family, hospital cards, documents (camera / gallery), search,
+  reminders (WorkManager), care, doctors
+- **Passwords** — items, editor, generator, health report, Sends, trash;
+  autofill service
+- **Finance** — transactions, stats, accounts, EMIs, SMS inbox, add flow
+- **Expense Analyser, AI, Locker, Tracker, URLs, Diary** — module screens
+  aligned with the web app
+- **Settings** — server URL, theme (dark / large text), Ask AI FAB, PIN /
+  biometric lock, Drive / backup status
+- **Offline** — Room cache + SyncWorker for core health data; last-viewed
+  document file cache; offline upload queue
+- **Push** — FCM for login-approve and Send access requests, plus ~15m poll
+  fallback
 
 ## Fonts (optional, for exact design parity)
 
@@ -143,16 +146,10 @@ exactly:
 ## Notes / things worth doing before relying on this daily
 
 - **Reminders use WorkManager**, not exact alarms — fine for "take your
-  medicine around 9am" but can drift by minutes under Doze. If you want
-  alarm-clock precision, swap `ReminderScheduler` to use
+  medicine around 9am" but can drift by minutes under Doze. For
+  alarm-clock precision, swap `ReminderScheduler` to
   `AlarmManager.setExactAndAllowWhileIdle` + `SCHEDULE_EXACT_ALARM`.
-- **No offline cache** — this is a thin REST client; if the Pi's down or
-  you're off Wi-Fi/WireGuard, the app can't show cached cards. Adding a Room
-  cache is a reasonable next step if that matters to you.
-- **No refresh-token auto-retry yet** — when the access token expires
-  (default 60 min), calls will start failing with 401 until you log in
-  again. Wiring an OkHttp `Authenticator` that calls `/auth/refresh`
-  automatically is the next thing I'd add.
-- The Home screen's document tap and folder-tap wiring intentionally routes
-  through the folder/list screen rather than opening documents directly from
-  Home — keeps the dashboard fast and the download/open logic in one place.
+- FCM needs a real `google-services.json` from the same Firebase project as
+  the Super Admin service account (see above).
+- The Home screen's document / folder taps route through the list screens
+  so download/open logic stays in one place.
