@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.SmartToy
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Widgets
@@ -71,6 +72,7 @@ fun SettingsScreen(
     val isBiometricEnabled by repository.tokenManager.isBiometricEnabled.collectAsState(initial = false)
     val darkTheme by repository.tokenManager.isDarkTheme.collectAsState(initial = true)
     val largeText by repository.tokenManager.isLargeText.collectAsState(initial = false)
+    val showAskAiFab by repository.tokenManager.isShowAskAiFab.collectAsState(initial = true)
     var pin by remember { mutableStateOf("") }
     var totpSecret by remember { mutableStateOf<String?>(null) }
     var totpCode by remember { mutableStateOf("") }
@@ -231,6 +233,16 @@ fun SettingsScreen(
             }
             ToggleRow("Larger text", Icons.Outlined.FormatSize, largeText) {
                 scope.launch { repository.tokenManager.setLargeText(it) }
+            }
+            ToggleRow("Ask AI floating button", Icons.Outlined.SmartToy, showAskAiFab) { on ->
+                scope.launch {
+                    repository.tokenManager.setShowAskAiFab(on)
+                    runCatching { repository.setAskAiFab(on) }
+                        .onFailure {
+                            repository.tokenManager.setShowAskAiFab(!on)
+                            toast(it.message ?: "Could not update")
+                        }
+                }
             }
             ToggleRow(
                 "Approve web login from this phone",

@@ -103,6 +103,7 @@ class HealthVaultRepository(
     suspend fun me(): UserOut {
         val user = api.me()
         tokenManager.setRole(user.role)
+        tokenManager.setShowAskAiFab(user.show_ask_ai_fab)
         return user
     }
 
@@ -113,6 +114,11 @@ class HealthVaultRepository(
     suspend fun totpEnable(code: String) = api.totpEnable(TotpVerifyIn(code = code))
     suspend fun totpDisable(code: String) = api.totpDisable(TotpVerifyIn(code = code))
     suspend fun setAppApprove(enabled: Boolean) = api.setAppApprove(AppApproveIn(enabled))
+    suspend fun setAskAiFab(enabled: Boolean): UserOut {
+        val user = api.setAskAiFab(AskAiFabIn(enabled))
+        tokenManager.setShowAskAiFab(user.show_ask_ai_fab)
+        return user
+    }
     suspend fun pendingLoginChallenges() = api.listLoginChallenges()
     suspend fun getLoginChallenge(id: String) = api.getLoginChallenge(id)
     suspend fun approveLoginChallenge(id: String) = api.approveLoginChallenge(id)

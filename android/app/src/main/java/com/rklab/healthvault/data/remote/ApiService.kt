@@ -59,6 +59,9 @@ interface ApiService {
     @POST("auth/app-approve")
     suspend fun setAppApprove(@Body body: AppApproveIn): UserOut
 
+    @POST("auth/ask-ai-fab")
+    suspend fun setAskAiFab(@Body body: AskAiFabIn): UserOut
+
     @POST("auth/totp/verify")
     suspend fun totpVerify(@Body body: TotpVerifyIn): LoginResponse
 

@@ -612,6 +612,20 @@ async def security_app_approve(request: Request, db: Session = Depends(get_db)):
     return RedirectResponse("/admin/security?saved=app-on" if user.app_approve else "/admin/security?saved=app-off", status_code=302)
 
 
+@router.post("/security/ask-ai-fab", response_class=HTMLResponse)
+async def security_ask_ai_fab(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    user.show_ask_ai_fab = str(form.get("enabled") or "") in ("1", "on", "true", "yes")
+    db.commit()
+    return RedirectResponse(
+        "/admin/security?saved=ask-ai-on" if user.show_ask_ai_fab else "/admin/security?saved=ask-ai-off",
+        status_code=302,
+    )
+
+
 @router.get("/logout")
 def logout(request: Request):
     request.session.clear()
@@ -1009,6 +1023,7 @@ def health_settings_page(request: Request, db: Session = Depends(get_db)):
         "session_user": user,
         "active_nav": "health_settings",
         "card_image_as_background": bool(getattr(owner, "card_image_as_background", False)),
+        "show_ask_ai_fab": bool(getattr(user, "show_ask_ai_fab", True)),
         "can_edit": user.role == models.UserRole.owner.value or user.id == vault_id(user),
     })
 
@@ -1018,13 +1033,16 @@ async def health_settings_save(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    if user.role not in (models.UserRole.owner.value, models.UserRole.superadmin.value) and user.id != vault_id(user):
-        return RedirectResponse("/admin/health-settings", status_code=302)
     form = await request.form()
+    # Ask AI FAB is per signed-in account (owners and viewers).
+    user.show_ask_ai_fab = str(form.get("show_ask_ai_fab") or "") in ("1", "on", "true", "yes")
+    if user.role not in (models.UserRole.owner.value, models.UserRole.superadmin.value) and user.id != vault_id(user):
+        db.commit()
+        return RedirectResponse("/admin/health-settings?ok=1", status_code=302)
     owner = db.query(models.User).filter(models.User.id == vault_id(user)).first()
     if owner:
         owner.card_image_as_background = str(form.get("card_image_as_background") or "") in ("1", "on", "true", "yes")
-        db.commit()
+    db.commit()
     return RedirectResponse("/admin/health-settings?ok=1", status_code=302)
 
 

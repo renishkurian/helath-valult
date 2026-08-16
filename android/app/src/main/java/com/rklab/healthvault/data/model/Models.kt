@@ -19,6 +19,7 @@ data class UserOut(
     val vault_owner_id: String? = null,
     val totp_enabled: Boolean = false,
     val app_approve: Boolean = false,
+    val show_ask_ai_fab: Boolean = true,
     val enabled_modules: List<String>? = null
 ) {
     val isViewer: Boolean get() = role == "viewer"
@@ -27,6 +28,8 @@ data class UserOut(
 }
 
 data class AppApproveIn(val enabled: Boolean)
+
+data class AskAiFabIn(val enabled: Boolean)
 
 data class InviteViewerRequest(
     val email: String,

@@ -102,6 +102,13 @@ class TokenManager(private val context: Context) {
     val isLargeText: Flow<Boolean> =
         context.dataStore.data.map { it[LARGE_TEXT] ?: false }
 
+    suspend fun setShowAskAiFab(enabled: Boolean) {
+        context.dataStore.edit { it[SHOW_ASK_AI_FAB] = enabled }
+    }
+
+    val isShowAskAiFab: Flow<Boolean> =
+        context.dataStore.data.map { it[SHOW_ASK_AI_FAB] ?: true }
+
     companion object {
         private const val KEY_ACCESS = "access_token"
         private const val KEY_REFRESH = "refresh_token"
@@ -111,5 +118,6 @@ class TokenManager(private val context: Context) {
         private val BIOMETRIC_ENABLED = androidx.datastore.preferences.core.booleanPreferencesKey("biometric_enabled")
         private val DARK_THEME = androidx.datastore.preferences.core.booleanPreferencesKey("dark_theme")
         private val LARGE_TEXT = androidx.datastore.preferences.core.booleanPreferencesKey("large_text")
+        private val SHOW_ASK_AI_FAB = androidx.datastore.preferences.core.booleanPreferencesKey("show_ask_ai_fab")
     }
 }

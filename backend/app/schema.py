@@ -25,6 +25,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("enabled_modules", "TEXT"),
         ("last_seen_at", "DATETIME"),
         ("card_image_as_background", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("show_ask_ai_fab", "BOOLEAN NOT NULL DEFAULT 1"),
     ],
     "people": [
         ("allergies", "TEXT"),

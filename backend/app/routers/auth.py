@@ -224,6 +224,18 @@ def set_app_approve(
     return current_user
 
 
+@router.post("/ask-ai-fab", response_model=schemas.UserOut)
+def set_ask_ai_fab(
+    body: schemas.AskAiFabIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    current_user.show_ask_ai_fab = bool(body.enabled)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
 @router.post("/totp/verify", response_model=schemas.LoginResponse)
 def totp_verify(body: schemas.TotpVerifyIn, request: Request, db: Session = Depends(get_db)):
     if not body.totp_token:

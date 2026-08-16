@@ -223,7 +223,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=31">
+<link rel="stylesheet" href="/static/vault.css?v=33">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">
@@ -284,6 +284,13 @@
   </button>
   {% endif %}
 </nav>
+{% endif %}
+
+{% if session_user and mod_key != 'ai' and session_user.show_ask_ai_fab %}
+<a class="ask-ai-fab" href="/admin/ai" title="Ask AI" aria-label="Ask AI">
+  <i class="bi bi-stars" aria-hidden="true"></i>
+  <span class="ask-ai-fab-label">Ask AI</span>
+</a>
 {% endif %}
 
 <div id="photo-lightbox" class="photo-lightbox" hidden role="dialog" aria-modal="true" aria-label="Document preview">

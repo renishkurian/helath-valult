@@ -44,6 +44,7 @@ class UserOut(BaseModel):
     vault_owner_id: Optional[str] = None
     totp_enabled: bool = False
     app_approve: bool = False
+    show_ask_ai_fab: bool = True
     enabled_modules: Optional[List[str]] = None
 
     class Config:
@@ -56,6 +57,10 @@ class ModulesUpdateIn(BaseModel):
 
 
 class AppApproveIn(BaseModel):
+    enabled: bool
+
+
+class AskAiFabIn(BaseModel):
     enabled: bool
 
 

@@ -33,6 +33,16 @@
   <i class="bi bi-check2-circle"></i>
   <span>App approval is off. Password{% if totp_on %} plus authenticator{% endif %} is enough.</span>
 </div>
+{% elif saved == 'ask-ai-on' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Ask AI quick button is on across modules.</span>
+</div>
+{% elif saved == 'ask-ai-off' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Ask AI quick button is hidden. Open AI from All modules anytime.</span>
+</div>
 {% endif %}
 {% if error %}
 <div class="alert alert-danger" role="alert">
@@ -63,6 +73,30 @@
         <form method="post" action="/admin/security/app-approve">
           <input type="hidden" name="enabled" value="1">
           <button class="btn btn-primary" type="submit"><i class="bi bi-phone"></i> Turn on app approval</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card mb-3">
+      <div class="card-header">
+        <span class="card-ico {% if session_user.show_ask_ai_fab %}good{% else %}gold{% endif %}"><i class="bi bi-stars"></i></span>
+        <div>
+          <h2>Ask AI button</h2>
+          <div class="card-sub">Floating shortcut on every module</div>
+        </div>
+        <span class="badge {% if session_user.show_ask_ai_fab %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if session_user.show_ask_ai_fab %}On{% else %}Off{% endif %}</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">Shows a bottom-right Ask AI button on Health, Finance, Passwords, and other modules. Turn it off if you prefer a cleaner screen — AI stays available from All modules.</p>
+        {% if session_user.show_ask_ai_fab %}
+        <form method="post" action="/admin/security/ask-ai-fab">
+          <input type="hidden" name="enabled" value="0">
+          <button class="btn btn-outline-light" type="submit">Hide Ask AI button</button>
+        </form>
+        {% else %}
+        <form method="post" action="/admin/security/ask-ai-fab">
+          <input type="hidden" name="enabled" value="1">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-stars"></i> Show Ask AI button</button>
         </form>
         {% endif %}
       </div>

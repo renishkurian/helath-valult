@@ -1,11 +1,17 @@
 package com.rklab.healthvault.ui.navigation
 
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.SmartToy
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.ui.theme.HubBg
+import com.rklab.healthvault.ui.theme.TextDark
+import com.rklab.healthvault.ui.theme.VaultGold
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
@@ -253,8 +259,33 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val onUrlAdd = currentRoute?.startsWith("urls_add") == true
     val onTrackerList = currentRoute?.startsWith("tracker_list/") == true
 
+    val hideAskAiFab = !repository.isLoggedIn
+        || currentRoute in aiTabs
+        || currentRoute == Routes.LOGIN
+        || currentRoute == Routes.SERVER_SETUP
+        || currentRoute == Routes.QR_SCAN
+    val showAskAiFab by repository.tokenManager.isShowAskAiFab.collectAsState(initial = true)
+
     Scaffold(
         containerColor = HubBg,
+        floatingActionButton = {
+            if (!hideAskAiFab && showAskAiFab) {
+                FloatingActionButton(
+                    onClick = {
+                        navController.navigate(Routes.AI) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    modifier = Modifier.padding(bottom = 72.dp),
+                    containerColor = VaultGold,
+                    contentColor = TextDark,
+                ) {
+                    Icon(Icons.Filled.SmartToy, contentDescription = "Ask AI")
+                }
+            }
+        },
         bottomBar = {
             if (currentRoute in trackerTabs || onTrackerList) {
                 val current = when (currentRoute) {

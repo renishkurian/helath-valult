@@ -66,6 +66,12 @@ class LoginViewModel(private val repository: HealthVaultRepository) : ViewModel(
         }
     }
 
+    fun clearError() {
+        if (_state.value is AuthUiState.Error) {
+            _state.value = AuthUiState.Idle
+        }
+    }
+
     private fun friendlyError(e: Exception): String {
         val msg = e.message ?: ""
         return when {
