@@ -730,6 +730,35 @@ def create_transaction(
     return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
 
 
+@router.post("/transactions/bulk-delete")
+def bulk_delete_transactions(
+    body: schemas.BulkIds,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Delete many ledger rows owned by the current vault user."""
+    require_owner(current_user)
+    ids = [str(i).strip() for i in (body.ids or []) if str(i).strip()]
+    if not ids:
+        raise HTTPException(400, "Select at least one transaction")
+    if len(ids) > 200:
+        raise HTTPException(400, "Too many transactions (max 200)")
+    uid = _owned(db, current_user)
+    rows = (
+        db.query(models.FinanceTransaction)
+        .filter(
+            models.FinanceTransaction.user_id == uid,
+            models.FinanceTransaction.id.in_(ids),
+        )
+        .all()
+    )
+    for row in rows:
+        _drop_txn_image(row)
+        db.delete(row)
+    db.commit()
+    return {"ok": True, "deleted": len(rows)}
+
+
 @router.delete("/transactions/{txn_id}")
 def delete_transaction(
     txn_id: str,

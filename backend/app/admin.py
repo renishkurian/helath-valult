@@ -2872,6 +2872,23 @@ def finance_txn_image(txn_id: str, request: Request, db: Session = Depends(get_d
     return get_transaction_image(txn_id, db=db, current_user=user)
 
 
+@router.post("/finance/transactions/bulk-delete")
+async def finance_bulk_delete_txns(request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import bulk_delete_transactions
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    ids = [str(v) for v in form.getlist("txn_id") if str(v).strip()]
+    month = str(form.get("month") or "").strip()
+    view = str(form.get("view") or "daily").strip() or "daily"
+    if ids:
+        bulk_delete_transactions(sc.BulkIds(ids=ids), db=db, current_user=user)
+    qs = f"?month={month}&view={view}" if month else f"?view={view}"
+    return RedirectResponse(f"/admin/finance{qs}", status_code=302)
+
+
 @router.post("/finance/transactions/{txn_id}/delete")
 def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.finance import delete_transaction
@@ -2879,7 +2896,10 @@ def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     delete_transaction(txn_id, db=db, current_user=user)
-    return RedirectResponse("/admin/finance", status_code=302)
+    month = (request.query_params.get("month") or "").strip()
+    view = (request.query_params.get("view") or "daily").strip() or "daily"
+    qs = f"?month={month}&view={view}" if month else ""
+    return RedirectResponse(f"/admin/finance{qs}", status_code=302)
 
 
 @router.get("/finance/stats", response_class=HTMLResponse)

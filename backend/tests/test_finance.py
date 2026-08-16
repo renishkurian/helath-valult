@@ -182,6 +182,39 @@ def test_finance_summary_and_txn():
     assert msgs[0]["payment_method"] == "upi"
 
 
+def test_bulk_delete_transactions():
+    import uuid
+    email = f"bulkdel-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Bulk Del",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    cats = client.get("/finance/categories", headers=headers).json()
+    expense_cat = next(c for c in cats if c["kind"] == "expense" and not c.get("parent_id"))
+    ids = []
+    for i, payee in enumerate(("One", "Two", "Keep")):
+        created = client.post("/finance/transactions", headers=headers, json={
+            "account_id": accounts[0]["id"],
+            "category_id": expense_cat["id"],
+            "txn_type": "expense",
+            "amount": 10 + i,
+            "txn_date": "2026-08-16",
+            "payee": payee,
+        })
+        assert created.status_code == 200, created.text
+        ids.append(created.json()["id"])
+    doomed = ids[:2]
+    r = client.post("/finance/transactions/bulk-delete", headers=headers, json={"ids": doomed})
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted"] == 2
+    left = client.get("/finance/transactions", headers=headers, params={"year_month": "2026-08"}).json()
+    payees = {t["payee"] for t in left}
+    assert "Keep" in payees
+    assert "One" not in payees and "Two" not in payees
+
+
 def test_heuristic_card_and_atm():
     cc = classify_heuristic("INR 2,500.00 spent on HDFC credit card xx1234 at AMAZON on 12-08-2026")
     assert cc["direction"] == "debit"

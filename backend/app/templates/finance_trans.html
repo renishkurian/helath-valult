@@ -3,6 +3,7 @@
 {% block content %}
 {% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
 {% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
+{% set can_bulk = view in ('daily', 'monthly', 'total', 'note') %}
 
 <div class="page-head">
   <div>
@@ -77,6 +78,27 @@
   </div>
 </div>
 
+{% if can_bulk %}
+<form
+  method="post"
+  action="/admin/finance/transactions/bulk-delete"
+  id="mm-bulk-delete"
+  class="mm-bulk mb-3"
+  data-confirm="Delete the selected entries? This cannot be undone."
+>
+  <input type="hidden" name="month" value="{{ ledger.year_month }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <label class="mm-bulk-select small mb-0 d-flex align-items-center gap-2">
+    <input type="checkbox" id="mm-select-all" class="form-check-input m-0">
+    Select all
+  </label>
+  <span class="small text-muted" id="mm-selected-count">0 selected</span>
+  <button class="btn btn-sm btn-outline-danger" type="submit" id="mm-delete-selected" disabled>
+    <i class="bi bi-trash3"></i> Delete selected
+  </button>
+</form>
+{% endif %}
+
 {% if view == 'calendar' %}
 <div class="card mb-4">
   <div class="card-body">
@@ -104,6 +126,9 @@
   <div class="card-body">
     {% for item in ledger.txns %}
     <div class="mm-row">
+      {% if can_bulk %}
+      <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
+      {% endif %}
       <span class="cat-ico">
         <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
       </span>
@@ -148,6 +173,9 @@
     </div>
     {% for item in day.txns %}
     <div class="mm-row">
+      {% if can_bulk %}
+      <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
+      {% endif %}
       <span class="cat-ico">
         <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
       </span>
@@ -165,7 +193,7 @@
           <i class="bi bi-image"></i>
         </a>
         {% endif %}
-        <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete" data-confirm="Delete this entry?">
+        <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Delete this entry?">
           <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Delete entry">
             <i class="bi bi-trash3"></i>
           </button>
@@ -187,4 +215,48 @@
 {% endif %}
 
 <a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
+{% endblock %}
+{% block scripts %}
+{% if can_bulk %}
+<script>
+(function(){
+  var form = document.getElementById("mm-bulk-delete");
+  if (!form) return;
+  var all = document.getElementById("mm-select-all");
+  var countEl = document.getElementById("mm-selected-count");
+  var delBtn = document.getElementById("mm-delete-selected");
+  function checks(){ return Array.prototype.slice.call(document.querySelectorAll(".mm-txn-check")); }
+  function sync(){
+    var list = checks();
+    var n = list.filter(function(c){ return c.checked; }).length;
+    if (countEl) countEl.textContent = n + " selected";
+    if (delBtn) delBtn.disabled = n === 0;
+    if (all){
+      all.checked = list.length > 0 && n === list.length;
+      all.indeterminate = n > 0 && n < list.length;
+    }
+    if (form.getAttribute("data-confirm-base")) {
+      /* keep */
+    } else {
+      form.setAttribute("data-confirm-base", form.getAttribute("data-confirm") || "Delete the selected entries?");
+    }
+    var base = form.getAttribute("data-confirm-base") || "Delete the selected entries?";
+    form.setAttribute("data-confirm", n ? ("Delete " + n + " selected entr" + (n === 1 ? "y" : "ies") + "? This cannot be undone.") : base);
+  }
+  if (all) all.addEventListener("change", function(){
+    checks().forEach(function(c){ c.checked = all.checked; });
+    sync();
+  });
+  document.addEventListener("change", function(e){
+    if (e.target && e.target.classList && e.target.classList.contains("mm-txn-check")) sync();
+  });
+  form.addEventListener("submit", function(ev){
+    if (checks().filter(function(c){ return c.checked; }).length === 0){
+      ev.preventDefault();
+    }
+  });
+  sync();
+})();
+</script>
+{% endif %}
 {% endblock %}

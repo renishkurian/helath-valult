@@ -1393,6 +1393,13 @@ body.modules-picker .side-label{
 .mm-row .cat{ font-size:.75rem; color:var(--v-ink-3); }
 .mm-row .acct{ font-size:.75rem; color:var(--v-ink-3); }
 .mm-row .amt{ margin-left:auto; text-align:right; font-weight:650; font-variant-numeric:tabular-nums; letter-spacing:-0.02em; white-space:nowrap; }
+.mm-row .mm-txn-check{ flex:0 0 auto; }
+.mm-bulk{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.75rem;
+  padding:.65rem .85rem; border-radius:12px;
+  border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03);
+}
+.mm-bulk-select{ cursor:pointer; }
 
 .mm-cal{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
 .mm-cal .hd{ font-size:.625rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--v-ink-3); text-align:center; padding:.375rem 0; }
