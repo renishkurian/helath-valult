@@ -49,6 +49,8 @@ import com.rklab.healthvault.ui.theme.HubViolet
 import com.rklab.healthvault.ui.theme.Ink
 import com.rklab.healthvault.ui.theme.InkSoft
 import com.rklab.healthvault.ui.theme.TextDark
+import com.rklab.healthvault.ui.theme.VaultTeal
+import com.rklab.healthvault.ui.theme.VaultTealSoft
 import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.ui.theme.VaultGoldSoft
 
@@ -57,11 +59,11 @@ val VaultChipShape = RoundedCornerShape(20.dp)
 
 @Composable
 fun vaultFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = VaultGold,
+    focusedBorderColor = VaultTeal,
     unfocusedBorderColor = CardOutline,
-    focusedLabelColor = VaultGold,
+    focusedLabelColor = VaultTeal,
     unfocusedLabelColor = InkSoft,
-    cursorColor = VaultGold,
+    cursorColor = VaultTeal,
     focusedTextColor = Ink,
     unfocusedTextColor = Ink,
     focusedContainerColor = CardSurface,
@@ -96,7 +98,7 @@ fun VaultPageHeader(
         verticalAlignment = Alignment.Top
     ) {
         Column(Modifier.weight(1f)) {
-            Text(eyebrow, style = MaterialTheme.typography.labelMedium, color = VaultGold)
+            Text(eyebrow, style = MaterialTheme.typography.labelMedium, color = VaultTeal)
             Spacer(Modifier.height(4.dp))
             Text(title, style = MaterialTheme.typography.headlineMedium, color = HubText, fontWeight = FontWeight.Bold)
             if (!subtitle.isNullOrBlank()) {
@@ -111,7 +113,7 @@ fun VaultPageHeader(
 @Composable
 fun VaultBackLink(label: String = "← Back", onClick: () -> Unit) {
     TextButton(onClick = onClick, contentPadding = PaddingValues(0.dp)) {
-        Text(label, color = VaultGold)
+        Text(label, color = VaultTeal)
     }
 }
 
@@ -145,9 +147,9 @@ fun VaultPrimaryButton(
         modifier = modifier.fillMaxWidth().height(50.dp),
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = VaultGold,
+            containerColor = VaultTeal,
             contentColor = TextDark,
-            disabledContainerColor = VaultGoldSoft,
+            disabledContainerColor = VaultTealSoft,
             disabledContentColor = TextDark.copy(alpha = 0.5f)
         )
     ) {
@@ -165,7 +167,7 @@ fun VaultOutlinedButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    color: Color = VaultGold,
+    color: Color = VaultTeal,
     leadingIcon: ImageVector? = null
 ) {
     OutlinedButton(
@@ -198,8 +200,8 @@ fun VaultFilterChip(
         colors = FilterChipDefaults.filterChipColors(
             containerColor = HubGlass,
             labelColor = HubTextDim,
-            selectedContainerColor = VaultGoldSoft,
-            selectedLabelColor = VaultGold
+            selectedContainerColor = VaultTealSoft,
+            selectedLabelColor = VaultTeal
         )
     )
 }
@@ -266,9 +268,9 @@ fun VaultListRow(
 fun VaultFab(onClick: () -> Unit, icon: ImageVector, contentDescription: String) {
     FloatingActionButton(
         onClick = onClick,
-        containerColor = VaultGold,
+        containerColor = VaultTeal,
         contentColor = TextDark,
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(20.dp)
     ) {
         Icon(icon, contentDescription = contentDescription)
     }

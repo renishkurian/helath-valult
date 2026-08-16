@@ -2,7 +2,7 @@
 {% block title %}Documents — Vault{% endblock %}
 {% block body_class %}mod-health{% endblock %}
 {% block content %}
-{% set cat_colors = {'hospital_card':'#6FA9FF','prescription':'#5FD08B','lab_report':'#B79BFF','insurance':'#D4A657','vaccination':'#7CD992','bill':'#E5657D','medicine':'#E3B655','other':'#8B95A8'} %}
+{% set cat_colors = {'hospital_card':'#3FE0C5','prescription':'#9C8CF0','lab_report':'#D4A657','insurance':'#5FA8D3','vaccination':'#6FCF8E','bill':'#E8615C','medicine':'#E091D0','other':'#9AA2B4'} %}
 {% set folder_label = {'hospital_card':'Card scans','prescription':'Prescriptions','lab_report':'Lab reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
 {% set cat_icons = {'hospital_card':'bi-person-vcard','prescription':'bi-capsule','lab_report':'bi-clipboard2-pulse','insurance':'bi-shield-check','vaccination':'bi-shield-plus','bill':'bi-receipt','medicine':'bi-capsule-pill','other':'bi-file-earmark'} %}
 {% set page_heading = folder_label.get(category, 'All documents') if category else 'All documents' %}

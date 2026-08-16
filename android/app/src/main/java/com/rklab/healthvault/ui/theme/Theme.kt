@@ -7,10 +7,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val HealthVaultDark = darkColorScheme(
-    primary = VaultGold,
+    primary = VaultTeal,
     onPrimary = TextDark,
-    secondary = Sage,
-    onSecondary = TextDark,
+    secondary = VaultBrass,
+    onSecondary = Color(0xFF1C1406),
     background = DarkBackground,
     onBackground = TextWhite,
     surface = CardSurface,
@@ -19,18 +19,20 @@ private val HealthVaultDark = darkColorScheme(
     onSurfaceVariant = TextGray,
     outline = CardOutline,
     error = StampRed,
-    primaryContainer = VaultGoldSoft,
-    onPrimaryContainer = VaultGold,
+    primaryContainer = VaultTealSoft,
+    onPrimaryContainer = VaultTeal,
+    secondaryContainer = VaultBrassSoft,
+    onSecondaryContainer = VaultBrass,
 )
 
 private val HealthVaultLight = lightColorScheme(
-    primary = VaultGoldDeep,
+    primary = VaultTealDeep,
     onPrimary = Color.White,
-    secondary = Color(0xFF0F9F6E),
+    secondary = VaultBrassDeep,
     onSecondary = Color.White,
     background = Color(0xFFF4F6FA),
     onBackground = Color(0xFF111827),
-    surface = Color(0xFFFFFFFF),
+    surface = Color.White,
     onSurface = Color(0xFF111827),
     surfaceVariant = Color(0xFFEEF2F7),
     onSurfaceVariant = Color(0xFF5B6577),

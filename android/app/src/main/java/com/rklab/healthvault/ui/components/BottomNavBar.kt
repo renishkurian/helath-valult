@@ -34,8 +34,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import com.rklab.healthvault.ui.theme.HubDock
 import com.rklab.healthvault.ui.theme.HubTextDim
-import com.rklab.healthvault.ui.theme.VaultGold
-import com.rklab.healthvault.ui.theme.VaultGoldSoft
+import com.rklab.healthvault.ui.theme.VaultTeal
+import com.rklab.healthvault.ui.theme.VaultTealSoft
 
 enum class MainTab { HOME, DOCTORS, CARE, REMINDERS, FAMILY }
 
@@ -55,11 +55,11 @@ enum class TrackerTab { LISTS, FRIENDS, CATALOG, TRASH }
 
 private val navColors
     @Composable get() = NavigationBarItemDefaults.colors(
-        selectedIconColor = VaultGold,
-        selectedTextColor = VaultGold,
+        selectedIconColor = VaultTeal,
+        selectedTextColor = VaultTeal,
         unselectedIconColor = HubTextDim,
         unselectedTextColor = HubTextDim,
-        indicatorColor = VaultGoldSoft
+        indicatorColor = VaultTealSoft
     )
 
 @Composable

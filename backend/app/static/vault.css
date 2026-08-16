@@ -61,49 +61,60 @@
    2. Design tokens
    -------------------------------------------------------------------------- */
 :root{
-  /* Surface ramp — every elevation step is a real, distinguishable value */
-  --v-bg:#0A0C0F;
-  --v-bg-2:#0E1117;
-  --v-surface:#12151A;
-  --v-surface-2:#181C22;
-  --v-surface-3:#1E232B;
+  /* Clinical Health Vault — obsidian + teal pulse + brass (time) */
+  --v-bg:#0C0F14;
+  --v-bg-2:#0A0C10;
+  --v-surface:#151923;
+  --v-surface-2:#1D2330;
+  --v-surface-3:#262E3D;
   --v-hover:rgba(255,255,255,0.035);
   --v-active:rgba(255,255,255,0.075);
 
   /* Ink */
-  --v-ink:#EEE9DD;
-  --v-ink-2:#9BA1AC;
-  --v-ink-3:#5A6069;
+  --v-ink:#EDEFF4;
+  --v-ink-2:#9AA2B4;
+  --v-ink-3:#5C6478;
 
   /* Lines */
-  --v-line:rgba(255,255,255,0.07);
+  --v-line:rgba(255,255,255,0.08);
   --v-line-2:rgba(255,255,255,0.12);
 
-  /* Brand: brass gold */
-  --v-gold:#C9A227;
-  --v-gold-2:#A8861C;
-  --v-gold-soft:rgba(201,162,39,0.16);
-  --v-gold-line:rgba(201,162,39,0.45);
-  --v-on-gold:#141005;
+  /* Primary: teal monitor-pulse */
+  --v-teal:#3FE0C5;
+  --v-teal-2:#25AE99;
+  --v-teal-soft:rgba(63,224,197,0.14);
+  --v-teal-line:rgba(63,224,197,0.45);
+  --v-on-teal:#06231D;
+
+  /* Brass — expiry / lab / time-sensitive (legacy --v-gold aliases) */
+  --v-brass:#D4A657;
+  --v-brass-2:#C29B54;
+  --v-brass-soft:rgba(212,166,87,0.14);
+  --v-brass-line:rgba(212,166,87,0.45);
+  --v-gold:var(--v-brass);
+  --v-gold-2:var(--v-brass-2);
+  --v-gold-soft:var(--v-brass-soft);
+  --v-gold-line:var(--v-brass-line);
+  --v-on-gold:#1C1406;
 
   /* Semantic */
-  --v-info:#6FA9FF;   --v-info-soft:rgba(111,169,255,0.14);
-  --v-good:#5FD08B;   --v-good-soft:rgba(95,208,139,0.13);
-  --v-warn:#E3B655;   --v-warn-soft:rgba(227,182,85,0.14);
-  --v-bad:#E5657D;    --v-bad-soft:rgba(229,101,125,0.14);
-  --v-plum:#B79BFF;   --v-plum-soft:rgba(183,155,255,0.14);
-  --v-teal:#43D9C4;   --v-teal-soft:rgba(67,217,196,0.14);
+  --v-info:#5FA8D3;   --v-info-soft:rgba(95,168,211,0.14);
+  --v-good:#6FCF8E;   --v-good-soft:rgba(111,207,142,0.13);
+  --v-warn:#D4A657;   --v-warn-soft:rgba(212,166,87,0.14);
+  --v-bad:#E8615C;    --v-bad-soft:rgba(232,97,92,0.14);
+  --v-plum:#9C8CF0;   --v-plum-soft:rgba(156,140,240,0.14);
 
   /* Money */
-  --v-income:#5FD08B;
-  --v-expense:#E5657D;
-  --v-transfer:#B79BFF;
+  --v-income:#6FCF8E;
+  --v-expense:#E8615C;
+  --v-transfer:#9C8CF0;
 
-  /* Elevation — soft, wide, low-opacity: reads expensive, not heavy */
+  /* Elevation */
   --v-sh-1:0 1px 2px rgba(0,0,0,0.35);
   --v-sh-2:0 4px 16px -4px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
   --v-sh-3:0 18px 44px -12px rgba(0,0,0,0.65), 0 2px 6px rgba(0,0,0,0.35);
-  --v-sh-gold:0 8px 20px -6px rgba(201,162,39,0.5);
+  --v-sh-gold:0 8px 24px -8px rgba(63,224,197,0.5);
+  --v-sh-teal:0 8px 24px -8px rgba(63,224,197,0.5);
 
   /* Geometry */
   --v-r-sm:9px; --v-r:14px; --v-r-lg:20px; --v-r-xl:24px;
@@ -144,21 +155,21 @@
   --bs-body-line-height:1.55;
   --bs-font-monospace:var(--v-mono);
 
-  --bs-primary:#D9B978;
-  --bs-primary-rgb:217,185,120;
-  --bs-primary-text-emphasis:#E8D3A6;
-  --bs-primary-bg-subtle:rgba(217,185,120,0.12);
-  --bs-primary-border-subtle:var(--v-gold-line);
+  --bs-primary:#3FE0C5;
+  --bs-primary-rgb:63,224,197;
+  --bs-primary-text-emphasis:#7EEFD9;
+  --bs-primary-bg-subtle:rgba(63,224,197,0.12);
+  --bs-primary-border-subtle:var(--v-teal-line);
 
-  --bs-success:#4ADE9B; --bs-success-rgb:74,222,155;
-  --bs-danger:#FF8095;  --bs-danger-rgb:255,128,149;
-  --bs-warning:#F0C36A; --bs-warning-rgb:240,195,106;
-  --bs-info:#7FA6FF;    --bs-info-rgb:127,166,255;
+  --bs-success:#6FCF8E; --bs-success-rgb:111,207,142;
+  --bs-danger:#E8615C;  --bs-danger-rgb:232,97,92;
+  --bs-warning:#D4A657; --bs-warning-rgb:212,166,87;
+  --bs-info:#5FA8D3;    --bs-info-rgb:95,168,211;
 
-  --bs-link-color:var(--v-gold);
-  --bs-link-color-rgb:217,185,120;
-  --bs-link-hover-color:#E8D3A6;
-  --bs-link-hover-color-rgb:232,211,166;
+  --bs-link-color:var(--v-teal);
+  --bs-link-color-rgb:63,224,197;
+  --bs-link-hover-color:#7EEFD9;
+  --bs-link-hover-color-rgb:126,239,217;
 
   --bs-border-radius:var(--v-r);
   --bs-border-radius-sm:var(--v-r-sm);
@@ -186,8 +197,8 @@ body{
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
   background:
-    radial-gradient(1100px 560px at 8% -10%, rgba(217,185,120,0.055), transparent 60%),
-    radial-gradient(900px 500px at 100% 0%, rgba(127,166,255,0.045), transparent 55%),
+    radial-gradient(ellipse 900px 500px at 15% -10%, rgba(63,224,197,0.07), transparent 60%),
+    radial-gradient(ellipse 700px 500px at 90% 10%, rgba(212,166,87,0.05), transparent 60%),
     var(--v-bg);
   background-attachment:fixed;
 }
@@ -196,9 +207,9 @@ h1{ font-size:clamp(1.75rem,3.4vw,2.35rem); }
 h2{ font-size:1.25rem; }
 h3{ font-size:1.0625rem; }
 hr{ border-color:var(--v-line); opacity:1; }
-::selection{ background:rgba(217,185,120,0.28); color:#fff; }
+::selection{ background:rgba(63,224,197,0.28); color:#fff; }
 
-:focus-visible{ outline:2px solid var(--v-gold); outline-offset:2px; border-radius:4px; }
+:focus-visible{ outline:2px solid var(--v-teal); outline-offset:2px; border-radius:4px; }
 .btn:focus-visible,.form-control:focus-visible,.form-select:focus-visible{ outline:none; }
 
 /* Scrollbars that match the theme instead of the OS default */
@@ -210,7 +221,7 @@ hr{ border-color:var(--v-line); opacity:1; }
 
 .skip-link{
   position:fixed; left:16px; top:-64px; z-index:1080;
-  background:var(--v-gold); color:var(--v-on-gold);
+  background:var(--v-teal); color:var(--v-on-teal);
   padding:10px 16px; border-radius:var(--v-r-sm); font-weight:600;
   transition:top var(--v-mid) var(--v-ease);
 }
@@ -513,23 +524,23 @@ hr{ border-color:var(--v-line); opacity:1; }
 .btn-sm{ --bs-btn-font-size:.8125rem; --bs-btn-padding-y:.375rem; --bs-btn-padding-x:.75rem; --bs-btn-border-radius:8px; min-height:34px; }
 
 .btn-primary{
-  --bs-btn-color:var(--v-on-gold);
-  --bs-btn-bg:var(--v-gold);
+  --bs-btn-color:var(--v-on-teal);
+  --bs-btn-bg:var(--v-teal);
   --bs-btn-border-color:transparent;
-  --bs-btn-hover-color:var(--v-on-gold);
-  --bs-btn-hover-bg:#E3C15C;
+  --bs-btn-hover-color:var(--v-on-teal);
+  --bs-btn-hover-bg:#5EEAD4;
   --bs-btn-hover-border-color:transparent;
-  --bs-btn-active-color:var(--v-on-gold);
-  --bs-btn-active-bg:#B89220;
+  --bs-btn-active-color:var(--v-on-teal);
+  --bs-btn-active-bg:var(--v-teal-2);
   --bs-btn-active-border-color:transparent;
-  --bs-btn-disabled-color:rgba(20,16,5,0.6);
-  --bs-btn-disabled-bg:rgba(201,162,39,0.45);
+  --bs-btn-disabled-color:rgba(6,35,29,0.6);
+  --bs-btn-disabled-bg:rgba(63,224,197,0.45);
   --bs-btn-disabled-border-color:transparent;
-  background-image:linear-gradient(155deg,#E3C15C,var(--v-gold));
-  box-shadow:var(--v-sh-gold), inset 0 1px 0 rgba(255,255,255,0.4);
-  border-radius:13px; font-weight:700;
+  background-image:linear-gradient(135deg,var(--v-teal),var(--v-teal-2));
+  box-shadow:var(--v-sh-teal), inset 0 1px 0 rgba(255,255,255,0.25);
+  border-radius:16px; font-weight:700;
 }
-.btn-primary:hover{ box-shadow:0 10px 24px -6px rgba(201,162,39,0.6), inset 0 1px 0 rgba(255,255,255,0.4); transform:translateY(-1px); }
+.btn-primary:hover{ box-shadow:0 10px 28px -8px rgba(63,224,197,0.55), inset 0 1px 0 rgba(255,255,255,0.3); transform:translateY(-1px); }
 
 .btn-secondary{
   --bs-btn-color:var(--v-ink);
@@ -765,8 +776,8 @@ input[type=file].form-control::file-selector-button:hover{ background:var(--v-su
 .chip:hover{ background:var(--v-surface-2); border-color:var(--v-line-2); color:var(--v-ink); }
 .chip .avatar{ width:28px; height:28px; font-size:.6875rem; }
 .chip.plain{ padding-left:.875rem; }
-.chip.active{ background:var(--v-surface-3); border-color:var(--v-line-2); color:var(--v-ink); box-shadow:inset 0 0 0 1px rgba(255,255,255,0.03); }
-.chip.active .avatar{ background:linear-gradient(150deg,#E3C15C,var(--v-gold-2)); color:var(--v-on-gold); border-color:transparent; }
+.chip.active{ background:var(--v-teal-soft); border-color:var(--v-teal); color:var(--v-teal); box-shadow:none; }
+.chip.active .avatar{ background:var(--v-teal-soft); color:var(--v-teal); border-color:transparent; }
 .chip .count{ color:var(--v-ink-3); font-family:var(--v-mono); font-size:.6875rem; margin-left:.15rem; }
 .chip-row{ display:flex; flex-wrap:wrap; gap:.5rem; margin-bottom:1.5rem; }
 .chip-scroll{ display:flex; gap:.5rem; overflow-x:auto; padding-bottom:.25rem; margin-bottom:1.5rem; scrollbar-width:none; }
@@ -2771,3 +2782,90 @@ body{
   background:rgba(217,185,120,.1);
 }
 .doc-file-current{ display:flex; align-items:center; gap:.35rem; }
+
+/* --------------------------------------------------------------------------
+   Clinical Health Vault — mobile motifs (ECG, pulse ring, modules, badges)
+   -------------------------------------------------------------------------- */
+.hv-greeting{ font-family:var(--v-display); font-weight:600; font-size:clamp(1.35rem,4vw,1.65rem); letter-spacing:-0.01em; }
+.hv-greeting .name{ color:var(--v-teal); }
+.hv-meta{ display:flex; align-items:center; gap:.5rem; color:var(--v-ink-2); font-size:.8125rem; margin-top:.25rem; }
+.hv-meta .live-dot{
+  width:6px; height:6px; border-radius:50%; background:var(--v-good);
+  box-shadow:0 0 6px var(--v-good);
+}
+
+.hv-pulse-card{
+  display:flex; flex-direction:column; gap:.75rem;
+  background:var(--v-surface); border:1px solid var(--v-line); border-radius:20px;
+  padding:1rem; position:relative; overflow:hidden;
+}
+.hv-pulse-row{ display:flex; align-items:center; gap:1rem; }
+.hv-pulse-ring{ width:76px; height:76px; flex-shrink:0; }
+.hv-pulse-num{ font-family:var(--v-display); font-size:2.125rem; font-weight:600; line-height:1; }
+.hv-pulse-sub{ font-size:.8125rem; color:var(--v-ink-2); margin-top:.2rem; }
+
+.hv-ecg{ width:100%; height:18px; opacity:.55; }
+.hv-ecg path{
+  fill:none; stroke:var(--v-teal); stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round;
+  stroke-dasharray:220; stroke-dashoffset:220; animation:hv-ecg-draw 2.2s ease-out forwards;
+}
+@keyframes hv-ecg-draw{ to{ stroke-dashoffset:0; } }
+@media (prefers-reduced-motion: reduce){
+  .hv-ecg path{ animation:none; stroke-dashoffset:0; }
+}
+
+.hv-module-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:.625rem;
+}
+.hv-module-tile{
+  display:flex; flex-direction:column; gap:1.15rem;
+  background:var(--v-surface); border:1px solid var(--v-line); border-radius:18px;
+  padding:.875rem; text-decoration:none; color:inherit;
+  transition:border-color var(--v-fast) var(--v-ease), background var(--v-fast) var(--v-ease);
+}
+.hv-module-tile:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); color:inherit; }
+.hv-module-ico{
+  width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+  font-size:1.05rem;
+}
+.hv-module-count{ font-family:var(--v-display); font-size:1.25rem; font-weight:600; line-height:1.1; }
+.hv-module-label{ font-size:.72rem; color:var(--v-ink-2); }
+
+.hv-badge{
+  font-family:var(--v-mono); font-size:.625rem; font-weight:600; letter-spacing:.02em;
+  padding:.2rem .5rem; border-radius:6px; white-space:nowrap;
+}
+.hv-badge.valid{ color:var(--v-good); background:var(--v-good-soft); }
+.hv-badge.soon{ color:var(--v-brass); background:var(--v-brass-soft); }
+.hv-badge.expired{ color:var(--v-bad); background:var(--v-bad-soft); }
+
+.hv-timeline{ position:relative; padding-left:0; }
+.hv-timeline-item{
+  display:flex; gap:.875rem; padding:.55rem 0; position:relative;
+}
+.hv-timeline-item .dot{
+  width:9px; height:9px; border-radius:50%; margin-top:.35rem; flex-shrink:0; z-index:1;
+  box-shadow:0 0 0 4px var(--v-bg);
+}
+.hv-timeline::before{
+  content:""; position:absolute; left:4px; top:.5rem; bottom:.5rem; width:1px; background:var(--v-line);
+}
+
+.card-ico.gold{ background:var(--v-teal-soft); border-color:var(--v-teal-line); color:var(--v-teal); }
+.stat.accent{ border-color:var(--v-brass-line); background:linear-gradient(160deg,var(--v-brass-soft),var(--v-surface) 60%); }
+
+.btn-outline-primary{
+  --bs-btn-color:var(--v-teal);
+  --bs-btn-border-color:var(--v-teal-line);
+  --bs-btn-hover-color:var(--v-on-teal);
+  --bs-btn-hover-bg:var(--v-teal);
+  --bs-btn-hover-border-color:var(--v-teal);
+  --bs-btn-active-color:var(--v-on-teal);
+  --bs-btn-active-bg:var(--v-teal-2);
+  --bs-btn-active-border-color:var(--v-teal-2);
+}
+
+@media (max-width: 767.98px){
+  body.mod-health .page-title{ font-family:var(--v-display); font-weight:600; }
+  body.mod-health .chip-scroll{ padding-bottom:.75rem; }
+}

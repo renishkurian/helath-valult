@@ -21,8 +21,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Monitoring
+import androidx.compose.material.icons.filled.Badge
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rklab.healthvault.data.model.DocCategory
 import com.rklab.healthvault.data.model.DocumentOut
@@ -53,7 +61,7 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { viewModel.load() }
 
-    Column(modifier = Modifier.fillMaxSize().background(HubBg)) {
+    Column(modifier = Modifier.fillMaxSize().background(DarkBackground)) {
         OfflineBanner(isOffline = isOffline, pendingCount = pendingCount)
 
         Box(modifier = Modifier.weight(1f)) {
@@ -100,10 +108,12 @@ fun HomeScreen(
                     elevation = FloatingActionButtonDefaults.elevation(0.dp, 0.dp)
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxSize().background(GradientPrimary, CircleShape),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(GradientPrimary, RoundedCornerShape(20.dp)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add document", tint = TextDark, modifier = Modifier.size(32.dp))
+                        Icon(Icons.Filled.Add, contentDescription = "Add document", tint = TextDark, modifier = Modifier.size(28.dp))
                     }
                 }
             }
@@ -131,14 +141,19 @@ private fun LazyColumnContent(
         item {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
+                    val first = state.activePerson?.name?.split(" ")?.first() ?: "there"
                     Text(
-                        "Hi, ${state.activePerson?.name?.split(" ")?.first() ?: "there"}",
-                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
+                        buildAnnotatedString {
+                            append("Good evening, ")
+                            withStyle(SpanStyle(color = VaultTeal, fontWeight = FontWeight.SemiBold)) { append(first) }
+                        },
+                        style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = TextWhite
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(6.dp))
+                    val attention = state.expiringCards.size + state.expiringDocuments.size
                     Text(
-                        "Papers live under a hospital. Insurance stays with the person.",
+                        "${state.documentCount} documents · $attention need attention",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextGray
                     )
@@ -194,7 +209,63 @@ private fun LazyColumnContent(
                     }
                 }
             }
-            Spacer(Modifier.height(22.dp))
+            Spacer(modifier.height(16.dp))
+        }
+
+        item {
+            val attention = state.expiringCards.size + state.expiringDocuments.size
+            ExpiryPulseCard(
+                count = attention,
+                subtitle = "documents expiring\nwithin 30 days",
+                progress = if (attention == 0) 0.12f else (0.35f + minOf(attention, 8) * 0.08f)
+            )
+            Spacer(modifier.height(18.dp))
+            Text(
+                "MODULES",
+                style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.2.sp),
+                color = TextMuted
+            )
+            Spacer(modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                ModuleTile(
+                    count = "${state.documentCount}",
+                    label = "Documents",
+                    iconBg = VaultTealSoft,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onOpenFolder(DocCategory.OTHER, null, null) }
+                ) {
+                    Icon(Icons.Filled.FolderOpen, contentDescription = null, tint = VaultTeal, modifier = Modifier.size(19.dp))
+                }
+                ModuleTile(
+                    count = "${state.labTrends.size}",
+                    label = "Lab trends",
+                    iconBg = VaultBrassSoft,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Monitoring, contentDescription = null, tint = VaultBrass, modifier = Modifier.size(19.dp))
+                }
+            }
+            Spacer(modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                ModuleTile(
+                    count = "${state.cards.size}",
+                    label = "Hospital cards",
+                    iconBg = PurpleAccent.copy(alpha = 0.14f),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Filled.Badge, contentDescription = null, tint = PurpleAccent, modifier = Modifier.size(19.dp))
+                }
+                ModuleTile(
+                    count = "—",
+                    label = "Vault items",
+                    iconBg = BlueAccent.copy(alpha = 0.14f),
+                    modifier = Modifier.weight(1f),
+                    onClick = onOpenModules
+                ) {
+                    Icon(Icons.Filled.VpnKey, contentDescription = null, tint = BlueAccent, modifier = Modifier.size(19.dp))
+                }
+            }
+            Spacer(modifier.height(18.dp))
         }
 
         if (state.expiringCards.isNotEmpty() || state.expiringDocuments.isNotEmpty()) {
