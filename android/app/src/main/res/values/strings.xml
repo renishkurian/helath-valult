@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Vault</string>
+    <string name="app_name">Vault Hub</string>
     <string name="autofill_service_description">Fill logins from Password Vault</string>
     <string name="widget_description">Quick-add a photo of a new card or document</string>
     <string name="status_widget_description">Open ICE card, reminders, and care</string>

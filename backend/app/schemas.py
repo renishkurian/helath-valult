@@ -716,6 +716,7 @@ class VaultItemOut(BaseModel):
     deleted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    active_send_count: int = 0
 
 
 class VaultTotpOut(BaseModel):

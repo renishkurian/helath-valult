@@ -104,7 +104,7 @@ fun LoginScreen(
                 .padding(horizontal = 24.dp, vertical = 28.dp),
             verticalArrangement = Arrangement.Center
         ) {
-            Text("HEALTH VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+            Text("VAULT HUB", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(8.dp))
             Text(
                 if (isRegisterMode) "Create your\naccount" else "Welcome\nback",
@@ -114,7 +114,7 @@ fun LoginScreen(
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Health records and passwords — kept on your own server.",
+                "Passwords, health, money, and more — on your own server.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = HubTextDim
             )

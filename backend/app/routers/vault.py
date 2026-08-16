@@ -83,7 +83,7 @@ def _uris_dump(uris: list[str] | None) -> str | None:
     return json.dumps(cleaned) if cleaned else None
 
 
-def _to_out(item: models.VaultItem) -> schemas.VaultItemOut:
+def _to_out(item: models.VaultItem, *, active_send_count: int = 0) -> schemas.VaultItemOut:
     totp = crypto.decrypt_text(item.totp_secret_enc)
     return schemas.VaultItemOut(
         id=item.id,
@@ -122,6 +122,7 @@ def _to_out(item: models.VaultItem) -> schemas.VaultItemOut:
         deleted_at=item.deleted_at,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        active_send_count=max(0, int(active_send_count or 0)),
     )
 
 
@@ -362,6 +363,40 @@ def empty_trash(db: Session = Depends(get_db), current_user: models.User = Depen
 
 
 # ---------- Sends ----------
+def _send_is_active(row: models.VaultSend, *, now: datetime | None = None) -> bool:
+    """True when a share can still be opened (not revoked / expired / maxed out)."""
+    if row.revoked:
+        return False
+    stamp = now or datetime.utcnow()
+    if row.expires_at and row.expires_at < stamp:
+        return False
+    if row.max_views is not None and (row.view_count or 0) >= row.max_views:
+        return False
+    return True
+
+
+def _active_send_counts(user_id: str, db: Session) -> dict[str, int]:
+    """Map vault item_id → count of still-open Send links for that login."""
+    rows = (
+        db.query(models.VaultSend)
+        .filter(
+            models.VaultSend.user_id == user_id,
+            models.VaultSend.revoked.is_(False),
+        )
+        .all()
+    )
+    now = datetime.utcnow()
+    counts: dict[str, int] = {}
+    for row in rows:
+        if not _send_is_active(row, now=now):
+            continue
+        item_id = _payload(row).get("item_id")
+        if isinstance(item_id, str) and item_id.strip():
+            key = item_id.strip()
+            counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
 def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
     data = _payload(row)
     item_id = data.get("item_id") if isinstance(data.get("item_id"), str) else None
@@ -469,11 +504,18 @@ def list_sends(db: Session = Depends(get_db), current_user: models.User = Depend
 
 
 def list_item_sends(item_id: str, db: Session, current_user: models.User) -> list[schemas.VaultSendOut]:
-    """Active sends that snapshot a specific vault login."""
-    return [
-        s for s in list_sends(db=db, current_user=current_user)
-        if s.item_id == item_id and not s.revoked
-    ]
+    """Active sends that snapshot a specific vault login (not revoked/expired/maxed)."""
+    now = datetime.utcnow()
+    out: list[schemas.VaultSendOut] = []
+    for s in list_sends(db=db, current_user=current_user):
+        if s.item_id != item_id or s.revoked:
+            continue
+        if s.expires_at and s.expires_at < now:
+            continue
+        if s.max_views is not None and (s.view_count or 0) >= s.max_views:
+            continue
+        out.append(s)
+    return out
 
 
 @router.post("/items/{item_id}/sends/revoke-all", status_code=204)
@@ -974,7 +1016,17 @@ def _notify_send_request(
     for tok in tokens:
         if send_fcm(
             tok.token, title, body,
-            data={"type": "vault_send_request", "id": req.id, "send_id": req.send_id},
+            data={
+                "type": "vault_send_request",
+                "id": req.id,
+                "send_id": req.send_id or "",
+                "send_name": send_name or "",
+                "name": (req.name or ""),
+                "email": (req.email or ""),
+                "ip": (req.ip or ""),
+                "has_photo": "1" if req.photo_path else "0",
+                "item_id": item_id or "",
+            },
             account=account,
         ):
             sent += 1
@@ -1714,7 +1766,8 @@ def list_items(
         query = query.filter(models.VaultItem.favorite.is_(True))
     rows = query.order_by(models.VaultItem.favorite.desc(), models.VaultItem.name).all()
     needle = (q or "").strip().lower()
-    out = [_to_out(r) for r in rows]
+    counts = _active_send_counts(vault_id(current_user), db)
+    out = [_to_out(r, active_send_count=counts.get(r.id, 0)) for r in rows]
     if needle:
         def _match(item: schemas.VaultItemOut) -> bool:
             blob = " ".join(filter(None, [
@@ -1780,7 +1833,9 @@ def create_item(
 @router.get("/items/{item_id}", response_model=schemas.VaultItemOut)
 def get_item(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    return _to_out(_owned_item(item_id, db, current_user, include_deleted=True))
+    item = _owned_item(item_id, db, current_user, include_deleted=True)
+    counts = _active_send_counts(vault_id(current_user), db)
+    return _to_out(item, active_send_count=counts.get(item.id, 0))
 
 
 @router.patch("/items/{item_id}", response_model=schemas.VaultItemOut)

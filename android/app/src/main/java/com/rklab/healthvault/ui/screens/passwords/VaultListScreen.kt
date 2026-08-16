@@ -38,7 +38,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.rklab.healthvault.data.model.VaultFolderOut
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
@@ -66,6 +69,7 @@ fun VaultListScreen(
     onOpenModules: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf<String?>(null) }
     var folderId by remember { mutableStateOf<String?>(null) }
@@ -77,18 +81,20 @@ fun VaultListScreen(
     var showFolder by remember { mutableStateOf(false) }
     var folderName by remember { mutableStateOf("") }
 
-    fun reload() {
-        scope.launch {
-            loading = true
-            error = null
-            runCatching {
-                folders = repository.listVaultFolders()
-                items = repository.listVaultItems(query.ifBlank { null }, type, folderId)
-            }.onFailure { error = it.message ?: "Could not load vault" }
-            loading = false
+    suspend fun reload() {
+        loading = true
+        error = null
+        runCatching {
+            folders = repository.listVaultFolders()
+            items = repository.listVaultItems(query.ifBlank { null }, type, folderId)
+        }.onFailure { error = it.message ?: "Could not load vault" }
+        loading = false
+    }
+    LaunchedEffect(query, type, folderId, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            reload()
         }
     }
-    LaunchedEffect(query, type, folderId) { reload() }
 
     Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
@@ -170,6 +176,9 @@ fun VaultListScreen(
                             title = item.name,
                             subtitle = item.username ?: item.email ?: item.uris.firstOrNull() ?: item.item_type,
                             meta = item.item_type,
+                            badge = if (item.active_send_count > 0) {
+                                "${item.active_send_count} share${if (item.active_send_count == 1) "" else "s"}"
+                            } else null,
                             accent = when (item.item_type) {
                                 "login" -> HubViolet
                                 "note" -> HubAmber

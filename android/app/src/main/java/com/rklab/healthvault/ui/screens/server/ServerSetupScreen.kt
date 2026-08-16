@@ -54,12 +54,12 @@ fun ServerSetupScreen(
         }
         Spacer(Modifier.height(20.dp))
 
-        Text("HEALTH VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+        Text("VAULT HUB", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(6.dp))
         Text("Connect to your\nserver", style = MaterialTheme.typography.headlineLarge, color = Ink)
         Spacer(Modifier.height(8.dp))
         Text(
-            "Point this app at your own Health Vault server — the address of the Pi (or domain) where it's running.",
+            "Point this app at your own Vault Hub server — the address of the Pi (or domain) where it's running.",
             style = MaterialTheme.typography.bodyMedium,
             color = InkSoft
         )

@@ -3,6 +3,10 @@
 Uses a Firebase service account (Super Admin → Server settings). If none is
 saved, dispatch is a no-op — the Android app still polls while it is open and
 schedules local AlarmManager reminders itself.
+
+Messages are **data-only** (no top-level `notification` block) so Android always
+delivers them to FirebaseMessagingService.onMessageReceived — including when the
+app is backgrounded. Title/body are duplicated into the data map for the client.
 """
 from __future__ import annotations
 
@@ -68,13 +72,20 @@ def send_fcm(
     project = str(account.get("project_id") or "").strip()
     if not project:
         return False
+    # FCM requires all data values to be strings. Keep title/body here so the
+    # Android service can always build a local notification (data-only path).
+    payload_data: dict[str, str] = {str(k): str(v) for k, v in (data or {}).items()}
+    payload_data.setdefault("title", title or "")
+    payload_data.setdefault("body", body or "")
     message: dict[str, Any] = {
         "token": token,
-        "notification": {"title": title, "body": body or ""},
-        "android": {"priority": "HIGH"},
+        "data": payload_data,
+        "android": {
+            "priority": "HIGH",
+            "ttl": "86400s",
+            "direct_boot_ok": True,
+        },
     }
-    if data:
-        message["data"] = {str(k): str(v) for k, v in data.items()}
     payload = json.dumps({"message": message}).encode("utf-8")
     try:
         bearer = _access_token(account)

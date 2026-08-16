@@ -10,6 +10,7 @@ import com.rklab.healthvault.data.local.AppDatabase
 import com.rklab.healthvault.data.remote.RetrofitClient
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.data.sync.ConnectivityObserver
+import com.rklab.healthvault.data.sync.PushPollWorker
 import com.rklab.healthvault.data.sync.SyncWorker
 
 class HealthVaultApp : Application() {
@@ -43,6 +44,7 @@ class HealthVaultApp : Application() {
         // connectivity is available, then run it automatically.
         if (tokenManager.getAccessToken() != null) {
             SyncWorker.enqueue(this)
+            PushPollWorker.enqueue(this)
             com.rklab.healthvault.util.ReminderScheduler.rescheduleAll(this)
             com.rklab.healthvault.util.EmiScheduler.rescheduleAll(this)
             com.rklab.healthvault.push.DevicePush.sync(this)

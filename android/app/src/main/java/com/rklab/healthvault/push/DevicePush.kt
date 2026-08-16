@@ -20,6 +20,7 @@ object DevicePush {
     fun sync(app: Application) {
         val hv = app as? HealthVaultApp ?: return
         if (!hv.repository.isLoggedIn) return
+        com.rklab.healthvault.data.sync.PushPollWorker.enqueue(app)
         if (FirebaseApp.getApps(app).isEmpty()) {
             Log.w(TAG, "Firebase not configured — add google-services.json (see android/README.md)")
             return

@@ -209,6 +209,7 @@ fun VaultListRow(
     title: String,
     subtitle: String,
     meta: String? = null,
+    badge: String? = null,
     accent: Color = HubViolet,
     favorite: Boolean = false,
     onClick: () -> Unit
@@ -246,6 +247,14 @@ fun VaultListRow(
                 }
             }
             Text(subtitle, color = HubTextDim, style = MaterialTheme.typography.bodySmall)
+        }
+        if (!badge.isNullOrBlank()) {
+            Text(
+                badge,
+                color = VaultGold,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(end = 8.dp)
+            )
         }
         if (!meta.isNullOrBlank()) {
             Text(meta, color = HubTextDim, style = MaterialTheme.typography.labelSmall)

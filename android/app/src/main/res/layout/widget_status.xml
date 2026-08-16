@@ -11,7 +11,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Health Vault"
+        android:text="Vault Hub"
         android:textAllCaps="true"
         android:textColor="#8FA2B0"
         android:textSize="11sp" />

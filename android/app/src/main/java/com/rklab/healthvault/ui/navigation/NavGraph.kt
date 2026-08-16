@@ -375,8 +375,11 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                         PasswordTab.SEND -> Routes.vaultSends()
                         PasswordTab.HEALTH -> Routes.VAULT_HEALTH
                     }
+                    // Pop to the module hub so switching tabs always lands on a fresh
+                    // destination (popUpTo(VAULT) was a no-op from Send when Vault was
+                    // already under the stack, so the Vault tab appeared dead).
                     navController.navigate(route) {
-                        popUpTo(Routes.VAULT) { inclusive = false; saveState = true }
+                        popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
                         launchSingleTop = true
                         restoreState = true
                     }

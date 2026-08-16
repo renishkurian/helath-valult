@@ -508,7 +508,8 @@ data class VaultItemOut(
     val password_changed_at: String? = null,
     val deleted_at: String? = null,
     val created_at: String,
-    val updated_at: String? = null
+    val updated_at: String? = null,
+    val active_send_count: Int = 0
 )
 data class VaultTotpOut(val code: String, val period: Int = 30, val remaining: Int)
 data class VaultHistoryOut(val id: String, val password: String, val created_at: String)

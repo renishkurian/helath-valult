@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "HealthVault"
+rootProject.name = "VaultHub"
 include(":app")

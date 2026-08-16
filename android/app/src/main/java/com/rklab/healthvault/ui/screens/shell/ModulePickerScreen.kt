@@ -174,7 +174,7 @@ fun ModulePickerScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(156.dp),
-                contentDescription = "Open Health Vault, ${state.recordCount} records"
+                contentDescription = "Open Health, ${state.recordCount} records"
             ) {
                 Row(
                     Modifier.fillMaxWidth(),
@@ -195,7 +195,7 @@ fun ModulePickerScreen(
                     )
                 }
                 Column {
-                    Text("Health Vault", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Health", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.height(3.dp))
                     Text(
                         state.healthSyncLabel,

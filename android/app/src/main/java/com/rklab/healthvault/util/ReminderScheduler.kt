@@ -103,7 +103,7 @@ object ReminderScheduler {
 
 class ReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val title = intent.getStringExtra("title") ?: "Health Vault reminder"
+        val title = intent.getStringExtra("title") ?: "Vault Hub reminder"
         val description = intent.getStringExtra("description").orEmpty()
         val reminderId = intent.getStringExtra("reminderId") ?: return
         val repeatName = intent.getStringExtra("repeatRule") ?: RepeatRule.NONE.name

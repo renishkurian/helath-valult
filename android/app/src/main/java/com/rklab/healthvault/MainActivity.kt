@@ -140,8 +140,8 @@ class MainActivity : FragmentActivity() {
             })
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle("Unlock HealthVault")
-            .setSubtitle("Confirm your identity to access your medical records")
+            .setTitle("Unlock Vault Hub")
+            .setSubtitle("Confirm your identity to open passwords, health, and more")
             .setNegativeButtonText("Cancel")
             .build()
 

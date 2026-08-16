@@ -1,8 +1,7 @@
-# Health Vault — Android App
+# Vault Hub — Android App
 
-Kotlin + Jetpack Compose client for the Health Vault API. Matches the design
-system from the original mockup (parchment background, navy ID card,
-folder-tab categories, ledger-style document list).
+Kotlin + Jetpack Compose client for Vault Hub (passwords, health, finance,
+shopping, and more on your own server).
 
 ## CI/CD
 
@@ -95,8 +94,11 @@ Super Admin → Server settings storing an FCM **service account** only lets the
 3. Rebuild/install the app, sign in once, and allow notifications when asked.
 
 After that, login-approve and Send access-request pushes reach the device even
-when the app is in the background. With the app open, pending access requests
-also show an in-app dialog and poll every few seconds (no FCM required for that path).
+when the app is in the background (server sends **data-only** FCM so the app
+can always show a tray notification with the right deep link). With the app
+open, pending access requests also show an in-app dialog and poll every few
+seconds. A WorkManager job also polls every ~15 minutes as a fallback if FCM
+is delayed.
 
 ## What's implemented
 

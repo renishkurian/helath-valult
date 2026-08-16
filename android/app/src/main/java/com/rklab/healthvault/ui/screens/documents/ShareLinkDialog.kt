@@ -117,7 +117,7 @@ fun ShareLinkDialog(
                     val ctx = context
                     ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                         type = "text/plain"
-                        putExtra(android.content.Intent.EXTRA_TEXT, "Health Vault document: $url")
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Vault Hub document: $url")
                     }, "Share via WhatsApp"))
                     onDismiss()
                 }) { Text("Copy & WhatsApp", color = Navy) }

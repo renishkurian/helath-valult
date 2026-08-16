@@ -65,7 +65,7 @@
         <receiver
             android:name=".widget.InboxWidgetProvider"
             android:exported="true"
-            android:label="Add to Health Vault">
+            android:label="Add to Vault Hub">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -77,7 +77,7 @@
         <receiver
             android:name=".widget.StatusWidgetProvider"
             android:exported="true"
-            android:label="Health Vault care">
+            android:label="Vault Hub care">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
