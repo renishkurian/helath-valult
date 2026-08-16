@@ -100,7 +100,7 @@ def doc_out(doc: models.Document) -> dict:
     return {
         "id": doc.id, "person_id": doc.person_id, "category": doc.category.value, "title": doc.title,
         "hospital_name": doc.hospital_name, "doc_date": doc.doc_date,
-        "expiry_date": doc.expiry_date, "tags": doc.tags,
+        "expiry_date": doc.expiry_date, "tags": doc.tags, "amount": doc.amount,
         "file_size": doc.file_size or 0, "created_at": doc.created_at,
         "file_type": (doc.file_type or "").split(";")[0].strip().lower(),
         "notes": crypto.decrypt_text(doc.notes_enc),
@@ -1266,6 +1266,104 @@ def documents_viewer_page(request: Request, document_id: str, db: Session = Depe
     })
 
 
+@router.get("/documents/{document_id}/edit", response_class=HTMLResponse)
+def documents_edit_page(request: Request, document_id: str, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(
+            models.Document.id == document_id,
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.is_(None),
+        ).first()
+    )
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    person = doc.person
+    person_ids = [
+        p.id for p in db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    ]
+    hospitals = sorted({
+        c.hospital_name.strip()
+        for c in db.query(models.HospitalCard).filter(models.HospitalCard.person_id.in_(person_ids)).all()
+        if c.hospital_name and c.hospital_name.strip()
+    }, key=str.lower) if person_ids else []
+    # Keep current hospital in the list even if the card was removed
+    if doc.hospital_name and doc.hospital_name.strip() and doc.hospital_name not in hospitals:
+        hospitals.append(doc.hospital_name.strip())
+        hospitals.sort(key=str.lower)
+    return templates.TemplateResponse("document_edit.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "dashboard",
+        "active_module": "health",
+        "active_person": person,
+        "active_person_id": person.id if person else None,
+        "doc": doc_out(doc),
+        "hospitals": hospitals,
+        "hospital_scoped_cats": [c.value for c in models.DocCategory if models.category_requires_hospital(c)],
+        "saved": request.query_params.get("ok") == "1",
+        "err": request.query_params.get("err"),
+    })
+
+
+@router.post("/documents/{document_id}/edit")
+def documents_edit_save(
+    request: Request,
+    document_id: str,
+    person_id: str = Form(...),
+    title: str = Form(...),
+    category: str = Form(...),
+    hospital_name: str = Form(""),
+    doc_date: str = Form(""),
+    expiry_date: str = Form(""),
+    tags: str = Form(""),
+    amount: str = Form(""),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.templating import nice_name
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(
+            models.Document.id == document_id,
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.is_(None),
+        ).first()
+    )
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    try:
+        cat = models.DocCategory(category)
+    except ValueError:
+        return RedirectResponse(f"/admin/documents/{document_id}/edit?err=Invalid+category", status_code=302)
+    hosp = (hospital_name or "").strip() or None
+    if cat == models.DocCategory.insurance:
+        hosp = None
+    elif models.category_requires_hospital(cat) and not hosp:
+        return RedirectResponse(
+            f"/admin/documents/{document_id}/edit?err=Hospital+is+required+for+this+category",
+            status_code=302,
+        )
+    if hosp:
+        hosp = nice_name(hosp)
+    doc.title = title.strip() or doc.title
+    doc.category = cat
+    doc.hospital_name = hosp
+    doc.doc_date = doc_date.strip() or None
+    doc.expiry_date = expiry_date.strip() or None
+    doc.tags = tags.strip() or None
+    doc.amount = amount.strip() or None
+    doc.notes_enc = crypto.encrypt_text(notes.strip() or None)
+    db.commit()
+    return RedirectResponse(f"/admin/documents/{document_id}/edit?ok=1", status_code=302)
+
+
 @router.post("/documents/{document_id}/rotate")
 def documents_rotate(
     request: Request,
@@ -1274,9 +1372,9 @@ def documents_rotate(
     db: Session = Depends(get_db),
 ):
     from app.imaging import rotate_image_bytes
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     doc = (
         db.query(models.Document).join(models.Person)
         .filter(

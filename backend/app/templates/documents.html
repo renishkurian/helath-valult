@@ -126,6 +126,9 @@
             <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/viewer" target="_blank" rel="noopener" title="View" aria-label="View">
               <i class="bi bi-eye"></i>
             </a>
+            <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/edit" title="Edit" aria-label="Edit">
+              <i class="bi bi-pencil"></i>
+            </a>
             <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/download" title="Download" aria-label="Download">
               <i class="bi bi-download"></i>
             </a>
@@ -163,6 +166,9 @@
   {% set ddate = doc.doc_date or doc.created_at.strftime('%Y-%m-%d') %}
   <div class="hv-doc-card">
     <div class="hv-doc-card-actions">
+      <a class="hv-swipe-action dl" href="/admin/documents/{{ doc.id }}/edit">
+        <i class="bi bi-pencil"></i> Edit
+      </a>
       <a class="hv-swipe-action dl" href="/admin/documents/{{ doc.id }}/download">
         <i class="bi bi-download"></i> Save
       </a>

@@ -19,6 +19,7 @@
     </p>
   </div>
   <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/edit"><i class="bi bi-pencil"></i> Edit</a>
     <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/download"><i class="bi bi-download"></i> Download</a>
     {% if active_person %}
     <a class="btn btn-ghost" href="/admin/documents?person={{ active_person.id }}{% if doc.category %}&category={{ doc.category }}{% endif %}"><i class="bi bi-arrow-left"></i> Back</a>

@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Edit document — Vault{% endblock %}
+{% block body_class %}mod-health{% endblock %}
+{% block content %}
+{% set folder_label = {'hospital_card':'Card scans','prescription':'Prescriptions','lab_report':'Lab reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
+      <i class="bi bi-chevron-right"></i>
+      <a href="/admin/documents?person={{ active_person.id }}{% if doc.category %}&category={{ doc.category }}{% endif %}{% if doc.hospital_name %}&hospital={{ doc.hospital_name | urlencode }}{% endif %}">Documents</a>
+      <i class="bi bi-chevron-right"></i>
+      Edit
+    </div>
+    <h1 class="page-title">{{ doc.title | nice }}</h1>
+    <p class="page-lead">Update title, category, hospital, dates, and notes. Files stay as uploaded — open View to rotate pages.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/viewer" target="_blank" rel="noopener"><i class="bi bi-eye"></i> View</a>
+    <a class="btn btn-ghost" href="/admin/documents?person={{ active_person.id }}{% if doc.category %}&category={{ doc.category }}{% endif %}{% if doc.hospital_name %}&hospital={{ doc.hospital_name | urlencode }}{% endif %}"><i class="bi bi-arrow-left"></i> Back</a>
+  </div>
+</div>
+
+{% if saved %}
+<div class="alert alert-success py-2" role="status">Document saved.</div>
+{% endif %}
+{% if err %}
+<div class="alert alert-warning py-2" role="alert">{{ err }}</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <span class="card-ico gold"><i class="bi bi-pencil"></i></span>
+    <div>
+      <h2>Document details</h2>
+      <div class="card-sub">Encrypted notes stay on this server</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/admin/documents/{{ doc.id }}/edit" class="row g-3" id="doc-edit-form">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <div class="col-md-8">
+        <label class="form-label" for="e-title">Title <span class="req">*</span></label>
+        <input class="form-control" id="e-title" type="text" name="title" required value="{{ doc.title }}">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label" for="e-category">Category <span class="req">*</span></label>
+        <select class="form-select" id="e-category" name="category" required>
+          {% for cat in hospital_scoped_cats %}
+          <option value="{{ cat }}" {% if doc.category == cat %}selected{% endif %}>{{ folder_label.get(cat, cat) }}</option>
+          {% endfor %}
+          <option value="insurance" {% if doc.category == 'insurance' %}selected{% endif %}>{{ folder_label.insurance }}</option>
+        </select>
+      </div>
+      <div class="col-md-6" id="e-hospital-wrap">
+        <label class="form-label" for="e-hospital">Hospital <span class="req">*</span></label>
+        {% if hospitals %}
+        <select class="form-select" id="e-hospital" name="hospital_name">
+          <option value="">Select hospital…</option>
+          {% for h in hospitals %}
+          <option value="{{ h }}" {% if doc.hospital_name and doc.hospital_name|lower == h|lower %}selected{% endif %}>{{ h | nice }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input class="form-control" id="e-hospital" type="text" name="hospital_name" value="{{ doc.hospital_name or '' }}">
+        {% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="e-date">Date</label>
+        <input class="form-control" id="e-date" type="date" name="doc_date" value="{{ doc.doc_date or '' }}">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="e-expiry">Expiry</label>
+        <input class="form-control" id="e-expiry" type="date" name="expiry_date" value="{{ doc.expiry_date or '' }}">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" for="e-tags">Tags</label>
+        <input class="form-control" id="e-tags" type="text" name="tags" value="{{ doc.tags or '' }}" placeholder="Comma-separated">
+      </div>
+      <div class="col-md-6">
+        <label class="form-label" for="e-amount">Amount</label>
+        <input class="form-control" id="e-amount" type="text" name="amount" value="{{ doc.amount or '' }}" placeholder="Optional">
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="e-notes">Notes (encrypted)</label>
+        <textarea class="form-control" id="e-notes" name="notes" rows="3">{{ doc.notes or '' }}</textarea>
+      </div>
+      <div class="col-12 d-flex flex-wrap gap-2">
+        <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save document</button>
+        <a class="btn btn-ghost" href="/admin/documents?person={{ active_person.id }}{% if doc.category %}&category={{ doc.category }}{% endif %}{% if doc.hospital_name %}&hospital={{ doc.hospital_name | urlencode }}{% endif %}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var cat = document.getElementById('e-category');
+  var wrap = document.getElementById('e-hospital-wrap');
+  var hosp = document.getElementById('e-hospital');
+  if (!cat || !wrap || !hosp) return;
+  function sync() {
+    var needs = cat.value !== 'insurance';
+    wrap.style.display = needs ? '' : 'none';
+    hosp.required = needs;
+    if (!needs) hosp.value = '';
+  }
+  cat.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endblock %}
