@@ -56,37 +56,43 @@
   {% for c in expiring_cards %}
   <div class="alert alert-warning" role="alert">
     <i class="bi bi-exclamation-triangle"></i>
-    <span><strong>{{ c.hospital_name | nice }}</strong> card expires {{ c.valid_till }}.</span>
+    <span>
+      <strong>{{ c.hospital_name | nice }}</strong> card expires {{ c.valid_till }}
+      {% if c.person_name %} · {{ c.person_name | nice }}{% endif %}
+    </span>
   </div>
   {% endfor %}
 
+  <div class="section-head mb-2">
+    <h2 class="h6 text-uppercase text-faint mb-0" style="letter-spacing:.08em;">Family summary</h2>
+  </div>
   <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
       <div class="stat">
         <div class="lbl"><i class="bi bi-folder2"></i> Documents</div>
-        <div class="val">{{ folder_counts.values() | sum }}</div>
-        <div class="sub">across {{ cards | length }} hospital{{ 's' if cards | length != 1 else '' }}</div>
+        <div class="val">{{ family_summary.documents }}</div>
+        <div class="sub">whole family</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
       <div class="stat">
         <div class="lbl"><i class="bi bi-building"></i> Hospitals</div>
-        <div class="val">{{ cards | length }}</div>
-        <div class="sub">{{ active_person.name | nice }}</div>
+        <div class="val">{{ family_summary.hospitals }}</div>
+        <div class="sub">cards on file</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
       <div class="stat">
         <div class="lbl"><i class="bi bi-people"></i> Family</div>
-        <div class="val">{{ people | length }}</div>
+        <div class="val">{{ family_summary.people }}</div>
         <div class="sub">profiles on file</div>
       </div>
     </div>
     <div class="col-6 col-lg-3">
-      <div class="stat {% if expiring_cards %}accent{% endif %}">
+      <div class="stat {% if family_summary.expiring %}accent{% endif %}">
         <div class="lbl"><i class="bi bi-clock-history"></i> Expiring</div>
-        <div class="val">{{ expiring_cards | length }}</div>
-        <div class="sub">cards need renewal</div>
+        <div class="val">{{ family_summary.expiring }}</div>
+        <div class="sub">{% if family_summary.doctors %}{{ family_summary.doctors }} doctor{{ 's' if family_summary.doctors != 1 else '' }} saved{% else %}cards need renewal{% endif %}</div>
       </div>
     </div>
   </div>
@@ -356,6 +362,7 @@
         <thead>
           <tr>
             <th>Document</th>
+            <th>Person</th>
             <th>Date</th>
             <th>Hospital</th>
             <th>Size</th>
@@ -371,6 +378,7 @@
                 <span class="fw-semibold">{{ doc.title | nice }}</span>
               </div>
             </td>
+            <td>{{ (doc.person_name | nice) if doc.person_name else '—' }}</td>
             <td class="mono text-muted">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
             <td>{% if doc.category == 'insurance' %}<span class="text-faint">Personal</span>{% else %}{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}{% endif %}</td>
             <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
@@ -382,7 +390,7 @@
                 <i class="bi bi-download"></i> Download
               </a>
               <form class="d-inline" method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
-                <input type="hidden" name="person_id" value="{{ active_person.id }}">
+                <input type="hidden" name="person_id" value="{{ doc.person_id or active_person.id }}">
                 <input type="hidden" name="category" value="">
                 <button class="btn btn-ghost btn-sm text-danger" type="submit">
                   <i class="bi bi-trash3"></i> Delete
@@ -392,7 +400,7 @@
           </tr>
           {% else %}
           <tr>
-            <td colspan="5">
+            <td colspan="6">
               <div class="empty-state">
                 <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
                 <div class="empty-title">No documents yet</div>

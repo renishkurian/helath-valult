@@ -66,6 +66,27 @@ def require_module(request: Request, db: Session, module_key: str):
     return user, None
 
 
+def require_mutator(request: Request, db: Session):
+    """Login + vault owner (not view-only). Returns (user, redirect_or_none)."""
+    user = require_login(request, db)
+    if not user:
+        return None, RedirectResponse("/admin/login", status_code=302)
+    if is_viewer(user):
+        return None, RedirectResponse("/admin?err=view_only", status_code=302)
+    return user, None
+
+
+def vault_person(db: Session, user: models.User, person_id: str) -> Optional[models.Person]:
+    """Person belonging to this vault (self or family). None if not found / other user."""
+    if not person_id:
+        return None
+    return (
+        db.query(models.Person)
+        .filter(models.Person.id == person_id, models.Person.user_id == vault_id(user))
+        .first()
+    )
+
+
 def card_out(card: models.HospitalCard) -> dict:
     return {
         "id": card.id, "hospital_name": card.hospital_name, "ward": card.ward,
@@ -77,7 +98,7 @@ def card_out(card: models.HospitalCard) -> dict:
 
 def doc_out(doc: models.Document) -> dict:
     return {
-        "id": doc.id, "category": doc.category.value, "title": doc.title,
+        "id": doc.id, "person_id": doc.person_id, "category": doc.category.value, "title": doc.title,
         "hospital_name": doc.hospital_name, "doc_date": doc.doc_date,
         "expiry_date": doc.expiry_date, "tags": doc.tags,
         "file_size": doc.file_size or 0, "created_at": doc.created_at,
@@ -625,11 +646,71 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
     cards, documents, folder_counts, recent_documents, expiring_cards = [], [], {}, [], []
     hospital_folders, insurance_count, unassigned_folders = [], 0, {}
     hospital_scoped_cats = [c.value for c in models.DocCategory if models.category_requires_hospital(c)]
+    person_ids = [p.id for p in people]
+    person_names = {p.id: p.name for p in people}
+    today = datetime.utcnow().date()
+
+    # Family-wide summary (all profiles in this vault)
+    family_summary = {
+        "documents": 0,
+        "hospitals": 0,
+        "people": len(people),
+        "expiring": 0,
+        "doctors": 0,
+    }
+    family_expiring_cards: list[dict] = []
+    if person_ids:
+        family_summary["documents"] = (
+            db.query(models.Document)
+            .filter(
+                models.Document.person_id.in_(person_ids),
+                models.Document.deleted_at.is_(None),
+            )
+            .count()
+        )
+        all_card_rows = (
+            db.query(models.HospitalCard)
+            .filter(models.HospitalCard.person_id.in_(person_ids))
+            .all()
+        )
+        family_summary["hospitals"] = len(all_card_rows)
+        for c in all_card_rows:
+            co = card_out(c)
+            co["person_name"] = person_names.get(c.person_id, "")
+            if co["valid_till"]:
+                try:
+                    till = datetime.strptime(co["valid_till"], "%Y-%m-%d").date()
+                    if 0 <= (till - today).days <= 30:
+                        family_expiring_cards.append(co)
+                except ValueError:
+                    pass
+        family_summary["expiring"] = len(family_expiring_cards)
+        family_summary["doctors"] = (
+            db.query(models.Doctor)
+            .filter(models.Doctor.user_id == vault_id(user))
+            .count()
+        )
+        # Recent across the whole family for the overview strip
+        family_doc_rows = (
+            db.query(models.Document)
+            .filter(
+                models.Document.person_id.in_(person_ids),
+                models.Document.deleted_at.is_(None),
+            )
+            .order_by(models.Document.created_at.desc())
+            .limit(8)
+            .all()
+        )
+        recent_documents = []
+        for d in family_doc_rows:
+            row = doc_out(d)
+            row["person_name"] = person_names.get(d.person_id, "")
+            recent_documents.append(row)
+
     if active_person:
         card_rows = db.query(models.HospitalCard).filter(models.HospitalCard.person_id == active_person.id).all()
         cards = [card_out(c) for c in card_rows]
 
-        today = datetime.utcnow().date()
         for c in cards:
             if c["valid_till"]:
                 try:
@@ -651,7 +732,6 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
         folder_counts = {cat.value: 0 for cat in models.DocCategory}
         for d in documents:
             folder_counts[d["category"]] = folder_counts.get(d["category"], 0) + 1
-        recent_documents = sorted(documents, key=lambda d: d["created_at"], reverse=True)[:8]
 
         # Group hospital-scoped docs under matching hospital cards (by name).
         card_keys = {(c["hospital_name"] or "").strip().lower(): c for c in cards}
@@ -682,7 +762,8 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
         "request": request, "session_user": user, "active_nav": "dashboard",
         "people": people, "active_person": active_person, "active_person_id": active_person.id if active_person else None,
         "cards": cards, "folder_counts": folder_counts, "recent_documents": recent_documents,
-        "expiring_cards": expiring_cards,
+        "expiring_cards": family_expiring_cards or expiring_cards,
+        "family_summary": family_summary,
         "hospital_folders": hospital_folders,
         "hospital_scoped_cats": hospital_scoped_cats,
         "insurance_count": insurance_count,
@@ -710,9 +791,9 @@ def family_add(
     name: str = Form(...), relation: str = Form("other"), blood_group: str = Form(""),
     db: Session = Depends(get_db)
 ):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     initials = "".join([p[0].upper() for p in name.split()[:2]]) or "FM"
     person = models.Person(
         user_id=vault_id(user), name=name, relation=models.Relation(relation),
@@ -725,10 +806,10 @@ def family_add(
 
 @router.post("/people/{person_id}/delete")
 def people_delete(request: Request, person_id: str, db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    p = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    p = vault_person(db, user, person_id)
     if p and p.relation != models.Relation.self_:
         db.delete(p)
         db.commit()
@@ -746,10 +827,10 @@ async def cards_add(
     card_image: UploadFile | None = File(None),
     db: Session = Depends(get_db)
 ):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    person = vault_person(db, user, person_id)
     if person:
         from app.templating import nice_name
         from app.routers.cards import save_card_image
@@ -776,9 +857,9 @@ async def cards_add(
 
 @router.post("/cards/{card_id}/delete")
 def cards_delete(request: Request, card_id: str, person_id: str = Form(...), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     card = (
         db.query(models.HospitalCard).join(models.Person)
         .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
@@ -788,7 +869,9 @@ def cards_delete(request: Request, card_id: str, person_id: str = Form(...), db:
         unlink_card_image(card)
         db.delete(card)
         db.commit()
-    return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+    # Only redirect into the caller's vault person, never a foreign person_id from the form.
+    dest = person_id if vault_person(db, user, person_id) else ""
+    return RedirectResponse(f"/admin?person={dest}" if dest else "/admin", status_code=302)
 
 
 @router.get("/cards/{card_id}/edit", response_class=HTMLResponse)
@@ -834,9 +917,9 @@ async def cards_edit_save(
 ):
     from app.templating import nice_name
     from app.routers.cards import save_card_image
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     card = (
         db.query(models.HospitalCard).join(models.Person)
         .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
@@ -867,9 +950,9 @@ def cards_image_rotate(
 ):
     from app.imaging import rotate_image_bytes
     from app.routers.cards import save_card_image
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     card = (
         db.query(models.HospitalCard).join(models.Person)
         .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
@@ -1010,9 +1093,9 @@ async def documents_add(
 ):
     from app.routers.documents import attach_document_files
     from app.extract import extract_text, parse_lab_readings
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
 
     uploads: list[UploadFile] = list(files or [])
     if file is not None and getattr(file, "filename", None):
@@ -1022,7 +1105,7 @@ async def documents_add(
     if not uploads:
         return RedirectResponse(f"/admin?person={person_id}", status_code=302)
 
-    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
+    person = vault_person(db, user, person_id)
     if person:
         cat = models.DocCategory(category)
         hosp = (hospital_name or "").strip() or None
@@ -1222,9 +1305,9 @@ def documents_delete(
     person_id: str = Form(...), category: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     # Soft-delete into trash (same as API DELETE /documents/{id}).
     from app.routers.documents import delete_document
     try:
@@ -1232,9 +1315,10 @@ def documents_delete(
     except HTTPException as exc:
         if exc.status_code not in (403, 404):
             raise
-    if category:
-        return RedirectResponse(f"/admin/documents?person={person_id}&category={category}&ok=trashed", status_code=302)
-    return RedirectResponse(f"/admin?person={person_id}&ok=trashed", status_code=302)
+    safe_person = person_id if vault_person(db, user, person_id) else ""
+    if category and safe_person:
+        return RedirectResponse(f"/admin/documents?person={safe_person}&category={category}&ok=trashed", status_code=302)
+    return RedirectResponse(f"/admin?person={safe_person}&ok=trashed" if safe_person else "/admin?ok=trashed", status_code=302)
 
 
 @router.get("/trash", response_class=HTMLResponse)
@@ -1261,9 +1345,9 @@ def health_trash_page(request: Request, db: Session = Depends(get_db)):
 @router.post("/trash/empty")
 def health_trash_empty(request: Request, db: Session = Depends(get_db)):
     from app.routers.documents import empty_trash
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     empty_trash(db=db, current_user=user)
     return RedirectResponse("/admin/trash", status_code=302)
 
@@ -1271,9 +1355,9 @@ def health_trash_empty(request: Request, db: Session = Depends(get_db)):
 @router.post("/documents/{document_id}/restore")
 def documents_restore(request: Request, document_id: str, db: Session = Depends(get_db)):
     from app.routers.documents import restore_document
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     try:
         restore_document(document_id, db=db, current_user=user)
     except HTTPException as exc:
@@ -1285,9 +1369,9 @@ def documents_restore(request: Request, document_id: str, db: Session = Depends(
 @router.post("/documents/{document_id}/permanent")
 def documents_permanent(request: Request, document_id: str, db: Session = Depends(get_db)):
     from app.routers.documents import delete_document_forever
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     try:
         delete_document_forever(document_id, db=db, current_user=user)
     except HTTPException as exc:
@@ -1424,10 +1508,10 @@ def reminders_add(
     repeat_rule: str = Form("none"), description: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    person = vault_person(db, user, person_id)
     if person:
         reminder = models.Reminder(
             person_id=person.id, title=title, description=description or None,
@@ -1440,9 +1524,9 @@ def reminders_add(
 
 @router.post("/reminders/{reminder_id}/delete")
 def reminders_delete(request: Request, reminder_id: str, db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     r = (
         db.query(models.Reminder).join(models.Person)
         .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
@@ -1494,10 +1578,10 @@ def care_update_person(
     abha_id: str = Form(""), ayushman_id: str = Form(""), blood_group: str = Form(""),
     db: Session = Depends(get_db),
 ):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    p = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    p = vault_person(db, user, person_id)
     if p:
         p.allergies = allergies or None
         p.conditions = conditions or None
@@ -1515,76 +1599,98 @@ def care_update_person(
 
 @router.post("/care/medicine")
 def care_add_med(request: Request, person_id: str = Form(...), name: str = Form(...), dose: str = Form(""), timing: str = Form(""), remaining: str = Form(""), refill_at: str = Form(""), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.Medicine(person_id=person_id, name=name, dose=dose or None, timing=timing or None, remaining=int(remaining) if remaining.strip().isdigit() else None, refill_at=refill_at or None))
-    db.commit()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if vault_person(db, user, person_id):
+        db.add(models.Medicine(person_id=person_id, name=name, dose=dose or None, timing=timing or None, remaining=int(remaining) if remaining.strip().isdigit() else None, refill_at=refill_at or None))
+        db.commit()
     return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
 
 
 @router.post("/care/vaccine")
 def care_add_vax(request: Request, person_id: str = Form(...), vaccine_name: str = Form(...), given_on: str = Form(""), next_due: str = Form(""), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.VaccinationRecord(person_id=person_id, vaccine_name=vaccine_name, given_on=given_on or None, next_due=next_due or None))
-    db.commit()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if vault_person(db, user, person_id):
+        db.add(models.VaccinationRecord(person_id=person_id, vaccine_name=vaccine_name, given_on=given_on or None, next_due=next_due or None))
+        db.commit()
     return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
 
 
 @router.post("/care/visit")
 def care_add_visit(request: Request, person_id: str = Form(...), hospital_name: str = Form(""), doctor_name: str = Form(""), visit_date: str = Form(""), reason: str = Form(""), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.Visit(person_id=person_id, hospital_name=hospital_name or None, doctor_name=doctor_name or None, visit_date=visit_date or None, reason=reason or None))
-    db.commit()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if vault_person(db, user, person_id):
+        db.add(models.Visit(person_id=person_id, hospital_name=hospital_name or None, doctor_name=doctor_name or None, visit_date=visit_date or None, reason=reason or None))
+        db.commit()
     return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
 
 
 @router.post("/care/claim")
 def care_add_claim(request: Request, person_id: str = Form(...), insurer: str = Form(""), amount: str = Form(""), status: str = Form("draft"), claim_number: str = Form(""), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.Claim(person_id=person_id, insurer=insurer or None, amount=amount or None, status=status, claim_number=claim_number or None))
-    db.commit()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if vault_person(db, user, person_id):
+        db.add(models.Claim(person_id=person_id, insurer=insurer or None, amount=amount or None, status=status, claim_number=claim_number or None))
+        db.commit()
     return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
 
 
 @router.post("/care/growth")
 def care_add_growth(request: Request, person_id: str = Form(...), measured_at: str = Form(...), height_cm: str = Form(""), weight_kg: str = Form(""), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.GrowthReading(person_id=person_id, measured_at=measured_at, height_cm=height_cm or None, weight_kg=weight_kg or None))
-    db.commit()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if vault_person(db, user, person_id):
+        db.add(models.GrowthReading(person_id=person_id, measured_at=measured_at, height_cm=height_cm or None, weight_kg=weight_kg or None))
+        db.commit()
     return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
 
 
 @router.post("/care/uhid")
 def care_add_uhid(request: Request, person_id: str = Form(...), hospital_name: str = Form(...), uhid: str = Form(...), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.HospitalUhid(person_id=person_id, hospital_name=hospital_name, uhid=uhid))
-    db.commit()
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if vault_person(db, user, person_id):
+        db.add(models.HospitalUhid(person_id=person_id, hospital_name=hospital_name, uhid=uhid))
+        db.commit()
     return RedirectResponse(f"/admin/care?person={person_id}", status_code=302)
 
 
 @router.post("/care/doctor")
 def care_add_doctor(request: Request, name: str = Form(...), specialty: str = Form(""), hospital_name: str = Form(""), phone: str = Form(""), person: str = Form(""), db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    db.add(models.Doctor(user_id=vault_id(user), name=name, specialty=specialty or None, hospital_name=hospital_name or None, phone=phone or None))
+    from app.templating import nice_name
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    db.add(models.Doctor(
+        user_id=vault_id(user),
+        name=nice_name(name),
+        specialty=nice_name(specialty) if specialty else None,
+        hospital_name=nice_name(hospital_name) if hospital_name else None,
+        phone=phone or None,
+    ))
     db.commit()
     return RedirectResponse("/admin/doctors?ok=added", status_code=302)
 
 
 @router.get("/doctors", response_class=HTMLResponse)
-def doctors_page(request: Request, hospital: Optional[str] = None, db: Session = Depends(get_db)):
+def doctors_page(
+    request: Request,
+    hospital: Optional[str] = None,
+    q: Optional[str] = None,
+    page: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.paging import paginate
+    from sqlalchemy import or_
+
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1596,10 +1702,44 @@ def doctors_page(request: Request, hospital: Optional[str] = None, db: Session =
         for c in db.query(models.HospitalCard).filter(models.HospitalCard.person_id.in_(person_ids)).all()
         if c.hospital_name and c.hospital_name.strip()
     }, key=str.lower) if person_ids else []
-    q = db.query(models.Doctor).filter(models.Doctor.user_id == uid)
-    if hospital and hospital.strip():
-        q = q.filter(models.Doctor.hospital_name.ilike(hospital.strip()))
-    doctors = q.order_by(models.Doctor.hospital_name.asc(), models.Doctor.name.asc()).all()
+    query = db.query(models.Doctor).filter(models.Doctor.user_id == uid)
+    hospital_f = hospital.strip() if hospital else None
+    search = (q or "").strip()
+    if hospital_f:
+        query = query.filter(models.Doctor.hospital_name.ilike(hospital_f))
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(
+            models.Doctor.name.ilike(like),
+            models.Doctor.specialty.ilike(like),
+            models.Doctor.hospital_name.ilike(like),
+            models.Doctor.phone.ilike(like),
+            models.Doctor.notes.ilike(like),
+        ))
+    total = query.count()
+    pager = paginate(page=page, per_page=12, total=total)
+    doctors = (
+        query.order_by(models.Doctor.hospital_name.asc(), models.Doctor.name.asc())
+        .offset(pager["offset"])
+        .limit(pager["per_page"])
+        .all()
+    )
+    pager_prev, pager_next = _pager_urls(
+        "/admin/doctors", pager, hospital=hospital_f or None, q=search or None,
+    )
+    from app.doctor_specialties import DOCTOR_SPECIALTIES
+    existing_specs = {
+        (r[0] or "").strip()
+        for r in db.query(models.Doctor.specialty).filter(
+            models.Doctor.user_id == uid,
+            models.Doctor.specialty.isnot(None),
+            models.Doctor.specialty != "",
+        ).all()
+    }
+    specialty_options = list(DOCTOR_SPECIALTIES)
+    for s in sorted(existing_specs, key=str.lower):
+        if s and s not in specialty_options and s.lower() != "other":
+            specialty_options.append(s)
     return templates.TemplateResponse("doctors.html", {
         "request": request,
         "session_user": user,
@@ -1609,7 +1749,12 @@ def doctors_page(request: Request, hospital: Optional[str] = None, db: Session =
         "active_person_id": people[0].id if people else None,
         "doctors": doctors,
         "hospitals": hospitals,
-        "hospital": hospital.strip() if hospital else None,
+        "hospital": hospital_f,
+        "q": search,
+        "pager": pager,
+        "pager_prev": pager_prev,
+        "pager_next": pager_next,
+        "specialty_options": specialty_options,
     })
 
 
@@ -1618,23 +1763,25 @@ def doctors_add(
     request: Request,
     name: str = Form(...),
     specialty: str = Form(""),
+    specialty_custom: str = Form(""),
     hospital_name: str = Form(...),
     phone: str = Form(...),
     notes: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.templating import nice_name
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    from app.doctor_specialties import resolve_doctor_specialty
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     hosp = nice_name(hospital_name.strip()) if hospital_name.strip() else None
     phone_clean = phone.strip()
     if not hosp or not phone_clean:
         return RedirectResponse("/admin/doctors", status_code=302)
     db.add(models.Doctor(
         user_id=vault_id(user),
-        name=name.strip(),
-        specialty=specialty.strip() or None,
+        name=nice_name(name.strip()),
+        specialty=resolve_doctor_specialty(specialty, specialty_custom),
         hospital_name=hosp,
         phone=phone_clean,
         notes=notes.strip() or None,
@@ -1645,9 +1792,9 @@ def doctors_add(
 
 @router.post("/doctors/{doctor_id}/delete")
 def doctors_delete(request: Request, doctor_id: str, db: Session = Depends(get_db)):
-    user = require_login(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     row = db.query(models.Doctor).filter(
         models.Doctor.id == doctor_id, models.Doctor.user_id == vault_id(user)
     ).first()

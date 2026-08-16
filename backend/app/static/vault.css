@@ -2645,6 +2645,33 @@ body{
   .doc-biz-btn{ min-height:48px; font-size:.875rem; }
 }
 
+/* Searchable specialty combo */
+.v-combo{ position:relative; }
+.v-combo-control{ position:relative; }
+.v-combo-control .form-control{ padding-right:2.5rem; }
+.v-combo-toggle{
+  position:absolute; right:.35rem; top:50%; transform:translateY(-50%);
+  width:2rem; height:2rem; border:0; border-radius:8px;
+  background:transparent; color:var(--v-ink-3); display:grid; place-items:center;
+}
+.v-combo-toggle:hover{ color:var(--v-ink); background:rgba(255,255,255,.04); }
+.v-combo-list{
+  position:absolute; z-index:40; left:0; right:0; top:calc(100% + .35rem);
+  margin:0; padding:.35rem; list-style:none;
+  max-height:240px; overflow:auto;
+  background:var(--v-surface-2, #151922);
+  border:1px solid var(--v-line); border-radius:12px;
+  box-shadow:0 16px 40px rgba(0,0,0,.35);
+}
+.v-combo-list li{
+  padding:.55rem .75rem; border-radius:8px; cursor:pointer;
+  font-size:.875rem; color:var(--v-ink);
+}
+.v-combo-list li:hover,
+.v-combo-list li[aria-selected="true"]{ background:rgba(212,166,87,.14); color:var(--v-gold, #d4a657); }
+.v-combo-list li[hidden]{ display:none; }
+.v-combo.is-open .v-combo-toggle i{ transform:rotate(180deg); }
+
 /* Document / card image viewer */
 .doc-viewer-frame{
   border:1px solid var(--v-line); border-radius:var(--v-r-lg); overflow:auto;

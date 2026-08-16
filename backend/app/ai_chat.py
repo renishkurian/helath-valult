@@ -34,6 +34,7 @@ For questions about existing vault data, answer only from the VAULT SNAPSHOT. Do
 
 When the user asks for:
 - hospital reports / labs / bills: list matching Health Vault documents (title, date, category, amount, person). Group by hospital.
+- a doctor / specialist / phone number (e.g. gynaecology, paediatrician, “Dr Mehta number”): use the Doctors directory in the snapshot. Answer with name, specialty, hospital, and phone. If several match, list them. If none match, say so and suggest opening Health Vault → Doctors.
 - a credit-card (or any account) statement for a month: list that account's transactions for the month with date, payee, category, amount, and a total. Say if the account was not found.
 - spend / income lookups: use Money Manager ledger figures. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant.
 - shopping / groceries / “did I buy X” / “X vaangiya?”: use the Shopping List section and any Manglish glossary hints. Prefer item names over merchant payees for products (oil/enna, rice/ari, atta, etc.).
@@ -336,6 +337,17 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
             "prompt": "Summarise health reports and lab results by hospital and person.",
         })
 
+    doctor_n = (
+        db.query(models.Doctor)
+        .filter(models.Doctor.user_id == uid)
+        .count()
+    )
+    if doctor_n:
+        hints.append({
+            "label": "Find a doctor",
+            "prompt": "Show doctors in my Health Vault directory with specialty, hospital, and phone. If I ask for a specialty like gynaecology, list matching numbers.",
+        })
+
     card = (
         db.query(models.FinanceAccount)
         .filter(
@@ -528,6 +540,41 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
                 lines.append(f"  excerpt: {_clip(d.extracted_text, 280)}")
     else:
         lines.append("No health documents stored.")
+
+    doctors = (
+        db.query(models.Doctor)
+        .filter(models.Doctor.user_id == uid)
+        .order_by(models.Doctor.name.asc())
+        .all()
+    )
+    if doctors:
+        lines.append("Doctors directory (name / specialty / hospital / phone) — use this for doctor number lookups:")
+        for d in doctors:
+            lines.append(
+                f"- {d.name}"
+                f" · specialty: {d.specialty or '—'}"
+                f" · hospital: {d.hospital_name or '—'}"
+                f" · phone: {d.phone or '—'}"
+                + (f" · notes: {_clip(d.notes, 80)}" if d.notes else "")
+            )
+        # Prefer matching specialty/name when the question looks like a doctor lookup
+        if re.search(r"\b(doctor|dr\.?|gynae|gyne|paediat|pedia|cardio|ortho|dentist|specialist|phone|number|call|whatsapp)\b", q, re.I):
+            matched = []
+            q_low = q.lower()
+            for d in doctors:
+                blob = " ".join(
+                    x for x in [d.name, d.specialty, d.hospital_name, d.notes] if x
+                ).lower()
+                if any(tok and tok in blob for tok in re.findall(r"[a-zA-Z]{3,}", q_low)):
+                    matched.append(d)
+            if matched:
+                lines.append("Doctors matching this question (prefer these):")
+                for d in matched[:12]:
+                    lines.append(
+                        f"- {d.name} · {d.specialty or '—'} · {d.hospital_name or '—'} · phone {d.phone or '—'}"
+                    )
+    else:
+        lines.append("Doctors directory: empty (no phone numbers saved yet).")
 
     if pids:
         visits = (

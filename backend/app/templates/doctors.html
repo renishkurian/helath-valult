@@ -43,8 +43,29 @@
             <input class="form-control" id="doc-name" name="name" required placeholder="e.g. Dr. Mehta">
           </div>
           <div class="col-md-6">
-            <label class="form-label" for="doc-specialty">Specialty</label>
-            <input class="form-control" id="doc-specialty" name="specialty" placeholder="e.g. Paediatrics">
+            <label class="form-label" for="doc-specialty-search">Specialty</label>
+            <div class="v-combo" id="specialty-combo" data-other-value="Other">
+              <input type="hidden" name="specialty" id="doc-specialty" value="">
+              <div class="v-combo-control">
+                <input class="form-control" id="doc-specialty-search" type="text"
+                       placeholder="Search specialty…" autocomplete="off"
+                       aria-autocomplete="list" aria-controls="doc-specialty-list" aria-expanded="false">
+                <button class="v-combo-toggle" type="button" tabindex="-1" aria-label="Open specialties">
+                  <i class="bi bi-chevron-down"></i>
+                </button>
+              </div>
+              <ul class="v-combo-list" id="doc-specialty-list" role="listbox" hidden>
+                {% for s in specialty_options %}
+                <li role="option" data-value="{{ s }}">{{ s }}</li>
+                {% endfor %}
+                <li role="option" data-value="Other" data-other="1">Other…</li>
+              </ul>
+            </div>
+            <div class="mt-2" id="specialty-custom-wrap" hidden>
+              <label class="form-label" for="doc-specialty-custom">Custom specialty</label>
+              <input class="form-control" id="doc-specialty-custom" type="text" name="specialty_custom"
+                     placeholder="Type specialty…" autocomplete="off">
+            </div>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="doc-hospital">Hospital <span class="req">*</span></label>
@@ -80,12 +101,29 @@
 
 {% if hospitals %}
 <div class="chip-scroll mb-3">
-  <a class="chip plain {% if not hospital %}active{% endif %}" href="/admin/doctors">All hospitals</a>
+  <a class="chip plain {% if not hospital %}active{% endif %}" href="/admin/doctors{% if q %}?q={{ q | urlencode }}{% endif %}">All hospitals</a>
   {% for h in hospitals %}
-  <a class="chip plain {% if hospital and hospital|lower == h|lower %}active{% endif %}" href="/admin/doctors?hospital={{ h | urlencode }}">{{ h | nice }}</a>
+  <a class="chip plain {% if hospital and hospital|lower == h|lower %}active{% endif %}" href="/admin/doctors?hospital={{ h | urlencode }}{% if q %}&q={{ q | urlencode }}{% endif %}">{{ h | nice }}</a>
   {% endfor %}
 </div>
 {% endif %}
+
+<form class="mb-4" method="get" action="/admin/doctors" role="search">
+  {% if hospital %}<input type="hidden" name="hospital" value="{{ hospital }}">{% endif %}
+  <div class="row g-2 align-items-end">
+    <div class="col-md-8 col-lg-6">
+      <label class="form-label" for="doc-q">Search</label>
+      <input class="form-control" id="doc-q" type="search" name="q" value="{{ q or '' }}"
+             placeholder="Name, specialty, hospital, or phone…" autocomplete="off">
+    </div>
+    <div class="col-auto d-flex gap-2">
+      <button class="btn btn-outline-light" type="submit"><i class="bi bi-search"></i> Search</button>
+      {% if q %}
+      <a class="btn btn-ghost" href="/admin/doctors{% if hospital %}?hospital={{ hospital | urlencode }}{% endif %}">Clear</a>
+      {% endif %}
+    </div>
+  </div>
+</form>
 
 {% if doctors %}
 <div class="doc-biz-grid">
@@ -96,7 +134,7 @@
       <span class="doc-biz-avatar" aria-hidden="true">{{ (d.name[:1] or '?') | upper }}</span>
       <div class="min-w-0">
         <h2 class="doc-biz-name">{{ d.name | nice }}</h2>
-        <div class="doc-biz-role">{{ d.specialty or 'Doctor' }}</div>
+        <div class="doc-biz-role">{{ (d.specialty | nice) if d.specialty else 'Doctor' }}</div>
       </div>
     </div>
     <div class="doc-biz-hosp"><i class="bi bi-building"></i> {{ (d.hospital_name | nice) if d.hospital_name else '—' }}</div>
@@ -120,16 +158,123 @@
   </article>
   {% endfor %}
 </div>
+{% include "_pager.html" %}
 {% else %}
 <div class="card">
   <div class="empty-state">
     <div class="empty-ico"><i class="bi bi-person-badge"></i></div>
-    <div class="empty-title">{% if hospital %}No doctors for this hospital{% else %}No doctors yet{% endif %}</div>
-    <p>Save the numbers you actually call — GP, paediatrician, specialist — under their hospital.</p>
+    <div class="empty-title">
+      {% if q %}No doctors match “{{ q }}”{% elif hospital %}No doctors for this hospital{% else %}No doctors yet{% endif %}
+    </div>
+    <p>{% if q %}Try another name or specialty.{% else %}Save the numbers you actually call — GP, paediatrician, specialist — under their hospital.{% endif %}</p>
+    {% if not q %}
     <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">
       <i class="bi bi-plus-lg"></i> Add doctor
     </button>
+    {% endif %}
   </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var root = document.getElementById('specialty-combo');
+  if (!root) return;
+  var hidden = document.getElementById('doc-specialty');
+  var search = document.getElementById('doc-specialty-search');
+  var list = document.getElementById('doc-specialty-list');
+  var toggle = root.querySelector('.v-combo-toggle');
+  var customWrap = document.getElementById('specialty-custom-wrap');
+  var customInput = document.getElementById('doc-specialty-custom');
+  var options = Array.prototype.slice.call(list.querySelectorAll('[role="option"]'));
+  var otherValue = (root.getAttribute('data-other-value') || 'Other').toLowerCase();
+
+  function openList() {
+    list.hidden = false;
+    search.setAttribute('aria-expanded', 'true');
+    root.classList.add('is-open');
+  }
+  function closeList() {
+    list.hidden = true;
+    search.setAttribute('aria-expanded', 'false');
+    root.classList.remove('is-open');
+  }
+  function setOther(on) {
+    customWrap.hidden = !on;
+    if (on) {
+      customInput.focus();
+    } else {
+      customInput.value = '';
+    }
+  }
+  function pick(opt) {
+    var value = opt.getAttribute('data-value') || '';
+    var isOther = opt.getAttribute('data-other') === '1' || value.toLowerCase() === otherValue;
+    hidden.value = isOther ? 'Other' : value;
+    search.value = isOther ? 'Other' : value;
+    options.forEach(function (o) { o.setAttribute('aria-selected', o === opt ? 'true' : 'false'); });
+    setOther(isOther);
+    closeList();
+  }
+  function filter() {
+    var q = (search.value || '').trim().toLowerCase();
+    var shown = 0;
+    options.forEach(function (opt) {
+      var label = (opt.textContent || '').trim().toLowerCase();
+      var match = !q || label.indexOf(q) !== -1;
+      opt.hidden = !match;
+      if (match) shown += 1;
+    });
+    if (shown) openList();
+  }
+
+  search.addEventListener('focus', function () { filter(); openList(); });
+  search.addEventListener('input', function () {
+    // Typing freely until they pick; clear hidden until pick or Other custom
+    var q = search.value.trim();
+    var exact = options.find(function (o) {
+      return !o.hidden && (o.getAttribute('data-value') || '').toLowerCase() === q.toLowerCase();
+    });
+    if (exact) {
+      pick(exact);
+      openList();
+      return;
+    }
+    hidden.value = '';
+    setOther(false);
+    filter();
+  });
+  toggle.addEventListener('click', function (e) {
+    e.preventDefault();
+    if (list.hidden) { filter(); openList(); search.focus(); }
+    else closeList();
+  });
+  options.forEach(function (opt) {
+    opt.addEventListener('mousedown', function (e) { e.preventDefault(); pick(opt); });
+  });
+  document.addEventListener('click', function (e) {
+    if (!root.contains(e.target)) closeList();
+  });
+  search.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeList();
+    if (e.key === 'Enter') {
+      var first = options.find(function (o) { return !o.hidden; });
+      if (first) { e.preventDefault(); pick(first); }
+    }
+  });
+
+  var form = root.closest('form');
+  if (form) {
+    form.addEventListener('submit', function () {
+      if (!hidden.value && search.value.trim()) {
+        hidden.value = 'Other';
+        setOther(true);
+        customInput.value = search.value.trim();
+      }
+    });
+  }
+})();
+</script>
 {% endblock %}

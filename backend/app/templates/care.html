@@ -591,8 +591,8 @@
     <div class="list-row">
       <span class="avatar avatar-plum"><i class="bi bi-person"></i></span>
       <div class="row-body">
-        <div class="row-title">{{ d.name }}</div>
-        <div class="row-meta">{{ d.specialty or 'Specialty not set' }}{% if d.hospital_name %} · {{ d.hospital_name }}{% endif %}</div>
+        <div class="row-title">{{ d.name | nice }}</div>
+        <div class="row-meta">{{ (d.specialty | nice) if d.specialty else 'Specialty not set' }}{% if d.hospital_name %} · {{ d.hospital_name | nice }}{% endif %}</div>
       </div>
       <div class="row-side">
         {% if d.phone %}

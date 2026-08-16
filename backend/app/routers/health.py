@@ -13,6 +13,19 @@ from app.deps import get_current_user, get_owned_person, require_owner, vault_id
 router = APIRouter(tags=["health"])
 
 
+def _owned_person_row(model, item_id: str, db: Session, current_user: models.User):
+    """Load a person-scoped care row only if it belongs to this vault (self or family)."""
+    row = (
+        db.query(model)
+        .join(models.Person, models.Person.id == model.person_id)
+        .filter(model.id == item_id, models.Person.user_id == vault_id(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    return row
+
+
 def _vax_out(row: models.VaccinationRecord) -> schemas.VaccinationOut:
     overdue = False
     if row.next_due:
@@ -60,10 +73,7 @@ def add_medicine(body: schemas.MedicineIn, db: Session = Depends(get_db), curren
 @router.delete("/medicines/{item_id}", status_code=204)
 def delete_medicine(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    row = db.query(models.Medicine).filter(models.Medicine.id == item_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    get_owned_person(row.person_id, db, current_user)
+    row = _owned_person_row(models.Medicine, item_id, db, current_user)
     db.delete(row)
     db.commit()
 
@@ -100,10 +110,7 @@ def add_vaccination(body: schemas.VaccinationIn, db: Session = Depends(get_db), 
 @router.delete("/vaccinations/{item_id}", status_code=204)
 def delete_vaccination(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    row = db.query(models.VaccinationRecord).filter(models.VaccinationRecord.id == item_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    get_owned_person(row.person_id, db, current_user)
+    row = _owned_person_row(models.VaccinationRecord, item_id, db, current_user)
     db.delete(row)
     db.commit()
 
@@ -129,10 +136,7 @@ def add_visit(body: schemas.VisitIn, db: Session = Depends(get_db), current_user
 @router.delete("/visits/{item_id}", status_code=204)
 def delete_visit(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    row = db.query(models.Visit).filter(models.Visit.id == item_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    get_owned_person(row.person_id, db, current_user)
+    row = _owned_person_row(models.Visit, item_id, db, current_user)
     db.delete(row)
     db.commit()
 
@@ -207,7 +211,14 @@ def list_doctors(db: Session = Depends(get_db), current_user: models.User = Depe
 @router.post("/doctors", response_model=schemas.DoctorOut, status_code=201)
 def add_doctor(body: schemas.DoctorIn, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    row = models.Doctor(user_id=vault_id(current_user), **body.model_dump())
+    from app.templating import nice_name
+    data = body.model_dump()
+    data["name"] = nice_name(data["name"])
+    if data.get("specialty"):
+        data["specialty"] = nice_name(data["specialty"])
+    if data.get("hospital_name"):
+        data["hospital_name"] = nice_name(data["hospital_name"])
+    row = models.Doctor(user_id=vault_id(current_user), **data)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -245,10 +256,7 @@ def add_growth(body: schemas.GrowthIn, db: Session = Depends(get_db), current_us
 @router.delete("/growth/{item_id}", status_code=204)
 def delete_growth(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    row = db.query(models.GrowthReading).filter(models.GrowthReading.id == item_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    get_owned_person(row.person_id, db, current_user)
+    row = _owned_person_row(models.GrowthReading, item_id, db, current_user)
     db.delete(row)
     db.commit()
 
@@ -274,10 +282,7 @@ def add_uhid(body: schemas.UhidIn, db: Session = Depends(get_db), current_user: 
 @router.delete("/uhids/{item_id}", status_code=204)
 def delete_uhid(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
     require_owner(current_user)
-    row = db.query(models.HospitalUhid).filter(models.HospitalUhid.id == item_id).first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Not found")
-    get_owned_person(row.person_id, db, current_user)
+    row = _owned_person_row(models.HospitalUhid, item_id, db, current_user)
     db.delete(row)
     db.commit()
 

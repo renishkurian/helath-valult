@@ -41,15 +41,23 @@ fun DoctorsScreen(repository: HealthVaultRepository) {
     var loading by remember { mutableStateOf(true) }
     var showAdd by remember { mutableStateOf(false) }
     var filterHospital by remember { mutableStateOf<String?>(null) }
+    var search by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         doctors = runCatching { repository.listDoctors() }.getOrDefault(emptyList())
         loading = false
     }
 
-    val visible = remember(doctors, filterHospital) {
-        if (filterHospital.isNullOrBlank()) doctors
-        else doctors.filter { it.hospital_name.equals(filterHospital, ignoreCase = true) }
+    val visible = remember(doctors, filterHospital, search) {
+        val q = search.trim()
+        doctors.filter { doc ->
+            val hospOk = filterHospital.isNullOrBlank() ||
+                doc.hospital_name.equals(filterHospital, ignoreCase = true)
+            if (!hospOk) return@filter false
+            if (q.isBlank()) return@filter true
+            listOf(doc.name, doc.specialty, doc.hospital_name, doc.phone, doc.notes)
+                .any { it?.contains(q, ignoreCase = true) == true }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
@@ -59,6 +67,15 @@ fun DoctorsScreen(repository: HealthVaultRepository) {
             Text("Call & WhatsApp", style = MaterialTheme.typography.headlineMedium, color = Ink)
             Text("Each doctor belongs to a hospital", color = InkSoft, style = MaterialTheme.typography.bodyMedium)
             Spacer(Modifier.height(14.dp))
+
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                label = { Text("Search name, specialty, phone") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(10.dp))
 
             if (hospitals.isNotEmpty()) {
                 Row(
@@ -86,7 +103,11 @@ fun DoctorsScreen(repository: HealthVaultRepository) {
                     CircularProgressIndicator(color = Navy)
                 }
                 visible.isEmpty() -> Text(
-                    if (filterHospital != null) "No doctors for this hospital." else "No doctors yet. Tap + to add one.",
+                    when {
+                        search.isNotBlank() -> "No doctors match “$search”."
+                        filterHospital != null -> "No doctors for this hospital."
+                        else -> "No doctors yet. Tap + to add one."
+                    },
                     color = InkSoft
                 )
                 else -> LazyColumn(
@@ -190,7 +211,11 @@ private fun DoctorBizCard(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(doctor.name, color = Ink, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.titleMedium)
-                    Text(doctor.specialty ?: "Doctor", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        titleCase(doctor.specialty ?: "Doctor"),
+                        color = InkSoft,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
                 if (canEdit) {
                     IconButton(onClick = onDelete) {
@@ -236,8 +261,18 @@ private fun AddDoctorDialog(
     onDismiss: () -> Unit,
     onSave: (name: String, specialty: String, hospital: String, phone: String, notes: String) -> Unit
 ) {
+    val specialties = remember {
+        listOf(
+            "General Physician", "Paediatrics", "Gynaecology", "Obstetrics", "Cardiology",
+            "Orthopaedics", "Dermatology", "ENT", "Ophthalmology", "Dentistry", "Neurology",
+            "Psychiatry", "Pulmonology", "Gastroenterology", "Nephrology", "Endocrinology",
+            "Urology", "Oncology", "Physiotherapy", "Ayurveda", "Homeopathy", "Other"
+        )
+    }
     var name by remember { mutableStateOf("") }
     var specialty by remember { mutableStateOf("") }
+    var specialtyCustom by remember { mutableStateOf("") }
+    var specialtyExpanded by remember { mutableStateOf(false) }
     var hospital by remember { mutableStateOf(hospitals.firstOrNull().orEmpty()) }
     var hospitalOther by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -249,6 +284,7 @@ private fun AddDoctorDialog(
     }
 
     val resolvedHospital = if (hospitals.isEmpty()) hospitalOther.trim() else hospital.trim()
+    val resolvedSpecialty = if (specialty.equals("Other", ignoreCase = true)) specialtyCustom.trim() else specialty.trim()
     val canSave = name.isNotBlank() && resolvedHospital.isNotBlank() && phone.isNotBlank()
 
     AlertDialog(
@@ -257,7 +293,34 @@ private fun AddDoctorDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(specialty, { specialty = it }, label = { Text("Specialty") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                ExposedDropdownMenuBox(expanded = specialtyExpanded, onExpandedChange = { specialtyExpanded = it }) {
+                    OutlinedTextField(
+                        value = specialty,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Specialty") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = specialtyExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = specialtyExpanded, onDismissRequest = { specialtyExpanded = false }) {
+                        specialties.forEach { s ->
+                            DropdownMenuItem(
+                                text = { Text(s) },
+                                onClick = {
+                                    specialty = s
+                                    if (!s.equals("Other", ignoreCase = true)) specialtyCustom = ""
+                                    specialtyExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+                if (specialty.equals("Other", ignoreCase = true)) {
+                    OutlinedTextField(
+                        specialtyCustom, { specialtyCustom = it },
+                        label = { Text("Custom specialty") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 if (hospitals.isEmpty()) {
                     OutlinedTextField(
                         hospitalOther, { hospitalOther = it },
@@ -288,9 +351,10 @@ private fun AddDoctorDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(name.trim(), specialty.trim(), resolvedHospital, phone.trim(), notes.trim()) }, enabled = canSave) {
-                Text("Save")
-            }
+            TextButton(
+                onClick = { onSave(name.trim(), resolvedSpecialty, resolvedHospital, phone.trim(), notes.trim()) },
+                enabled = canSave
+            ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -298,3 +362,8 @@ private fun AddDoctorDialog(
 
 private fun phoneDigits(phone: String?): String =
     phone?.filter { it.isDigit() }.orEmpty()
+
+private fun titleCase(value: String): String =
+    value.trim().split(Regex("\\s+")).joinToString(" ") { part ->
+        part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
