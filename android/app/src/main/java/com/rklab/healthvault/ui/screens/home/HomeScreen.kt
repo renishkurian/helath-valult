@@ -209,7 +209,7 @@ private fun LazyColumnContent(
                     }
                 }
             }
-            Spacer(Modifier = Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
         }
 
         item {
@@ -219,13 +219,13 @@ private fun LazyColumnContent(
                 subtitle = "documents expiring\nwithin 30 days",
                 progress = if (attention == 0) 0.12f else (0.35f + minOf(attention, 8) * 0.08f)
             )
-            Spacer(Modifier = Modifier.height(18.dp))
+            Spacer(Modifier.height(18.dp))
             Text(
                 "MODULES",
                 style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.2.sp),
                 color = TextMuted
             )
-            Spacer(Modifier = Modifier.height(10.dp))
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 ModuleTile(
                     count = "${state.documentCount}",
@@ -245,7 +245,7 @@ private fun LazyColumnContent(
                     Icon(Icons.Filled.ShowChart, contentDescription = null, tint = VaultBrass, modifier = Modifier.size(19.dp))
                 }
             }
-            Spacer(Modifier = Modifier.height(10.dp))
+            Spacer(Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 ModuleTile(
                     count = "${state.cards.size}",
@@ -265,7 +265,7 @@ private fun LazyColumnContent(
                     Icon(Icons.Filled.VpnKey, contentDescription = null, tint = BlueAccent, modifier = Modifier.size(19.dp))
                 }
             }
-            Spacer(Modifier = Modifier.height(18.dp))
+            Spacer(Modifier.height(18.dp))
         }
 
         if (state.expiringCards.isNotEmpty() || state.expiringDocuments.isNotEmpty()) {

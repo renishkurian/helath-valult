@@ -73,7 +73,7 @@ fun PinLockScreen(error: Boolean, onSubmit: (String) -> Unit) {
             color = TextGray
         )
 
-        Spacer(Modifier = Modifier.height(36.dp))
+        Spacer(Modifier.height(36.dp))
 
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(150.dp)) {
             Canvas(modifier = Modifier.fillMaxSize().scale(scale)) {
@@ -104,10 +104,10 @@ fun PinLockScreen(error: Boolean, onSubmit: (String) -> Unit) {
             }
         }
 
-        Spacer(Modifier = Modifier.height(22.dp))
+        Spacer(Modifier.height(22.dp))
         EcgDivider(modifier = Modifier.fillMaxWidth(0.75f).height(20.dp))
 
-        Spacer(Modifier = Modifier.height(22.dp))
+        Spacer(Modifier.height(22.dp))
         Text("Touch to unlock", style = MaterialTheme.typography.titleMedium, color = TextWhite)
         Text(
             "or enter your PIN",
@@ -116,7 +116,7 @@ fun PinLockScreen(error: Boolean, onSubmit: (String) -> Unit) {
             modifier = Modifier.padding(top = 4.dp)
         )
 
-        Spacer(Modifier = Modifier.height(20.dp))
+        Spacer(Modifier.height(20.dp))
         OutlinedTextField(
             value = pin,
             onValueChange = { if (it.length <= 8) pin = it.filter(Char::isDigit) },
@@ -135,7 +135,7 @@ fun PinLockScreen(error: Boolean, onSubmit: (String) -> Unit) {
             Text("Wrong PIN", color = StampRed, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
         }
 
-        Spacer(Modifier = Modifier.height(16.dp))
+        Spacer(Modifier.height(16.dp))
         Button(
             onClick = { onSubmit(pin) },
             enabled = pin.length >= 4,
