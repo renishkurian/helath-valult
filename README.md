@@ -104,6 +104,7 @@ Shared intelligence for the vault.
 IDs and papers that are not hospital records.
 
 - **Types** — Aadhaar, PAN, passport, driving licence, voter ID, certificate, RC, insurance, warranty, property, custom
+- **Document scanner (Android)** — Adobe-style scan inside Locker (edge detect, crop, filters, multi-page); optional PDF; copy kept on phone and uploaded encrypted to the vault
 - **Encrypted ID numbers & notes** — multi-file attachments
 - **Expiry tracking** — expiry date and “expiring soon” filter
 - **Pin** — keep important docs at the top

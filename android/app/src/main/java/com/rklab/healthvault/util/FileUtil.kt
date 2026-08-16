@@ -93,6 +93,40 @@ object FileUtil {
         return out
     }
 
+    /**
+     * Keep a durable on-device copy of locker scans under app files
+     * (`files/locker_scans/…`) so pages remain available offline even after upload.
+     */
+    fun archiveLockerScan(
+        context: Context,
+        title: String,
+        files: List<File>,
+        mimeTypes: List<String>
+    ): File {
+        val safe = title.trim().replace(Regex("[^A-Za-z0-9._-]+"), "_").take(48).ifBlank { "scan" }
+        val dir = File(context.filesDir, "locker_scans/${System.currentTimeMillis()}_$safe").apply { mkdirs() }
+        files.forEachIndexed { idx, src ->
+            val mime = mimeTypes.getOrElse(idx) { "application/octet-stream" }
+            val ext = mimeTypeToExtension(mime).ifBlank { src.extension.let { if (it.isNotBlank()) ".$it" else ".bin" } }
+            src.copyTo(File(dir, "%03d$ext".format(idx)), overwrite = true)
+        }
+        File(dir, "meta.txt").writeText(
+            buildString {
+                appendLine("title=$title")
+                appendLine("saved_at=${System.currentTimeMillis()}")
+                appendLine("files=${files.size}")
+                mimeTypes.forEachIndexed { i, m -> appendLine("mime_$i=$m") }
+            }
+        )
+        return dir
+    }
+
+    fun listLocalLockerScans(context: Context): List<File> {
+        val root = File(context.filesDir, "locker_scans")
+        if (!root.isDirectory) return emptyList()
+        return root.listFiles()?.filter { it.isDirectory }?.sortedByDescending { it.name } ?: emptyList()
+    }
+
     /** Copy many files into a durable pending folder for offline upload sync. */
     fun stagePendingUpload(context: Context, files: List<File>, mimeTypes: List<String>): Pair<String, String> {
         val dir = File(context.filesDir, "pending_uploads/${System.currentTimeMillis()}").apply { mkdirs() }

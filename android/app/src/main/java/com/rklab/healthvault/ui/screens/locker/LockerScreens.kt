@@ -17,7 +17,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.InsertDriveFile
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,6 +38,7 @@ import com.rklab.healthvault.data.model.LockerItemOut
 import com.rklab.healthvault.data.model.LockerTypeOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.util.DocumentScannerHelper
 import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -73,6 +78,7 @@ fun LockerListScreen(
     repository: HealthVaultRepository,
     onOpenItem: (String) -> Unit,
     onAdd: (String?) -> Unit,
+    onScan: (String?) -> Unit = onAdd,
     onOpenModules: () -> Unit,
     expiringOnly: Boolean = false
 ) {
@@ -105,13 +111,20 @@ fun LockerListScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text("DOCUMENT VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+                    Text("DOCUMENT VAULT", style = MaterialTheme.typography.labelMedium, color = VaultTeal)
                     Text(
                         if (expiringOnly) "Expiring" else "Locker",
                         style = MaterialTheme.typography.headlineMedium,
                         color = Ink,
                         fontWeight = FontWeight.Bold
                     )
+                    if (!expiringOnly) {
+                        Text(
+                            "Scan IDs & papers · saved on phone + encrypted vault",
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
                 IconButton(onClick = onOpenModules) {
                     Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
@@ -147,7 +160,7 @@ fun LockerListScreen(
                 }
                 error != null -> Text(error!!, color = StampRed, modifier = Modifier.padding(20.dp))
                 items.isEmpty() -> Text(
-                    "No documents yet. Add Aadhaar, PAN, RC, warranties…",
+                    "No documents yet. Tap Scan to capture Aadhaar, PAN, RC…",
                     color = InkSoft,
                     modifier = Modifier.padding(20.dp)
                 )
@@ -191,12 +204,27 @@ fun LockerListScreen(
                 }
             }
         }
-        FloatingActionButton(
-            onClick = { onAdd(type) },
+        Column(
             modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
-            containerColor = Navy
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.End
         ) {
-            Icon(Icons.Filled.Add, contentDescription = "Add", tint = TextDark)
+            if (!expiringOnly) {
+                ExtendedFloatingActionButton(
+                    onClick = { onScan(type) },
+                    containerColor = VaultTeal,
+                    contentColor = TextDark,
+                    icon = { Icon(Icons.Filled.DocumentScanner, contentDescription = null) },
+                    text = { Text("Scan", fontWeight = FontWeight.SemiBold) }
+                )
+            }
+            FloatingActionButton(
+                onClick = { onAdd(type) },
+                containerColor = CardSurfaceRaised,
+                contentColor = Ink
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "Add file")
+            }
         }
     }
 }
@@ -205,10 +233,12 @@ fun LockerListScreen(
 fun LockerAddScreen(
     repository: HealthVaultRepository,
     defaultType: String?,
+    startWithScanner: Boolean = false,
     onDone: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? android.app.Activity
     val scope = rememberCoroutineScope()
     var docType by remember { mutableStateOf(defaultType ?: "aadhaar") }
     var customType by remember { mutableStateOf("") }
@@ -219,17 +249,166 @@ fun LockerAddScreen(
     var expiry by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var picked by remember { mutableStateOf<List<Pair<File, String>>>(emptyList()) }
+    var preferPdf by remember { mutableStateOf(true) }
+    var pageCount by remember { mutableStateOf(0) }
     var saving by remember { mutableStateOf(false) }
+    var scannerBusy by remember { mutableStateOf(false) }
+    var captureFile by remember { mutableStateOf<File?>(null) }
 
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
-        picked = uris.mapIndexed { idx, uri ->
-            FileUtil.copyUriToCacheFile(context, uri, "locker_${System.currentTimeMillis()}_$idx") to FileUtil.mimeTypeOf(context, uri)
+    fun applyFiles(files: List<Pair<File, String>>, pages: Int = files.size) {
+        picked = files
+        pageCount = pages
+        if (title.isBlank() && files.isNotEmpty()) {
+            title = "Scan ${java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.getDefault()).format(java.util.Date())}"
         }
     }
 
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        val mapped = uris.mapIndexed { idx, uri ->
+            FileUtil.copyUriToCacheFile(context, uri, "locker_${System.currentTimeMillis()}_$idx") to FileUtil.mimeTypeOf(context, uri)
+        }
+        applyFiles(mapped)
+    }
+
+    val takePicture = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val file = captureFile
+        if (ok && file != null && file.exists()) {
+            val enhanced = FileUtil.enhanceImageFile(file)
+            applyFiles(picked + (enhanced to "image/jpeg"))
+        }
+    }
+
+    val scannerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        scannerBusy = false
+        if (result.resultCode != android.app.Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val scan = DocumentScannerHelper.parseResult(context, result.data)
+        if (scan == null) {
+            Toast.makeText(context, "No pages captured", Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        applyFiles(
+            DocumentScannerHelper.filesForUpload(context, scan, preferPdf = preferPdf),
+            pages = scan.pageCount
+        )
+        Toast.makeText(
+            context,
+            if (preferPdf) "Ready as PDF (${scan.pageCount} page${if (scan.pageCount == 1) "" else "s"})"
+            else "${scan.pageCount} page(s) ready",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    fun launchScanner() {
+        val act = activity
+        if (act == null) {
+            Toast.makeText(context, "Scanner needs the app activity", Toast.LENGTH_SHORT).show()
+            return
+        }
+        scannerBusy = true
+        DocumentScannerHelper.start(
+            activity = act,
+            launcher = scannerLauncher,
+            onError = { msg ->
+                scannerBusy = false
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
+        )
+    }
+
+    fun launchCamera() {
+        val file = FileUtil.newCaptureFile(context)
+        captureFile = file
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        takePicture.launch(uri)
+    }
+
+    LaunchedEffect(Unit) {
+        if (startWithScanner) launchScanner()
+    }
+
     Column(Modifier.fillMaxSize().background(HubBg).verticalScroll(rememberScrollState()).padding(20.dp)) {
-        TextButton(onClick = onBack) { Text("← Locker", color = Navy) }
-        Text("Add document", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+        TextButton(onClick = onBack) { Text("← Locker", color = VaultTeal) }
+        Text("Add to Document Vault", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+        Text(
+            "Scan like Adobe Scan — edges, crop, filters, multi-page — then save on this phone and upload encrypted to your vault.",
+            color = InkSoft,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 6.dp, bottom = 16.dp)
+        )
+
+        Text("Capture", style = MaterialTheme.typography.labelLarge, color = InkSoft)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { launchScanner() },
+                enabled = !scannerBusy,
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(containerColor = VaultTeal, contentColor = TextDark)
+            ) {
+                Icon(Icons.Filled.DocumentScanner, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(if (scannerBusy) "Opening…" else "Scan")
+            }
+            OutlinedButton(onClick = { launchCamera() }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Camera")
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { picker.launch("image/*") }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.PhotoLibrary, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Gallery")
+            }
+            OutlinedButton(onClick = { picker.launch("application/pdf") }, modifier = Modifier.weight(1f)) {
+                Icon(Icons.Filled.PictureAsPdf, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("PDF file")
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(HubGlass).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Save as PDF", fontWeight = FontWeight.SemiBold, color = Ink)
+                Text("Merge scanned pages into one PDF for the vault", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(
+                checked = preferPdf,
+                onCheckedChange = { preferPdf = it },
+                colors = SwitchDefaults.colors(checkedTrackColor = VaultTeal, checkedThumbColor = TextDark)
+            )
+        }
+        if (picked.isNotEmpty()) {
+            Text(
+                buildString {
+                    append("${picked.size} file(s) ready")
+                    if (pageCount > 0) append(" · $pageCount page(s)")
+                    if (picked.any { it.second.contains("pdf") }) append(" · PDF")
+                },
+                color = VaultTeal,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+            if (picked.count { it.second.startsWith("image/") } >= 2) {
+                TextButton(
+                    onClick = {
+                        val images = picked.filter { it.second.startsWith("image/") }.map { it.first }
+                        val pdf = FileUtil.mergeImagesToPdf(context, images)
+                        applyFiles(listOf(pdf to "application/pdf"), pages = images.size)
+                        preferPdf = true
+                    }
+                ) { Text("Convert images → single PDF", color = VaultTeal) }
+            }
+        }
+
         Spacer(Modifier.height(16.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(LOCKER_TYPES) { (id, label) ->
@@ -252,22 +431,24 @@ fun LockerAddScreen(
         OutlinedTextField(expiry, { expiry = it }, label = { Text("Expiry (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
         OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
-        Spacer(Modifier.height(12.dp))
-        OutlinedButton(onClick = { picker.launch("*/*") }) {
-            Icon(Icons.Filled.InsertDriveFile, null)
-            Spacer(Modifier.width(8.dp))
-            Text(if (picked.isEmpty()) "Choose files" else "${picked.size} file(s) selected")
-        }
         Spacer(Modifier.height(20.dp))
         Button(
             onClick = {
                 if (title.isBlank() || picked.isEmpty()) {
-                    Toast.makeText(context, "Title and at least one file are required", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Title and at least one scan/file are required", Toast.LENGTH_SHORT).show()
                     return@Button
                 }
                 saving = true
                 scope.launch {
                     runCatching {
+                        withContext(Dispatchers.IO) {
+                            FileUtil.archiveLockerScan(
+                                context,
+                                title.trim(),
+                                picked.map { it.first },
+                                picked.map { it.second }
+                            )
+                        }
                         repository.createLockerItem(
                             title = title.trim(),
                             docType = docType,
@@ -277,24 +458,28 @@ fun LockerAddScreen(
                             idNumber = idNumber.ifBlank { null },
                             issuedOn = null,
                             expiryDate = expiry.ifBlank { null },
-                            tags = null,
+                            tags = "scanned",
                             notes = notes.ifBlank { null },
                             files = picked.map { it.first },
                             mimeTypes = picked.map { it.second }
                         )
-                    }.onSuccess { onDone() }
-                        .onFailure {
-                            Toast.makeText(context, it.message ?: "Upload failed", Toast.LENGTH_LONG).show()
-                        }
+                    }.onSuccess {
+                        Toast.makeText(context, "Saved on device and Document Vault", Toast.LENGTH_SHORT).show()
+                        onDone()
+                    }.onFailure {
+                        Toast.makeText(context, it.message ?: "Upload failed", Toast.LENGTH_LONG).show()
+                    }
                     saving = false
                 }
             },
             enabled = !saving,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(containerColor = Navy)
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = VaultTeal, contentColor = TextDark)
         ) {
-            Text(if (saving) "Saving…" else "Save to locker")
+            Text(if (saving) "Saving…" else "Save to phone + vault", fontWeight = FontWeight.SemiBold)
         }
+        Spacer(Modifier.height(24.dp))
     }
 }
 

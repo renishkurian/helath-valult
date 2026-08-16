@@ -11,7 +11,7 @@
         New entry
       </div>
       <h1 class="page-title">Add document</h1>
-      <p class="page-lead">ID numbers and notes are encrypted before they touch the disk.</p>
+      <p class="page-lead">Scan on Android (edge detect, multi-page, PDF) or upload here. ID numbers and notes are encrypted on disk.</p>
     </div>
   </div>
 </div>
@@ -23,7 +23,7 @@
         <span class="card-ico gold"><i class="bi bi-safe2"></i></span>
         <div>
           <h2>Document details</h2>
-          <div class="card-sub">Attach one or more scans or PDFs</div>
+          <div class="card-sub">Scan, attach photos, or upload a PDF</div>
         </div>
       </div>
       <div class="card-body">
@@ -75,9 +75,22 @@
               <textarea class="form-control" id="lk-notes" name="notes" rows="2" placeholder="Optional details"></textarea>
             </div>
             <div class="col-12">
-              <label class="form-label" for="lk-files">Files <span class="req">*</span></label>
+              <label class="form-label" for="lk-files">Scan or files <span class="req">*</span></label>
+              <div class="d-flex flex-wrap gap-2 mb-2">
+                <label class="btn btn-primary mb-0" for="lk-camera">
+                  <i class="bi bi-camera"></i> Take photo
+                </label>
+                <label class="btn btn-outline-light mb-0" for="lk-files">
+                  <i class="bi bi-images"></i> Choose images / PDF
+                </label>
+              </div>
+              <input class="visually-hidden" id="lk-camera" type="file" accept="image/*" capture="environment">
               <input class="form-control" id="lk-files" type="file" name="files" accept="image/*,.pdf" multiple required>
-              <div class="form-text">Images and PDFs. Pick several at once to keep pages together.</div>
+              <div class="form-text">
+                On Android, use <strong>Document Vault → Scan</strong> for Adobe-style multi-page scanning
+                (edge detect, crop, filters) and optional PDF. Here you can capture a photo or upload images/PDFs;
+                images are enhanced on the server before encryption.
+              </div>
             </div>
           </div>
           <div class="d-flex gap-2 mt-4">
@@ -94,6 +107,17 @@
 <script>
 document.getElementById("doc_type").addEventListener("change", (e) => {
   document.getElementById("custom-wrap").classList.toggle("d-none", e.target.value !== "other");
+});
+// Phone camera capture should satisfy the required files input
+const cam = document.getElementById("lk-camera");
+const files = document.getElementById("lk-files");
+cam.addEventListener("change", () => {
+  if (!cam.files || !cam.files.length) return;
+  const dt = new DataTransfer();
+  for (const f of cam.files) dt.items.add(f);
+  for (const f of files.files || []) dt.items.add(f);
+  files.files = dt.files;
+  files.removeAttribute("required");
 });
 </script>
 {% endblock %}

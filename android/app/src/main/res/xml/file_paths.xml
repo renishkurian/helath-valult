@@ -6,5 +6,6 @@
     <cache-path name="shop" path="shop/" />
     <cache-path name="ea-pdf" path="ea-pdf/" />
     <files-path name="documents" path="documents/" />
+    <files-path name="locker_scans" path="locker_scans/" />
     <external-files-path name="backups" path="." />
 </paths>
