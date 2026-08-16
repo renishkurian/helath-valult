@@ -327,18 +327,43 @@
       var active = t.id === state.threadId ? " active" : "";
       var when = fmtThreadWhen(t.updated_at || t.created_at);
       return (
-        '<button class="ask-thread' + active + '" type="button" data-id="' + esc(t.id) + '" role="listitem">' +
-          '<i class="bi bi-chat-dots"></i>' +
-          '<span class="ask-thread-body">' +
-            '<span class="ask-thread-top">' +
-              '<span class="ask-thread-title">' + esc(t.title || "New chat") + "</span>" +
-              (when ? '<span class="ask-thread-when">' + esc(when) + "</span>" : "") +
+        '<div class="ask-thread-row' + active + '" role="listitem">' +
+          '<button class="ask-thread" type="button" data-id="' + esc(t.id) + '">' +
+            '<i class="bi bi-chat-dots" aria-hidden="true"></i>' +
+            '<span class="ask-thread-body">' +
+              '<span class="ask-thread-top">' +
+                '<span class="ask-thread-title">' + esc(t.title || "New chat") + "</span>" +
+                (when ? '<span class="ask-thread-when">' + esc(when) + "</span>" : "") +
+              "</span>" +
+              (t.preview ? '<span class="ask-thread-preview">' + esc(t.preview) + "</span>" : "") +
             "</span>" +
-            (t.preview ? '<span class="ask-thread-preview">' + esc(t.preview) + "</span>" : "") +
-          "</span>" +
-        "</button>"
+          "</button>" +
+          '<button class="ask-thread-del" type="button" data-id="' + esc(t.id) + '" title="Delete chat" aria-label="Delete chat">' +
+            '<i class="bi bi-trash3" aria-hidden="true"></i>' +
+          "</button>" +
+        "</div>"
       );
     }).join("");
+  }
+
+  function deleteThread(id) {
+    if (!id) return;
+    var run = function () {
+      api("/admin/ai/ask/threads/" + encodeURIComponent(id) + "/delete", { method: "POST" })
+        .then(function () {
+          if (state.threadId === id) {
+            return openThread(null).then(function () { return loadThreads(); });
+          }
+          return loadThreads();
+        })
+        .catch(function () {});
+    };
+    if (window.vaultConfirm) {
+      window.vaultConfirm("Delete this chat?").then(function (ok) { if (ok) run(); });
+      return;
+    }
+    if (!confirm("Delete this chat?")) return;
+    run();
   }
 
   function closeRail() {
@@ -464,6 +489,13 @@
   mask && mask.addEventListener("click", closeRail);
 
   threadBox && threadBox.addEventListener("click", function (e) {
+    var del = e.target.closest(".ask-thread-del");
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      deleteThread(del.getAttribute("data-id"));
+      return;
+    }
     var btn = e.target.closest(".ask-thread");
     if (!btn) return;
     openThread(btn.getAttribute("data-id")).catch(function (err) {
@@ -474,19 +506,7 @@
   });
 
   delBtn && delBtn.addEventListener("click", function () {
-    if (!state.threadId) return;
-    var run = function () {
-      api("/admin/ai/ask/threads/" + encodeURIComponent(state.threadId) + "/delete", { method: "POST" })
-        .then(function () { return loadThreads(); })
-        .then(function () { openThread(null); })
-        .catch(function () {});
-    };
-    if (window.vaultConfirm) {
-      window.vaultConfirm("Delete this chat?").then(function (ok) { if (ok) run(); });
-      return;
-    }
-    if (!confirm("Delete this chat?")) return;
-    run();
+    deleteThread(state.threadId);
   });
 
   var testStatus = document.getElementById("ask-test-status");
