@@ -145,6 +145,7 @@ def admin_module_for_path(path: str) -> Optional[str]:
         "/admin/family", "/admin/reminders", "/admin/care", "/admin/shares",
         "/admin/activity", "/admin/storage", "/admin/security", "/admin/people",
         "/admin/documents", "/admin/cards", "/admin/upload", "/admin/search",
+        "/admin/health-settings", "/admin/trash",
     )
     for prefix, key in ADMIN_PREFIX_MODULES:
         if path == prefix or path.startswith(prefix + "/"):

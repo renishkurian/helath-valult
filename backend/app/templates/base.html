@@ -109,7 +109,9 @@
     {'key':'care','label':'Care & emergency','short':'Care','href':'/admin/care' ~ person_q,'icon':'bi-heart-pulse'},
     {'key':'shares','label':'Shared links','short':'Share','href':'/admin/shares','icon':'bi-share'},
     {'key':'activity','label':'Activity','short':'Log','href':'/admin/activity','icon':'bi-activity'},
-    {'key':'storage','label':'Storage & backup','short':'Backup','href':'/admin/storage','icon':'bi-hdd-stack'}
+    {'key':'storage','label':'Storage & backup','short':'Backup','href':'/admin/storage','icon':'bi-hdd-stack'},
+    {'key':'trash','label':'Trash','short':'Trash','href':'/admin/trash','icon':'bi-trash3'},
+    {'key':'health_settings','label':'Settings','short':'Settings','href':'/admin/health-settings','icon':'bi-sliders'}
   ] %}
 {% endif %}
 
@@ -220,7 +222,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=27">
+<link rel="stylesheet" href="/static/vault.css?v=29">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">
@@ -283,9 +285,10 @@
 </nav>
 {% endif %}
 
-<div id="photo-lightbox" class="photo-lightbox" hidden role="dialog" aria-modal="true" aria-label="Receipt photo">
+<div id="photo-lightbox" class="photo-lightbox" hidden role="dialog" aria-modal="true" aria-label="Document preview">
   <button type="button" class="photo-lightbox-x" id="photo-lightbox-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
-  <img id="photo-lightbox-img" alt="Receipt photo">
+  <img id="photo-lightbox-img" alt="Document preview" hidden>
+  <iframe id="photo-lightbox-frame" title="Document preview" hidden></iframe>
 </div>
 
 {% if session_user %}
@@ -336,14 +339,46 @@
 (function(){
   var box = document.getElementById("photo-lightbox");
   var img = document.getElementById("photo-lightbox-img");
+  var frame = document.getElementById("photo-lightbox-frame");
   if(!box || !img) return;
-  function hide(){ box.hidden = true; img.removeAttribute("src"); }
-  function show(src){ img.src = src; box.hidden = false; }
+  function hide(){
+    box.hidden = true;
+    img.hidden = true;
+    img.removeAttribute("src");
+    if (frame) {
+      frame.hidden = true;
+      frame.removeAttribute("src");
+    }
+  }
+  function show(src, kind){
+    var isPdf = kind === "pdf";
+    if (isPdf && frame) {
+      img.hidden = true;
+      img.removeAttribute("src");
+      frame.src = src;
+      frame.hidden = false;
+    } else {
+      if (frame) {
+        frame.hidden = true;
+        frame.removeAttribute("src");
+      }
+      img.alt = "Document preview";
+      img.src = src;
+      img.hidden = false;
+    }
+    box.hidden = false;
+  }
   document.addEventListener("click", function(e){
-    var a = e.target.closest("a.js-photo");
+    var a = e.target.closest("a.js-photo, a.js-doc-view");
     if(!a) return;
     e.preventDefault();
-    show(a.getAttribute("href"));
+    var kind = (a.getAttribute("data-kind") || "").toLowerCase();
+    if (!kind && a.classList.contains("js-photo")) kind = "image";
+    if (kind === "other") {
+      window.open(a.getAttribute("href"), "_blank", "noopener");
+      return;
+    }
+    show(a.getAttribute("href"), kind);
   });
   box.addEventListener("click", function(e){ if(e.target === box) hide(); });
   document.getElementById("photo-lightbox-close").addEventListener("click", hide);

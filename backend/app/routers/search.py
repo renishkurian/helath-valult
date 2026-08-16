@@ -37,6 +37,7 @@ def search(
         db.query(models.Document)
         .join(models.Person)
         .filter(models.Person.user_id == owner)
+        .filter(models.Document.deleted_at.is_(None))
         .filter(
             or_(
                 models.Document.title.ilike(like),

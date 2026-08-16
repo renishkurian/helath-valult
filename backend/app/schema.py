@@ -24,6 +24,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("blocked", "BOOLEAN NOT NULL DEFAULT 0"),
         ("enabled_modules", "TEXT"),
         ("last_seen_at", "DATETIME"),
+        ("card_image_as_background", "BOOLEAN NOT NULL DEFAULT 0"),
     ],
     "people": [
         ("allergies", "TEXT"),
@@ -42,6 +43,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("extracted_text", "TEXT"),
         ("amount", "VARCHAR(20)"),
         ("pinned", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("deleted_at", "DATETIME"),
     ],
     "document_files": [
         ("content_hash", "VARCHAR(64)"),
@@ -49,6 +51,10 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "share_links": [
         ("pin_hash", "VARCHAR(255)"),
         ("idle_days", "INTEGER NOT NULL DEFAULT 14"),
+    ],
+    "hospital_cards": [
+        ("image_path", "VARCHAR(500)"),
+        ("image_mime", "VARCHAR(80)"),
     ],
     "finance_accounts": [
         ("credit_limit", "NUMERIC(14,2)"),
@@ -105,6 +111,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_documents_expiry_date", "documents", "expiry_date"),
     ("ix_documents_custom_category", "documents", "custom_category"),
     ("ix_documents_tags", "documents", "tags"),
+    ("ix_documents_deleted_at", "documents", "deleted_at"),
     ("ix_people_ice_token", "people", "ice_token"),
     ("ix_document_files_content_hash", "document_files", "content_hash"),
     ("ix_vault_items_user_id", "vault_items", "user_id"),

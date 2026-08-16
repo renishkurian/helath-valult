@@ -40,6 +40,10 @@
   </div>
 </div>
 
+{% if request.query_params.get('ok') == 'trashed' %}
+<div class="alert alert-success mb-4" role="status">Document moved to trash. <a href="/admin/trash">Open trash</a></div>
+{% endif %}
+
 <div class="filter-bar">
   <a class="chip plain {% if not category and not hospital %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}">
     <i class="bi bi-collection"></i> All
@@ -181,15 +185,27 @@
           <td>{% if doc.category == 'insurance' %}<span class="text-faint">Personal</span>{% else %}{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}{% endif %}</td>
           <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
           <td class="table-actions">
-            <div class="d-flex gap-2 justify-content-end">
+            <div class="d-flex gap-2 justify-content-end flex-wrap">
+              {% set ft = doc.file_type or '' %}
+              {% if ft.startswith('image/') %}
+                {% set view_kind = 'image' %}
+              {% elif ft == 'application/pdf' %}
+                {% set view_kind = 'pdf' %}
+              {% else %}
+                {% set view_kind = 'other' %}
+              {% endif %}
+              <a class="btn btn-outline-light btn-sm js-doc-view" href="/admin/documents/{{ doc.id }}/view"
+                 data-kind="{{ view_kind }}" aria-label="View {{ doc.title | nice }}">
+                <i class="bi bi-eye"></i> View
+              </a>
               <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
                 <i class="bi bi-download"></i> Download
               </a>
-              <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Delete this document?">
+              <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
                 <input type="hidden" name="person_id" value="{{ active_person.id }}">
                 <input type="hidden" name="category" value="{{ category or '' }}">
-                <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Delete {{ doc.title | nice }}">
-                  <i class="bi bi-trash3"></i> Delete
+                <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Move {{ doc.title | nice }} to trash">
+                  <i class="bi bi-trash3"></i> Trash
                 </button>
               </form>
             </div>

@@ -54,6 +54,7 @@ class AuditAction(str, enum.Enum):
     download = "download"
     share_create = "share_create"
     share_view = "share_view"
+    delete = "delete"
 
 
 class UserRole(str, enum.Enum):
@@ -79,6 +80,8 @@ class User(Base):
     # JSON list of module keys the vault may open; null = all default modules.
     enabled_modules = Column(Text, nullable=True)
     last_seen_at = Column(DateTime, nullable=True)
+    # Health overview: use uploaded patient-card photo as ID-card background.
+    card_image_as_background = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")
@@ -159,6 +162,9 @@ class HospitalCard(Base):
     # Encrypted at rest — contains patient ID number / free-text notes.
     patient_id_enc = Column(Text, nullable=True)
     notes_enc = Column(Text, nullable=True)
+    # Encrypted scan of the physical patient / hospital card.
+    image_path = Column(String(500), nullable=True)
+    image_mime = Column(String(80), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -192,6 +198,7 @@ class Document(Base):
     notes_enc = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True, index=True)
 
     person = relationship("Person", back_populates="documents")
     files = relationship("DocumentFile", back_populates="document", cascade="all, delete-orphan", order_by="DocumentFile.created_at")

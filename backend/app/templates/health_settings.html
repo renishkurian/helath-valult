@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Health settings — Vault{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Settings</h1>
+    <p class="page-lead">Preferences for hospital ID cards on Overview.</p>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') %}
+<div class="alert alert-success py-2">Settings saved.</div>
+{% endif %}
+
+<div class="card" style="max-width:560px">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-person-vcard"></i></span>
+    <div><h2>ID card display</h2><div class="card-sub">How uploaded patient card photos appear</div></div>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/admin/health-settings">
+      <div class="form-check form-switch mb-3">
+        <input class="form-check-input" type="checkbox" role="switch" id="card_bg" name="card_image_as_background" value="1"
+               {% if card_image_as_background %}checked{% endif %}>
+        <label class="form-check-label" for="card_bg">
+          <strong>Use patient card photo as background</strong>
+          <div class="text-secondary small mt-1">
+            When a hospital has an uploaded card scan, show it faintly behind the ID card on Overview.
+            Click any card with a photo to flip and see the full scan.
+          </div>
+        </label>
+      </div>
+      <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

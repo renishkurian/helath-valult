@@ -158,6 +158,7 @@ class CardOut(BaseModel):
     valid_till: Optional[str]
     patient_id: Optional[str]   # decrypted before returning
     notes: Optional[str]        # decrypted before returning
+    has_image: bool = False
     created_at: datetime
 
     class Config:
@@ -209,6 +210,7 @@ class DocumentOut(BaseModel):
     amount: Optional[str] = None
     pinned: bool = False
     favorite: bool = False
+    deleted_at: Optional[datetime] = None
     created_at: datetime
 
     class Config:

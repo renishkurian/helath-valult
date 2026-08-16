@@ -66,6 +66,7 @@ def _to_out(doc: models.Document, include_text: bool = False, favorite: bool = F
         amount=doc.amount,
         pinned=bool(doc.pinned),
         favorite=favorite,
+        deleted_at=doc.deleted_at,
         created_at=doc.created_at,
     )
 
@@ -85,6 +86,7 @@ def list_documents(
 ):
     q = db.query(models.Document).join(models.Person).filter(models.Person.user_id == vault_id(current_user))
     q = apply_person_visibility(q, db, current_user)
+    q = q.filter(models.Document.deleted_at.is_(None))
     if person_id:
         q = q.filter(models.Document.person_id == person_id)
     if category:
@@ -218,16 +220,53 @@ async def upload_document(
     return _to_out(doc)
 
 
-def _get_owned_document(document_id: str, db: Session, current_user: models.User) -> models.Document:
+def _get_owned_document(
+    document_id: str,
+    db: Session,
+    current_user: models.User,
+    *,
+    include_deleted: bool = False,
+) -> models.Document:
     doc = (
         db.query(models.Document)
         .join(models.Person)
         .filter(models.Document.id == document_id, models.Person.user_id == vault_id(current_user))
         .first()
     )
-    if not doc:
+    if not doc or (doc.deleted_at and not include_deleted):
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
+
+
+@router.get("/trash", response_model=list[schemas.DocumentOut])
+def list_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    q = (
+        db.query(models.Document)
+        .join(models.Person)
+        .filter(
+            models.Person.user_id == vault_id(current_user),
+            models.Document.deleted_at.isnot(None),
+        )
+    )
+    q = apply_person_visibility(q, db, current_user)
+    return [_to_out(d) for d in q.order_by(models.Document.deleted_at.desc()).all()]
+
+
+@router.post("/trash/empty", status_code=204)
+def empty_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    require_owner(current_user)
+    rows = (
+        db.query(models.Document)
+        .join(models.Person)
+        .filter(
+            models.Person.user_id == vault_id(current_user),
+            models.Document.deleted_at.isnot(None),
+        )
+        .all()
+    )
+    for doc in rows:
+        _purge_document(db, current_user, doc)
+    db.commit()
 
 
 @router.get("/duplicates", response_model=list[schemas.DuplicateGroup])
@@ -235,7 +274,11 @@ def list_duplicates(db: Session = Depends(get_db), current_user: models.User = D
     files = (
         db.query(models.DocumentFile)
         .join(models.Document).join(models.Person)
-        .filter(models.Person.user_id == vault_id(current_user), models.DocumentFile.content_hash.isnot(None))
+        .filter(
+            models.Person.user_id == vault_id(current_user),
+            models.DocumentFile.content_hash.isnot(None),
+            models.Document.deleted_at.is_(None),
+        )
         .all()
     )
     grouped: dict[str, list[models.DocumentFile]] = {}
@@ -597,21 +640,56 @@ def delete_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """Move a document to trash (soft delete). Files stay until permanent delete."""
     require_owner(current_user)
     doc = _get_owned_document(document_id, db, current_user)
-    # Delete all associated files from disk
+    doc.deleted_at = datetime.utcnow()
+    _log(db, current_user, doc.id, models.AuditAction.delete, detail="trash")
+    db.commit()
+
+
+@router.post("/{document_id}/restore", response_model=schemas.DocumentOut)
+def restore_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    doc = _get_owned_document(document_id, db, current_user, include_deleted=True)
+    if not doc.deleted_at:
+        raise HTTPException(400, "Document is not in trash")
+    doc.deleted_at = None
+    db.commit()
+    db.refresh(doc)
+    return _to_out(doc)
+
+
+@router.delete("/{document_id}/permanent", status_code=204)
+def delete_document_forever(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    doc = _get_owned_document(document_id, db, current_user, include_deleted=True)
+    if not doc.deleted_at:
+        raise HTTPException(400, "Move the document to trash first")
+    _purge_document(db, current_user, doc)
+    db.commit()
+
+
+def _purge_document(db: Session, current_user: models.User, doc: models.Document) -> None:
+    """Hard-delete document row, related DB rows, and encrypted files on disk."""
     for f in list(doc.files or []):
         if not f.file_path:
             continue
         enc_path = settings.STORAGE_DIR / f.file_path
         if enc_path.exists():
             enc_path.unlink()
-    # Also delete legacy file if present
     if doc.file_path:
         enc_path = settings.STORAGE_DIR / doc.file_path
         if enc_path.exists():
             enc_path.unlink()
-    # Delete archived version files + rows, and any share links / audit rows pointing at this doc
     versions = db.query(models.DocumentVersion).filter(models.DocumentVersion.document_id == doc.id).all()
     for v in versions:
         try:
@@ -638,7 +716,6 @@ def delete_document(
     db.query(models.Favorite).filter(models.Favorite.document_id == doc.id).delete()
     db.query(models.RecentOpen).filter(models.RecentOpen.document_id == doc.id).delete()
     db.query(models.SharePackItem).filter(models.SharePackItem.document_id == doc.id).delete()
-    # Nullable FKs — detach rather than delete the parent rows.
     db.query(models.Reminder).filter(models.Reminder.document_id == doc.id).update(
         {models.Reminder.document_id: None}, synchronize_session=False
     )
@@ -651,5 +728,5 @@ def delete_document(
     db.query(models.Claim).filter(models.Claim.document_id == doc.id).update(
         {models.Claim.document_id: None}, synchronize_session=False
     )
+    _log(db, current_user, None, models.AuditAction.delete, detail=f"permanent:{doc.title}")
     db.delete(doc)
-    db.commit()

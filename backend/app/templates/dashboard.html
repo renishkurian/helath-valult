@@ -28,6 +28,10 @@
   {% endif %}
 </div>
 
+{% if request.query_params.get('ok') == 'trashed' %}
+<div class="alert alert-success mb-4" role="status">Document moved to trash. <a href="/admin/trash">Open trash</a></div>
+{% endif %}
+
 <div class="chip-scroll">
   {% for p in people %}
     <a class="chip {% if active_person and p.id == active_person.id %}active{% endif %}" href="/admin?person={{ p.id }}">
@@ -174,30 +178,50 @@
   <div class="hospital-block mb-4">
     <div class="row g-3">
       <div class="col-md-5 col-xl-4">
-        <div class="id-card h-100">
-          <div class="stamp">Verified copy</div>
-          <div class="hosp">{{ card.hospital_name | nice }}</div>
-          <div class="name">{{ active_person.name | nice }}</div>
-          <div class="label">Patient health ID</div>
-          <div class="pid">ID {{ card.patient_id or '—' }}</div>
-          <div class="meta-row">
-            <div>
-              <div class="meta-label">Blood group</div>
-              <div class="meta-value">{{ card.blood_group or '—' }}</div>
+        <div class="id-flip h-100{% if card.has_image %} has-scan{% endif %}"
+             {% if card.has_image %}tabindex="0" role="button" aria-label="Flip hospital card to see patient card photo"{% endif %}>
+          <div class="id-flip-inner">
+            <div class="id-card id-face id-front h-100{% if card_image_as_background and card.has_image %} id-has-bg{% endif %}"
+                 {% if card_image_as_background and card.has_image %}style="--card-scan:url('/admin/cards/{{ card.id }}/image')"{% endif %}>
+              {% if card_image_as_background and card.has_image %}<div class="id-bg" aria-hidden="true"></div>{% endif %}
+              <div class="id-face-content">
+                <div class="stamp">Verified copy</div>
+                <div class="hosp">{{ card.hospital_name | nice }}</div>
+                <div class="name">{{ active_person.name | nice }}</div>
+                <div class="label">Patient health ID</div>
+                <div class="pid">ID {{ card.patient_id or '—' }}</div>
+                <div class="meta-row">
+                  <div>
+                    <div class="meta-label">Blood group</div>
+                    <div class="meta-value">{{ card.blood_group or '—' }}</div>
+                  </div>
+                  <div>
+                    <div class="meta-label">Valid till</div>
+                    <div class="meta-value">{{ card.valid_till or '—' }}</div>
+                  </div>
+                  <div>
+                    <div class="meta-label">Ward</div>
+                    <div class="meta-value">{{ card.ward or '—' }}</div>
+                  </div>
+                </div>
+                {% if card.has_image %}
+                <div class="id-flip-hint"><i class="bi bi-arrow-repeat"></i> Tap to see card photo</div>
+                {% endif %}
+                <form class="mt-3" method="post" action="/admin/cards/{{ card.id }}/delete" data-confirm="Delete this hospital and keep its documents unassigned?" onclick="event.stopPropagation()">
+                  <input type="hidden" name="person_id" value="{{ active_person.id }}">
+                  <button class="btn btn-ghost btn-sm text-danger" type="submit"><i class="bi bi-trash3"></i> Delete hospital</button>
+                </form>
+              </div>
             </div>
-            <div>
-              <div class="meta-label">Valid till</div>
-              <div class="meta-value">{{ card.valid_till or '—' }}</div>
-            </div>
-            <div>
-              <div class="meta-label">Ward</div>
-              <div class="meta-value">{{ card.ward or '—' }}</div>
+            <div class="id-card id-face id-back">
+              {% if card.has_image %}
+              <img class="id-scan" src="/admin/cards/{{ card.id }}/image" alt="Patient card for {{ card.hospital_name | nice }}">
+              <div class="id-flip-hint id-flip-hint-back"><i class="bi bi-arrow-repeat"></i> Tap to flip back</div>
+              {% else %}
+              <div class="id-scan-empty text-secondary">No patient card photo uploaded.</div>
+              {% endif %}
             </div>
           </div>
-          <form class="mt-3" method="post" action="/admin/cards/{{ card.id }}/delete" data-confirm="Delete this hospital and keep its documents unassigned?">
-            <input type="hidden" name="person_id" value="{{ active_person.id }}">
-            <button class="btn btn-ghost btn-sm text-danger" type="submit"><i class="bi bi-trash3"></i> Delete hospital</button>
-          </form>
         </div>
       </div>
       <div class="col-md-7 col-xl-8">
@@ -228,12 +252,26 @@
         <div><h2>Add hospital</h2><div class="card-sub">Creates the hospital folder and ID card details</div></div>
       </div>
       <div class="card-body">
-        <form method="post" action="/admin/cards/add">
+        <form method="post" action="/admin/cards/add" enctype="multipart/form-data">
           <input type="hidden" name="person_id" value="{{ active_person.id }}">
           <div class="row g-3">
             <div class="col-md-6">
               <label class="form-label" for="c-hosp">Hospital name <span class="req">*</span></label>
-              <input class="form-control" id="c-hosp" type="text" name="hospital_name" required>
+              <input class="form-control" id="c-hosp" type="text" name="hospital_name" required
+                     autocomplete="organization"
+                     style="text-transform: capitalize;">
+              <script>
+              (function () {
+                var el = document.getElementById("c-hosp");
+                if (!el) return;
+                function titleCase(v) {
+                  return String(v || "").replace(/\S+/g, function (w) {
+                    return w.charAt(0).toUpperCase() + w.slice(1);
+                  });
+                }
+                el.addEventListener("blur", function () { el.value = titleCase(el.value.trim()); });
+              })();
+              </script>
             </div>
             <div class="col-md-6">
               <label class="form-label" for="c-ward">Ward</label>
@@ -254,6 +292,12 @@
             <div class="col-md-6">
               <label class="form-label" for="c-till">Valid till</label>
               <input class="form-control" id="c-till" type="date" name="valid_till">
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="c-card-image">Patient card photo</label>
+              <input class="form-control" id="c-card-image" type="file" name="card_image"
+                     accept="image/jpeg,image/png,image/webp,image/gif">
+              <div class="form-text">Optional scan of the physical card. Click the ID card to flip and view it; enable as background in Settings.</div>
             </div>
             <div class="col-12">
               <label class="form-label" for="c-notes">Notes (encrypted)</label>
@@ -323,6 +367,18 @@
             <td>{% if doc.category == 'insurance' %}<span class="text-faint">Personal</span>{% else %}{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}{% endif %}</td>
             <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
             <td class="table-actions">
+              {% set ft = doc.file_type or '' %}
+              {% if ft.startswith('image/') %}
+                {% set view_kind = 'image' %}
+              {% elif ft == 'application/pdf' %}
+                {% set view_kind = 'pdf' %}
+              {% else %}
+                {% set view_kind = 'other' %}
+              {% endif %}
+              <a class="btn btn-outline-light btn-sm js-doc-view" href="/admin/documents/{{ doc.id }}/view"
+                 data-kind="{{ view_kind }}" aria-label="View {{ doc.title | nice }}">
+                <i class="bi bi-eye"></i> View
+              </a>
               <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
                 <i class="bi bi-download"></i> Download
               </a>
@@ -349,15 +405,28 @@
   var cat = document.getElementById('doc-cat');
   var wrap = document.getElementById('doc-hosp-wrap');
   var hosp = document.getElementById('doc-hosp');
-  if (!cat || !wrap || !hosp) return;
-  function sync() {
-    var needs = cat.value !== 'insurance';
-    wrap.style.display = needs ? '' : 'none';
-    hosp.required = needs;
-    if (!needs) hosp.value = '';
+  if (cat && wrap && hosp) {
+    function sync() {
+      var needs = cat.value !== 'insurance';
+      wrap.style.display = needs ? '' : 'none';
+      hosp.required = needs;
+      if (!needs) hosp.value = '';
+    }
+    cat.addEventListener('change', sync);
+    sync();
   }
-  cat.addEventListener('change', sync);
-  sync();
+  document.querySelectorAll('.id-flip.has-scan').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      if (e.target.closest('form, button, a, input, label')) return;
+      el.classList.toggle('is-flipped');
+    });
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        el.classList.toggle('is-flipped');
+      }
+    });
+  });
 })();
 </script>
 {% endif %}

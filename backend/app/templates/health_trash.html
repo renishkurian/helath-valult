@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Trash — Health Vault{% endblock %}
+{% block content %}
+{% set cat_colors = {'hospital_card':'#7FA6FF','prescription':'#4ADE9B','lab_report':'#C0A8FF','insurance':'#F0C36A','vaccination':'#4ADE9B','bill':'#FF8095','medicine':'#F0C36A','other':'#8B95A8'} %}
+{% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
+{% set folder_label = {'hospital_card':'Card scans','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin">Health Vault</a>
+      <i class="bi bi-chevron-right"></i>
+      Trash
+    </div>
+    <h1 class="page-title">Trash</h1>
+    <p class="page-lead">Deleted documents stay here until you restore them or empty the trash.</p>
+  </div>
+  {% if items %}
+  <div class="page-actions">
+    <form method="post" action="/admin/trash/empty" data-confirm="Permanently delete everything in trash?">
+      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Empty trash</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  {% if items %}
+  <div class="card-header">
+    <span class="card-ico bad"><i class="bi bi-trash3"></i></span>
+    <div><h2>Deleted documents</h2></div>
+    <span class="badge badge-soft ms-auto">{{ items|length }}</span>
+  </div>
+  {% endif %}
+  <div class="list-rows">
+    {% for item in items %}
+    {% set person = people.get(item.person_id) %}
+    {% set cat = item.category %}
+    <div class="list-row">
+      <span class="doc-icon" style="background:{{ cat_colors.get(cat, '#8B95A8') }};">
+        {{ cat_short.get(cat, 'DOC') }}
+      </span>
+      <div class="row-body">
+        <div class="row-title truncate">{{ item.title | nice }}</div>
+        <div class="row-meta">
+          {{ folder_label.get(cat, cat) }}
+          {% if person %} · {{ person.name | nice }}{% endif %}
+          {% if item.hospital_name %} · {{ item.hospital_name | nice }}{% endif %}
+          {% if item.deleted_at %} · deleted {{ item.deleted_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+        </div>
+      </div>
+      <div class="row-actions">
+        <form method="post" action="/admin/documents/{{ item.id }}/restore">
+          <button class="btn btn-outline-light btn-sm" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+        </form>
+        <form method="post" action="/admin/documents/{{ item.id }}/permanent" data-confirm="Delete forever? This cannot be undone.">
+          <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-x-lg"></i> Delete</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-trash3"></i></div>
+      <div class="empty-title">Trash is empty</div>
+      <p>Documents you delete from Health Vault will wait here before they are gone for good.</p>
+      <a class="btn btn-primary" href="/admin"><i class="bi bi-heart-pulse"></i> Back to Overview</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

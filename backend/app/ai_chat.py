@@ -319,6 +319,7 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
                     models.Document.person_id.in_(pids),
                     models.Document.hospital_name.isnot(None),
                     models.Document.hospital_name != "",
+                    models.Document.deleted_at.is_(None),
                 )
                 .order_by(models.Document.created_at.desc())
                 .first()
@@ -470,7 +471,11 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
                 hospitals.append(row[0])
         for row in (
             db.query(models.Document.hospital_name)
-            .filter(models.Document.person_id.in_(pids), models.Document.hospital_name.isnot(None))
+            .filter(
+                models.Document.person_id.in_(pids),
+                models.Document.hospital_name.isnot(None),
+                models.Document.deleted_at.is_(None),
+            )
             .all()
         ):
             if row[0] and row[0] not in seen_h:
@@ -478,7 +483,7 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
                 hospitals.append(row[0])
     hit_hospitals = _match_names(q, hospitals, min_len=3)
 
-    docs_q = db.query(models.Document)
+    docs_q = db.query(models.Document).filter(models.Document.deleted_at.is_(None))
     if pids:
         docs_q = docs_q.filter(models.Document.person_id.in_(pids))
     else:
@@ -492,6 +497,7 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
             .filter(
                 models.Document.person_id.in_(pids),
                 models.Document.hospital_name.in_(hit_hospitals),
+                models.Document.deleted_at.is_(None),
             )
             .order_by(models.Document.doc_date.desc())
             .limit(60)

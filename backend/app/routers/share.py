@@ -258,7 +258,7 @@ def _load_valid_link(token: str, db: Session, pin: str | None = None) -> models.
 def public_view_document(token: str, request: Request, pin: str | None = None, db: Session = Depends(get_db)):
     link = _load_valid_link(token, db, pin)
     doc = db.query(models.Document).filter(models.Document.id == link.document_id).first()
-    if not doc:
+    if not doc or doc.deleted_at:
         raise HTTPException(status_code=404, detail="Document no longer exists")
     _record_access(db, link, "view", request)
     db.commit()
@@ -275,7 +275,7 @@ def public_view_page(token: str, request: Request, pin: str | None = None, db: S
         return templates.TemplateResponse(request, "share_pin.html", {"token": token, "kind": "doc", "error": None})
     link = _load_valid_link(token, db, pin)
     doc = db.query(models.Document).filter(models.Document.id == link.document_id).first()
-    if not doc:
+    if not doc or doc.deleted_at:
         raise HTTPException(status_code=404, detail="Document no longer exists")
     _record_access(db, link, "view", request)
     db.commit()
@@ -290,7 +290,7 @@ def public_view_page(token: str, request: Request, pin: str | None = None, db: S
 def public_download_document(token: str, request: Request, pin: str | None = None, db: Session = Depends(get_db)):
     link = _load_valid_link(token, db, pin)
     doc = db.query(models.Document).filter(models.Document.id == link.document_id).first()
-    if not doc or not doc.files:
+    if not doc or doc.deleted_at or not doc.files:
         raise HTTPException(status_code=404, detail="No file available")
 
     first = doc.files[0]
@@ -337,7 +337,7 @@ def public_pack_page(token: str, request: Request, pin: str | None = None, db: S
     docs = []
     for item in pack.items:
         doc = db.query(models.Document).filter(models.Document.id == item.document_id).first()
-        if doc:
+        if doc and not doc.deleted_at:
             docs.append(doc_to_out(doc))
     pack.view_count = (pack.view_count or 0) + 1
     db.add(models.SharePackAccess(pack_id=pack.id, action="view", ip=_client_ip(request), user_agent=(request.headers.get("user-agent") or "")[:400]))
@@ -353,7 +353,7 @@ def public_pack_download(token: str, document_id: str, request: Request, pin: st
     if document_id not in {i.document_id for i in pack.items}:
         raise HTTPException(status_code=404, detail="Not in this pack")
     doc = db.query(models.Document).filter(models.Document.id == document_id).first()
-    if not doc or not doc.files:
+    if not doc or doc.deleted_at or not doc.files:
         raise HTTPException(status_code=404, detail="No file available")
     first = doc.files[0]
     enc_path = settings.STORAGE_DIR / first.file_path

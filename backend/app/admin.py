@@ -71,6 +71,7 @@ def card_out(card: models.HospitalCard) -> dict:
         "id": card.id, "hospital_name": card.hospital_name, "ward": card.ward,
         "blood_group": card.blood_group, "valid_from": card.valid_from, "valid_till": card.valid_till,
         "patient_id": crypto.decrypt_text(card.patient_id_enc), "notes": crypto.decrypt_text(card.notes_enc),
+        "has_image": bool(card.image_path),
     }
 
 
@@ -80,8 +81,28 @@ def doc_out(doc: models.Document) -> dict:
         "hospital_name": doc.hospital_name, "doc_date": doc.doc_date,
         "expiry_date": doc.expiry_date, "tags": doc.tags,
         "file_size": doc.file_size or 0, "created_at": doc.created_at,
+        "file_type": (doc.file_type or "").split(";")[0].strip().lower(),
         "notes": crypto.decrypt_text(doc.notes_enc),
     }
+
+
+def _admin_document_bytes(doc: models.Document) -> tuple[bytes, str, str]:
+    """Decrypt the first attached file for admin download/view. Returns (bytes, mime, filename)."""
+    if doc.files:
+        first = doc.files[0]
+        enc_path = settings.STORAGE_DIR / first.file_path
+        mime = first.file_type or "application/octet-stream"
+        fname = first.original_filename
+    elif doc.file_path:
+        enc_path = settings.STORAGE_DIR / doc.file_path
+        mime = doc.file_type or "application/octet-stream"
+        fname = doc.title or "document"
+    else:
+        raise FileNotFoundError("No file attached")
+    if not enc_path.is_file():
+        raise FileNotFoundError("File missing on disk")
+    return crypto.decrypt_bytes(enc_path.read_bytes()), mime, fname
+
 
 
 # ---------- Login / logout ----------
@@ -598,7 +619,14 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
                 except ValueError:
                     pass
 
-        doc_rows = db.query(models.Document).filter(models.Document.person_id == active_person.id).all()
+        doc_rows = (
+            db.query(models.Document)
+            .filter(
+                models.Document.person_id == active_person.id,
+                models.Document.deleted_at.is_(None),
+            )
+            .all()
+        )
         documents = [doc_out(d) for d in doc_rows]
         folder_counts = {cat.value: 0 for cat in models.DocCategory}
         for d in documents:
@@ -629,6 +657,7 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
         if not any(unassigned_folders.values()):
             unassigned_folders = {}
 
+    owner = db.query(models.User).filter(models.User.id == vault_id(user)).first() or user
     return templates.TemplateResponse("dashboard.html", {
         "request": request, "session_user": user, "active_nav": "dashboard",
         "people": people, "active_person": active_person, "active_person_id": active_person.id if active_person else None,
@@ -638,6 +667,7 @@ def dashboard(request: Request, person: Optional[str] = None, db: Session = Depe
         "hospital_scoped_cats": hospital_scoped_cats,
         "insurance_count": insurance_count,
         "unassigned_folders": unassigned_folders,
+        "card_image_as_background": bool(getattr(owner, "card_image_as_background", False)),
     })
 
 
@@ -687,12 +717,13 @@ def people_delete(request: Request, person_id: str, db: Session = Depends(get_db
 
 # ---------- Cards ----------
 @router.post("/cards/add")
-def cards_add(
+async def cards_add(
     request: Request,
     person_id: str = Form(...), hospital_name: str = Form(...),
     ward: str = Form(""), blood_group: str = Form(""),
     valid_from: str = Form(""), valid_till: str = Form(""),
     patient_id: str = Form(""), notes: str = Form(""),
+    card_image: UploadFile | None = File(None),
     db: Session = Depends(get_db)
 ):
     user = require_login(request, db)
@@ -700,12 +731,25 @@ def cards_add(
         return RedirectResponse("/admin/login", status_code=302)
     person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if person:
+        from app.templating import nice_name
+        from app.routers.cards import save_card_image
+        hosp = nice_name(hospital_name)
         card = models.HospitalCard(
-            person_id=person.id, hospital_name=hospital_name, ward=ward or None, blood_group=blood_group or None,
+            person_id=person.id, hospital_name=hosp, ward=ward or None, blood_group=blood_group or None,
             valid_from=valid_from or None, valid_till=valid_till or None,
             patient_id_enc=crypto.encrypt_text(patient_id or None), notes_enc=crypto.encrypt_text(notes or None),
         )
         db.add(card)
+        db.flush()
+        if card_image is not None and getattr(card_image, "filename", None):
+            raw = await card_image.read()
+            if raw:
+                save_card_image(
+                    card,
+                    raw=raw,
+                    content_type=card_image.content_type,
+                    owner_id=vault_id(user),
+                )
         db.commit()
     return RedirectResponse(f"/admin?person={person_id}", status_code=302)
 
@@ -720,9 +764,68 @@ def cards_delete(request: Request, card_id: str, person_id: str = Form(...), db:
         .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
     )
     if card:
+        from app.routers.cards import unlink_card_image
+        unlink_card_image(card)
         db.delete(card)
         db.commit()
     return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+
+
+@router.get("/cards/{card_id}/image")
+def cards_image(request: Request, card_id: str, db: Session = Depends(get_db)):
+    from app.routers.cards import get_card_image
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return get_card_image(card_id, db=db, current_user=user)
+
+
+@router.post("/cards/{card_id}/image")
+async def cards_image_upload(request: Request, card_id: str, db: Session = Depends(get_db)):
+    from app.routers.cards import upload_card_image
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    photo = form.get("card_image") or form.get("photo")
+    if photo is None or not hasattr(photo, "read"):
+        return RedirectResponse(f"/admin?person={form.get('person_id') or ''}", status_code=302)
+    try:
+        await upload_card_image(card_id, photo=photo, db=db, current_user=user)
+    except HTTPException:
+        pass
+    person_id = str(form.get("person_id") or "")
+    return RedirectResponse(f"/admin?person={person_id}" if person_id else "/admin", status_code=302)
+
+
+@router.get("/health-settings", response_class=HTMLResponse)
+def health_settings_page(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    owner = db.query(models.User).filter(models.User.id == vault_id(user)).first() or user
+    return templates.TemplateResponse("health_settings.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "health_settings",
+        "card_image_as_background": bool(getattr(owner, "card_image_as_background", False)),
+        "can_edit": user.role == models.UserRole.owner.value or user.id == vault_id(user),
+    })
+
+
+@router.post("/health-settings")
+async def health_settings_save(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if user.role not in (models.UserRole.owner.value, models.UserRole.superadmin.value) and user.id != vault_id(user):
+        return RedirectResponse("/admin/health-settings", status_code=302)
+    form = await request.form()
+    owner = db.query(models.User).filter(models.User.id == vault_id(user)).first()
+    if owner:
+        owner.card_image_as_background = str(form.get("card_image_as_background") or "") in ("1", "on", "true", "yes")
+        db.commit()
+    return RedirectResponse("/admin/health-settings?ok=1", status_code=302)
 
 
 # ---------- Documents ----------
@@ -742,7 +845,10 @@ def documents_page(
     if not active_person:
         return RedirectResponse("/admin", status_code=302)
 
-    q = db.query(models.Document).filter(models.Document.person_id == active_person.id)
+    q = db.query(models.Document).filter(
+        models.Document.person_id == active_person.id,
+        models.Document.deleted_at.is_(None),
+    )
     if category:
         q = q.filter(models.Document.category == models.DocCategory(category))
     if hospital:
@@ -841,11 +947,40 @@ def documents_download(request: Request, document_id: str, db: Session = Depends
     )
     if not doc:
         return RedirectResponse("/admin", status_code=302)
-    enc_path = settings.STORAGE_DIR / doc.file_path
-    plain = crypto.decrypt_bytes(enc_path.read_bytes())
+    try:
+        plain, mime, fname = _admin_document_bytes(doc)
+    except FileNotFoundError:
+        return RedirectResponse("/admin", status_code=302)
+    safe = fname.replace('"', "")
     return Response(
-        content=plain, media_type=doc.file_type or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{doc.title}"'},
+        content=plain, media_type=mime,
+        headers={"Content-Disposition": f'attachment; filename="{safe}"'},
+    )
+
+
+@router.get("/documents/{document_id}/view")
+def documents_view(request: Request, document_id: str, db: Session = Depends(get_db)):
+    """Inline preview (images/PDF in lightbox). Same auth as download."""
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    try:
+        plain, mime, fname = _admin_document_bytes(doc)
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found")
+    safe = fname.replace('"', "")
+    return Response(
+        content=plain, media_type=mime,
+        headers={
+            "Content-Disposition": f'inline; filename="{safe}"',
+            "Cache-Control": "private, no-store",
+        },
     )
 
 
@@ -858,7 +993,7 @@ def documents_delete(
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    # Reuse API delete so DocumentFile / versions / shares / favorites are cleaned up.
+    # Soft-delete into trash (same as API DELETE /documents/{id}).
     from app.routers.documents import delete_document
     try:
         delete_document(document_id, db=db, current_user=user)
@@ -866,8 +1001,67 @@ def documents_delete(
         if exc.status_code not in (403, 404):
             raise
     if category:
-        return RedirectResponse(f"/admin/documents?person={person_id}&category={category}", status_code=302)
-    return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+        return RedirectResponse(f"/admin/documents?person={person_id}&category={category}&ok=trashed", status_code=302)
+    return RedirectResponse(f"/admin?person={person_id}&ok=trashed", status_code=302)
+
+
+@router.get("/trash", response_class=HTMLResponse)
+def health_trash_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers.documents import list_trash
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = list_trash(db=db, current_user=user)
+    people = {
+        p.id: p
+        for p in db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    }
+    return templates.TemplateResponse("health_trash.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "trash",
+        "items": items,
+        "people": people,
+        "active_person_id": None,
+    })
+
+
+@router.post("/trash/empty")
+def health_trash_empty(request: Request, db: Session = Depends(get_db)):
+    from app.routers.documents import empty_trash
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    empty_trash(db=db, current_user=user)
+    return RedirectResponse("/admin/trash", status_code=302)
+
+
+@router.post("/documents/{document_id}/restore")
+def documents_restore(request: Request, document_id: str, db: Session = Depends(get_db)):
+    from app.routers.documents import restore_document
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        restore_document(document_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 403, 404):
+            raise
+    return RedirectResponse("/admin/trash", status_code=302)
+
+
+@router.post("/documents/{document_id}/permanent")
+def documents_permanent(request: Request, document_id: str, db: Session = Depends(get_db)):
+    from app.routers.documents import delete_document_forever
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        delete_document_forever(document_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 403, 404):
+            raise
+    return RedirectResponse("/admin/trash", status_code=302)
 
 
 # ---------- Reminders ----------

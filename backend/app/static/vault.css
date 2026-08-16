@@ -907,9 +907,14 @@ button.list-row:last-child{ border-bottom:none; }
   display:flex; align-items:center; justify-content:center;
 }
 .photo-lightbox[hidden]{ display:none !important; }
-.photo-lightbox img{
+.photo-lightbox img,
+.photo-lightbox iframe{
   max-width:min(960px,100%); max-height:86dvh; border-radius:var(--v-r-lg);
   box-shadow:var(--v-sh-3); object-fit:contain; background:var(--v-bg-2);
+  border:0;
+}
+.photo-lightbox iframe{
+  width:min(960px,100%); height:86dvh; background:#fff;
 }
 .photo-lightbox-x{
   position:absolute; top:1rem; right:1rem; width:44px; height:44px; border-radius:12px;
@@ -1135,6 +1140,53 @@ body.modules-picker .side-label{
   border:1px dashed rgba(255,128,149,0.45); color:#FF9DAD;
   font-size:.5rem; font-weight:700; text-transform:uppercase; line-height:1.15;
   display:grid; place-items:center; text-align:center;
+}
+
+/* Flip + optional scan background */
+.id-flip{
+  perspective:1200px; min-height:220px; cursor:default;
+}
+.id-flip.h-100{ display:flex; flex-direction:column; }
+.id-flip.h-100 .id-flip-inner{ flex:1 1 auto; height:100%; }
+.id-flip.has-scan{ cursor:pointer; }
+.id-flip-inner{
+  position:relative; width:100%; height:100%; min-height:220px;
+  transform-style:preserve-3d; transition:transform .55s cubic-bezier(.2,.8,.2,1);
+}
+.id-flip.is-flipped .id-flip-inner{ transform:rotateY(180deg); }
+.id-flip .id-face{
+  -webkit-backface-visibility:hidden; backface-visibility:hidden;
+}
+.id-flip .id-front{ position:relative; min-height:100%; }
+.id-flip .id-back{
+  position:absolute; inset:0; transform:rotateY(180deg);
+  display:flex; flex-direction:column; padding:.75rem; background:var(--v-surface-2);
+}
+.id-face-content{ position:relative; z-index:1; }
+.id-bg{
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  background-image:var(--card-scan); background-size:cover; background-position:center;
+  opacity:.28; filter:saturate(.85) contrast(1.05);
+}
+.id-bg::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(155deg,rgba(12,14,18,.72),rgba(12,14,18,.88) 55%,rgba(12,14,18,.94));
+}
+.id-card.id-has-bg{ background:var(--v-surface); }
+.id-card.id-has-bg::before{ opacity:.35; }
+.id-flip-hint{
+  margin-top:.875rem; font-size:.6875rem; color:var(--v-ink-3);
+  display:flex; align-items:center; gap:.35rem;
+}
+.id-flip-hint-back{
+  margin-top:.5rem; justify-content:center; flex-shrink:0;
+}
+.id-scan{
+  flex:1 1 auto; width:100%; min-height:0; object-fit:contain;
+  border-radius:var(--v-r-md); background:#0a0c10;
+}
+.id-scan-empty{
+  flex:1; display:grid; place-items:center; text-align:center; padding:1rem; font-size:.8125rem;
 }
 
 /* Emergency (ICE) card */
