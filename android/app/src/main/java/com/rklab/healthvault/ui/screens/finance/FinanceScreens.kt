@@ -155,7 +155,7 @@ fun FinanceTransScreen(
                         Column(Modifier.weight(1f)) {
                             Text(t.category_name ?: t.txn_type, color = InkSoft, style = MaterialTheme.typography.labelMedium)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(t.payee ?: t.description ?: "—", color = Ink, fontWeight = FontWeight.SemiBold)
+                                Text(t.payee ?: t.category_name ?: "—", color = Ink, fontWeight = FontWeight.SemiBold)
                                 if (t.has_image) {
                                     Text(" · ", color = InkSoft, fontWeight = FontWeight.SemiBold)
                                     Text(

@@ -115,6 +115,112 @@ def vault_today() -> str:
     return vault_now().strftime("%Y-%m-%d")
 
 
+_SPEND_RE = re.compile(
+    r"\b(expense|expenses|spend|spent|spending|total|kharcha?|adichu|vaangi|"
+    r"paid|payment|outflow|debit)\b",
+    re.I,
+)
+_TODAY_RE = re.compile(
+    r"\b(today|todays|today'?s|ippo|innu|ee\s*divasam|ee\s*naal)\b",
+    re.I,
+)
+_YESTERDAY_RE = re.compile(
+    r"\b(yesterday|yesterdays|yesterday'?s|innale|kazinja\s*divasam)\b",
+    re.I,
+)
+_FOLLOWUP_RE = re.compile(
+    r"\b(sure|really|confirm|which|list|they|them|details|break\s*down|itemize)\b",
+    re.I,
+)
+
+
+def resolve_ledger_day(question: str, today: datetime | None = None) -> str | None:
+    """YYYY-MM-DD when the question is about that calendar day's Money Manager spend."""
+    today = today or vault_now()
+    q = (question or "").strip()
+    if not q:
+        return None
+    spendish = bool(_SPEND_RE.search(q)) or bool(
+        re.search(r"\b(petrol|upi|atm|ledger|money\s*manager)\b", q, re.I)
+    )
+    if _TODAY_RE.search(q) and (spendish or len(q.split()) <= 4):
+        return today.strftime("%Y-%m-%d")
+    if _YESTERDAY_RE.search(q) and spendish:
+        return (today - timedelta(days=1)).strftime("%Y-%m-%d")
+    return None
+
+
+def should_answer_ledger_day(
+    question: str,
+    history: list[dict] | None = None,
+    today: datetime | None = None,
+) -> str | None:
+    """Day to answer from Money Manager, including short follow-ups in a spend thread."""
+    today = today or vault_now()
+    day = resolve_ledger_day(question, today)
+    if day:
+        return day
+    if not _FOLLOWUP_RE.search(question or ""):
+        return None
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "user":
+            continue
+        day = resolve_ledger_day(m.get("content") or "", today)
+        if day:
+            return day
+    return None
+
+
+def format_money_manager_day_reply(db: Session, user: models.User, day: str) -> str:
+    """Deterministic Money Manager day total — never uses Digital Diary."""
+    uid = _uid(user)
+    cats = {
+        c.id: c.name
+        for c in db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).all()
+    }
+    acct_by_id = {
+        a.id: a
+        for a in db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid).all()
+    }
+    txns = (
+        db.query(models.FinanceTransaction)
+        .filter(
+            models.FinanceTransaction.user_id == uid,
+            models.FinanceTransaction.txn_date == day,
+            models.FinanceTransaction.txn_type == "expense",
+        )
+        .order_by(models.FinanceTransaction.created_at.desc())
+        .all()
+    )
+    total = sum(_f(t.amount) for t in txns)
+    try:
+        label = datetime.strptime(day, "%Y-%m-%d").strftime("%A %d %B %Y")
+    except ValueError:
+        label = day
+    lines = [
+        f"**Money Manager expenses for {label}**",
+        "",
+        f"Total: **{_inr(total)}**",
+        "",
+    ]
+    if not txns:
+        lines.append("No expense entries on the ledger for this date.")
+        lines.append("")
+        lines.append("_Source: Money Manager (not Digital Diary)._")
+        return "\n".join(lines)
+    lines.append("| Payee | Category | Account | Amount |")
+    lines.append("| --- | --- | --- | ---: |")
+    for t in txns:
+        acct = acct_by_id.get(t.account_id)
+        lines.append(
+            f"| {t.payee or '—'} | {cats.get(t.category_id) or '—'} | "
+            f"{acct.name if acct else '—'} | {_inr(t.amount).replace('₹ ', '')} |"
+        )
+    lines.append("")
+    lines.append("_Source: Money Manager ledger (Digital Diary notes are not counted)._")
+    return "\n".join(lines)
+
+
 def _inr(val) -> str:
     try:
         n = float(val or 0)
@@ -438,6 +544,7 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     months = detect_months(question, today) or [this_month, _shift_month(this_month, -1)]
     q = question or ""
     tz_label = settings.VAULT_TIMEZONE
+    ledger_day = resolve_ledger_day(q, today)
 
     lines: list[str] = [
         f"# VAULT SNAPSHOT",
@@ -446,6 +553,13 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         "For spend totals by day, prefer Money Manager over Digital Diary.",
         "",
     ]
+    if ledger_day:
+        lines.append("## CANONICAL ANSWER (use this for today’s/yesterday’s spend)")
+        lines.append(
+            "Ignore Digital Diary and prior chat guesses. Money Manager ledger is the only source "
+            f"for day spend on {ledger_day}."
+        )
+        lines.append("")
 
     people = (
         db.query(models.Person)
@@ -858,11 +972,16 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     # ---- Digital Diary ----
     lines.append("")
     lines.append("## Digital Diary")
-    lines.append(
-        "Journal notes only — diary charge tables are not Money Manager ledger spend. "
-        "Do not use diary amounts for “today’s expense” unless the user asked about the diary."
-    )
-    lines.extend(_diary_snapshot_lines(db, uid, q))
+    if ledger_day:
+        lines.append(
+            f"Omitted for this question — user asked about Money Manager day spend ({ledger_day})."
+        )
+    else:
+        lines.append(
+            "Journal notes only — diary charge tables are not Money Manager ledger spend. "
+            "Do not use diary amounts for “today’s expense” unless the user asked about the diary."
+        )
+        lines.extend(_diary_snapshot_lines(db, uid, q))
 
     # ---- Locker ----
     lines.append("")
@@ -1736,9 +1855,6 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     text = (message or "").strip()
     if not text:
         raise ValueError("Type a question first")
-    bundle = ap.get_default_bundle(db, user)
-    if not bundle:
-        raise LookupError("Add an AI provider first")
 
     thread = get_thread(db, user, thread_id) if thread_id else None
     if thread_id and not thread:
@@ -1755,6 +1871,36 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         .all()
     )
     history = [_msg_out(m) for m in prior[-MAX_HISTORY:]]
+
+    # Day spend totals come straight from Money Manager — never trust the LLM/diary here.
+    ledger_day = should_answer_ledger_day(text, history)
+    if ledger_day:
+        reply = format_money_manager_day_reply(db, user, ledger_day)
+        now = datetime.utcnow()
+        db.add(models.AiChatMessage(
+            thread_id=thread.id, role="user", content_enc=crypto.encrypt_text(text), created_at=now,
+        ))
+        db.add(models.AiChatMessage(
+            thread_id=thread.id, role="assistant", content_enc=crypto.encrypt_text(reply),
+            created_at=now + timedelta(seconds=1),
+        ))
+        if thread.title in {"New chat", ""}:
+            thread.title = _title_from(text)
+        thread.updated_at = now
+        db.commit()
+        db.refresh(thread)
+        detail = thread_detail(db, user, thread.id)
+        return {
+            "thread_id": thread.id,
+            "title": thread.title,
+            "reply": reply,
+            "action": None,
+            "messages": detail["messages"] if detail else [],
+        }
+
+    bundle = ap.get_default_bundle(db, user)
+    if not bundle:
+        raise LookupError("Add an AI provider first")
 
     snapshot = build_vault_context(db, user, text)
     system = SYSTEM_PROMPT + "\n\n" + snapshot

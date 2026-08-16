@@ -218,6 +218,41 @@ def test_bill_line_parse_and_post_bridge():
     assert any(i["payee"] == "AMAZON PAY" for i in r.json())
 
 
+def test_post_empty_payee_uses_category_title():
+    headers, email = _headers()
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        item = models.ExpenseAnalyserItem(
+            user_id=uid,
+            gmail_message_id="g-empty-payee",
+            kind="alert",
+            subject="INR 90 Spent On Credit Card",
+            direction="debit",
+            amount=Decimal("90.00"),
+            payee="INR 90 Spent On Credit Card",
+            txn_date="2026-08-15",
+            payment_method="credit_card",
+            status="pending",
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        txn = post_to_finance(
+            db, user, item.id,
+            account_id=accounts[0]["id"],
+            new_category="Rent",
+            payee="",  # cleared title
+        )
+        assert txn.payee == "Rent"
+        db.refresh(item)
+        assert item.payee == "Rent"
+    finally:
+        db.close()
+
+
 def test_post_creates_category_and_subcategory():
     headers, email = _headers()
     accounts = client.get("/finance/accounts", headers=headers).json()

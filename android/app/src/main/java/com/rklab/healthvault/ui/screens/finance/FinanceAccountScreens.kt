@@ -260,7 +260,7 @@ fun FinanceAccountDetailScreen(
                         ) {
                             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(t.payee ?: t.description ?: t.category_name ?: t.txn_type, color = Ink, fontWeight = FontWeight.Medium)
+                                    Text(t.payee ?: t.category_name ?: t.txn_type, color = Ink, fontWeight = FontWeight.Medium)
                                     if (t.has_image) {
                                         Text(" · ", color = InkSoft, fontWeight = FontWeight.Medium)
                                         Text(

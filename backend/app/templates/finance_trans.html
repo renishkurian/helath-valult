@@ -108,7 +108,7 @@
         <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
       </span>
       <div class="mm-body">
-        <div class="payee truncate">{{ item.payee or item.description or '—' }}</div>
+        <div class="payee truncate">{{ item.payee or item.category_name or '—' }}</div>
         <div class="cat">{{ item.category_name or item.txn_type }}</div>
         <div class="acct truncate">
           {{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %} · {{ item.txn_date }}
@@ -152,7 +152,7 @@
         <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
       </span>
       <div class="mm-body">
-        <div class="payee truncate">{{ item.payee or item.description or '—' }}</div>
+        <div class="payee truncate">{{ item.payee or item.category_name or '—' }}</div>
         <div class="cat">{{ item.category_name or item.txn_type }}</div>
         <div class="acct truncate">
           {{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %}

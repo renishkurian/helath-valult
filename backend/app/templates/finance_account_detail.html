@@ -80,7 +80,7 @@
         </span>
         <div class="mm-body">
           <div class="payee">
-            {{ item.txn.payee or item.txn.description or '—' }}
+            {{ item.txn.payee or item.txn.category_name or '—' }}
             {% if item.txn.has_image %}
             <a class="js-photo link-quiet" href="/admin/finance/transactions/{{ item.txn.id }}/image" aria-label="Receipt photo"><i class="bi bi-image"></i></a>
             {% endif %}

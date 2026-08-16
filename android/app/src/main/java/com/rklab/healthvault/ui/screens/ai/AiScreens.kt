@@ -24,9 +24,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Delete
@@ -43,7 +45,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -235,16 +236,7 @@ fun AiAskScreen(
     }
 
     Scaffold(
-        containerColor = HubBg,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { openThread(null) },
-                containerColor = VaultGold,
-                contentColor = Color(0xFF18130A)
-            ) {
-                Icon(Icons.Filled.Add, contentDescription = "New chat")
-            }
-        }
+        containerColor = HubBg
     ) { pad ->
         Column(
             Modifier
@@ -255,6 +247,10 @@ fun AiAskScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 TextButton(onClick = onOpenModules) { Text("Modules", color = InkSoft) }
                 Spacer(Modifier.weight(1f))
+                TextButton(
+                    onClick = { openThread(null) },
+                    enabled = !busy
+                ) { Text("New", color = InkSoft) }
                 TextButton(
                     onClick = {
                         scope.launch {
@@ -448,21 +444,39 @@ fun AiAskScreen(
                     .border(1.dp, LineColor, RoundedCornerShape(22.dp))
                     .background(HubGlass)
                     .padding(6.dp),
-                verticalAlignment = Alignment.Bottom
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                val canSend = !busy && draft.isNotBlank() && status?.has_default == true
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Ask about hospital, shop list, diary…") },
                     enabled = !busy && status?.has_default == true,
-                    maxLines = 5
+                    maxLines = 5,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(
+                        onSend = { if (canSend) send(draft) }
+                    )
                 )
-                IconButton(
+                Button(
                     onClick = { send(draft) },
-                    enabled = !busy && draft.isNotBlank() && status?.has_default == true
+                    enabled = canSend,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = VaultGold,
+                        contentColor = Color(0xFF18130A),
+                        disabledContainerColor = VaultGold.copy(alpha = 0.35f),
+                        disabledContentColor = Color(0xFF18130A).copy(alpha = 0.5f)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send", tint = VaultGold)
+                    Icon(
+                        Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }

@@ -200,6 +200,19 @@ def _acct_map(db: Session, uid: str) -> dict[str, models.FinanceAccount]:
     return {a.id: a for a in rows}
 
 
+def _category_label(cat, categories) -> str | None:
+    """Parent / Sub when nested, else category name — used as title fallback."""
+    if not cat:
+        return None
+    if cat.parent_id:
+        parent = categories.get(cat.parent_id) if isinstance(categories, dict) else None
+        if parent is None and not isinstance(categories, dict):
+            parent = next((c for c in categories if c.id == cat.parent_id), None)
+        if parent is not None:
+            return f"{parent.name} / {cat.name}"
+    return cat.name
+
+
 def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.FinanceTxnOut:
     acc = accounts.get(t.account_id)
     to = accounts.get(t.to_account_id) if t.to_account_id else None
@@ -207,7 +220,7 @@ def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.Fina
     return schemas.FinanceTxnOut(
         id=t.id, account_id=t.account_id, account_name=acc.name if acc else "",
         to_account_id=t.to_account_id, to_account_name=to.name if to else None,
-        category_id=t.category_id, category_name=cat.name if cat else None,
+        category_id=t.category_id, category_name=_category_label(cat, categories),
         category_color=cat.color if cat else None,
         txn_type=t.txn_type, amount=_f(t.amount), currency=t.currency or "INR",
         txn_date=t.txn_date, txn_time=t.txn_time, payee=t.payee, notes=t.notes,

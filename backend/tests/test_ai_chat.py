@@ -39,6 +39,68 @@ def test_detect_months():
     assert "2026-07" in randu and "2026-06" in randu
 
 
+def test_resolve_ledger_day_and_deterministic_today_spend():
+    from app.ai_chat import (
+        ask,
+        format_money_manager_day_reply,
+        resolve_ledger_day,
+        should_answer_ledger_day,
+        vault_today,
+    )
+
+    today = datetime(2026, 8, 16, 19, 0, 0)
+    assert resolve_ledger_day("todays total expesne", today) == "2026-08-16"
+    assert resolve_ledger_day("What is the todays total expense", today) == "2026-08-16"
+    assert resolve_ledger_day("yesterday spend", today) == "2026-08-15"
+    assert should_answer_ledger_day(
+        "are u sure",
+        [{"role": "user", "content": "todays total expense"}],
+        today,
+    ) == "2026-08-16"
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        acc = models.FinanceAccount(user_id=uid, name="Home", account_type="cash")
+        db.add(acc)
+        db.flush()
+        cat = models.FinanceCategory(user_id=uid, name="Shopping", kind="expense")
+        db.add(cat)
+        db.flush()
+        day = vault_today()
+        db.add(models.FinanceTransaction(
+            user_id=uid, account_id=acc.id, category_id=cat.id,
+            txn_type="expense", amount=Decimal("962.00"),
+            txn_date=day, payee="Be A Bank Employee",
+        ))
+        db.add(models.FinanceTransaction(
+            user_id=uid, account_id=acc.id, category_id=cat.id,
+            txn_type="expense", amount=Decimal("158.00"),
+            txn_date=day, payee="HDFC Bank",
+        ))
+        from app import crypto
+        db.add(models.DiaryEntry(
+            user_id=uid, title="Petrol",
+            body_enc=crypto.encrypt_text("| Petrol | 250 |\n| Total | 250 |"),
+            entry_date="2026-08-15",
+        ))
+        db.commit()
+        reply = format_money_manager_day_reply(db, user, day)
+        assert "1,120.00" in reply or "1120.00" in reply.replace(",", "")
+        assert "Be A Bank Employee" in reply
+        assert "Petrol" not in reply
+        assert "Digital Diary" in reply
+
+        out = ask(db, user, "todays total expense")
+        assert "1,120.00" in out["reply"] or "1120.00" in out["reply"].replace(",", "")
+        assert "Petrol" not in out["reply"]
+        assert out["action"] is None
+    finally:
+        db.close()
+
+
 def test_manglish_query_hints():
     from app.ai_chat import _manglish_query_hints
     hits = _manglish_query_hints("list il ulli sharkara enna atta podi vekkanam")
@@ -157,7 +219,7 @@ def test_today_money_manager_block_in_context():
     assert "1,050.00" in ctx or "1050.00" in ctx.replace(",", "")
     assert "Be A Bank Employee" in ctx
     assert "HDFC Bank" in ctx
-    assert "not Money Manager ledger spend" in ctx
+    assert "Omitted for this question" in ctx or "CANONICAL ANSWER" in ctx
 
 
 def test_chat_requires_provider():

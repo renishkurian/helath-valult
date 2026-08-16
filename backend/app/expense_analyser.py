@@ -1462,9 +1462,14 @@ def post_to_finance(
     if item.kind == "bill":
         raise RuntimeError("Post bill line items, not the statement header")
 
-    custom_payee = (payee or "").strip() or None
-    if custom_payee:
-        item.payee = finance_ai.normalize_payee(custom_payee) or custom_payee[:255]
+    custom_payee = (payee or "").strip() if payee is not None else None
+    if payee is not None:
+        # Explicit form/API value wins (including clear → fall back to category below).
+        item.payee = (
+            (finance_ai.normalize_payee(custom_payee) or custom_payee[:255])
+            if custom_payee
+            else None
+        )
 
     fn.ensure_defaults(db, user)
     uid = vault_id(user)
@@ -1513,6 +1518,11 @@ def post_to_finance(
             )
         else:
             item.suggested_category = cat.name
+    # Empty title → category / subcategory (never account · payment description junk).
+    if not (item.payee or "").strip():
+        item.payee = (item.suggested_category or (cat.name if cat else None) or None)
+        if item.payee:
+            item.payee = (finance_ai.normalize_payee(item.payee) or item.payee)[:255]
     desc = finance_ai.build_description(method, item.payee, item.suggested_category)
     notes = (item.notes or item.raw_snippet or item.subject or "")[:400]
 
