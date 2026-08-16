@@ -111,6 +111,67 @@ def list_documents(
     return [_to_out(d, favorite=d.id in fav_ids) for d in q.order_by(models.Document.created_at.desc()).all()]
 
 
+def attach_document_files(
+    db: Session,
+    *,
+    doc: models.Document,
+    file_parts: list[tuple[bytes, str, str | None]],
+    person_dir: Path,
+) -> tuple[list[str], str | None, int]:
+    """Store encrypted DocumentFile rows. ``file_parts`` is (raw, filename, content_type).
+
+    Images are compressed via ``enhance_scan`` (JPEG). Returns (ocr_chunks, first_mime, first_size).
+    """
+    if not file_parts:
+        raise HTTPException(status_code=422, detail="At least one file is required")
+
+    ocr_chunks: list[str] = []
+    first_mime: str | None = None
+    first_size = 0
+    for idx, (raw, filename, content_type) in enumerate(file_parts):
+        stored_mime = (content_type or "application/octet-stream").split(";")[0].strip()
+        name = filename or f"file_{idx}"
+        if stored_mime.startswith("image/") or (
+            not stored_mime.startswith("application/") and _looks_like_image(raw)
+        ):
+            raw = enhance_scan(raw, stored_mime if stored_mime.startswith("image/") else "image/jpeg")
+            stored_mime = "image/jpeg"
+            if not name.lower().endswith((".jpg", ".jpeg")):
+                name = f"{name.rsplit('.', 1)[0]}.jpg"
+
+        size_mb = len(raw) / (1024 * 1024)
+        if size_mb > settings.MAX_UPLOAD_MB:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File '{name}' exceeds {settings.MAX_UPLOAD_MB} MB limit",
+            )
+        if not raw:
+            raise HTTPException(400, f"Empty file '{name}'")
+
+        enc_path = person_dir / f"{doc.id}_{idx}.enc"
+        enc_path.write_bytes(crypto.encrypt_bytes(raw))
+        ocr_chunks.append(extract_text(raw, stored_mime, name))
+        db.add(models.DocumentFile(
+            document_id=doc.id,
+            original_filename=name,
+            file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
+            file_type=stored_mime,
+            file_size=len(raw),
+            content_hash=file_sha256(raw),
+        ))
+        if idx == 0:
+            first_mime = stored_mime
+            first_size = len(raw)
+
+    return ocr_chunks, first_mime, first_size
+
+
+def _looks_like_image(raw: bytes) -> bool:
+    if len(raw) < 8:
+        return False
+    return raw[:3] == b"\xff\xd8\xff" or raw[:8] == b"\x89PNG\r\n\x1a\n" or raw[:4] == b"RIFF"
+
+
 @router.post("", response_model=schemas.DocumentOut, status_code=201)
 async def upload_document(
     person_id: str = Form(...),
@@ -164,33 +225,21 @@ async def upload_document(
     person_dir: Path = settings.STORAGE_DIR / vault_id(current_user) / person_id
     person_dir.mkdir(parents=True, exist_ok=True)
 
-    ocr_chunks: list[str] = []
-    for idx, upload in enumerate(files):
+    parts: list[tuple[bytes, str, str | None]] = []
+    for upload in files:
         raw = await upload.read()
-        if (upload.content_type or "").startswith("image/"):
-            raw = enhance_scan(raw, upload.content_type)
-        size_mb = len(raw) / (1024 * 1024)
-        if size_mb > settings.MAX_UPLOAD_MB:
-            db.rollback()
-            raise HTTPException(
-                status_code=413,
-                detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit"
-            )
+        parts.append((raw, upload.filename or "file", upload.content_type))
 
-        enc_path = person_dir / f"{doc.id}_{idx}.enc"
-        enc_path.write_bytes(crypto.encrypt_bytes(raw))
-
-        ocr_chunks.append(extract_text(raw, upload.content_type, upload.filename))
-
-        doc_file = models.DocumentFile(
-            document_id=doc.id,
-            original_filename=upload.filename or f"file_{idx}",
-            file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
-            file_type=upload.content_type,
-            file_size=len(raw),
-            content_hash=file_sha256(raw),
+    try:
+        ocr_chunks, first_mime, first_size = attach_document_files(
+            db, doc=doc, file_parts=parts, person_dir=person_dir
         )
-        db.add(doc_file)
+    except HTTPException:
+        db.rollback()
+        raise
+
+    doc.file_type = first_mime
+    doc.file_size = first_size
 
     combined = "\n".join(c for c in ocr_chunks if c).strip() or None
     doc.extracted_text = combined
@@ -543,25 +592,45 @@ async def replace_document_version(
     person_dir.mkdir(parents=True, exist_ok=True)
 
     ocr_chunks: list[str] = []
+    first_mime: str | None = None
+    first_size = 0
     for idx, upload in enumerate(files):
         raw = await upload.read()
+        stored_mime = (upload.content_type or "application/octet-stream").split(";")[0].strip()
+        name = upload.filename or f"file_{idx}"
+        if stored_mime.startswith("image/") or (
+            not stored_mime.startswith("application/") and _looks_like_image(raw)
+        ):
+            raw = enhance_scan(raw, stored_mime if stored_mime.startswith("image/") else "image/jpeg")
+            stored_mime = "image/jpeg"
+            if not name.lower().endswith((".jpg", ".jpeg")):
+                name = f"{name.rsplit('.', 1)[0]}.jpg"
         size_mb = len(raw) / (1024 * 1024)
         if size_mb > settings.MAX_UPLOAD_MB:
             db.rollback()
-            raise HTTPException(status_code=413, detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit")
+            raise HTTPException(status_code=413, detail=f"File '{name}' exceeds {settings.MAX_UPLOAD_MB} MB limit")
+        if not raw:
+            db.rollback()
+            raise HTTPException(400, f"Empty file '{name}'")
 
         enc_path = person_dir / f"{doc.id}_v{doc.version}_{idx}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
-        ocr_chunks.append(extract_text(raw, upload.content_type, upload.filename))
+        ocr_chunks.append(extract_text(raw, stored_mime, name))
 
         db.add(models.DocumentFile(
             document_id=doc.id,
-            original_filename=upload.filename or f"file_{idx}",
+            original_filename=name,
             file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
-            file_type=upload.content_type,
+            file_type=stored_mime,
             file_size=len(raw),
+            content_hash=file_sha256(raw),
         ))
+        if idx == 0:
+            first_mime = stored_mime
+            first_size = len(raw)
 
+    doc.file_type = first_mime
+    doc.file_size = first_size
     combined = "\n".join(c for c in ocr_chunks if c).strip() or None
     doc.extracted_text = combined
     db.query(models.LabReading).filter(models.LabReading.document_id == doc.id).delete()

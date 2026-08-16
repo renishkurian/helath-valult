@@ -104,6 +104,26 @@ def _admin_document_bytes(doc: models.Document) -> tuple[bytes, str, str]:
     return crypto.decrypt_bytes(enc_path.read_bytes()), mime, fname
 
 
+def _admin_save_document_bytes(doc: models.Document, raw: bytes, mime: str) -> None:
+    """Overwrite the first attached encrypted file (legacy path or DocumentFile)."""
+    if doc.files:
+        first = doc.files[0]
+        enc_path = settings.STORAGE_DIR / first.file_path
+        enc_path.write_bytes(crypto.encrypt_bytes(raw))
+        first.file_type = mime
+        first.file_size = len(raw)
+        doc.file_type = mime
+        doc.file_size = len(raw)
+        return
+    if doc.file_path:
+        enc_path = settings.STORAGE_DIR / doc.file_path
+        enc_path.write_bytes(crypto.encrypt_bytes(raw))
+        doc.file_type = mime
+        doc.file_size = len(raw)
+        return
+    raise FileNotFoundError("No file attached")
+
+
 
 # ---------- Login / logout ----------
 def _login_ctx(request: Request, error=None):
@@ -771,6 +791,103 @@ def cards_delete(request: Request, card_id: str, person_id: str = Form(...), db:
     return RedirectResponse(f"/admin?person={person_id}", status_code=302)
 
 
+@router.get("/cards/{card_id}/edit", response_class=HTMLResponse)
+def cards_edit_page(request: Request, card_id: str, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    card = (
+        db.query(models.HospitalCard).join(models.Person)
+        .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not card:
+        return RedirectResponse("/admin", status_code=302)
+    person = card.person
+    return templates.TemplateResponse("card_edit.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "dashboard",
+        "active_module": "health",
+        "active_person": person,
+        "active_person_id": person.id if person else None,
+        "card": card_out(card),
+        "cache_bust": int(datetime.utcnow().timestamp()),
+        "saved": request.query_params.get("ok") == "1",
+        "rotated": request.query_params.get("rotated") == "1",
+    })
+
+
+@router.post("/cards/{card_id}/edit")
+async def cards_edit_save(
+    request: Request,
+    card_id: str,
+    person_id: str = Form(...),
+    hospital_name: str = Form(...),
+    ward: str = Form(""),
+    blood_group: str = Form(""),
+    valid_from: str = Form(""),
+    valid_till: str = Form(""),
+    patient_id: str = Form(""),
+    notes: str = Form(""),
+    card_image: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+):
+    from app.templating import nice_name
+    from app.routers.cards import save_card_image
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    card = (
+        db.query(models.HospitalCard).join(models.Person)
+        .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not card:
+        return RedirectResponse("/admin", status_code=302)
+    card.hospital_name = nice_name(hospital_name)
+    card.ward = ward or None
+    card.blood_group = blood_group or None
+    card.valid_from = valid_from or None
+    card.valid_till = valid_till or None
+    card.patient_id_enc = crypto.encrypt_text(patient_id or None)
+    card.notes_enc = crypto.encrypt_text(notes or None)
+    if card_image is not None and getattr(card_image, "filename", None):
+        raw = await card_image.read()
+        if raw:
+            save_card_image(card, raw=raw, content_type=card_image.content_type, owner_id=vault_id(user))
+    db.commit()
+    return RedirectResponse(f"/admin/cards/{card_id}/edit?ok=1", status_code=302)
+
+
+@router.post("/cards/{card_id}/image/rotate")
+def cards_image_rotate(
+    request: Request,
+    card_id: str,
+    degrees: int = Form(90),
+    db: Session = Depends(get_db),
+):
+    from app.imaging import rotate_image_bytes
+    from app.routers.cards import save_card_image
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    card = (
+        db.query(models.HospitalCard).join(models.Person)
+        .filter(models.HospitalCard.id == card_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not card or not card.image_path:
+        return RedirectResponse("/admin", status_code=302)
+    path = settings.STORAGE_DIR / card.image_path
+    if not path.is_file():
+        return RedirectResponse(f"/admin/cards/{card_id}/edit", status_code=302)
+    try:
+        rotated, mime = rotate_image_bytes(crypto.decrypt_bytes(path.read_bytes()), degrees, card.image_mime)
+        save_card_image(card, raw=rotated, content_type=mime, owner_id=vault_id(user))
+        db.commit()
+    except HTTPException:
+        pass
+    return RedirectResponse(f"/admin/cards/{card_id}/edit?rotated=1", status_code=302)
+
+
 @router.get("/cards/{card_id}/image")
 def cards_image(request: Request, card_id: str, db: Session = Depends(get_db)):
     from app.routers.cards import get_card_image
@@ -858,12 +975,24 @@ def documents_page(
     card_rows = db.query(models.HospitalCard).filter(models.HospitalCard.person_id == active_person.id).all()
     hospitals = [c.hospital_name for c in card_rows]
 
+    all_docs = (
+        db.query(models.Document)
+        .filter(models.Document.person_id == active_person.id, models.Document.deleted_at.is_(None))
+        .all()
+    )
+    category_counts: dict[str, int] = {"_all": len(all_docs)}
+    for d in all_docs:
+        key = d.category.value if hasattr(d.category, "value") else str(d.category)
+        category_counts[key] = category_counts.get(key, 0) + 1
+
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     return templates.TemplateResponse("documents.html", {
         "request": request, "session_user": user, "active_nav": "dashboard",
         "people": people, "active_person": active_person, "active_person_id": active_person.id,
         "documents": docs, "category": category, "hospital": hospital, "hospitals": hospitals,
         "hospital_scoped_cats": [c.value for c in models.DocCategory if models.category_requires_hospital(c)],
+        "category_counts": category_counts,
+        "active_module": "health",
     })
 
 
@@ -875,12 +1004,23 @@ async def documents_add(
     expiry_date: str = Form(""), tags: str = Form(""),
     redirect_to: str = Form("dashboard"), redirect_category: str = Form(""),
     redirect_hospital: str = Form(""),
-    file: UploadFile = File(...),
+    files: list[UploadFile] | None = File(None),
+    file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
+    from app.routers.documents import attach_document_files
+    from app.extract import extract_text, parse_lab_readings
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+
+    uploads: list[UploadFile] = list(files or [])
+    if file is not None and getattr(file, "filename", None):
+        uploads.append(file)
+    # Deduplicate if both fields somehow repeat the same object
+    uploads = [u for u in uploads if u is not None and getattr(u, "filename", None)]
+    if not uploads:
+        return RedirectResponse(f"/admin?person={person_id}", status_code=302)
 
     person = db.query(models.Person).filter(models.Person.id == person_id, models.Person.user_id == vault_id(user)).first()
     if person:
@@ -891,12 +1031,10 @@ async def documents_add(
         if cat == models.DocCategory.insurance:
             hosp = None
 
-        raw = await file.read()
         doc = models.Document(
             person_id=person.id, category=cat, title=title,
             hospital_name=hosp, doc_date=doc_date or None,
             expiry_date=expiry_date or None, tags=tags or None,
-            file_type=file.content_type, file_size=len(raw),
             notes_enc=crypto.encrypt_text(notes or None), file_path="",
         )
         db.add(doc)
@@ -904,22 +1042,41 @@ async def documents_add(
 
         person_dir = settings.STORAGE_DIR / vault_id(user) / person.id
         person_dir.mkdir(parents=True, exist_ok=True)
-        enc_path = person_dir / f"{doc.id}.enc"
-        enc_path.write_bytes(crypto.encrypt_bytes(raw))
-        doc.file_path = str(enc_path.relative_to(settings.STORAGE_DIR))
+        parts: list[tuple[bytes, str, str | None]] = []
+        for upload in uploads:
+            raw = await upload.read()
+            if raw:
+                parts.append((raw, upload.filename or "file", upload.content_type))
+        if not parts:
+            db.rollback()
+            return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+
+        try:
+            ocr_chunks, first_mime, first_size = attach_document_files(
+                db, doc=doc, file_parts=parts, person_dir=person_dir
+            )
+        except HTTPException:
+            db.rollback()
+            return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+
+        doc.file_type = first_mime
+        doc.file_size = first_size
+        combined = "\n".join(c for c in ocr_chunks if c).strip() or None
+        doc.extracted_text = combined
+        if combined:
+            for reading in parse_lab_readings(combined):
+                db.add(models.LabReading(
+                    person_id=person.id, document_id=doc.id,
+                    metric=reading["metric"], value=reading["value"], unit=reading["unit"],
+                    measured_at=doc_date or None,
+                ))
 
         if expiry_date:
-            from datetime import datetime, timedelta
-            try:
-                remind_at = datetime.strptime(expiry_date, "%Y-%m-%d") - timedelta(days=7)
-                remind_at = remind_at.replace(hour=9, minute=0, second=0, microsecond=0)
-                if remind_at < datetime.utcnow():
-                    remind_at = datetime.utcnow() + timedelta(minutes=5)
-            except ValueError:
-                remind_at = datetime.utcnow() + timedelta(days=1)
+            from app.routers.documents import _expiry_reminder_datetime
             db.add(models.Reminder(
                 person_id=person.id, document_id=doc.id, title=f"{title} expires",
-                description=f"Renew/replace before {expiry_date}", remind_at=remind_at,
+                description=f"Renew/replace before {expiry_date}",
+                remind_at=_expiry_reminder_datetime(expiry_date),
                 repeat_rule=models.RepeatRule.none,
             ))
 
@@ -960,13 +1117,17 @@ def documents_download(request: Request, document_id: str, db: Session = Depends
 
 @router.get("/documents/{document_id}/view")
 def documents_view(request: Request, document_id: str, db: Session = Depends(get_db)):
-    """Inline preview (images/PDF in lightbox). Same auth as download."""
+    """Raw file bytes (inline). Prefer /viewer for the UI page."""
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     doc = (
         db.query(models.Document).join(models.Person)
-        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user)).first()
+        .filter(
+            models.Document.id == document_id,
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.is_(None),
+        ).first()
     )
     if not doc:
         raise HTTPException(404, "Document not found")
@@ -982,6 +1143,77 @@ def documents_view(request: Request, document_id: str, db: Session = Depends(get
             "Cache-Control": "private, no-store",
         },
     )
+
+
+@router.get("/documents/{document_id}/viewer", response_class=HTMLResponse)
+def documents_viewer_page(request: Request, document_id: str, db: Session = Depends(get_db)):
+    """Full-window document viewer with rotate/save for images."""
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(
+            models.Document.id == document_id,
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.is_(None),
+        ).first()
+    )
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    person = doc.person
+    out = doc_out(doc)
+    mime = out.get("file_type") or ""
+    is_image = mime.startswith("image/")
+    is_pdf = mime == "application/pdf"
+    return templates.TemplateResponse("document_viewer.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "dashboard",
+        "active_module": "health",
+        "active_person": person,
+        "active_person_id": person.id if person else None,
+        "doc": out,
+        "is_image": is_image,
+        "is_pdf": is_pdf,
+        "file_url": f"/admin/documents/{document_id}/view",
+        "cache_bust": int(datetime.utcnow().timestamp()),
+        "saved": request.query_params.get("ok") == "1",
+        "rotated": request.query_params.get("rotated") == "1",
+    })
+
+
+@router.post("/documents/{document_id}/rotate")
+def documents_rotate(
+    request: Request,
+    document_id: str,
+    degrees: int = Form(90),
+    db: Session = Depends(get_db),
+):
+    from app.imaging import rotate_image_bytes
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(
+            models.Document.id == document_id,
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.is_(None),
+        ).first()
+    )
+    if not doc:
+        raise HTTPException(404, "Document not found")
+    try:
+        plain, mime, _fname = _admin_document_bytes(doc)
+        rotated, new_mime = rotate_image_bytes(plain, degrees, mime)
+        _admin_save_document_bytes(doc, rotated, new_mime)
+        db.commit()
+    except FileNotFoundError:
+        raise HTTPException(404, "File not found")
+    except HTTPException:
+        raise
+    return RedirectResponse(f"/admin/documents/{document_id}/viewer?rotated=1", status_code=302)
 
 
 @router.post("/documents/{document_id}/delete")

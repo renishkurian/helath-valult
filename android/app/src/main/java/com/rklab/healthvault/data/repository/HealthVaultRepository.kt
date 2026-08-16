@@ -8,6 +8,7 @@ import com.rklab.healthvault.data.model.*
 import com.rklab.healthvault.data.remote.ApiService
 import com.rklab.healthvault.data.sync.ConnectivityObserver
 import com.rklab.healthvault.data.sync.SyncWorker
+import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -520,8 +521,7 @@ class HealthVaultRepository(
             
             UploadResult.Success(doc)
         } catch (e: IOException) {
-            // Queue the first file locally for offline sync
-            val firstFile = files.firstOrNull() ?: return UploadResult.QueuedOffline
+            val (dirPath, mimeJoined) = FileUtil.stagePendingUpload(appContext, files, mimeTypes)
             db.pendingUploadDao().insert(
                 PendingUploadEntity(
                     person_id = personId,
@@ -533,8 +533,8 @@ class HealthVaultRepository(
                     expiry_date = expiryDate,
                     tags = tags,
                     notes = notes,
-                    file_path = firstFile.absolutePath,
-                    mime_type = mimeTypes.firstOrNull() ?: "application/octet-stream"
+                    file_path = dirPath,
+                    mime_type = mimeJoined
                 )
             )
             SyncWorker.enqueueNow(appContext)
@@ -710,17 +710,20 @@ class HealthVaultRepository(
         val pending = db.pendingUploadDao().getAll()
         for (upload in pending) {
             try {
-                val file = File(upload.file_path)
-                if (!file.exists()) {
-                    // File was cleared by Android (e.g. cache eviction) — drop the entry.
+                val staged = FileUtil.listStagedPendingFiles(upload.file_path)
+                if (staged.isEmpty()) {
                     db.pendingUploadDao().delete(upload)
                     continue
                 }
+                val mimes = upload.mime_type.split("\n").filter { it.isNotBlank() }
                 fun text(v: String) = v.toRequestBody("text/plain".toMediaTypeOrNull())
-                val filePart = MultipartBody.Part.createFormData(
-                    "file", file.name,
-                    file.asRequestBody(upload.mime_type.toMediaTypeOrNull())
-                )
+                val fileParts = staged.mapIndexed { idx, file ->
+                    val mime = mimes.getOrElse(idx) { "application/octet-stream" }
+                    MultipartBody.Part.createFormData(
+                        "files", file.name,
+                        file.asRequestBody(mime.toMediaTypeOrNull())
+                    )
+                }
                 val doc = api.uploadDocument(
                     personId = text(upload.person_id),
                     category = text(upload.category),
@@ -731,14 +734,18 @@ class HealthVaultRepository(
                     notes = upload.notes?.let { text(it) },
                     expiryDate = upload.expiry_date?.let { text(it) },
                     tags = upload.tags?.let { text(it) },
-                    files = listOf(filePart)
+                    files = fileParts
                 )
                 db.documentDao().upsertAll(listOf(doc.toEntity()))
                 
                 val documentsDir = File(appContext.filesDir, "documents")
                 documentsDir.mkdirs()
                 val dest = File(documentsDir, doc.id)
-                file.copyTo(dest, overwrite = true)
+                staged.first().copyTo(dest, overwrite = true)
+
+                // Clean staged copies
+                val stagedRoot = File(upload.file_path)
+                if (stagedRoot.isDirectory) stagedRoot.deleteRecursively()
                 
                 db.pendingUploadDao().delete(upload)
             } catch (e: Exception) {

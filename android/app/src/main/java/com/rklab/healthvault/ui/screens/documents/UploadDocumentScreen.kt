@@ -163,7 +163,7 @@ fun UploadDocumentScreen(
             Spacer(Modifier.height(4.dp))
             Text("Add a document", style = MaterialTheme.typography.headlineMedium, color = Ink)
             Text(
-                "Hospital required except for insurance",
+                "Hospital required except for insurance. Pick multiple pages — images are compressed before upload.",
                 style = MaterialTheme.typography.bodySmall,
                 color = InkSoft
             )
@@ -173,7 +173,7 @@ fun UploadDocumentScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SourceButton(icon = Icons.Filled.CameraAlt, label = "Camera", modifier = Modifier.weight(1f)) { onCameraTapped() }
                 SourceButton(icon = Icons.Filled.InsertDriveFile, label = "Gallery / Files", modifier = Modifier.weight(1f)) {
-                    multiFileLauncher.launch(arrayOf("*/*"))
+                    multiFileLauncher.launch(arrayOf("image/*", "application/pdf"))
                 }
             }
 

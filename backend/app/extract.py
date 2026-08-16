@@ -115,21 +115,34 @@ def file_sha256(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def enhance_scan(raw: bytes, mime: str | None = None) -> bytes:
-    """Autocontrast + mild sharpen; JPEG-compress photos. Non-images pass through."""
+def enhance_scan(raw: bytes, mime: str | None = None, *, max_edge: int = 2048, quality: int = 78) -> bytes:
+    """Downscale large photos, autocontrast + mild sharpen, JPEG-compress.
+
+    Non-images (e.g. PDF) pass through unchanged. Failed decode returns original bytes.
+    """
     mime = (mime or "").lower()
     if mime and not mime.startswith("image/") and "pdf" in mime:
         return raw
+    if mime and not mime.startswith("image/") and mime not in ("", "application/octet-stream"):
+        # Unknown binary — don't force through Pillow
+        if "pdf" in mime or "zip" in mime or "octet" in mime:
+            return raw
     try:
         from PIL import Image, ImageFilter, ImageOps
         img = Image.open(io.BytesIO(raw))
         if img.mode not in ("L", "RGB"):
             img = img.convert("RGB")
+        w, h = img.size
+        longest = max(w, h)
+        if max_edge and longest > max_edge:
+            scale = max_edge / float(longest)
+            img = img.resize((max(1, int(w * scale)), max(1, int(h * scale))), Image.Resampling.LANCZOS)
         img = ImageOps.autocontrast(img, cutoff=1)
         img = img.filter(ImageFilter.UnsharpMask(radius=1.2, percent=120, threshold=3))
         out = io.BytesIO()
-        img.save(out, format="JPEG", quality=82, optimize=True)
-        return out.getvalue()
+        img.save(out, format="JPEG", quality=quality, optimize=True)
+        compressed = out.getvalue()
+        return compressed if compressed else raw
     except Exception:
         return raw
 

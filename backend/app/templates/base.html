@@ -4,7 +4,7 @@
   side_panel() macro into both the desktop sidebar and the mobile offcanvas.
 #}
 {% set modules = [
-  {'key':'health','name':'Health Vault','kicker':'Medical records','href':'/admin','icon':'bi-heart-pulse','accent':'#FF5C8A'},
+  {'key':'health','name':'Health Vault','kicker':'Medical records','href':'/admin','icon':'bi-heart-pulse','accent':'#43D9C4'},
   {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#4C8DFF'},
   {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#2ED3A0'},
   {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#22C1B8'},
@@ -212,7 +212,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>{% block title %}Vault{% endblock %}</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#0A0B14">
+<meta name="theme-color" content="#0B0D10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -222,10 +222,10 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=29">
+<link rel="stylesheet" href="/static/vault.css?v=31">
 {% block head %}{% endblock %}
 </head>
-<body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% block body_class %}{% endblock %}">
+<body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">
 <a class="skip-link" href="#main">Skip to content</a>
 
 <header class="app-topbar">
@@ -369,11 +369,10 @@
     box.hidden = false;
   }
   document.addEventListener("click", function(e){
-    var a = e.target.closest("a.js-photo, a.js-doc-view");
+    var a = e.target.closest("a.js-photo");
     if(!a) return;
     e.preventDefault();
-    var kind = (a.getAttribute("data-kind") || "").toLowerCase();
-    if (!kind && a.classList.contains("js-photo")) kind = "image";
+    var kind = (a.getAttribute("data-kind") || "image").toLowerCase();
     if (kind === "other") {
       window.open(a.getAttribute("href"), "_blank", "noopener");
       return;

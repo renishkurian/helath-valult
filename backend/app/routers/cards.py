@@ -49,6 +49,14 @@ def save_card_image(
     if not raw:
         raise HTTPException(400, "Empty image")
 
+    from app.extract import enhance_scan
+    raw = enhance_scan(raw, mime)
+    mime = "image/jpeg"
+
+    size_mb = len(raw) / (1024 * 1024)
+    if size_mb > settings.MAX_UPLOAD_MB:
+        raise HTTPException(413, f"Image exceeds {settings.MAX_UPLOAD_MB} MB limit")
+
     # Remove previous file if replacing.
     if card.image_path:
         old = settings.STORAGE_DIR / card.image_path

@@ -1,66 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Documents{% endblock %}
+{% block title %}Documents — Vault{% endblock %}
+{% block body_class %}mod-health{% endblock %}
 {% block content %}
-{% set cat_colors = {'hospital_card':'#7FA6FF','prescription':'#4ADE9B','lab_report':'#C0A8FF','insurance':'#F0C36A','vaccination':'#4ADE9B','bill':'#FF8095','medicine':'#F0C36A','other':'#8B95A8'} %}
-{% set cat_short = {'hospital_card':'ID','prescription':'RX','lab_report':'LAB','insurance':'INS','vaccination':'VAX','bill':'BILL','medicine':'MED','other':'DOC'} %}
-{% set folder_label = {'hospital_card':'Card scans','prescription':'Prescriptions','lab_report':'Lab Reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+{% set cat_colors = {'hospital_card':'#6FA9FF','prescription':'#5FD08B','lab_report':'#B79BFF','insurance':'#D4A657','vaccination':'#7CD992','bill':'#E5657D','medicine':'#E3B655','other':'#8B95A8'} %}
+{% set folder_label = {'hospital_card':'Card scans','prescription':'Prescriptions','lab_report':'Lab reports','insurance':'Insurance','vaccination':'Vaccination','bill':'Bills','medicine':'Medicines','other':'Other'} %}
+{% set cat_icons = {'hospital_card':'bi-person-vcard','prescription':'bi-capsule','lab_report':'bi-clipboard2-pulse','insurance':'bi-shield-check','vaccination':'bi-shield-plus','bill':'bi-receipt','medicine':'bi-capsule-pill','other':'bi-file-earmark'} %}
+{% set page_heading = folder_label.get(category, 'All documents') if category else 'All documents' %}
 
-<div class="page-head">
-  <div>
-    <div class="eyebrow">
-      <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
-      <i class="bi bi-chevron-right"></i>
-      {% if hospital %}
-        <span>{{ hospital | nice }}</span>
-        <i class="bi bi-chevron-right"></i>
-      {% endif %}
-      Documents
-    </div>
-    <h1 class="page-title">
-      {% if category %}{{ folder_label.get(category, category) }}{% else %}All documents{% endif %}
-      {% if hospital %}<span class="text-faint"> · {{ hospital | nice }}</span>{% endif %}
-    </h1>
-    <p class="page-lead">
-      {% if category == 'insurance' %}
-        Insurance for {{ active_person.name | nice }} — not tied to a hospital.
-      {% elif hospital %}
-        Filed under {{ hospital | nice }} for {{ active_person.name | nice }}.
-      {% else %}
-        Files kept for {{ active_person.name | nice }}, encrypted on this server.
-      {% endif %}
-    </p>
-  </div>
-  <div class="page-actions">
-    <a class="btn btn-ghost btn-icon" href="/admin?person={{ active_person.id }}" aria-label="Back to {{ active_person.name | nice }}">
+<div class="hv-crumb">
+  <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
+  <i class="bi bi-chevron-right"></i>
+  {% if hospital %}
+  <span>{{ hospital | nice }}</span>
+  <i class="bi bi-chevron-right"></i>
+  {% endif %}
+  <b>Documents</b>
+</div>
+
+<div class="hv-title-row">
+  <div class="hv-title-left">
+    <a class="hv-back" href="/admin?person={{ active_person.id }}" aria-label="Back">
       <i class="bi bi-arrow-left"></i>
     </a>
-    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">
-      <i class="bi bi-cloud-arrow-up"></i> Add document
-    </button>
+    <div>
+      <h1 class="hv-page-title">{{ page_heading }}{% if hospital %}<span class="text-faint"> · {{ hospital | nice }}</span>{% endif %}</h1>
+      <p class="hv-page-sub mb-0">
+        {% if category == 'insurance' %}
+          Insurance for {{ active_person.name | nice }} — not tied to a hospital.
+        {% elif hospital %}
+          Filed under {{ hospital | nice }} for {{ active_person.name | nice }}.
+        {% else %}
+          Files kept for {{ active_person.name | nice }}, encrypted on this server.
+        {% endif %}
+      </p>
+    </div>
   </div>
+  <button class="btn btn-primary hv-add-desk" type="button" id="hv-open-sheet">
+    <i class="bi bi-plus-lg"></i> Add document
+  </button>
 </div>
 
 {% if request.query_params.get('ok') == 'trashed' %}
-<div class="alert alert-success mb-4" role="status">Document moved to trash. <a href="/admin/trash">Open trash</a></div>
+<div class="alert alert-success mt-3 mb-0" role="status">Document moved to trash. <a href="/admin/trash">Open trash</a></div>
 {% endif %}
 
-<div class="filter-bar">
+<div class="chip-scroll mt-3 mb-2">
   <a class="chip plain {% if not category and not hospital %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}">
-    <i class="bi bi-collection"></i> All
+    <i class="bi bi-list"></i> All <span class="count">{{ category_counts.get('_all', 0) }}</span>
   </a>
   {% for cat in hospital_scoped_cats %}
   <a class="chip plain {% if cat == category %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}{% if hospital %}&hospital={{ hospital | urlencode }}{% endif %}">
-    <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span> {{ folder_label[cat] }}
+    <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span>
+    {{ folder_label[cat] }}
+    <span class="count">{{ category_counts.get(cat, 0) }}</span>
   </a>
   {% endfor %}
   <a class="chip plain {% if category == 'insurance' %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}&category=insurance">
-    <span class="folder-dot" style="background:{{ cat_colors.insurance }}"></span> Insurance
+    <span class="folder-dot" style="background:{{ cat_colors.insurance }}"></span>
+    Insurance
+    <span class="count">{{ category_counts.get('insurance', 0) }}</span>
   </a>
 </div>
 
 {% if hospitals and category != 'insurance' %}
-<div class="filter-bar mb-3">
-  <span class="text-faint me-2" style="font-size:.75rem;align-self:center;">Hospital</span>
+<div class="chip-scroll mb-3">
   <a class="chip plain {% if not hospital %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}{% if category %}&category={{ category }}{% endif %}">All hospitals</a>
   {% for h in hospitals %}
   <a class="chip plain {% if hospital and hospital|lower == h|lower %}active{% endif %}" href="/admin/documents?person={{ active_person.id }}{% if category %}&category={{ category }}{% endif %}&hospital={{ h | urlencode }}">
@@ -70,180 +73,293 @@
 </div>
 {% endif %}
 
-<div class="collapse mb-4" id="add-doc">
-  <div class="card">
-    <div class="card-header">
-      <span class="card-ico gold"><i class="bi bi-cloud-arrow-up"></i></span>
-      <div>
-        <h2>Add a document</h2>
-        <div class="card-sub">Hospital required except for insurance</div>
-      </div>
-      <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc" aria-label="Close">
-        <i class="bi bi-x-lg"></i>
-      </button>
-    </div>
-    <div class="card-body">
-      <form method="post" action="/admin/documents/add" enctype="multipart/form-data" id="docs-upload-form">
+{# ----- Desktop table ----- #}
+<div class="hv-table-wrap">
+  <table class="hv-table">
+    <thead>
+      <tr>
+        <th>Document</th>
+        <th>Date</th>
+        <th>Expiry</th>
+        <th>Tags</th>
+        <th>Hospital</th>
+        <th>Size</th>
+        <th style="text-align:right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for doc in documents %}
+      {% set ft = doc.file_type or '' %}
+      {% set ddate = doc.doc_date or doc.created_at.strftime('%Y-%m-%d') %}
+      <tr>
+        <td>
+          <div class="hv-file">
+            <div class="hv-thumb cat-{{ doc.category }}">
+              {% if loop.first and ft.startswith('image/') %}<span class="hv-scan-line" aria-hidden="true"></span>{% endif %}
+              <i class="bi {{ cat_icons.get(doc.category, 'bi-file-earmark') }}"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="hv-file-name mono truncate">{{ doc.title | nice }}</div>
+              <div class="hv-file-meta">{{ ddate }}{% if doc.hospital_name and doc.category != 'insurance' %} · {{ doc.hospital_name | nice }}{% endif %}</div>
+            </div>
+          </div>
+        </td>
+        <td class="mono text-faint">{{ ddate }}</td>
+        <td class="mono text-faint">{{ doc.expiry_date or '—' }}</td>
+        <td>
+          <span class="hv-tag-pill" style="color:{{ cat_colors.get(doc.category, '#8B95A8') }}">
+            <span class="dot" style="background:{{ cat_colors.get(doc.category, '#8B95A8') }}"></span>
+            {{ folder_label.get(doc.category, doc.category) }}
+          </span>
+          {% if doc.tags %}
+            {% for t in doc.tags.split(',') if t.strip() %}
+              <span class="badge badge-soft ms-1">{{ t.strip() }}</span>
+            {% endfor %}
+          {% endif %}
+        </td>
+        <td class="{% if not doc.hospital_name or doc.category == 'insurance' %}text-faint{% endif %}">
+          {% if doc.category == 'insurance' %}Personal{% else %}{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}{% endif %}
+        </td>
+        <td class="mono text-faint">{% if doc.file_size %}{{ (doc.file_size / 1024) | round(0) | int }} KB{% else %}—{% endif %}</td>
+        <td>
+          <div class="hv-actions">
+            <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/viewer" target="_blank" rel="noopener" title="View" aria-label="View">
+              <i class="bi bi-eye"></i>
+            </a>
+            <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/download" title="Download" aria-label="Download">
+              <i class="bi bi-download"></i>
+            </a>
+            <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
+              <input type="hidden" name="person_id" value="{{ active_person.id }}">
+              <input type="hidden" name="category" value="{{ category or '' }}">
+              <button class="hv-icon-btn danger" type="submit" title="Trash" aria-label="Move to trash"><i class="bi bi-trash3"></i></button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="7">
+          <div class="empty-state py-5">
+            <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
+            <div class="empty-title">Nothing here yet</div>
+            <p>{% if category == 'insurance' %}Upload an insurance policy or claim document.{% else %}Upload a file under this hospital folder.{% endif %}</p>
+            <button class="btn btn-primary" type="button" id="hv-open-sheet-empty"><i class="bi bi-plus-lg"></i> Add document</button>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{# ----- Mobile swipe cards ----- #}
+{% if documents %}
+<p class="hv-swipe-hint">← swipe a document for quick actions</p>
+{% endif %}
+<div class="hv-card-list">
+  {% for doc in documents %}
+  {% set ft = doc.file_type or '' %}
+  {% set ddate = doc.doc_date or doc.created_at.strftime('%Y-%m-%d') %}
+  <div class="hv-doc-card">
+    <div class="hv-doc-card-actions">
+      <a class="hv-swipe-action dl" href="/admin/documents/{{ doc.id }}/download">
+        <i class="bi bi-download"></i> Save
+      </a>
+      <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?" style="display:contents">
         <input type="hidden" name="person_id" value="{{ active_person.id }}">
-        <input type="hidden" name="redirect_to" value="folder">
-        <input type="hidden" name="redirect_category" value="{{ category or '' }}">
-        <input type="hidden" name="redirect_hospital" value="{{ hospital or '' }}">
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label" for="d-title">Title <span class="req">*</span></label>
-            <input class="form-control" id="d-title" type="text" name="title" required>
-          </div>
-          <div class="col-md-6">
-            <label class="form-label" for="d-category">Category <span class="req">*</span></label>
-            <select class="form-select" id="d-category" name="category" required>
-              {% for cat in hospital_scoped_cats %}
-                <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ folder_label[cat] }}</option>
-              {% endfor %}
-              <option value="insurance" {% if category == 'insurance' %}selected{% endif %}>{{ folder_label.insurance }}</option>
-            </select>
-          </div>
-          <div class="col-md-6" id="d-hospital-wrap">
-            <label class="form-label" for="d-hospital">Hospital <span class="req">*</span></label>
-            <select class="form-select" id="d-hospital" name="hospital_name" required>
-              <option value="">Select hospital…</option>
-              {% for h in hospitals %}
-                <option value="{{ h }}" {% if hospital and hospital|lower == h|lower %}selected{% endif %}>{{ h | nice }}</option>
-              {% endfor %}
-            </select>
-            {% if not hospitals %}
-              <div class="form-text text-warning">Add a hospital on the overview first.</div>
-            {% endif %}
-          </div>
-          <div class="col-md-6">
-            <label class="form-label" for="d-date">Date</label>
-            <input class="form-control" id="d-date" type="date" name="doc_date">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label" for="d-expiry">Expiry date</label>
-            <input class="form-control" id="d-expiry" type="date" name="expiry_date">
-          </div>
-          <div class="col-md-6">
-            <label class="form-label" for="d-tags">Tags</label>
-            <input class="form-control" id="d-tags" type="text" name="tags">
-            <div class="form-text">Comma-separated</div>
-          </div>
-          <div class="col-12">
-            <label class="form-label" for="d-notes">Notes (encrypted)</label>
-            <textarea class="form-control" id="d-notes" name="notes" rows="2"></textarea>
-          </div>
-          <div class="col-12">
-            <label class="form-label" for="d-file">File <span class="req">*</span></label>
-            <input class="form-control" id="d-file" type="file" name="file" required>
-          </div>
-        </div>
-        <div class="d-flex gap-2 mt-4">
-          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Upload document</button>
-          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">Cancel</button>
-        </div>
+        <input type="hidden" name="category" value="{{ category or '' }}">
+        <button class="hv-swipe-action del" type="submit"><i class="bi bi-trash3"></i> Trash</button>
       </form>
     </div>
+    <a class="hv-doc-card-inner text-decoration-none text-reset" href="/admin/documents/{{ doc.id }}/viewer" target="_blank" rel="noopener">
+      <div class="hv-thumb cat-{{ doc.category }}">
+        <i class="bi {{ cat_icons.get(doc.category, 'bi-file-earmark') }}"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="hv-file-name truncate">{{ doc.title | nice }}</div>
+        <div class="hv-file-meta">
+          <span class="hv-tag-pill" style="color:{{ cat_colors.get(doc.category, '#8B95A8') }}">
+            <span class="dot" style="background:{{ cat_colors.get(doc.category, '#8B95A8') }}"></span>
+            {{ folder_label.get(doc.category, doc.category) }}
+          </span>
+          <span>{{ ddate }}</span>
+        </div>
+      </div>
+      <i class="bi bi-chevron-right hv-chev"></i>
+    </a>
   </div>
+  {% else %}
+  <div class="empty-state d-lg-none">
+    <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
+    <div class="empty-title">Nothing here yet</div>
+    <p>Tap + to add an encrypted document.</p>
+  </div>
+  {% endfor %}
 </div>
 
-<div class="table-card">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle">
-      <thead>
-        <tr>
-          <th>Document</th>
-          <th>Date</th>
-          <th>Expiry</th>
-          <th>Tags</th>
-          <th>Hospital</th>
-          <th>Size</th>
-          <th class="table-actions">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for doc in documents %}
-        <tr>
-          <td>
-            <div class="d-flex align-items-center gap-2">
-              <span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span>
-              <div>
-                <div class="fw-semibold">{{ doc.title | nice }}</div>
-                {% if doc.notes %}<div class="text-faint truncate">{{ doc.notes }}</div>{% endif %}
-              </div>
-            </div>
-          </td>
-          <td class="mono text-muted">{{ doc.doc_date or doc.created_at.strftime('%Y-%m-%d') }}</td>
-          <td class="mono text-muted">{{ doc.expiry_date or '—' }}</td>
-          <td>
-            {% if doc.tags %}
-              <span class="row-gap">
-                {% for t in doc.tags.split(',') if t.strip() %}<span class="badge badge-soft">{{ t.strip() }}</span>{% endfor %}
-              </span>
-            {% else %}
-              <span class="text-faint">—</span>
-            {% endif %}
-          </td>
-          <td>{% if doc.category == 'insurance' %}<span class="text-faint">Personal</span>{% else %}{{ (doc.hospital_name | nice) if doc.hospital_name else '—' }}{% endif %}</td>
-          <td class="mono text-muted">{{ (doc.file_size / 1024) | round(0) | int }} KB</td>
-          <td class="table-actions">
-            <div class="d-flex gap-2 justify-content-end flex-wrap">
-              {% set ft = doc.file_type or '' %}
-              {% if ft.startswith('image/') %}
-                {% set view_kind = 'image' %}
-              {% elif ft == 'application/pdf' %}
-                {% set view_kind = 'pdf' %}
-              {% else %}
-                {% set view_kind = 'other' %}
-              {% endif %}
-              <a class="btn btn-outline-light btn-sm js-doc-view" href="/admin/documents/{{ doc.id }}/view"
-                 data-kind="{{ view_kind }}" aria-label="View {{ doc.title | nice }}">
-                <i class="bi bi-eye"></i> View
-              </a>
-              <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
-                <i class="bi bi-download"></i> Download
-              </a>
-              <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
-                <input type="hidden" name="person_id" value="{{ active_person.id }}">
-                <input type="hidden" name="category" value="{{ category or '' }}">
-                <button class="btn btn-outline-danger btn-sm" type="submit" aria-label="Move {{ doc.title | nice }} to trash">
-                  <i class="bi bi-trash3"></i> Trash
-                </button>
-              </form>
-            </div>
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="7">
-            <div class="empty-state">
-              <div class="empty-ico"><i class="bi bi-folder2-open"></i></div>
-              <div class="empty-title">Nothing here yet</div>
-              <p>{% if category == 'insurance' %}Upload an insurance policy or claim document.{% else %}Upload a file under this hospital folder.{% endif %}</p>
-              <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doc">
-                <i class="bi bi-cloud-arrow-up"></i> Add document
-              </button>
-            </div>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<button class="hv-fab" type="button" id="hv-fab" aria-label="Add document"><i class="bi bi-plus-lg"></i></button>
+
+<div class="sheet-scrim" id="hv-scrim"></div>
+<div class="sheet hv-sheet" id="hv-sheet" role="dialog" aria-modal="true" aria-labelledby="hv-sheet-title" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="sheet-body">
+    <div class="sheet-title" id="hv-sheet-title">Add document</div>
+    <div class="sheet-sub">Uploads are encrypted before they reach the server.</div>
+    <form method="post" action="/admin/documents/add" enctype="multipart/form-data" id="docs-upload-form">
+      <input type="hidden" name="person_id" value="{{ active_person.id }}">
+      <input type="hidden" name="redirect_to" value="folder">
+      <input type="hidden" name="redirect_category" value="{{ category or '' }}">
+      <input type="hidden" name="redirect_hospital" value="{{ hospital or '' }}">
+
+      <label class="hv-drop" for="d-file">
+        <i class="bi bi-cloud-arrow-up"></i>
+        <strong>Tap to capture or choose files</strong>
+        <span>JPG, PNG or PDF · multiple allowed · images compressed</span>
+        <input id="d-file" type="file" name="files" accept="image/*,application/pdf" multiple required>
+      </label>
+
+      <div class="row g-3">
+        <div class="col-12">
+          <label class="form-label" for="d-title">Title <span class="req">*</span></label>
+          <input class="form-control" id="d-title" type="text" name="title" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="d-category">Category <span class="req">*</span></label>
+          <select class="form-select" id="d-category" name="category" required>
+            {% for cat in hospital_scoped_cats %}
+              <option value="{{ cat }}" {% if cat == category %}selected{% endif %}>{{ folder_label[cat] }}</option>
+            {% endfor %}
+            <option value="insurance" {% if category == 'insurance' %}selected{% endif %}>{{ folder_label.insurance }}</option>
+          </select>
+        </div>
+        <div class="col-md-6" id="d-hospital-wrap">
+          <label class="form-label" for="d-hospital">Hospital <span class="req">*</span></label>
+          <select class="form-select" id="d-hospital" name="hospital_name" required>
+            <option value="">Select hospital…</option>
+            {% for h in hospitals %}
+              <option value="{{ h }}" {% if hospital and hospital|lower == h|lower %}selected{% endif %}>{{ h | nice }}</option>
+            {% endfor %}
+          </select>
+          {% if not hospitals %}
+            <div class="form-text text-warning">Add a hospital on the overview first.</div>
+          {% endif %}
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="d-date">Date</label>
+          <input class="form-control" id="d-date" type="date" name="doc_date">
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="d-expiry">Expiry</label>
+          <input class="form-control" id="d-expiry" type="date" name="expiry_date">
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="d-tags">Tags</label>
+          <input class="form-control" id="d-tags" type="text" name="tags" placeholder="Comma-separated">
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="d-notes">Notes (encrypted)</label>
+          <textarea class="form-control" id="d-notes" name="notes" rows="2"></textarea>
+        </div>
+      </div>
+      <button class="btn btn-primary w-100 mt-4" type="submit">Upload</button>
+      <button class="btn btn-outline-light w-100 mt-2" type="button" id="hv-sheet-cancel">Cancel</button>
+    </form>
   </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
 (function () {
   var cat = document.getElementById('d-category');
   var wrap = document.getElementById('d-hospital-wrap');
   var hosp = document.getElementById('d-hospital');
-  if (!cat || !wrap || !hosp) return;
-  function sync() {
+  var file = document.getElementById('d-file');
+  var title = document.getElementById('d-title');
+  function syncCat() {
+    if (!cat || !wrap || !hosp) return;
     var needs = cat.value !== 'insurance';
     wrap.style.display = needs ? '' : 'none';
     hosp.required = needs;
     if (!needs) hosp.value = '';
   }
-  cat.addEventListener('change', sync);
-  sync();
+  if (cat) cat.addEventListener('change', syncCat);
+  syncCat();
+  if (file && title) {
+    file.addEventListener('change', function () {
+      if (!title.value && file.files && file.files[0]) {
+        var n = file.files[0].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ');
+        if (file.files.length > 1) n += ' (' + file.files.length + ' files)';
+        title.value = n;
+      }
+    });
+  }
+
+  var sheet = document.getElementById('hv-sheet');
+  var scrim = document.getElementById('hv-scrim');
+  function openSheet() {
+    if (!sheet || !scrim) return;
+    scrim.classList.add('open');
+    sheet.classList.add('open');
+    sheet.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeSheet() {
+    if (!sheet || !scrim) return;
+    scrim.classList.remove('open');
+    sheet.classList.remove('open');
+    sheet.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+  ['hv-open-sheet', 'hv-fab', 'hv-open-sheet-empty'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('click', openSheet);
+  });
+  var cancel = document.getElementById('hv-sheet-cancel');
+  if (cancel) cancel.addEventListener('click', closeSheet);
+  if (scrim) scrim.addEventListener('click', closeSheet);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && sheet && sheet.classList.contains('open')) closeSheet();
+  });
+
+  document.querySelectorAll('.hv-doc-card').forEach(function (card) {
+    var inner = card.querySelector('.hv-doc-card-inner');
+    if (!inner) return;
+    var startX = 0, currentX = 0, dragging = false, moved = false;
+    inner.addEventListener('pointerdown', function (e) {
+      startX = e.clientX; dragging = true; currentX = 0; moved = false;
+      inner.style.transition = 'none';
+      try { inner.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    inner.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      currentX = e.clientX - startX;
+      if (Math.abs(currentX) > 8) moved = true;
+      var base = card.classList.contains('swiped') ? -136 : 0;
+      var x = Math.min(0, Math.max(-160, base + currentX));
+      inner.style.transform = 'translateX(' + x + 'px)';
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      inner.style.transition = '';
+      var base = card.classList.contains('swiped') ? -136 : 0;
+      if (base + currentX < -60) card.classList.add('swiped');
+      else card.classList.remove('swiped');
+      inner.style.transform = '';
+      currentX = 0;
+    }
+    inner.addEventListener('pointerup', endDrag);
+    inner.addEventListener('pointercancel', endDrag);
+    inner.addEventListener('click', function (e) {
+      if (moved || card.classList.contains('swiped')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (card.classList.contains('swiped') && !moved) card.classList.remove('swiped');
+      }
+    });
+  });
 })();
 </script>
 {% endblock %}

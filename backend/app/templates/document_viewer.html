@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ doc.title | nice }} — Vault{% endblock %}
+{% block body_class %}mod-health{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      {% if active_person %}
+      <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
+      <i class="bi bi-chevron-right"></i>
+      {% endif %}
+      Document
+    </div>
+    <h1 class="page-title">{{ doc.title | nice }}</h1>
+    <p class="page-lead">
+      {% if doc.hospital_name %}{{ doc.hospital_name | nice }} · {% endif %}
+      {% if doc.doc_date %}{{ doc.doc_date }}{% else %}{{ doc.created_at.strftime('%Y-%m-%d') }}{% endif %}
+      {% if doc.file_size %} · {{ (doc.file_size / 1024) | round(0) | int }} KB{% endif %}
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/download"><i class="bi bi-download"></i> Download</a>
+    {% if active_person %}
+    <a class="btn btn-ghost" href="/admin/documents?person={{ active_person.id }}{% if doc.category %}&category={{ doc.category }}{% endif %}"><i class="bi bi-arrow-left"></i> Back</a>
+    {% endif %}
+  </div>
+</div>
+
+{% if rotated %}
+<div class="alert alert-success py-2">Rotated image saved.</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-body">
+    {% if is_image %}
+    <div class="doc-viewer-toolbar mb-3 d-flex flex-wrap gap-2 align-items-center">
+      <form method="post" action="/admin/documents/{{ doc.id }}/rotate">
+        <input type="hidden" name="degrees" value="90">
+        <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-clockwise"></i> Rotate 90° &amp; save</button>
+      </form>
+      <form method="post" action="/admin/documents/{{ doc.id }}/rotate">
+        <input type="hidden" name="degrees" value="180">
+        <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-repeat"></i> Rotate 180° &amp; save</button>
+      </form>
+      <form method="post" action="/admin/documents/{{ doc.id }}/rotate">
+        <input type="hidden" name="degrees" value="270">
+        <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Rotate 270° &amp; save</button>
+      </form>
+      <span class="text-faint small ms-md-auto">Rotation is written to the encrypted file.</span>
+    </div>
+    <div class="doc-viewer-frame">
+      <img src="{{ file_url }}?t={{ cache_bust }}" alt="{{ doc.title | nice }}">
+    </div>
+    {% elif is_pdf %}
+    <div class="doc-viewer-frame doc-viewer-pdf">
+      <iframe src="{{ file_url }}" title="{{ doc.title | nice }}"></iframe>
+    </div>
+    {% else %}
+    <div class="empty-state py-5">
+      <div class="empty-title">Preview not available</div>
+      <p>This file type can’t be shown here. Download it instead.</p>
+      <a class="btn btn-primary" href="/admin/documents/{{ doc.id }}/download"><i class="bi bi-download"></i> Download</a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

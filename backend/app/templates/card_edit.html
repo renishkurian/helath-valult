@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Edit hospital — Vault{% endblock %}
+{% block body_class %}mod-health{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin?person={{ active_person.id }}">{{ active_person.name | nice }}</a>
+      <i class="bi bi-chevron-right"></i>
+      Edit hospital
+    </div>
+    <h1 class="page-title">{{ card.hospital_name | nice }}</h1>
+    <p class="page-lead">Update ID card details and the patient card photo. Rotate and save if the scan is sideways.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin?person={{ active_person.id }}"><i class="bi bi-arrow-left"></i> Back</a>
+  </div>
+</div>
+
+{% if saved %}
+<div class="alert alert-success py-2">Hospital saved.</div>
+{% endif %}
+{% if rotated %}
+<div class="alert alert-success py-2">Rotated image saved.</div>
+{% endif %}
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-building"></i></span>
+        <div><h2>Hospital details</h2><div class="card-sub">Encrypted patient ID and notes stay on this server</div></div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/cards/{{ card.id }}/edit" enctype="multipart/form-data" class="row g-3">
+          <input type="hidden" name="person_id" value="{{ active_person.id }}">
+          <div class="col-md-8">
+            <label class="form-label" for="e-hosp">Hospital name <span class="req">*</span></label>
+            <input class="form-control" id="e-hosp" type="text" name="hospital_name" required value="{{ card.hospital_name }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="e-ward">Ward</label>
+            <input class="form-control" id="e-ward" type="text" name="ward" value="{{ card.ward or '' }}">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label" for="e-blood">Blood group</label>
+            <input class="form-control" id="e-blood" type="text" name="blood_group" value="{{ card.blood_group or '' }}">
+          </div>
+          <div class="col-md-8">
+            <label class="form-label" for="e-pid">Patient ID (encrypted)</label>
+            <input class="form-control" id="e-pid" type="text" name="patient_id" value="{{ card.patient_id or '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="e-from">Valid from</label>
+            <input class="form-control" id="e-from" type="date" name="valid_from" value="{{ card.valid_from or '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="e-till">Valid till</label>
+            <input class="form-control" id="e-till" type="date" name="valid_till" value="{{ card.valid_till or '' }}">
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="e-notes">Notes (encrypted)</label>
+            <textarea class="form-control" id="e-notes" name="notes" rows="2">{{ card.notes or '' }}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="e-img">Replace patient card photo</label>
+            <input class="form-control" id="e-img" type="file" name="card_image" accept="image/jpeg,image/png,image/webp,image/gif">
+          </div>
+          <div class="col-12 d-flex gap-2">
+            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save hospital</button>
+            <a class="btn btn-ghost" href="/admin?person={{ active_person.id }}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-person-vcard"></i></span>
+        <div><h2>Patient card photo</h2><div class="card-sub">Rotate clockwise, then save</div></div>
+      </div>
+      <div class="card-body">
+        {% if card.has_image %}
+        <div class="doc-viewer-frame mb-3">
+          <img id="card-preview" src="/admin/cards/{{ card.id }}/image?t={{ cache_bust }}" alt="Patient card">
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <form method="post" action="/admin/cards/{{ card.id }}/image/rotate">
+            <input type="hidden" name="degrees" value="90">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-clockwise"></i> Rotate 90°</button>
+          </form>
+          <form method="post" action="/admin/cards/{{ card.id }}/image/rotate">
+            <input type="hidden" name="degrees" value="180">
+            <button class="btn btn-outline-light" type="submit"><i class="bi bi-arrow-repeat"></i> Rotate 180°</button>
+          </form>
+        </div>
+        <p class="form-text mt-2 mb-0">Each rotate is saved immediately to the encrypted file.</p>
+        {% else %}
+        <div class="empty-state py-4">
+          <div class="empty-title">No photo yet</div>
+          <p>Upload a patient card scan using the form on the left.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
