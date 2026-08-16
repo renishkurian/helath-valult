@@ -128,6 +128,7 @@ private object Routes {
     fun vaultEdit(itemId: String? = null, type: String = "login") =
         "vault_edit?itemId=${itemId ?: ""}&type=$type"
     const val SEARCH = "search"
+    const val DOCTORS = "doctors"
     const val REMINDERS = "reminders"
     const val CARE = "care"
     const val FAMILY = "family"
@@ -236,7 +237,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
 
-    val mainTabs = setOf(Routes.HOME, Routes.SEARCH, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
+    val mainTabs = setOf(Routes.HOME, Routes.DOCTORS, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
     val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
@@ -386,7 +387,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 }
             } else if (currentRoute in mainTabs) {
                 val current = when (currentRoute) {
-                    Routes.SEARCH -> MainTab.SEARCH
+                    Routes.DOCTORS -> MainTab.DOCTORS
                     Routes.CARE -> MainTab.CARE
                     Routes.REMINDERS -> MainTab.REMINDERS
                     Routes.FAMILY -> MainTab.FAMILY
@@ -395,7 +396,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 HealthVaultBottomNav(current = current) { tab ->
                     val route = when (tab) {
                         MainTab.HOME -> Routes.HOME
-                        MainTab.SEARCH -> Routes.SEARCH
+                        MainTab.DOCTORS -> Routes.DOCTORS
                         MainTab.CARE -> Routes.CARE
                         MainTab.REMINDERS -> Routes.REMINDERS
                         MainTab.FAMILY -> Routes.FAMILY
@@ -886,6 +887,10 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     repository = repository,
                     onOpenDocument = { doc -> navController.navigate(Routes.viewer(doc.id, null)) }
                 )
+            }
+
+            composable(Routes.DOCTORS) {
+                com.rklab.healthvault.ui.screens.doctors.DoctorsScreen(repository = repository)
             }
 
             composable(Routes.CARE) {

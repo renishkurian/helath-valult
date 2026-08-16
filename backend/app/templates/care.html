@@ -579,44 +579,15 @@
     <span class="card-ico plum"><i class="bi bi-person-badge"></i></span>
     <div>
       <h2>Doctors</h2>
-      <div class="card-sub">Shared across the whole household</div>
+      <div class="card-sub">Phone book with call &amp; WhatsApp — shared across the household</div>
     </div>
     <span class="badge badge-soft ms-auto">{{ doctors|length }}</span>
-    <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">
-      <i class="bi bi-plus-lg"></i> Add doctor
-    </button>
-  </div>
-  <div class="collapse" id="add-doctor">
-    <div class="card-body border-bottom">
-      <form method="post" action="/admin/care/doctor">
-        <input type="hidden" name="person" value="{{ active_person.id }}">
-        <div class="row g-3">
-          <div class="col-md-6 col-xl-3">
-            <label class="form-label" for="doc-name">Name <span class="req">*</span></label>
-            <input class="form-control" id="doc-name" name="name" required>
-          </div>
-          <div class="col-md-6 col-xl-3">
-            <label class="form-label" for="doc-specialty">Specialty</label>
-            <input class="form-control" id="doc-specialty" name="specialty">
-          </div>
-          <div class="col-md-6 col-xl-3">
-            <label class="form-label" for="doc-hospital">Hospital</label>
-            <input class="form-control" id="doc-hospital" name="hospital_name">
-          </div>
-          <div class="col-md-6 col-xl-3">
-            <label class="form-label" for="doc-phone">Phone</label>
-            <input class="form-control" id="doc-phone" type="tel" name="phone">
-          </div>
-        </div>
-        <div class="d-flex gap-2 mt-4">
-          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Add doctor</button>
-          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">Cancel</button>
-        </div>
-      </form>
-    </div>
+    <a class="btn btn-primary btn-sm" href="/admin/doctors">
+      <i class="bi bi-telephone"></i> Open directory
+    </a>
   </div>
   <div class="list-rows">
-    {% for d in doctors %}
+    {% for d in doctors[:5] %}
     <div class="list-row">
       <span class="avatar avatar-plum"><i class="bi bi-person"></i></span>
       <div class="row-body">
@@ -625,7 +596,7 @@
       </div>
       <div class="row-side">
         {% if d.phone %}
-          <a class="link-quiet mono" href="tel:{{ d.phone }}"><i class="bi bi-telephone"></i> {{ d.phone }}</a>
+          <a class="link-quiet mono" href="tel:{{ d.phone | phone_digits }}"><i class="bi bi-telephone"></i> {{ d.phone }}</a>
         {% else %}
           <span class="text-faint">—</span>
         {% endif %}
@@ -636,9 +607,7 @@
       <div class="empty-ico"><i class="bi bi-person-badge"></i></div>
       <div class="empty-title">No doctors on file</div>
       <p>Keep the numbers you actually call — GP, paediatrician, specialist.</p>
-      <button class="btn btn-outline-light" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">
-        <i class="bi bi-plus-lg"></i> Add doctor
-      </button>
+      <a class="btn btn-outline-light" href="/admin/doctors"><i class="bi bi-plus-lg"></i> Add doctor</a>
     </div>
     {% endfor %}
   </div>

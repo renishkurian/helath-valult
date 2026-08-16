@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
@@ -16,7 +17,6 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Send
@@ -37,7 +37,7 @@ import com.rklab.healthvault.ui.theme.HubTextDim
 import com.rklab.healthvault.ui.theme.VaultGold
 import com.rklab.healthvault.ui.theme.VaultGoldSoft
 
-enum class MainTab { HOME, SEARCH, CARE, REMINDERS, FAMILY }
+enum class MainTab { HOME, DOCTORS, CARE, REMINDERS, FAMILY }
 
 enum class PasswordTab { VAULT, GENERATOR, SEND, HEALTH }
 
@@ -283,10 +283,10 @@ fun HealthVaultBottomNav(current: MainTab, onSelect: (MainTab) -> Unit) {
             colors = navColors
         )
         NavigationBarItem(
-            selected = current == MainTab.SEARCH,
-            onClick = { onSelect(MainTab.SEARCH) },
-            icon = { Icon(Icons.Filled.Search, contentDescription = "Search") },
-            label = { Text("Search") },
+            selected = current == MainTab.DOCTORS,
+            onClick = { onSelect(MainTab.DOCTORS) },
+            icon = { Icon(Icons.Filled.Call, contentDescription = "Doctors") },
+            label = { Text("Doctors") },
             colors = navColors
         )
         NavigationBarItem(

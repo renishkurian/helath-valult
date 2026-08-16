@@ -1580,7 +1580,81 @@ def care_add_doctor(request: Request, name: str = Form(...), specialty: str = Fo
         return RedirectResponse("/admin/login", status_code=302)
     db.add(models.Doctor(user_id=vault_id(user), name=name, specialty=specialty or None, hospital_name=hospital_name or None, phone=phone or None))
     db.commit()
-    return RedirectResponse(f"/admin/care?person={person}" if person else "/admin/care", status_code=302)
+    return RedirectResponse("/admin/doctors?ok=added", status_code=302)
+
+
+@router.get("/doctors", response_class=HTMLResponse)
+def doctors_page(request: Request, hospital: Optional[str] = None, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    uid = vault_id(user)
+    people = db.query(models.Person).filter(models.Person.user_id == uid).all()
+    person_ids = [p.id for p in people]
+    hospitals = sorted({
+        c.hospital_name.strip()
+        for c in db.query(models.HospitalCard).filter(models.HospitalCard.person_id.in_(person_ids)).all()
+        if c.hospital_name and c.hospital_name.strip()
+    }, key=str.lower) if person_ids else []
+    q = db.query(models.Doctor).filter(models.Doctor.user_id == uid)
+    if hospital and hospital.strip():
+        q = q.filter(models.Doctor.hospital_name.ilike(hospital.strip()))
+    doctors = q.order_by(models.Doctor.hospital_name.asc(), models.Doctor.name.asc()).all()
+    return templates.TemplateResponse("doctors.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "doctors",
+        "people": people,
+        "active_person": people[0] if people else None,
+        "active_person_id": people[0].id if people else None,
+        "doctors": doctors,
+        "hospitals": hospitals,
+        "hospital": hospital.strip() if hospital else None,
+    })
+
+
+@router.post("/doctors/add")
+def doctors_add(
+    request: Request,
+    name: str = Form(...),
+    specialty: str = Form(""),
+    hospital_name: str = Form(...),
+    phone: str = Form(...),
+    notes: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.templating import nice_name
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    hosp = nice_name(hospital_name.strip()) if hospital_name.strip() else None
+    phone_clean = phone.strip()
+    if not hosp or not phone_clean:
+        return RedirectResponse("/admin/doctors", status_code=302)
+    db.add(models.Doctor(
+        user_id=vault_id(user),
+        name=name.strip(),
+        specialty=specialty.strip() or None,
+        hospital_name=hosp,
+        phone=phone_clean,
+        notes=notes.strip() or None,
+    ))
+    db.commit()
+    return RedirectResponse("/admin/doctors?ok=added", status_code=302)
+
+
+@router.post("/doctors/{doctor_id}/delete")
+def doctors_delete(request: Request, doctor_id: str, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = db.query(models.Doctor).filter(
+        models.Doctor.id == doctor_id, models.Doctor.user_id == vault_id(user)
+    ).first()
+    if row:
+        db.delete(row)
+        db.commit()
+    return RedirectResponse("/admin/doctors", status_code=302)
 
 
 @router.get("/storage", response_class=HTMLResponse)

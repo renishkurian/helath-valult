@@ -142,7 +142,7 @@ def admin_module_for_path(path: str) -> Optional[str]:
         return None
     # Other health admin pages (family, care, …) without a dedicated prefix
     health_only = (
-        "/admin/family", "/admin/reminders", "/admin/care", "/admin/shares",
+        "/admin/family", "/admin/reminders", "/admin/care", "/admin/doctors", "/admin/shares",
         "/admin/activity", "/admin/storage", "/admin/security", "/admin/people",
         "/admin/documents", "/admin/cards", "/admin/upload", "/admin/search",
         "/admin/health-settings", "/admin/trash",

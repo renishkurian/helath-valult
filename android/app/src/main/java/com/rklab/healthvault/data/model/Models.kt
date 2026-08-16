@@ -362,11 +362,11 @@ data class ClaimOut(
 
 data class DoctorIn(
     val name: String, val specialty: String? = null, val hospital_name: String? = null,
-    val phone: String? = null, val last_visit: String? = null
+    val phone: String? = null, val last_visit: String? = null, val notes: String? = null
 )
 data class DoctorOut(
     val id: String, val name: String, val specialty: String?, val hospital_name: String?,
-    val phone: String?, val last_visit: String?, val created_at: String
+    val phone: String?, val last_visit: String?, val notes: String? = null, val created_at: String
 )
 
 data class GrowthIn(

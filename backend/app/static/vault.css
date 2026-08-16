@@ -1183,14 +1183,14 @@ body.modules-picker .side-label{
 .id-bg{
   position:absolute; inset:0; z-index:0; pointer-events:none;
   background-image:var(--card-scan); background-size:cover; background-position:center;
-  opacity:.28; filter:saturate(.85) contrast(1.05);
+  opacity:.62; filter:saturate(1) contrast(1.08) brightness(1.08);
 }
 .id-bg::after{
   content:""; position:absolute; inset:0;
-  background:linear-gradient(155deg,rgba(12,14,18,.72),rgba(12,14,18,.88) 55%,rgba(12,14,18,.94));
+  background:linear-gradient(160deg,rgba(10,12,16,.42),rgba(10,12,16,.55) 50%,rgba(10,12,16,.72));
 }
 .id-card.id-has-bg{ background:var(--v-surface); }
-.id-card.id-has-bg::before{ opacity:.35; }
+.id-card.id-has-bg::before{ opacity:.22; }
 .id-flip-hint{
   margin-top:.875rem; font-size:.6875rem; color:var(--v-ink-3);
   display:flex; align-items:center; gap:.35rem;
@@ -2576,6 +2576,73 @@ body{
   .mod-health .hv-fab{ display:flex; bottom:calc(78px + env(safe-area-inset-bottom,0px)); }
   .mod-health .app-main{ padding-left:1.125rem; padding-right:1.125rem; padding-bottom:calc(6.5rem + env(safe-area-inset-bottom,0px)); }
   .hv-back{ width:36px; height:36px; border-radius:10px; }
+}
+
+/* Doctors business cards */
+.doc-biz-grid{
+  display:grid; gap:1rem;
+  grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));
+}
+.doc-biz-card{
+  position:relative;
+  background:linear-gradient(165deg, rgba(28,36,48,.95), rgba(16,20,28,.98));
+  border:1px solid var(--v-line);
+  border-radius:18px;
+  padding:1.15rem 1.15rem 1rem;
+  display:flex; flex-direction:column; gap:.55rem;
+  box-shadow:0 10px 28px rgba(0,0,0,.22);
+}
+.doc-biz-top{ display:flex; align-items:center; gap:.85rem; }
+.doc-biz-avatar{
+  width:48px; height:48px; border-radius:14px; flex:0 0 auto;
+  display:grid; place-items:center;
+  background:linear-gradient(145deg, #2a9d8f, #1a6b62);
+  color:#e8fff9; font-weight:700; font-size:1.1rem;
+  letter-spacing:-.02em;
+}
+.doc-biz-name{
+  margin:0; font-size:1.05rem; font-weight:650; letter-spacing:-.02em;
+  line-height:1.25; color:var(--v-ink);
+}
+.doc-biz-role{ font-size:.78rem; color:var(--v-ink-3); margin-top:.1rem; }
+.doc-biz-hosp{
+  font-size:.8rem; color:var(--v-ink-2);
+  display:flex; align-items:center; gap:.4rem;
+}
+.doc-biz-hosp i{ opacity:.7; }
+.doc-biz-phone{
+  font-size:.92rem; color:var(--v-teal, #5fd0b5); text-decoration:none;
+  font-weight:600;
+}
+.doc-biz-phone:hover{ text-decoration:underline; }
+.doc-biz-notes{
+  margin:0; font-size:.78rem; color:var(--v-ink-3); line-height:1.4;
+}
+.doc-biz-actions{
+  display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.35rem; padding-top:.75rem;
+  border-top:1px solid var(--v-line);
+}
+.doc-biz-btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:.4rem;
+  flex:1 1 auto; min-height:42px; padding:.5rem .75rem;
+  border-radius:12px; font-size:.8125rem; font-weight:600;
+  text-decoration:none; border:1px solid transparent; cursor:pointer;
+}
+.doc-biz-btn.call{
+  background:rgba(95,208,139,.14); color:#7ee0a4; border-color:rgba(95,208,139,.28);
+}
+.doc-biz-btn.wa{
+  background:rgba(37,211,102,.12); color:#5fe08a; border-color:rgba(37,211,102,.28);
+}
+.doc-biz-btn.del{
+  flex:0 0 auto; width:42px; min-width:42px; padding:0;
+  background:transparent; color:var(--v-ink-3); border-color:var(--v-line);
+}
+.doc-biz-btn:hover{ filter:brightness(1.08); }
+@media (max-width:640px){
+  .doc-biz-grid{ grid-template-columns:1fr; gap:.85rem; }
+  .doc-biz-card{ border-radius:20px; padding:1.25rem; }
+  .doc-biz-btn{ min-height:48px; font-size:.875rem; }
 }
 
 /* Document / card image viewer */

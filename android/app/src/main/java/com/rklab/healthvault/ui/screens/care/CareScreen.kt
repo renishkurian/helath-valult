@@ -213,7 +213,6 @@ private fun MoreSection(repository: HealthVaultRepository, personId: String) {
     var growth by remember { mutableStateOf<List<GrowthOut>>(emptyList()) }
     var timeline by remember { mutableStateOf<List<TimelineItem>>(emptyList()) }
     var alerts by remember { mutableStateOf<List<LabAlert>>(emptyList()) }
-    var docName by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var measured by remember { mutableStateOf("") }
@@ -226,15 +225,10 @@ private fun MoreSection(repository: HealthVaultRepository, personId: String) {
     Column(Modifier.verticalScroll(rememberScrollState())) {
         alerts.forEach { Text(it.message, color = Mustard, modifier = Modifier.padding(vertical = 4.dp)) }
         Text("DOCTORS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
-        doctors.forEach { Text("${it.name}  ${it.specialty ?: ""}  ${it.phone ?: ""}", color = Ink, modifier = Modifier.padding(vertical = 4.dp)) }
-        OutlinedTextField(docName, { docName = it }, label = { Text("Doctor name") }, modifier = Modifier.fillMaxWidth())
-        Button(onClick = {
-            scope.launch {
-                repository.addDoctor(DoctorIn(docName))
-                doctors = repository.listDoctors()
-                docName = ""
-            }
-        }, enabled = docName.isNotBlank() && !repository.isViewer, colors = ButtonDefaults.buttonColors(containerColor = Navy)) { Text("Add doctor", color = TextDark) }
+        doctors.forEach {
+            Text("${it.name}  ${it.specialty ?: ""}  ${it.phone ?: ""}", color = Ink, modifier = Modifier.padding(vertical = 4.dp))
+        }
+        Text("Use the Doctors tab for call & WhatsApp cards.", color = InkSoft, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
         Text("GROWTH", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         growth.forEach { Text("${it.measured_at}  ${it.height_cm ?: "—"} cm  ${it.weight_kg ?: "—"} kg", color = Ink, modifier = Modifier.padding(vertical = 4.dp)) }

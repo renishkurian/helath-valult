@@ -135,6 +135,7 @@ class HealthVaultRepository(
     suspend fun yearlySpend(personId: String) = api.yearlySpend(personId)
     suspend fun listDoctors() = api.listDoctors()
     suspend fun addDoctor(body: DoctorIn) = api.addDoctor(body)
+    suspend fun deleteDoctor(id: String) = api.deleteDoctor(id)
     suspend fun listGrowth(personId: String) = api.listGrowth(personId)
     suspend fun addGrowth(body: GrowthIn) = api.addGrowth(body)
     suspend fun listUhids(personId: String) = api.listUhids(personId)

@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Doctors{% endblock %}
+{% block body_class %}mod-health{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Health Vault
+    </div>
+    <h1 class="page-title">Doctors</h1>
+    <p class="page-lead">Phone book for doctors you call — each one belongs to a hospital.</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor" aria-controls="add-doctor">
+      <i class="bi bi-plus-lg"></i> Add doctor
+    </button>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') == 'added' %}
+<div class="alert alert-success mb-4" role="status">Doctor saved.</div>
+{% endif %}
+
+<div class="collapse mb-4" id="add-doctor">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-ico teal"><i class="bi bi-person-badge"></i></span>
+      <div>
+        <h2>Add doctor</h2>
+        <div class="card-sub">Hospital and phone are required for call &amp; WhatsApp</div>
+      </div>
+      <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor" aria-label="Close">
+        <i class="bi bi-x-lg"></i>
+      </button>
+    </div>
+    <div class="card-body">
+      <form method="post" action="/admin/doctors/add">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="doc-name">Name <span class="req">*</span></label>
+            <input class="form-control" id="doc-name" name="name" required placeholder="e.g. Dr. Mehta">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="doc-specialty">Specialty</label>
+            <input class="form-control" id="doc-specialty" name="specialty" placeholder="e.g. Paediatrics">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="doc-hospital">Hospital <span class="req">*</span></label>
+            {% if hospitals %}
+            <select class="form-select" id="doc-hospital" name="hospital_name" required>
+              <option value="">Select hospital…</option>
+              {% for h in hospitals %}
+              <option value="{{ h }}">{{ h | nice }}</option>
+              {% endfor %}
+            </select>
+            {% else %}
+            <input class="form-control" id="doc-hospital" name="hospital_name" required placeholder="Hospital name">
+            <div class="form-text text-warning">No hospitals on file yet — type the name, or add one on Overview.</div>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="doc-phone">Phone <span class="req">*</span></label>
+            <input class="form-control" id="doc-phone" type="tel" name="phone" required placeholder="+91 …" inputmode="tel">
+          </div>
+          <div class="col-12">
+            <label class="form-label" for="doc-notes">Notes</label>
+            <input class="form-control" id="doc-notes" name="notes" placeholder="Clinic hours, floor, OPD days…">
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-4">
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save doctor</button>
+          <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% if hospitals %}
+<div class="chip-scroll mb-3">
+  <a class="chip plain {% if not hospital %}active{% endif %}" href="/admin/doctors">All hospitals</a>
+  {% for h in hospitals %}
+  <a class="chip plain {% if hospital and hospital|lower == h|lower %}active{% endif %}" href="/admin/doctors?hospital={{ h | urlencode }}">{{ h | nice }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if doctors %}
+<div class="doc-biz-grid">
+  {% for d in doctors %}
+  {% set digits = d.phone | phone_digits %}
+  <article class="doc-biz-card">
+    <div class="doc-biz-top">
+      <span class="doc-biz-avatar" aria-hidden="true">{{ (d.name[:1] or '?') | upper }}</span>
+      <div class="min-w-0">
+        <h2 class="doc-biz-name">{{ d.name | nice }}</h2>
+        <div class="doc-biz-role">{{ d.specialty or 'Doctor' }}</div>
+      </div>
+    </div>
+    <div class="doc-biz-hosp"><i class="bi bi-building"></i> {{ (d.hospital_name | nice) if d.hospital_name else '—' }}</div>
+    {% if d.phone %}
+    <a class="doc-biz-phone mono" href="tel:{{ digits or d.phone }}">{{ d.phone }}</a>
+    {% endif %}
+    {% if d.notes %}
+    <p class="doc-biz-notes">{{ d.notes }}</p>
+    {% endif %}
+    <div class="doc-biz-actions">
+      {% if d.phone and digits %}
+      <a class="doc-biz-btn call" href="tel:{{ digits }}"><i class="bi bi-telephone-fill"></i> Call</a>
+      <a class="doc-biz-btn wa" href="https://wa.me/{{ digits }}" target="_blank" rel="noopener"><i class="bi bi-whatsapp"></i> WhatsApp</a>
+      {% elif d.phone %}
+      <a class="doc-biz-btn call" href="tel:{{ d.phone }}"><i class="bi bi-telephone-fill"></i> Call</a>
+      {% endif %}
+      <form method="post" action="/admin/doctors/{{ d.id }}/delete" data-confirm="Remove this doctor?">
+        <button class="doc-biz-btn del" type="submit" title="Remove"><i class="bi bi-trash3"></i></button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-person-badge"></i></div>
+    <div class="empty-title">{% if hospital %}No doctors for this hospital{% else %}No doctors yet{% endif %}</div>
+    <p>Save the numbers you actually call — GP, paediatrician, specialist — under their hospital.</p>
+    <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-doctor">
+      <i class="bi bi-plus-lg"></i> Add doctor
+    </button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

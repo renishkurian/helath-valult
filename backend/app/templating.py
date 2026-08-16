@@ -79,10 +79,18 @@ def relation_label(value) -> str:
     return _RELATION_LABELS.get(key, key.replace("_", " ").title())
 
 
+def phone_digits(value) -> str:
+    """Digits only for tel: / WhatsApp wa.me links."""
+    if value is None:
+        return ""
+    return "".join(ch for ch in str(value) if ch.isdigit())
+
+
 def setup_templates() -> Jinja2Templates:
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["nice"] = nice_name
     templates.env.filters["labelize"] = labelize
     templates.env.filters["relabel"] = relation_label
     templates.env.filters["enum_value"] = enum_value
+    templates.env.filters["phone_digits"] = phone_digits
     return templates
