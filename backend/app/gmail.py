@@ -26,10 +26,12 @@ DEFAULT_SYNC_QUERY = (
     "OR sbi.co.in OR onlinesbi.com OR icicibank.com OR axisbank.com OR kotak.com "
     "OR yesbank.in OR indusind.com OR citibank.com OR americanexpress.com OR amex "
     "OR rblbank.com OR idfcfirstbank.com OR southindianbank.com OR southindianbank.co.in "
-    "OR sib.co.in OR phonepe.com OR googlepay OR paytm.com "
+    "OR sib.co.in OR sib.bank.in OR sibalerts OR phonepe.com OR googlepay OR paytm.com "
     "OR amazonpay)"
     " OR subject:(debited OR credited OR spent OR withdrawn OR \"txn\" OR transaction "
-    "OR statement OR \"credit card\" OR \"e-statement\" OR \"e statement\")"
+    "OR statement OR \"credit card\" OR \"e-statement\" OR \"e statement\" "
+    "OR \"SIB Alerts\" OR \"SOUTH INDIAN BANK\")"
+    " OR (\"SOUTH INDIAN BANK\" spent)"
     ") newer_than:45d"
 )
 
@@ -41,7 +43,8 @@ DEFAULT_PDF_QUERY = (
     "OR \"credit card\" OR \"account statement\" OR \"monthly statement\") "
     "OR from:(hdfcbank OR sbi.co.in OR onlinesbi OR icicibank OR axisbank "
     "OR kotak.com OR yesbank OR indusind OR rblbank OR idfcfirstbank "
-    "OR southindianbank OR sib.co.in OR americanexpress OR amex)"
+    "OR southindianbank OR sib.co.in OR sib.bank.in OR sibalerts "
+    "OR americanexpress OR amex)"
     ")"
 )
 
