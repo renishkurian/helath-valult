@@ -300,6 +300,128 @@ def format_spend_clarify(day: str, question: str = "") -> str:
     )
 
 
+_ANALYSER_RE = re.compile(
+    r"analy[sz]er|analayser|anlyser|gmail|inbox",
+    re.I,
+)
+_RUPEE_AMT_RE = re.compile(
+    r"(\d{1,3}(?:,\d{2,3})+(?:\.\d{1,2})?|\d{4,}(?:\.\d{1,2})?)",
+)
+
+
+def parse_question_amount(question: str) -> float | None:
+    m = _RUPEE_AMT_RE.search(question or "")
+    if not m:
+        return None
+    try:
+        return float(m.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def wants_analyser_upi_breakdown(question: str) -> bool:
+    q = question or ""
+    if not _UPI_RE.search(q):
+        return False
+    if _ANALYSER_RE.search(q):
+        return True
+    if parse_question_amount(q) and re.search(r"\b(list|break\s*down|itemize|total)\b", q, re.I):
+        return True
+    return False
+
+
+def format_analyser_upi_breakdown(db: Session, user: models.User, question: str = "") -> str:
+    """Full Expense Analyser UPI list for the month — matches Insights category total."""
+    from app.expense_analyser import insights, _item_day
+
+    today = vault_now()
+    months = detect_months(question, today) or [f"{today:%Y-%m}"]
+    ym = months[0]
+    report = insights(db, user, ym)
+    asked = parse_question_amount(question)
+    uid = _uid(user)
+    rows = (
+        db.query(models.ExpenseAnalyserItem)
+        .filter(
+            models.ExpenseAnalyserItem.user_id == uid,
+            models.ExpenseAnalyserItem.kind != "bill",
+            models.ExpenseAnalyserItem.status != "ignored",
+            models.ExpenseAnalyserItem.amount.isnot(None),
+        )
+        .all()
+    )
+    month_rows = []
+    for item in rows:
+        day = _item_day(item)
+        if day and day.startswith(ym) and (item.direction or "") != "credit":
+            month_rows.append(item)
+
+    def _is_cat_upi(it) -> bool:
+        return "upi" in (it.suggested_category or "").lower()
+
+    def _is_method_upi(it) -> bool:
+        return (it.payment_method or "").lower() == "upi" or _looks_like_upi(
+            it.payment_method, it.subject, it.raw_snippet,
+        )
+
+    cat_rows = [it for it in month_rows if _is_cat_upi(it)]
+    method_rows = [it for it in month_rows if _is_method_upi(it)]
+    cat_total = sum(abs(_f(it.amount)) for it in cat_rows)
+    method_total = sum(abs(_f(it.amount)) for it in method_rows)
+    label = report.get("label") or ym
+
+    lines = [
+        f"**Expense Analyser UPI for {label}** (live inbox, not Money Manager)",
+        "",
+    ]
+    if asked and abs(asked - cat_total) < 1:
+        lines.append(
+            f"₹ {asked:,.2f} is the Insights **category total** for "
+            f"**UPI / transfers** — it is the sum of **{len(cat_rows)}** debit alerts, not one payment."
+        )
+        lines.append("")
+    lines.append(f"UPI / transfers (category): **{_inr(cat_total)}** · {len(cat_rows)} items")
+    lines.append(f"UPI (payment method): **{_inr(method_total)}** · {len(method_rows)} items")
+    if abs(cat_total - method_total) >= 1:
+        lines.append(
+            "Those two numbers differ when a card/ATM/netbanking alert is tagged "
+            "“UPI / transfers”. Insights uses the **category** figure."
+        )
+    lines.append("")
+
+    show = sorted(cat_rows, key=lambda it: abs(_f(it.amount)), reverse=True)
+    if not show:
+        show = sorted(method_rows, key=lambda it: abs(_f(it.amount)), reverse=True)
+    if not show:
+        lines.append("No UPI-tagged debit alerts in this month.")
+        return "\n".join(lines)
+
+    lines.append("| Date | Status | Payee | Method | Amount |")
+    lines.append("| --- | --- | --- | --- | ---: |")
+    running = 0.0
+    extra = 0
+    extra_sum = 0.0
+    for i, it in enumerate(show):
+        amt = abs(_f(it.amount))
+        if i >= 80:
+            extra += 1
+            extra_sum += amt
+            continue
+        running += amt
+        lines.append(
+            f"| {it.txn_date or '—'} | {it.status or 'pending'} | "
+            f"{it.payee or it.subject or '—'} | "
+            f"{(it.payment_method or '—').replace('_', ' ')} | {_inr(it.amount).replace('₹ ', '')} |"
+        )
+    if extra:
+        lines.append(f"| | | _{extra} more_ | | {_inr(extra_sum).replace('₹ ', '')} |")
+        running += extra_sum
+    lines.append(f"| | | **Listed total** | | **{_inr(running).replace('₹ ', '')}** |")
+    lines.append("")
+    lines.append("_Source: Expense Analyser inbox. Ignored rows and credits are excluded, same as Insights._")
+    return "\n".join(lines)
+
+
 def wants_upi(question: str, history: list[dict] | None = None) -> bool:
     if _UPI_RE.search(question or ""):
         return True
@@ -1289,6 +1411,27 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         .all()
     )
     if items:
+        try:
+            from app.expense_analyser import insights as ea_insights
+            ins = ea_insights(db, user, this_month)
+            lines.append(
+                f"Insights {ins.get('label') or this_month}: debit {_inr(ins.get('debit_total'))} "
+                f"across {ins.get('item_count') or 0} inbox items (not ledger)."
+            )
+            cats = ins.get("by_category") or []
+            if cats:
+                lines.append(
+                    "Insights by category: "
+                    + ", ".join(f"{c['name']} {_inr(c['amount'])} ({c.get('count') or 0})" for c in cats[:8])
+                )
+            methods = ins.get("by_method") or []
+            if methods:
+                lines.append(
+                    "Insights by method: "
+                    + ", ".join(f"{m['name']} {_inr(m['amount'])} ({m.get('count') or 0})" for m in methods[:6])
+                )
+        except Exception:
+            pass
         by_st: dict[str, int] = defaultdict(int)
         for it in items:
             by_st[it.status or "pending"] += 1
@@ -2245,6 +2388,9 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
                 db, user, ledger_day, question=text, history=history,
                 source=resolve_spend_source(text, history),
             )
+        return _store_deterministic_reply(db, user, thread, text, reply)
+    if wants_analyser_upi_breakdown(text):
+        reply = format_analyser_upi_breakdown(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
     if should_answer_highest_expense(text, history):
         source_q = text

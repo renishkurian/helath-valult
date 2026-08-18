@@ -162,6 +162,48 @@ def test_upi_day_includes_unposted_gmail_alerts():
         db.close()
 
 
+def test_analyser_upi_breakdown_matches_insights_category_total():
+    from app.ai_chat import ask, parse_question_amount, wants_analyser_upi_breakdown, vault_today
+
+    q = "list out 97,055.27 upi trans actions fro expense analayser"
+    assert wants_analyser_upi_breakdown(q) is True
+    assert parse_question_amount(q) == 97055.27
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        day = vault_today()
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-a", kind="alert",
+            amount=Decimal("40000.00"), payee="Ramanathan", txn_date=day,
+            payment_method="upi", suggested_category="UPI / transfers",
+            status="pending", direction="debit",
+        ))
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-b", kind="alert",
+            amount=Decimal("5775.00"), payee="Jibin S", txn_date=day,
+            payment_method="upi", suggested_category="UPI / transfers",
+            status="pending", direction="debit",
+        ))
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-c", kind="alert",
+            amount=Decimal("1500.00"), payee="Axis", txn_date=day,
+            payment_method="credit_card", suggested_category="UPI / transfers",
+            status="pending", direction="debit",
+        ))
+        db.commit()
+        out = ask(db, user, q)
+        reply = out["reply"]
+        assert "UPI / transfers" in reply
+        assert "47,275" in reply or "47275" in reply.replace(",", "")
+        assert "Jibin" in reply
+        assert "Axis" in reply
+    finally:
+        db.close()
+
+
 def test_highest_purchase_uses_ledger_payee_not_category():
     from app.ai_chat import ask, wants_highest_expense, should_answer_highest_expense
 
