@@ -985,6 +985,13 @@ class FinanceBudgetSlice(BaseModel):
 
 class FinanceChartsOut(BaseModel):
     year_month: str
+    period: str = "month"
+    grain: str = "day"
+    start: str = ""
+    end: str = ""
+    year: int = 0
+    week_start: Optional[str] = None
+    heat_dows: List[str] = []
     label: str
     prev: str
     next: str

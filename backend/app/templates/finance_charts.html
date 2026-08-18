@@ -4,21 +4,45 @@
 {% set c = charts %}
 {% set cats = c.categories or [] %}
 {% set daily = c.daily or [] %}
+{% set period = c.period or 'month' %}
+{% set noun = 'week' if period == 'week' else ('year' if period == 'year' else 'month') %}
+{% set week_q = c.week_start or c.start %}
+{% if period == 'week' %}
+  {% set prev_href = '/admin/finance/charts?period=week&week=' ~ c.prev %}
+  {% set next_href = '/admin/finance/charts?period=week&week=' ~ c.next %}
+{% elif period == 'year' %}
+  {% set prev_href = '/admin/finance/charts?period=year&year=' ~ c.prev %}
+  {% set next_href = '/admin/finance/charts?period=year&year=' ~ c.next %}
+{% else %}
+  {% set prev_href = '/admin/finance/charts?period=month&month=' ~ c.prev %}
+  {% set next_href = '/admin/finance/charts?period=month&month=' ~ c.next %}
+{% endif %}
 <div class="mmx">
   <div class="mmx-top">
     <div>
       <div class="eyebrow">Vault · Money Manager</div>
       <h1 class="page-title">Charts</h1>
-      <p class="page-lead mb-0">Daily flow, category mix, budgets, and spend patterns for {{ c.label }}</p>
+      <p class="page-lead mb-0">
+        {% if period == 'year' %}Monthly flow, category mix, and spend patterns for {{ c.label }}
+        {% elif period == 'week' %}Daily flow, category mix, and spend patterns for {{ c.label }}
+        {% else %}Daily flow, category mix, budgets, and spend patterns for {{ c.label }}{% endif %}
+      </p>
     </div>
-    <div class="mmx-nav">
-      <a class="btn btn-ghost btn-icon" href="/admin/finance/charts?month={{ c.prev }}" aria-label="Previous month">
-        <i class="bi bi-chevron-left"></i>
-      </a>
-      <span class="label">{{ c.label }}</span>
-      <a class="btn btn-ghost btn-icon" href="/admin/finance/charts?month={{ c.next }}" aria-label="Next month">
-        <i class="bi bi-chevron-right"></i>
-      </a>
+    <div class="mmx-tools">
+      <div class="mmx-seg" role="group" aria-label="Chart range">
+        <a class="{% if period == 'week' %}on{% endif %}" href="/admin/finance/charts?period=week&week={{ week_q }}" {% if period == 'week' %}aria-current="page"{% endif %}>Week</a>
+        <a class="{% if period == 'month' %}on{% endif %}" href="/admin/finance/charts?period=month&month={{ c.year_month }}" {% if period == 'month' %}aria-current="page"{% endif %}>Month</a>
+        <a class="{% if period == 'year' %}on{% endif %}" href="/admin/finance/charts?period=year&year={{ c.year }}" {% if period == 'year' %}aria-current="page"{% endif %}>Year</a>
+      </div>
+      <div class="mmx-nav">
+        <a class="btn btn-ghost btn-icon" href="{{ prev_href }}" aria-label="Previous {{ noun }}">
+          <i class="bi bi-chevron-left"></i>
+        </a>
+        <span class="label">{{ c.label }}</span>
+        <a class="btn btn-ghost btn-icon" href="{{ next_href }}" aria-label="Next {{ noun }}">
+          <i class="bi bi-chevron-right"></i>
+        </a>
+      </div>
     </div>
   </div>
 
@@ -29,12 +53,12 @@
         <div>
           <div class="mmx-hero-label">Net position</div>
           <div class="mmx-hero-num {% if c.total >= 0 %}pos{% else %}neg{% endif %}">{{ inr(c.total) }}</div>
-          <div class="mmx-hero-meta">Income minus expenses · {{ c.txn_count }} entries this month</div>
+          <div class="mmx-hero-meta">Income minus expenses · {{ c.txn_count }} entries this {{ noun }}</div>
         </div>
         {% if c.total >= 0 %}
         <span class="mmx-chip ok"><i class="bi bi-arrow-up-short"></i> Surplus</span>
         {% else %}
-        <span class="mmx-chip burn"><i class="bi bi-arrow-down-short"></i> Burn month</span>
+        <span class="mmx-chip burn"><i class="bi bi-arrow-down-short"></i> Burn {{ noun }}</span>
         {% endif %}
       </div>
       <div class="mmx-legend">
@@ -72,7 +96,7 @@
       <div class="mmx-head">
         <div class="mmx-title">
           <span class="mmx-ico" style="background:rgba(255,111,111,0.1);color:var(--mmx-out)"><i class="bi bi-graph-up"></i></span>
-          <div><div class="mmx-t">Daily flow</div><div class="mmx-d">Income vs expenses by day</div></div>
+          <div><div class="mmx-t">{% if period == 'year' %}Monthly flow{% else %}Daily flow{% endif %}</div><div class="mmx-d">Income vs expenses by {% if period == 'year' %}month{% else %}day{% endif %}</div></div>
         </div>
         <div class="mmx-legend mb-0">
           <span><i style="background:var(--mmx-in)"></i>In</span>
@@ -102,7 +126,7 @@
         </div>
       </div>
       {% else %}
-      <p class="text-muted mb-0">No expenses this month.</p>
+      <p class="text-muted mb-0">No expenses this {{ noun }}.</p>
       {% endif %}
     </section>
 
@@ -159,11 +183,11 @@
       <div class="mmx-head">
         <div class="mmx-title">
           <span class="mmx-ico" style="background:rgba(77,216,224,0.12);color:var(--mmx-cyan)"><i class="bi bi-calendar3"></i></span>
-          <div><div class="mmx-t">Spend heatmap</div><div class="mmx-d">Daily intensity, {{ c.label }}</div></div>
+          <div><div class="mmx-t">Spend heatmap</div><div class="mmx-d">{% if period == 'year' %}Monthly{% else %}Daily{% endif %} intensity, {{ c.label }}</div></div>
         </div>
       </div>
-      <div class="mmx-heat" id="mmx-heat">
-        {% for d in ['S','M','T','W','T','F','S'] %}<div class="mmx-dow">{{ d }}</div>{% endfor %}
+      <div class="mmx-heat {% if period == 'year' %}months{% endif %}" id="mmx-heat">
+        {% for d in (c.heat_dows or ['S','M','T','W','T','F','S']) %}<div class="mmx-dow">{{ d }}</div>{% endfor %}
         {% for _ in range(c.heatmap_pad or 0) %}<div class="mmx-cell empty"></div>{% endfor %}
         {% set peak = namespace(v=0) %}
         {% for d in daily %}{% if d.expense > peak.v %}{% set peak.v = d.expense %}{% endif %}{% endfor %}
@@ -233,7 +257,7 @@
         <div class="mmx-pamt">{{ inr(p.amount) }}</div>
       </div>
       {% else %}
-      <p class="text-muted mb-0">No payees this month.</p>
+      <p class="text-muted mb-0">No payees this {{ noun }}.</p>
       {% endfor %}
     </section>
 
@@ -241,7 +265,7 @@
       <div class="mmx-head">
         <div class="mmx-title">
           <span class="mmx-ico" style="background:rgba(53,214,138,0.1);color:var(--mmx-in)"><i class="bi bi-calendar-range"></i></span>
-          <div><div class="mmx-t">Last 12 months</div><div class="mmx-d">Income versus expenses</div></div>
+          <div><div class="mmx-t">{% if period == 'week' %}Last 12 weeks{% elif period == 'year' %}This year{% else %}Last 12 months{% endif %}</div><div class="mmx-d">Income versus expenses</div></div>
         </div>
         <div class="mmx-legend mb-0">
           <span><i style="background:var(--mmx-in)"></i>Income</span>
@@ -272,13 +296,13 @@
       <div class="mmx-head">
         <div class="mmx-title">
           <span class="mmx-ico" style="background:rgba(245,185,66,0.12);color:var(--mmx-amber)"><i class="bi bi-activity"></i></span>
-          <div><div class="mmx-t">Month-end projection</div><div class="mmx-d">At current daily burn rate</div></div>
+          <div><div class="mmx-t">{{ noun|capitalize }}-end projection</div><div class="mmx-d">At current daily burn rate</div></div>
         </div>
       </div>
       <div class="mmx-proj {% if c.projected > c.expense %}mm-expense{% endif %}">{{ inr(c.projected) }}</div>
-      <div class="mmx-d">Projected total by month end · {{ c.days_logged }} of {{ c.days_in_month }} days logged</div>
+      <div class="mmx-d">Projected total by {{ noun }} end · {{ c.days_logged }} of {{ c.days_in_month }} {% if period == 'year' %}months{% else %}days{% endif %} logged</div>
       <div class="mmx-ptrack"><div class="mmx-pfill" style="--w:{{ [c.month_pct, 100]|min }}%"></div></div>
-      <div class="mmx-d" style="margin-top:8px">{{ '%d'|format(c.month_pct|round(0)) }}% of month elapsed</div>
+      <div class="mmx-d" style="margin-top:8px">{{ '%d'|format(c.month_pct|round(0)) }}% of {{ noun }} elapsed</div>
     </section>
 
     <section class="mmx-card mmx-c6">
@@ -297,7 +321,7 @@
         <div class="mmx-track"><div class="mmx-fill" style="background:{{ s.color }};--w:{{ [s.pct, 100]|min }}%"></div></div>
       </div>
       {% else %}
-      <p class="text-muted mb-0">No method data this month.</p>
+      <p class="text-muted mb-0">No method data this {{ noun }}.</p>
       {% endfor %}
     </section>
 
@@ -317,7 +341,7 @@
         <div class="mmx-track"><div class="mmx-fill" style="background:{{ s.color }};--w:{{ [s.pct, 100]|min }}%"></div></div>
       </div>
       {% else %}
-      <p class="text-muted mb-0">No account spend this month.</p>
+      <p class="text-muted mb-0">No account spend this {{ noun }}.</p>
       {% endfor %}
     </section>
   </div>

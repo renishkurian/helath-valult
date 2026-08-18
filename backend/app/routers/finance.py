@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import calendar
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional
 
@@ -94,6 +94,147 @@ def _shift_month(year_month: str, delta: int) -> str:
         m -= 12
         y += 1
     return f"{y:04d}-{m:02d}"
+
+
+def _parse_ym(value: str | None) -> tuple[int, int] | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.strptime(str(value).strip()[:7], "%Y-%m")
+        return dt.year, dt.month
+    except ValueError:
+        return None
+
+
+def _parse_day(value: str | None) -> date | None:
+    if not value:
+        return None
+    raw = str(value).strip()
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d").date()
+    except ValueError:
+        parsed = _parse_ym(raw)
+        if parsed:
+            return date(parsed[0], parsed[1], 1)
+        return None
+
+
+def _monday(day: date) -> date:
+    return day - timedelta(days=day.weekday())
+
+
+def _fmt_day(day: date) -> str:
+    return f"{day.day} {day.strftime('%b')}"
+
+
+def _chart_window(
+    period: str | None = None,
+    year_month: str | None = None,
+    week: str | None = None,
+    year: int | str | None = None,
+) -> dict:
+    """Resolve week / month / year bounds. Month is the default."""
+    today = vault_now().date()
+    kind = (period or "month").strip().lower()
+    if kind not in ("week", "month", "year"):
+        kind = "month"
+
+    if kind == "week":
+        day = _parse_day(week)
+        if day is None:
+            ym = _parse_ym(year_month)
+            if ym and (today.year, today.month) == ym:
+                day = today
+            elif ym:
+                day = date(ym[0], ym[1], 1)
+            else:
+                day = today
+        start = _monday(day)
+        end = start + timedelta(days=6)
+        return {
+            "period": "week",
+            "grain": "day",
+            "start": start,
+            "end": end,
+            "year_month": f"{start.year:04d}-{start.month:02d}",
+            "year": start.year,
+            "week_start": start.isoformat(),
+            "label": f"{_fmt_day(start)} – {_fmt_day(end)} {end.year}",
+            "prev": (start - timedelta(days=7)).isoformat(),
+            "next": (start + timedelta(days=7)).isoformat(),
+            "days": 7,
+            "is_current": start <= today <= end,
+            "today_day": (today - start).days + 1 if start <= today <= end else None,
+            "elapsed": min(max((today - start).days + 1, 0), 7) if today >= start else 7,
+            "heatmap_pad": 0,
+            "heat_dows": ["M", "T", "W", "T", "F", "S", "S"],
+        }
+
+    if kind == "year":
+        try:
+            y = int(year) if year not in (None, "") else None
+        except (TypeError, ValueError):
+            y = None
+        if y is None:
+            parsed = _parse_ym(year_month)
+            y = parsed[0] if parsed else today.year
+        if y < 1990 or y > 2100:
+            y = today.year
+        start = date(y, 1, 1)
+        end = date(y, 12, 31)
+        days = 366 if calendar.isleap(y) else 365
+        is_current = today.year == y
+        elapsed = (today - start).days + 1 if is_current else days
+        return {
+            "period": "year",
+            "grain": "month",
+            "start": start,
+            "end": end,
+            "year_month": f"{y:04d}-{(today.month if is_current else 12):02d}",
+            "year": y,
+            "week_start": None,
+            "label": str(y),
+            "prev": str(y - 1),
+            "next": str(y + 1),
+            "days": days,
+            "is_current": is_current,
+            "today_day": today.month if is_current else None,
+            "elapsed": elapsed,
+            "heatmap_pad": 0,
+            "heat_dows": ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"],
+        }
+
+    parsed = _parse_ym(year_month)
+    y, m = parsed if parsed else (today.year, today.month)
+    last = calendar.monthrange(y, m)[1]
+    start = date(y, m, 1)
+    end = date(y, m, last)
+    is_current = (today.year, today.month) == (y, m)
+    return {
+        "period": "month",
+        "grain": "day",
+        "start": start,
+        "end": end,
+        "year_month": f"{y:04d}-{m:02d}",
+        "year": y,
+        "week_start": None,
+        "label": start.strftime("%b %Y"),
+        "prev": _shift_month(f"{y:04d}-{m:02d}", -1),
+        "next": _shift_month(f"{y:04d}-{m:02d}", 1),
+        "days": last,
+        "is_current": is_current,
+        "today_day": today.day if is_current else None,
+        "elapsed": today.day if is_current else last,
+        "heatmap_pad": (start.weekday() + 1) % 7,
+        "heat_dows": ["S", "M", "T", "W", "T", "F", "S"],
+    }
+
+
+def _txns_in_range(db: Session, uid: str, start: str, end: str):
+    return _txn_query(db, uid).filter(
+        models.FinanceTransaction.txn_date >= start,
+        models.FinanceTransaction.txn_date <= end,
+    ).all()
 
 
 def _owned(db: Session, user: models.User):
@@ -1305,29 +1446,49 @@ def _slice_rows(buckets: dict[str, Decimal], counts: dict[str, int] | None = Non
     return rows
 
 
-def build_charts(db: Session, user: models.User, year_month: str | None = None) -> dict:
-    """Dashboard series: daily trend, categories, histogram, weekday, 12-month."""
+def build_charts(
+    db: Session,
+    user: models.User,
+    year_month: str | None = None,
+    period: str | None = None,
+    week: str | None = None,
+    year: int | str | None = None,
+) -> dict:
+    """Dashboard series for week, month (default), or year."""
     ensure_defaults(db, user)
-    ym = year_month or datetime.utcnow().strftime("%Y-%m")
-    try:
-        datetime.strptime(ym + "-01", "%Y-%m-%d")
-    except ValueError:
-        ym = datetime.utcnow().strftime("%Y-%m")
+    win = _chart_window(period=period, year_month=year_month, week=week, year=year)
     uid = _owned(db, user)
-    start, end = _month_bounds(ym)
-    y, m = [int(p) for p in ym.split("-")]
-    last_day = calendar.monthrange(y, m)[1]
-    txns = _txn_query(db, uid).filter(
-        models.FinanceTransaction.txn_date >= start,
-        models.FinanceTransaction.txn_date <= end,
-    ).all()
+    start, end = win["start"].isoformat(), win["end"].isoformat()
+    ym = win["year_month"]
+    grain = win["grain"]
+    txns = _txns_in_range(db, uid, start, end)
     cats = _cat_map(db, uid)
     accts = _acct_map(db, uid)
 
-    daily = {
-        d: {"date": f"{y:04d}-{m:02d}-{d:02d}", "day": d, "income": 0.0, "expense": 0.0, "net": 0.0, "count": 0}
-        for d in range(1, last_day + 1)
-    }
+    if grain == "month":
+        daily = {
+            f"{win['year']:04d}-{m:02d}": {
+                "date": f"{win['year']:04d}-{m:02d}-01", "day": m,
+                "income": 0.0, "expense": 0.0, "net": 0.0, "count": 0,
+            }
+            for m in range(1, 13)
+        }
+        daily_order = [f"{win['year']:04d}-{m:02d}" for m in range(1, 13)]
+    else:
+        daily = {}
+        daily_order = []
+        cursor = win["start"]
+        idx = 1
+        while cursor <= win["end"]:
+            key = cursor.isoformat()
+            day_num = idx if win["period"] == "week" else cursor.day
+            daily[key] = {
+                "date": key, "day": day_num,
+                "income": 0.0, "expense": 0.0, "net": 0.0, "count": 0,
+            }
+            daily_order.append(key)
+            cursor += timedelta(days=1)
+            idx += 1
     cat_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     cat_n: dict[str, int] = defaultdict(int)
     cat_color: dict[str, str] = {}
@@ -1345,11 +1506,9 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
     expense = Decimal("0")
 
     for t in txns:
-        try:
-            day = int(t.txn_date[-2:])
-        except (TypeError, ValueError):
-            continue
-        bucket = daily.get(day)
+        raw_date = t.txn_date or ""
+        key = raw_date[:7] if grain == "month" else raw_date
+        bucket = daily.get(key)
         amt = _dec(t.amount)
         if bucket is None:
             continue
@@ -1395,17 +1554,42 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
         bucket["net"] = bucket["income"] - bucket["expense"]
 
     trend = []
-    for i in range(-11, 1):
-        t_ym = _shift_month(ym, i)
-        t_income, t_expense = _month_ie(_txns_in_month(db, uid, t_ym))
-        ty, tm = [int(p) for p in t_ym.split("-")]
-        trend.append({
-            "year_month": t_ym,
-            "label": datetime(ty, tm, 1).strftime("%b"),
-            "income": _f(t_income),
-            "expense": _f(t_expense),
-            "net": _f(t_income - t_expense),
-        })
+    if win["period"] == "week":
+        ws = win["start"]
+        for i in range(-11, 1):
+            s = ws + timedelta(days=7 * i)
+            e = s + timedelta(days=6)
+            t_income, t_expense = _month_ie(_txns_in_range(db, uid, s.isoformat(), e.isoformat()))
+            trend.append({
+                "year_month": s.isoformat(),
+                "label": f"{s.day} {s.strftime('%b')}",
+                "income": _f(t_income),
+                "expense": _f(t_expense),
+                "net": _f(t_income - t_expense),
+            })
+    elif win["period"] == "year":
+        for m in range(1, 13):
+            t_ym = f"{win['year']:04d}-{m:02d}"
+            t_income, t_expense = _month_ie(_txns_in_month(db, uid, t_ym))
+            trend.append({
+                "year_month": t_ym,
+                "label": datetime(win["year"], m, 1).strftime("%b"),
+                "income": _f(t_income),
+                "expense": _f(t_expense),
+                "net": _f(t_income - t_expense),
+            })
+    else:
+        for i in range(-11, 1):
+            t_ym = _shift_month(ym, i)
+            t_income, t_expense = _month_ie(_txns_in_month(db, uid, t_ym))
+            ty, tm = [int(p) for p in t_ym.split("-")]
+            trend.append({
+                "year_month": t_ym,
+                "label": datetime(ty, tm, 1).strftime("%b"),
+                "income": _f(t_income),
+                "expense": _f(t_expense),
+                "net": _f(t_income - t_expense),
+            })
 
     weekday_rows = []
     wd_total = sum(weekday_amt) or Decimal("1")
@@ -1428,38 +1612,54 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
             "color": "#4DD8E0",
         })
 
-    now = vault_now()
-    is_current = ym == now.strftime("%Y-%m")
-    today_day = now.day if is_current else None
-    days_elapsed = now.day if is_current else last_day
+    last_day = win["days"]
+    is_current = win["is_current"]
+    today_day = win["today_day"]
+    days_elapsed = win["elapsed"] or last_day
     days_logged = sum(1 for d in daily.values() if d["expense"] or d["income"])
     avg_day = _f(expense / last_day) if last_day else 0.0
     projected = _f(expense)
     if is_current and days_elapsed > 0:
         projected = _f(expense / days_elapsed * last_day)
     month_pct = _f(days_elapsed * 100 / last_day) if last_day else 0.0
-    first_wd = datetime(y, m, 1).weekday()  # Mon=0
-    heatmap_pad = (first_wd + 1) % 7  # Sunday-first
+    heatmap_pad = win["heatmap_pad"]
 
     spent_by_cat_id: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     for t in txns:
         if t.txn_type == "expense" and t.category_id:
             spent_by_cat_id[t.category_id] += _dec(t.amount)
-    budget_rows = db.query(models.FinanceBudget).filter(
-        models.FinanceBudget.user_id == uid, models.FinanceBudget.year_month == ym,
-    ).all()
+    if win["period"] == "year":
+        yms = [f"{win['year']:04d}-{m:02d}" for m in range(1, 13)]
+        budget_rows = db.query(models.FinanceBudget).filter(
+            models.FinanceBudget.user_id == uid, models.FinanceBudget.year_month.in_(yms),
+        ).all()
+        merged: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+        for b in budget_rows:
+            merged[b.category_id] += _dec(b.amount)
+        budget_items = [(cid, amt) for cid, amt in merged.items()]
+        cap_scale = Decimal("1")
+    else:
+        budget_rows = db.query(models.FinanceBudget).filter(
+            models.FinanceBudget.user_id == uid, models.FinanceBudget.year_month == ym,
+        ).all()
+        budget_items = [(b.category_id, _dec(b.amount)) for b in budget_rows]
+        if win["period"] == "week":
+            month_days = calendar.monthrange(win["start"].year, win["start"].month)[1] or 30
+            cap_scale = Decimal(7) / Decimal(month_days)
+        else:
+            cap_scale = Decimal("1")
     budgets = []
-    for b in budget_rows:
-        cat = cats.get(b.category_id)
+    for cat_id, raw_cap in budget_items:
+        cat = cats.get(cat_id)
         name = cat.name if cat else "Category"
-        spent = spent_by_cat_id.get(b.category_id, Decimal("0"))
-        cap = _dec(b.amount) or Decimal("1")
+        spent = spent_by_cat_id.get(cat_id, Decimal("0"))
+        cap = (raw_cap * cap_scale) or Decimal("1")
         budgets.append({
             "name": name,
             "spent": _f(spent),
-            "budget": _f(b.amount),
+            "budget": _f(cap),
             "pct": _f(min(Decimal("999"), spent * 100 / cap)),
-            "over": spent > _dec(b.amount),
+            "over": spent > cap,
             "color": (cat.color if cat and cat.color else "#F5B942"),
         })
     if not budgets:
@@ -1479,9 +1679,16 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
 
     return {
         "year_month": ym,
-        "label": datetime(y, m, 1).strftime("%b %Y"),
-        "prev": _shift_month(ym, -1),
-        "next": _shift_month(ym, 1),
+        "period": win["period"],
+        "grain": grain,
+        "start": start,
+        "end": end,
+        "year": win["year"],
+        "week_start": win["week_start"],
+        "heat_dows": win["heat_dows"],
+        "label": win["label"],
+        "prev": win["prev"],
+        "next": win["next"],
         "income": _f(income),
         "expense": _f(expense),
         "total": _f(income - expense),
@@ -1494,7 +1701,7 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
         "projected": projected,
         "today_day": today_day,
         "heatmap_pad": heatmap_pad,
-        "daily": [daily[d] for d in range(1, last_day + 1)],
+        "daily": [daily[k] for k in daily_order],
         "categories": _slice_rows(cat_amt, cat_n, cat_color),
         "methods": _slice_rows(method_amt, method_n),
         "accounts": _slice_rows(acct_amt),
@@ -1509,10 +1716,13 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
 @router.get("/charts", response_model=schemas.FinanceChartsOut)
 def charts(
     year_month: Optional[str] = None,
+    period: Optional[str] = None,
+    week: Optional[str] = None,
+    year: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    return build_charts(db, current_user, year_month)
+    return build_charts(db, current_user, year_month, period=period, week=week, year=year)
 
 
 # ---------- AI keys (compat aliases → shared /ai/providers) ----------

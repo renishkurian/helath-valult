@@ -295,6 +295,25 @@ def test_finance_charts_endpoint():
     assert body["payees"]
     assert body["days_in_month"] >= 28
     assert "heatmap_pad" in body
+    assert body["period"] == "month"
+    assert body["grain"] == "day"
+
+    week = client.get("/finance/charts", headers=headers, params={"period": "week", "week": "2026-08-16"})
+    assert week.status_code == 200, week.text
+    wbody = week.json()
+    assert wbody["period"] == "week"
+    assert len(wbody["daily"]) == 7
+    assert wbody["expense"] == 250
+    assert wbody["week_start"] == "2026-08-10"
+
+    year = client.get("/finance/charts", headers=headers, params={"period": "year", "year": "2026"})
+    assert year.status_code == 200, year.text
+    ybody = year.json()
+    assert ybody["period"] == "year"
+    assert ybody["grain"] == "month"
+    assert len(ybody["daily"]) == 12
+    assert ybody["expense"] == 250
+    assert ybody["label"] == "2026"
 
 
 def test_update_transaction():

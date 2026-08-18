@@ -3083,14 +3083,16 @@ def finance_stats(
 def finance_charts(
     request: Request,
     month: Optional[str] = None,
+    period: Optional[str] = None,
+    week: Optional[str] = None,
+    year: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     from app.routers.finance import build_charts, inr
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    ym = month or datetime.utcnow().strftime("%Y-%m")
-    charts = build_charts(db, user, ym)
+    charts = build_charts(db, user, month, period=period, week=week, year=year)
     return templates.TemplateResponse("finance_charts.html", _fn_ctx(
         request, user, "fn_stats", charts=charts, inr=inr,
     ))

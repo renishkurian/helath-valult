@@ -1573,11 +1573,25 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 }
 .mmx-top{ display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap; margin-bottom:1.25rem; }
 .mmx-top .eyebrow{ color:var(--mmx-violet); }
+.mmx-tools{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.mmx-seg{
+  display:flex; padding:4px; gap:2px; border-radius:14px;
+  background:var(--mmx-panel); border:1px solid var(--mmx-line);
+}
+.mmx-seg a{
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:40px; min-width:64px; padding:0 14px; border-radius:10px;
+  font-size:.75rem; font-weight:600; letter-spacing:.02em; color:var(--v-ink-3);
+  text-decoration:none;
+}
+.mmx-seg a:hover{ color:var(--v-ink); background:rgba(255,255,255,0.04); }
+.mmx-seg a.on{ color:#c5c6ff; background:rgba(139,140,249,0.18); }
+.mmx-seg a:focus-visible{ outline:2px solid var(--mmx-violet); outline-offset:2px; }
 .mmx-nav{
   display:flex; align-items:center; gap:2px; padding:5px; border-radius:14px;
   background:var(--mmx-panel); border:1px solid var(--mmx-line);
 }
-.mmx-nav .label{ font-family:var(--v-mono); font-size:.8125rem; padding:0 14px; min-width:7rem; text-align:center; }
+.mmx-nav .label{ font-family:var(--v-mono); font-size:.8125rem; padding:0 14px; min-width:7.5rem; text-align:center; }
 .mmx-grid{ display:grid; grid-template-columns:repeat(12,1fr); gap:16px; }
 .mmx-card{
   position:relative; overflow:hidden; padding:1.25rem 1.35rem; border-radius:20px;
@@ -1652,6 +1666,7 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 .mmx-bvals{ font-family:var(--v-mono); font-size:.7rem; color:var(--v-ink-3); text-align:right; white-space:nowrap; }
 .mmx-bvals b{ color:var(--v-ink); }
 .mmx-heat{ display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+.mmx-heat.months{ grid-template-columns:repeat(12,1fr); }
 .mmx-dow{ font-size:.6rem; color:var(--v-ink-3); text-align:center; text-transform:uppercase; letter-spacing:.05em; }
 .mmx-cell{
   aspect-ratio:1; border-radius:7px; display:grid; place-items:center;
