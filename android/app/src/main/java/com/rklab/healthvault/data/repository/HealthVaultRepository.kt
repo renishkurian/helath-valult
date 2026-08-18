@@ -348,6 +348,8 @@ class HealthVaultRepository(
         accountId: String? = null
     ) = api.listFinanceTransactions(yearMonth, accountId = accountId, q = q)
     suspend fun createFinanceTransaction(body: FinanceTxnIn) = api.createFinanceTransaction(body)
+    suspend fun getFinanceTransaction(id: String) = api.getFinanceTransaction(id)
+    suspend fun updateFinanceTransaction(id: String, body: FinanceTxnIn) = api.updateFinanceTransaction(id, body)
     suspend fun uploadFinanceImage(id: String, file: File, mime: String = "image/jpeg"): FinanceTxnOut {
         val part = MultipartBody.Part.createFormData(
             "file",

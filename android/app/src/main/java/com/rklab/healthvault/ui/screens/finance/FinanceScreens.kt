@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -83,11 +85,43 @@ internal fun inr(n: Double): String {
     return "${sign}₹ $body.$frac"
 }
 
+internal fun signedInr(type: String, amount: Double): String = when (type) {
+    "income" -> "+${inr(amount)}"
+    "expense" -> "−${inr(amount)}"
+    else -> inr(amount)
+}
+
+internal fun txnAccent(type: String): Color = when (type) {
+    "income" -> IncomeBlue
+    "expense" -> ExpenseRed
+    else -> PurpleAccent
+}
+
+internal fun financeInsight(
+    summary: FinanceSummaryOut,
+    top: FinanceReportRow?,
+    highest: FinanceTxnOut?
+): String {
+    if (top != null && summary.expense > 0) {
+        var text = "${top.name} is ${top.pct.toInt()}% of this month’s spend."
+        val payee = highest?.payee
+        if (!payee.isNullOrBlank() && payee != top.name) {
+            text += " Largest single hit: $payee (${inr(highest.amount)})."
+        }
+        return text
+    }
+    if (summary.income > 0 && summary.expense == 0.0) {
+        return "Income is in and spend is still zero — a quiet month so far."
+    }
+    return "Add a few expenses to see where this month is going."
+}
+
 @Composable
 fun FinanceTransScreen(
     repository: HealthVaultRepository,
     onAdd: () -> Unit,
-    onOpenModules: () -> Unit
+    onOpenModules: () -> Unit,
+    onEdit: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -97,6 +131,7 @@ fun FinanceTransScreen(
     var items by remember { mutableStateOf<List<FinanceTxnOut>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var photoTxn by remember { mutableStateOf<FinanceTxnOut?>(null) }
+    var pendingDelete by remember { mutableStateOf<FinanceTxnOut?>(null) }
 
     fun reload() {
         scope.launch {
@@ -146,50 +181,45 @@ fun FinanceTransScreen(
                 )
             }
             error?.let { Text(it, color = StampRed, modifier = Modifier.padding(16.dp)) }
-            LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 items(items, key = { it.id }) { t ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(t.category_name ?: t.txn_type, color = InkSoft, style = MaterialTheme.typography.labelMedium)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(t.payee ?: t.category_name ?: "—", color = Ink, fontWeight = FontWeight.SemiBold)
-                                if (t.has_image) {
-                                    Text(" · ", color = InkSoft, fontWeight = FontWeight.SemiBold)
-                                    Text(
-                                        "photo",
-                                        color = IncomeBlue,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.clickable { photoTxn = t }
-                                    )
-                                }
-                            }
-                            Text(
-                                buildString {
-                                    append(t.account_name)
-                                    methodLabel(t.payment_method)?.let { append(" · "); append(it) }
-                                    if (!t.description.isNullOrBlank() && !t.payee.isNullOrBlank()) {
-                                        append(" · "); append(t.description)
-                                    }
-                                },
-                                color = InkSoft,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                        Text(
-                            inr(t.amount),
-                            color = when (t.txn_type) { "income" -> IncomeBlue; "expense" -> ExpenseRed; else -> Ink },
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    HorizontalDivider(color = LineColor)
+                    FinanceTxnCard(
+                        txn = t,
+                        onClick = { onEdit(t.id) },
+                        onEdit = { onEdit(t.id) },
+                        onDelete = { pendingDelete = t },
+                        onPhoto = if (t.has_image) ({ photoTxn = t }) else null
+                    )
                 }
             }
         }
         photoTxn?.let { txn ->
             FinancePhotoDialog(repository, txn) { photoTxn = null }
+        }
+        pendingDelete?.let { txn ->
+            AlertDialog(
+                onDismissRequest = { pendingDelete = null },
+                title = { Text("Delete this entry?") },
+                text = { Text("This cannot be undone.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        val id = txn.id
+                        pendingDelete = null
+                        scope.launch {
+                            runCatching { repository.deleteFinanceTransaction(id) }
+                                .onSuccess { reload() }
+                                .onFailure { error = it.message }
+                        }
+                    }) { Text("Delete", color = StampRed) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+                }
+            )
         }
         FloatingActionButton(
             onClick = onAdd,
@@ -198,6 +228,107 @@ fun FinanceTransScreen(
             contentColor = Color.White,
             shape = CircleShape
         ) { Icon(Icons.Filled.Add, contentDescription = "Add") }
+    }
+}
+
+@Composable
+internal fun FinanceTxnCard(
+    txn: FinanceTxnOut,
+    onEdit: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
+    onPhoto: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null
+) {
+    var menu by remember { mutableStateOf(false) }
+    val showMenu = onEdit != null || onDelete != null || onPhoto != null
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(CardSurface)
+            .border(1.dp, HubStroke, RoundedCornerShape(18.dp))
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(txnAccent(txn.txn_type).copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                when (txn.txn_type) { "income" -> "↓"; "expense" -> "↑"; else -> "↔" },
+                color = txnAccent(txn.txn_type),
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                txn.payee ?: txn.category_name ?: txn.txn_type,
+                color = Ink,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                buildString {
+                    append(txn.category_name ?: txn.txn_type)
+                    if (!txn.description.isNullOrBlank() && !txn.payee.isNullOrBlank()) {
+                        append(" · "); append(txn.description)
+                    }
+                },
+                color = InkSoft,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                buildString {
+                    append(txn.txn_date)
+                    txn.txn_time?.take(5)?.let { append(" · "); append(it) }
+                    methodLabel(txn.payment_method)?.let { append(" · "); append(it) }
+                },
+                color = InkSoft,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            signedInr(txn.txn_type, txn.amount),
+            color = txnAccent(txn.txn_type),
+            fontWeight = FontWeight.Bold
+        )
+        if (showMenu) {
+            Box {
+                IconButton(onClick = { menu = true }, modifier = Modifier.size(44.dp)) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "More actions", tint = InkSoft)
+                }
+                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    onPhoto?.let {
+                        DropdownMenuItem(
+                            text = { Text("Receipt") },
+                            onClick = { menu = false; it() }
+                        )
+                    }
+                    onEdit?.let {
+                        DropdownMenuItem(
+                            text = { Text("Edit") },
+                            onClick = { menu = false; it() }
+                        )
+                    }
+                    onDelete?.let {
+                        DropdownMenuItem(
+                            text = { Text("Delete", color = StampRed) },
+                            onClick = { menu = false; it() }
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -364,7 +495,7 @@ private fun IncomingSmsToggle() {
 }
 
 @Composable
-private fun IncomingSmsBanner(onChanged: () -> Unit) {
+internal fun IncomingSmsBanner(onChanged: () -> Unit) {
     val context = LocalContext.current
     var enabled by remember {
         mutableStateOf(FinanceSmsPrefs.isEnabled(context) && FinanceSmsPrefs.hasSmsPermission(context))

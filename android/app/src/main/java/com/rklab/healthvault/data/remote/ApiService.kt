@@ -541,6 +541,12 @@ interface ApiService {
     @POST("finance/transactions")
     suspend fun createFinanceTransaction(@Body body: FinanceTxnIn): FinanceTxnOut
 
+    @GET("finance/transactions/{id}")
+    suspend fun getFinanceTransaction(@Path("id") id: String): FinanceTxnOut
+
+    @PUT("finance/transactions/{id}")
+    suspend fun updateFinanceTransaction(@Path("id") id: String, @Body body: FinanceTxnIn): FinanceTxnOut
+
     @Multipart
     @POST("finance/transactions/{id}/image")
     suspend fun uploadFinanceImage(

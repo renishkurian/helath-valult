@@ -19,16 +19,16 @@
     </p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ ledger.prev }}&view={{ view }}" aria-label="Previous month">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/transactions?month={{ ledger.prev }}&view={{ view }}" aria-label="Previous month">
       <i class="bi bi-chevron-left"></i>
     </a>
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ ledger.next }}&view={{ view }}" aria-label="Next month">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/transactions?month={{ ledger.next }}&view={{ view }}" aria-label="Next month">
       <i class="bi bi-chevron-right"></i>
     </a>
   </div>
 </div>
 
-<form class="filter-bar" method="get" action="/admin/finance">
+<form class="filter-bar" method="get" action="/admin/finance/transactions">
   <input type="hidden" name="month" value="{{ ledger.year_month }}">
   <input type="hidden" name="view" value="{{ view }}">
   <div class="search-field">
@@ -40,11 +40,11 @@
 </form>
 
 <div class="seg mb-3">
-  <a class="{% if view=='daily' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=daily">Daily</a>
-  <a class="{% if view=='calendar' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=calendar">Calendar</a>
-  <a class="{% if view=='monthly' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=monthly">Monthly</a>
-  <a class="{% if view=='total' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=total">Total</a>
-  <a class="{% if view=='note' %}active{% endif %}" href="/admin/finance?month={{ ledger.year_month }}&view=note">Note</a>
+  <a class="{% if view=='daily' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=daily">Daily</a>
+  <a class="{% if view=='calendar' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=calendar">Calendar</a>
+  <a class="{% if view=='monthly' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=monthly">Monthly</a>
+  <a class="{% if view=='total' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=total">Total</a>
+  <a class="{% if view=='note' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=note">Note</a>
 </div>
 
 <div class="row g-3 mb-4">
@@ -122,40 +122,49 @@
 </div>
 
 {% elif view == 'monthly' or view == 'total' %}
-<div class="card mb-4">
-  <div class="card-body">
+<div class="mm-card-list mb-4">
     {% for item in ledger.txns %}
-    <div class="mm-row">
+    <div class="mm-card">
       {% if can_bulk %}
       <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
       {% endif %}
-      <span class="cat-ico">
-        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
+      <span class="mm-card-ico {{ item.txn_type }}">
+        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
       </span>
-      <div class="mm-body">
-        <div class="payee truncate">{{ item.payee or item.category_name or '—' }}</div>
-        <div class="cat">{{ item.category_name or item.txn_type }}</div>
-        <div class="acct truncate">
-          {{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %} · {{ item.txn_date }}
-        </div>
+      <div class="mm-card-body">
+        <div class="mm-card-title truncate">{{ item.payee or item.category_name or '—' }}</div>
+        <div class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
+        <div class="mm-card-when">{{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %} · {{ item.txn_date }}</div>
       </div>
-      <div class="amt {{ type_cls.get(item.txn_type, '') }}">{{ inr(item.amount) }}</div>
-      {% if item.has_image %}
-      <div class="d-flex gap-1 flex-shrink-0">
-        <a class="btn btn-ghost btn-icon btn-sm js-photo" href="/admin/finance/transactions/{{ item.id }}/image" aria-label="Receipt photo">
-          <i class="bi bi-image"></i>
-        </a>
+      <div class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
+        {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}
       </div>
-      {% endif %}
+      <div class="dropdown">
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="dropdown" aria-label="More actions">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          {% if item.has_image %}
+          <li><a class="dropdown-item js-photo" href="/admin/finance/transactions/{{ item.id }}/image"><i class="bi bi-image"></i> Receipt</a></li>
+          {% endif %}
+          <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
+          <li>
+            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Delete this entry?">
+              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
+            </form>
+          </li>
+        </ul>
+      </div>
     </div>
     {% else %}
-    <div class="empty-state">
-      <div class="empty-ico"><i class="bi bi-receipt"></i></div>
-      <div class="empty-title">No transactions this month</div>
-      <p>Pick another month, or add an entry to start the {{ ledger.label }} ledger.</p>
+    <div class="card">
+      <div class="empty-state">
+        <div class="empty-ico"><i class="bi bi-receipt"></i></div>
+        <div class="empty-title">No transactions this month</div>
+        <p>Pick another month, or add an entry to start the {{ ledger.label }} ledger.</p>
+      </div>
     </div>
     {% endfor %}
-  </div>
 </div>
 
 {% else %}
@@ -172,32 +181,36 @@
       </span>
     </div>
     {% for item in day.txns %}
-    <div class="mm-row">
+    <div class="mm-card">
       {% if can_bulk %}
       <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
       {% endif %}
-      <span class="cat-ico">
-        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }} {{ type_cls.get(item.txn_type, 'mm-muted') }}"></i>
+      <span class="mm-card-ico {{ item.txn_type }}">
+        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
       </span>
-      <div class="mm-body">
-        <div class="payee truncate">{{ item.payee or item.category_name or '—' }}</div>
-        <div class="cat">{{ item.category_name or item.txn_type }}</div>
-        <div class="acct truncate">
-          {{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.description and item.payee %} · {{ item.description }}{% endif %}
-        </div>
+      <div class="mm-card-body">
+        <div class="mm-card-title truncate">{{ item.payee or item.category_name or '—' }}</div>
+        <div class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
+        <div class="mm-card-when">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</div>
       </div>
-      <div class="amt {{ type_cls.get(item.txn_type, '') }}">{{ inr(item.amount) }}</div>
-      <div class="d-flex gap-1 flex-shrink-0">
-        {% if item.has_image %}
-        <a class="btn btn-ghost btn-icon btn-sm js-photo" href="/admin/finance/transactions/{{ item.id }}/image" aria-label="Receipt photo">
-          <i class="bi bi-image"></i>
-        </a>
-        {% endif %}
-        <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Delete this entry?">
-          <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Delete entry">
-            <i class="bi bi-trash3"></i>
-          </button>
-        </form>
+      <div class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
+        {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}
+      </div>
+      <div class="dropdown">
+        <button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="dropdown" aria-label="More actions">
+          <i class="bi bi-three-dots-vertical"></i>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          {% if item.has_image %}
+          <li><a class="dropdown-item js-photo" href="/admin/finance/transactions/{{ item.id }}/image"><i class="bi bi-image"></i> Receipt</a></li>
+          {% endif %}
+          <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
+          <li>
+            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Delete this entry?">
+              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
+            </form>
+          </li>
+        </ul>
       </div>
     </div>
     {% endfor %}
@@ -214,6 +227,7 @@
   {% endfor %}
 {% endif %}
 
+<div class="mm-fab-spacer" aria-hidden="true"></div>
 <a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
 {% endblock %}
 {% block scripts %}

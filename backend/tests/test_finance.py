@@ -215,6 +215,45 @@ def test_bulk_delete_transactions():
     assert "One" not in payees and "Two" not in payees
 
 
+def test_update_transaction():
+    import uuid
+    email = f"edit-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Edit User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    cats = client.get("/finance/categories", headers=headers).json()
+    expense_cat = next(c for c in cats if c["kind"] == "expense" and not c.get("parent_id"))
+    created = client.post("/finance/transactions", headers=headers, json={
+        "account_id": accounts[0]["id"],
+        "category_id": expense_cat["id"],
+        "txn_type": "expense",
+        "amount": 50,
+        "txn_date": "2026-08-16",
+        "payee": "Old title",
+        "payment_method": "upi",
+    })
+    assert created.status_code == 200, created.text
+    txn_id = created.json()["id"]
+    updated = client.put(f"/finance/transactions/{txn_id}", headers=headers, json={
+        "account_id": accounts[0]["id"],
+        "category_id": expense_cat["id"],
+        "txn_type": "expense",
+        "amount": 88,
+        "txn_date": "2026-08-16",
+        "payee": "HDFC Bank",
+        "payment_method": "upi",
+    })
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["amount"] == 88
+    assert updated.json()["payee"] == "HDFC Bank"
+    got = client.get(f"/finance/transactions/{txn_id}", headers=headers)
+    assert got.status_code == 200
+    assert got.json()["payee"] == "HDFC Bank"
+
+
 def test_heuristic_card_and_atm():
     cc = classify_heuristic("INR 2,500.00 spent on HDFC credit card xx1234 at AMAZON on 12-08-2026")
     assert cc["direction"] == "debit"

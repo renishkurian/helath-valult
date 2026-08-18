@@ -41,7 +41,7 @@ enum class MainTab { HOME, DOCTORS, CARE, REMINDERS, FAMILY }
 
 enum class PasswordTab { VAULT, GENERATOR, SEND, HEALTH }
 
-enum class FinanceTab { TRANS, STATS, ACCOUNTS, MORE }
+enum class FinanceTab { HOME, TRANS, STATS, ACCOUNTS, MORE }
 
 enum class LockerTab { LOCKER, EXPIRING }
 
@@ -195,17 +195,24 @@ fun PasswordVaultBottomNav(current: PasswordTab, onSelect: (PasswordTab) -> Unit
 fun FinanceBottomNav(current: FinanceTab, onSelect: (FinanceTab) -> Unit) {
     NavigationBar(containerColor = HubDock, tonalElevation = 0.dp) {
         NavigationBarItem(
+            selected = current == FinanceTab.HOME,
+            onClick = { onSelect(FinanceTab.HOME) },
+            icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
+            label = { Text("Home") },
+            colors = navColors
+        )
+        NavigationBarItem(
             selected = current == FinanceTab.TRANS,
             onClick = { onSelect(FinanceTab.TRANS) },
-            icon = { Icon(Icons.Filled.MenuBook, contentDescription = "Trans.") },
-            label = { Text("Trans.") },
+            icon = { Icon(Icons.Filled.History, contentDescription = "History") },
+            label = { Text("History") },
             colors = navColors
         )
         NavigationBarItem(
             selected = current == FinanceTab.STATS,
             onClick = { onSelect(FinanceTab.STATS) },
-            icon = { Icon(Icons.Filled.BarChart, contentDescription = "Stats") },
-            label = { Text("Stats") },
+            icon = { Icon(Icons.Filled.BarChart, contentDescription = "Insight") },
+            label = { Text("Insight") },
             colors = navColors
         )
         NavigationBarItem(

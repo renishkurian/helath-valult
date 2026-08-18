@@ -504,6 +504,40 @@ def summary(
     )
 
 
+def build_dashboard(db: Session, user: models.User, year_month: str | None = None) -> dict:
+    """Home snapshot: totals, top category, biggest spend, recent rows, one insight."""
+    ensure_defaults(db, user)
+    ym = year_month or datetime.utcnow().strftime("%Y-%m")
+    snap = summary(year_month=ym, db=db, current_user=user)
+    report = reports(year_month=ym, kind="expense", db=db, current_user=user)
+    ledger = month_ledger(db, user, ym)
+    txns = ledger.get("txns") or []
+    expenses = [t for t in txns if t.txn_type == "expense"]
+    top_row = (report.get("rows") or [None])[0]
+    highest = max(expenses, key=lambda t: t.amount, default=None)
+    insight = "Add a few expenses to see where this month is going."
+    if top_row and snap.expense > 0:
+        pct = int(round(float(top_row.get("pct") or 0)))
+        insight = f"{top_row['name']} is {pct}% of this month’s spend."
+        if highest and highest.payee and highest.payee != top_row["name"]:
+            insight += f" Largest single hit: {highest.payee} ({inr(highest.amount)})."
+    elif snap.income > 0 and snap.expense == 0:
+        insight = "Income is in and spend is still zero — a quiet month so far."
+    y, m = [int(p) for p in ym.split("-")]
+    return {
+        "year_month": ym,
+        "label": datetime(y, m, 1).strftime("%b %Y"),
+        "prev": _shift_month(ym, -1),
+        "next": _shift_month(ym, 1),
+        "summary": snap,
+        "top_category": top_row,
+        "highest": highest,
+        "recent": txns[:8],
+        "insight": insight,
+        "report_rows": (report.get("rows") or [])[:4],
+    }
+
+
 # ---------- accounts ----------
 @router.get("/accounts", response_model=list[schemas.FinanceAccountOut])
 def list_accounts(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -727,6 +761,64 @@ def create_transaction(
         ))
     db.commit()
     db.refresh(row)
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+
+
+@router.put("/transactions/{txn_id}", response_model=schemas.FinanceTxnOut)
+def update_transaction(
+    txn_id: str,
+    body: schemas.FinanceTxnIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    ensure_defaults(db, current_user)
+    row = _get_txn(db, current_user, txn_id)
+    acc = _get_account(db, current_user, body.account_id)
+    txn_type = body.txn_type if body.txn_type in TXN_TYPES else row.txn_type
+    to_id = None
+    if txn_type == "transfer":
+        if not body.to_account_id:
+            raise HTTPException(400, "Transfer needs a destination account")
+        dest = _get_account(db, current_user, body.to_account_id)
+        to_id = dest.id
+    if body.amount <= 0:
+        raise HTTPException(400, "Amount must be greater than 0")
+    if body.category_id:
+        cat = _get_category(db, current_user, body.category_id)
+        _assert_category_for_account(cat, acc.id)
+    method = _clean_method(body.payment_method)
+    desc = (body.description or "").strip() or None
+    if not desc:
+        desc = build_description(method, body.payee, None)
+    row.account_id = acc.id
+    row.to_account_id = to_id
+    row.category_id = body.category_id
+    row.txn_type = txn_type
+    row.amount = _dec(body.amount)
+    row.txn_date = body.txn_date
+    row.txn_time = body.txn_time
+    row.payee = (body.payee or "").strip() or None
+    row.notes = (body.notes or "").strip() or None
+    row.description = desc
+    row.payment_method = method
+    if body.tags is not None:
+        row.tags = body.tags
+    db.commit()
+    db.refresh(row)
+    uid = _owned(db, current_user)
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+
+
+@router.get("/transactions/{txn_id}", response_model=schemas.FinanceTxnOut)
+def get_transaction(
+    txn_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _get_txn(db, current_user, txn_id)
+    uid = _owned(db, current_user)
     return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
 
 

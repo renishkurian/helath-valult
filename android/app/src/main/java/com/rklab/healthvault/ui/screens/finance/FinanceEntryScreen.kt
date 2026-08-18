@@ -42,6 +42,7 @@ import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.Instant
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
@@ -59,7 +60,8 @@ fun FinanceAddScreen(
     repository: HealthVaultRepository,
     onDone: () -> Unit,
     onBack: () -> Unit = onDone,
-    prefillAccountId: String? = null
+    prefillAccountId: String? = null,
+    txnId: String? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -124,10 +126,30 @@ fun FinanceAddScreen(
     LaunchedEffect(Unit) {
         scope.launch {
             accounts = repository.listFinanceAccounts()
-            if (accountId == null) accountId = accounts.firstOrNull()?.id
-            toAccountId = accounts.firstOrNull { it.id != accountId }?.id
+            if (!txnId.isNullOrBlank()) {
+                runCatching { repository.getFinanceTransaction(txnId) }.onSuccess { t ->
+                    txnType = t.txn_type
+                    accountId = t.account_id
+                    toAccountId = t.to_account_id
+                    categoryId = t.category_id
+                    amount = if (t.amount == t.amount.toLong().toDouble()) t.amount.toLong().toString() else t.amount.toString()
+                    payee = t.payee.orEmpty()
+                    description = t.description.orEmpty()
+                    paymentMethod = t.payment_method
+                    val date = runCatching { LocalDate.parse(t.txn_date) }.getOrNull() ?: LocalDate.now()
+                    val time = runCatching {
+                        LocalTime.parse((t.txn_time ?: "12:00").take(5))
+                    }.getOrDefault(LocalTime.now().withSecond(0).withNano(0))
+                    whenAt = LocalDateTime.of(date, time)
+                }.onFailure { error = it.message }
+            } else {
+                if (accountId == null) accountId = accounts.firstOrNull()?.id
+                toAccountId = accounts.firstOrNull { it.id != accountId }?.id
+            }
             categories = repository.listFinanceCategories(accountId)
-            categoryId = categories.firstOrNull { it.kind == txnType && it.parent_id == null }?.id
+            if (txnId.isNullOrBlank()) {
+                categoryId = categories.firstOrNull { it.kind == txnType && it.parent_id == null }?.id
+            }
         }
     }
     LaunchedEffect(accountId) { reloadCats() }
@@ -136,6 +158,7 @@ fun FinanceAddScreen(
         it.kind == txnType && (it.account_id == null || it.account_id == accountId)
     }
     LaunchedEffect(txnType, categories, accountId) {
+        if (visibleCats.isEmpty()) return@LaunchedEffect
         if (visibleCats.none { it.id == categoryId }) {
             categoryId = visibleCats.firstOrNull { it.parent_id == null }?.id
         }
@@ -159,7 +182,7 @@ fun FinanceAddScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Ink)
             }
             Text(
-                txnType.replaceFirstChar { it.uppercase() },
+                if (txnId.isNullOrBlank()) txnType.replaceFirstChar { it.uppercase() } else "Edit ${txnType}",
                 color = Ink,
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
@@ -253,21 +276,24 @@ fun FinanceAddScreen(
                     saving = true
                     scope.launch {
                         runCatching {
-                            val created = repository.createFinanceTransaction(
-                                FinanceTxnIn(
-                                    account_id = acc,
-                                    to_account_id = if (txnType == "transfer") toAccountId else null,
-                                    category_id = if (txnType == "transfer") null else categoryId,
-                                    txn_type = txnType,
-                                    amount = amt,
-                                    txn_date = whenAt.toLocalDate().toString(),
-                                    txn_time = whenAt.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm")),
-                                    payee = payee.ifBlank { null },
-                                    description = description.ifBlank { null },
-                                    payment_method = paymentMethod
-                                )
+                            val body = FinanceTxnIn(
+                                account_id = acc,
+                                to_account_id = if (txnType == "transfer") toAccountId else null,
+                                category_id = if (txnType == "transfer") null else categoryId,
+                                txn_type = txnType,
+                                amount = amt,
+                                txn_date = whenAt.toLocalDate().toString(),
+                                txn_time = whenAt.toLocalTime().format(DateTimeFormatter.ofPattern("HH:mm")),
+                                payee = payee.ifBlank { null },
+                                description = description.ifBlank { null },
+                                payment_method = paymentMethod
                             )
-                            receiptFile?.let { repository.uploadFinanceImage(created.id, it) }
+                            val saved = if (!txnId.isNullOrBlank()) {
+                                repository.updateFinanceTransaction(txnId, body)
+                            } else {
+                                repository.createFinanceTransaction(body)
+                            }
+                            receiptFile?.let { repository.uploadFinanceImage(saved.id, it) }
                         }.onSuccess { onDone() }.onFailure { error = it.message }
                         saving = false
                     }
@@ -276,7 +302,7 @@ fun FinanceAddScreen(
                 modifier = Modifier.fillMaxWidth().padding(20.dp).height(48.dp),
                 shape = RoundedCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = accent)
-            ) { Text(if (saving) "Saving…" else "Save", color = Color.White, fontWeight = FontWeight.Bold) }
+            ) { Text(if (saving) "Saving…" else if (txnId.isNullOrBlank()) "Save" else "Update", color = Color.White, fontWeight = FontWeight.Bold) }
         }
     }
 

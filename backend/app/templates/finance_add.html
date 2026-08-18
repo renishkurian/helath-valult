@@ -1,8 +1,12 @@
 {% extends "base.html" %}
-{% block title %}{{ txn_type|capitalize }}{% endblock %}
+{% block title %}{% if edit_txn %}Edit{% else %}{{ txn_type|capitalize }}{% endif %}{% endblock %}
 {% block content %}
 {% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
 {% set acct_q = ('&account_id=' ~ prefill_account_id) if prefill_account_id else '' %}
+{% set editing = edit_txn is defined and edit_txn %}
+{% set form_action = ('/admin/finance/transactions/' ~ edit_txn.id ~ '/edit') if editing else '/admin/finance/add' %}
+{% set type_base = ('/admin/finance/transactions/' ~ edit_txn.id ~ '/edit?txn_type=') if editing else ('/admin/finance/add?txn_type=') %}
+{% set type_suffix = '' if editing else acct_q %}
 
 <div class="page-head">
   <div class="d-flex align-items-center gap-3">
@@ -11,7 +15,7 @@
     </a>
     <div>
       <div class="eyebrow">Money Manager</div>
-      <h1 class="page-title">New {{ txn_type }}</h1>
+      <h1 class="page-title">{% if editing %}Edit {{ txn_type }}{% else %}New {{ txn_type }}{% endif %}</h1>
     </div>
   </div>
 </div>
@@ -20,32 +24,33 @@
   <div class="col-lg-7 col-xl-6">
 
     <div class="seg seg-block mb-3">
-      <a class="on-income {% if txn_type=='income' %}active{% endif %}" href="/admin/finance/add?txn_type=income{{ acct_q }}">
+      <a class="on-income {% if txn_type=='income' %}active{% endif %}" href="{{ type_base }}income{{ type_suffix }}">
         <i class="bi bi-arrow-down-left"></i> Income
       </a>
-      <a class="on-expense {% if txn_type=='expense' %}active{% endif %}" href="/admin/finance/add?txn_type=expense{{ acct_q }}">
+      <a class="on-expense {% if txn_type=='expense' %}active{% endif %}" href="{{ type_base }}expense{{ type_suffix }}">
         <i class="bi bi-arrow-up-right"></i> Expense
       </a>
-      <a class="on-transfer {% if txn_type=='transfer' %}active{% endif %}" href="/admin/finance/add?txn_type=transfer{{ acct_q }}">
+      <a class="on-transfer {% if txn_type=='transfer' %}active{% endif %}" href="{{ type_base }}transfer{{ type_suffix }}">
         <i class="bi bi-arrow-left-right"></i> Transfer
       </a>
     </div>
 
-    <form class="card" method="post" action="/admin/finance/add" enctype="multipart/form-data" id="entry-form">
+    <form class="card" method="post" action="{{ form_action }}" enctype="multipart/form-data" id="entry-form">
       <div class="card-body">
         <input type="hidden" name="txn_type" value="{{ txn_type }}">
-        <input type="hidden" name="account_id" id="account_id" value="{{ prefill_account_id or (accounts[0].id if accounts else '') }}">
+        <input type="hidden" name="account_id" id="account_id" value="{{ (edit_txn.account_id if editing else prefill_account_id) or (accounts[0].id if accounts else '') }}">
         {% if txn_type=='transfer' %}
-        <input type="hidden" name="to_account_id" id="to_account_id" value="{{ accounts[1].id if accounts|length > 1 else (accounts[0].id if accounts else '') }}">
+        <input type="hidden" name="to_account_id" id="to_account_id" value="{{ (edit_txn.to_account_id if editing and edit_txn.to_account_id else (accounts[1].id if accounts|length > 1 else (accounts[0].id if accounts else ''))) }}">
         {% endif %}
-        <input type="hidden" name="category_id" id="category_id" value="">
-        <input type="hidden" name="payment_method" id="payment_method" value="other">
+        <input type="hidden" name="category_id" id="category_id" value="{{ edit_txn.category_id if editing and edit_txn.category_id else '' }}">
+        <input type="hidden" name="payment_method" id="payment_method" value="{{ (edit_txn.payment_method if editing and edit_txn.payment_method else 'other') }}">
 
         <label class="form-label" for="amount">Amount <span class="req">*</span></label>
         <div class="amount-well mb-3">
           <span class="cur">₹</span>
           <input class="form-control amount-input" id="amount" type="number" name="amount"
-                 step="0.01" min="0.01" required placeholder="0.00" inputmode="decimal">
+                 step="0.01" min="0.01" required placeholder="0.00" inputmode="decimal"
+                 value="{{ '%.2f'|format(edit_txn.amount|float) if editing else '' }}">
         </div>
 
         <div class="list-rows">
@@ -102,22 +107,25 @@
             <input class="form-control" id="txn_time" type="time" name="txn_time" value="{{ now }}">
           </div>
           <div class="col-12">
-            <label class="form-label" for="payee">Payee</label>
-            <input class="form-control" id="payee" type="text" name="payee" placeholder="Swiggy, salary, Mixi…">
+            <label class="form-label" for="payee">Payee / title</label>
+            <input class="form-control" id="payee" type="text" name="payee" placeholder="Swiggy, salary, Mixi…"
+                   value="{{ (edit_txn.payee or '') if editing else '' }}">
           </div>
           <div class="col-12">
             <label class="form-label" for="description">Notes</label>
-            <textarea class="form-control" id="description" name="description" rows="2" placeholder="Optional details"></textarea>
+            <textarea class="form-control" id="description" name="description" rows="2" placeholder="Optional details">{% if editing %}{{ edit_txn.notes or edit_txn.description or '' }}{% endif %}</textarea>
           </div>
           <div class="col-12">
             <label class="form-label" for="receipt">Receipt photo</label>
             <input class="form-control" id="receipt" type="file" name="image" accept="image/*">
-            <div class="form-text" id="receipt-name" hidden></div>
+            <div class="form-text" id="receipt-name" {% if not (editing and edit_txn.image_path) %}hidden{% endif %}>
+              {% if editing and edit_txn.image_path %}Current photo kept unless you upload a new one.{% endif %}
+            </div>
           </div>
         </div>
 
         <button class="btn btn-primary btn-lg btn-block mt-4" type="submit">
-          <i class="bi bi-check2"></i> Save {{ txn_type }}
+          <i class="bi bi-check2"></i> {% if editing %}Save changes{% else %}Save {{ txn_type }}{% endif %}
         </button>
       </div>
     </form>
@@ -278,25 +286,24 @@
       }
     }
     if(kind === "to") document.getElementById("to_account_id").value = id;
-    if(kind === "category") document.getElementById("category_id").value = id;
     if(kind === "method") document.getElementById("payment_method").value = id;
+    if(kind === "category") document.getElementById("category_id").value = id;
     syncLabels();
     closeSheet();
   });
 
-  document.getElementById("receipt").addEventListener("change", function(e){
-    var n = document.getElementById("receipt-name");
-    var f = e.target.files && e.target.files[0];
-    n.hidden = !f;
-    n.textContent = f ? f.name : "";
-  });
+  var receipt = document.getElementById("receipt");
+  var receiptName = document.getElementById("receipt-name");
+  if(receipt && receiptName){
+    receipt.addEventListener("change", function(){
+      if(receipt.files && receipt.files[0]){
+        receiptName.hidden = false;
+        receiptName.textContent = receipt.files[0].name;
+      }
+    });
+  }
 
-  (function initCat(){
-    var parents = visibleCats().filter(function(c){ return !c.parent_id; });
-    var cat = document.getElementById("category_id");
-    if(parents[0] && cat && !cat.value) cat.value = parents[0].id;
-    syncLabels();
-  })();
+  syncLabels();
 })();
 </script>
 {% endblock %}

@@ -2773,6 +2773,39 @@ def _fn_user(request, db):
 
 
 @router.get("/finance", response_class=HTMLResponse)
+def finance_home(
+    request: Request,
+    month: Optional[str] = None,
+    view: Optional[str] = None,
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import build_dashboard, inr, _shift_month
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    if view or q:
+        qs = []
+        if month:
+            qs.append(f"month={month}")
+        if view:
+            qs.append(f"view={view}")
+        if q:
+            from urllib.parse import quote
+            qs.append(f"q={quote(q)}")
+        return RedirectResponse("/admin/finance/transactions" + (("?" + "&".join(qs)) if qs else ""), status_code=302)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    try:
+        datetime.strptime(ym + "-01", "%Y-%m-%d")
+    except ValueError:
+        ym = datetime.utcnow().strftime("%Y-%m")
+    dash = build_dashboard(db, user, ym)
+    return templates.TemplateResponse("finance_home.html", _fn_ctx(
+        request, user, "fn_home", dash=dash, inr=inr, _shift_month=_shift_month,
+    ))
+
+
+@router.get("/finance/transactions", response_class=HTMLResponse)
 def finance_trans(
     request: Request,
     month: Optional[str] = None,
@@ -2863,6 +2896,92 @@ def finance_add(
     return RedirectResponse("/admin/finance", status_code=302)
 
 
+@router.get("/finance/transactions/{txn_id}/edit", response_class=HTMLResponse)
+def finance_edit_page(
+    txn_id: str,
+    request: Request,
+    txn_type: str = "",
+    db: Session = Depends(get_db),
+):
+    from app.routers import finance as fn
+    from app.routers.finance import inr, _get_txn
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        row = _get_txn(db, user, txn_id)
+    except Exception:
+        return RedirectResponse("/admin/finance", status_code=302)
+    accounts = fn.list_accounts(db=db, current_user=user)
+    categories = fn.list_categories(db=db, current_user=user)
+    kind = txn_type if txn_type in ("income", "expense", "transfer") else (row.txn_type or "expense")
+    if kind not in ("income", "expense", "transfer"):
+        kind = "expense"
+    cats_json = json.dumps([
+        {
+            "id": str(c.id), "name": c.name, "kind": c.kind,
+            "parent_id": str(c.parent_id) if c.parent_id else None,
+            "account_id": str(c.account_id) if c.account_id else None,
+        }
+        for c in categories
+    ])
+    accts_json = json.dumps([
+        {"id": str(a.id), "name": a.name, "account_type": a.account_type} for a in accounts
+    ])
+    return templates.TemplateResponse("finance_add.html", _fn_ctx(
+        request, user, "fn_trans", accounts=accounts, categories=categories,
+        txn_type=kind, today=row.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
+        now=(row.txn_time or datetime.utcnow().strftime("%H:%M"))[:5],
+        inr=inr, prefill_account_id=row.account_id,
+        cats_json=cats_json, accts_json=accts_json,
+        edit_txn=row,
+    ))
+
+
+@router.post("/finance/transactions/{txn_id}/edit")
+def finance_edit_save(
+    txn_id: str,
+    request: Request,
+    txn_type: str = Form("expense"),
+    account_id: str = Form(...),
+    to_account_id: str = Form(""),
+    category_id: str = Form(""),
+    amount: str = Form(...),
+    txn_date: str = Form(...),
+    txn_time: str = Form(""),
+    payee: str = Form(""),
+    notes: str = Form(""),
+    description: str = Form(""),
+    payment_method: str = Form(""),
+    image: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import update_transaction, save_txn_image
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        update_transaction(
+            txn_id,
+            sc.FinanceTxnIn(
+                account_id=account_id, to_account_id=to_account_id or None,
+                category_id=category_id or None, txn_type=txn_type, amount=float(amount or 0),
+                txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
+                notes=notes or None, description=description or None,
+                payment_method=payment_method or None,
+            ),
+            db=db, current_user=user,
+        )
+    except HTTPException:
+        return RedirectResponse(f"/admin/finance/transactions/{txn_id}/edit?err=1", status_code=302)
+    if image and image.filename:
+        raw = image.file.read()
+        if raw:
+            save_txn_image(db, user, txn_id, raw, image.content_type)
+    return RedirectResponse("/admin/finance", status_code=302)
+
+
 @router.get("/finance/transactions/{txn_id}/image")
 def finance_txn_image(txn_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.finance import get_transaction_image
@@ -2886,7 +3005,7 @@ async def finance_bulk_delete_txns(request: Request, db: Session = Depends(get_d
     if ids:
         bulk_delete_transactions(sc.BulkIds(ids=ids), db=db, current_user=user)
     qs = f"?month={month}&view={view}" if month else f"?view={view}"
-    return RedirectResponse(f"/admin/finance{qs}", status_code=302)
+    return RedirectResponse(f"/admin/finance/transactions{qs}", status_code=302)
 
 
 @router.post("/finance/transactions/{txn_id}/delete")
@@ -2899,7 +3018,7 @@ def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_
     month = (request.query_params.get("month") or "").strip()
     view = (request.query_params.get("view") or "daily").strip() or "daily"
     qs = f"?month={month}&view={view}" if month else ""
-    return RedirectResponse(f"/admin/finance{qs}", status_code=302)
+    return RedirectResponse(f"/admin/finance/transactions{qs}", status_code=302)
 
 
 @router.get("/finance/stats", response_class=HTMLResponse)

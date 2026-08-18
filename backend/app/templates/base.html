@@ -34,7 +34,8 @@
 {% elif active_module == 'finance' %}
   {% set mod_key = 'finance' %}
   {% set nav_items = [
-    {'key':'fn_trans','label':'Transactions','short':'Home','href':'/admin/finance','icon':'bi-receipt'},
+    {'key':'fn_home','label':'Home','short':'Home','href':'/admin/finance','icon':'bi-house'},
+    {'key':'fn_trans','label':'Transactions','short':'List','href':'/admin/finance/transactions','icon':'bi-receipt'},
     {'key':'fn_stats','label':'Stats','short':'Stats','href':'/admin/finance/stats','icon':'bi-bar-chart'},
     {'key':'fn_accounts','label':'Accounts','short':'Money','href':'/admin/finance/accounts','icon':'bi-wallet2'},
     {'key':'fn_more','label':'More','short':'More','href':'/admin/finance/more','icon':'bi-grid'}
@@ -223,7 +224,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=37">
+<link rel="stylesheet" href="/static/vault.css?v=38">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">

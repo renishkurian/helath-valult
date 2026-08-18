@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Money Manager{% endblock %}
+{% block content %}
+{% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
+{% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
+{% set s = dash.summary %}
+
+<div class="mm-dash-head">
+  <div>
+    <div class="eyebrow">Money Manager</div>
+    <h1 class="page-title">Home</h1>
+    <p class="mm-dash-sub">Track every rupee. Understand every expense.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.prev }}" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <span class="mm-dash-month">{{ dash.label }}</span>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.next }}" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+</div>
+
+<section class="mm-hero mb-3" aria-label="Total balance">
+  <div class="mm-hero-kicker">Total balance</div>
+  <div class="mm-hero-row">
+    <div class="mm-hero-val">{{ inr(s.net) }}</div>
+    <span class="mm-hero-badge">Active</span>
+  </div>
+  <div class="mm-hero-net {% if s.total >= 0 %}mm-income{% else %}mm-expense{% endif %}">
+    Net this month {{ inr(s.total) }} · opening {{ inr(s.opening) }}
+  </div>
+  <div class="mm-hero-orbs" aria-hidden="true"></div>
+</section>
+
+<div class="mm-split mb-3">
+  <div class="mm-split-card in">
+    <div class="mm-split-ico"><i class="bi bi-wallet2"></i></div>
+    <div>
+      <div class="mm-split-lbl">Income</div>
+      <div class="mm-split-val mm-income">{{ inr(s.income) }}</div>
+    </div>
+  </div>
+  <div class="mm-split-card out">
+    <div class="mm-split-ico"><i class="bi bi-bag"></i></div>
+    <div>
+      <div class="mm-split-lbl">Expenses</div>
+      <div class="mm-split-val mm-expense">{{ inr(s.expense) }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="mm-split mb-4">
+  <div class="mm-split-card">
+    <div class="mm-split-lbl">Top category</div>
+    {% if dash.top_category %}
+    <div class="mm-split-name">{{ dash.top_category.name }}</div>
+    <div class="mm-split-meta">{{ inr(dash.top_category.amount) }} · {{ dash.top_category.pct|int }}% of spend</div>
+    {% else %}
+    <div class="mm-split-name text-muted">No spend yet</div>
+    {% endif %}
+  </div>
+  <div class="mm-split-card">
+    <div class="mm-split-lbl">Highest spend</div>
+    {% if dash.highest %}
+    <div class="mm-split-name">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
+    <div class="mm-split-meta mm-expense">{{ inr(dash.highest.amount) }}{% if dash.highest.category_name %} · {{ dash.highest.category_name }}{% endif %}</div>
+    {% else %}
+    <div class="mm-split-name text-muted">Nothing posted</div>
+    {% endif %}
+  </div>
+</div>
+
+{% if dash.insight %}
+<section class="mm-insight mb-4">
+  <div class="mm-insight-kicker"><i class="bi bi-stars"></i> Smart insight</div>
+  <p class="mb-0">{{ dash.insight }}</p>
+</section>
+{% endif %}
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+  <h2 class="h6 mb-0">Recent</h2>
+  <a class="small" href="/admin/finance/transactions?month={{ dash.year_month }}">See all</a>
+</div>
+
+{% if dash.recent %}
+<div class="mm-card-list">
+  {% for item in dash.recent %}
+  <a class="mm-card" href="/admin/finance/transactions/{{ item.id }}/edit">
+    <span class="mm-card-ico {{ item.txn_type }}">
+      <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
+    </span>
+    <span class="mm-card-body">
+      <span class="mm-card-title truncate">{{ item.payee or item.category_name or item.txn_type }}</span>
+      <span class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</span>
+      <span class="mm-card-when">{{ item.txn_date }}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</span>
+    </span>
+    <span class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
+      {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}
+    </span>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-wallet2"></i></div>
+    <div class="empty-title">Nothing this month yet</div>
+    <p>Log income or an expense and the dashboard fills in.</p>
+    <a class="btn btn-primary" href="/admin/finance/add"><i class="bi bi-plus-lg"></i> Add the first entry</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="mm-fab-spacer" aria-hidden="true"></div>
+<a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
+{% endblock %}

@@ -86,10 +86,11 @@ private object Routes {
     const val VAULT_ITEM = "vault_item/{itemId}"
     const val VAULT_EDIT = "vault_edit?itemId={itemId}&type={type}"
     const val FINANCE = "finance"
+    const val FINANCE_TRANS = "finance_trans"
     const val FINANCE_STATS = "finance_stats"
     const val FINANCE_ACCOUNTS = "finance_accounts"
     const val FINANCE_MORE = "finance_more"
-    const val FINANCE_ADD = "finance_add?accountId={accountId}"
+    const val FINANCE_ADD = "finance_add?accountId={accountId}&txnId={txnId}"
     const val FINANCE_ACCOUNT = "finance_account/{accountId}"
     const val FINANCE_INBOX = "finance_inbox"
     const val FINANCE_EMI = "finance_emi"
@@ -127,7 +128,8 @@ private object Routes {
     fun urlsItem(itemId: String) = "urls_item/$itemId"
     fun trackerList(listId: String) = "tracker_list/$listId"
 
-    fun financeAdd(accountId: String? = null) = "finance_add?accountId=${accountId ?: ""}"
+    fun financeAdd(accountId: String? = null, txnId: String? = null) =
+        "finance_add?accountId=${accountId ?: ""}&txnId=${txnId ?: ""}"
     fun financeAccount(accountId: String) = "finance_account/$accountId"
 
     fun vaultSends(itemId: String? = null) = "vault_sends?itemId=${itemId ?: ""}"
@@ -246,7 +248,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
 
     val mainTabs = setOf(Routes.HOME, Routes.DOCTORS, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
-    val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
+    val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_TRANS, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
     val diaryTabs = setOf(Routes.DIARY, Routes.DIARY_PINNED)
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
@@ -338,14 +340,16 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 }
             } else if (currentRoute in financeTabs || onFinanceAccount) {
                 val current = when {
+                    currentRoute == Routes.FINANCE_TRANS -> FinanceTab.TRANS
                     currentRoute == Routes.FINANCE_STATS -> FinanceTab.STATS
                     currentRoute == Routes.FINANCE_ACCOUNTS || onFinanceAccount -> FinanceTab.ACCOUNTS
                     currentRoute == Routes.FINANCE_MORE -> FinanceTab.MORE
-                    else -> FinanceTab.TRANS
+                    else -> FinanceTab.HOME
                 }
                 FinanceBottomNav(current = current) { tab ->
                     val route = when (tab) {
-                        FinanceTab.TRANS -> Routes.FINANCE
+                        FinanceTab.HOME -> Routes.FINANCE
+                        FinanceTab.TRANS -> Routes.FINANCE_TRANS
                         FinanceTab.STATS -> Routes.FINANCE_STATS
                         FinanceTab.ACCOUNTS -> Routes.FINANCE_ACCOUNTS
                         FinanceTab.MORE -> Routes.FINANCE_MORE
@@ -765,10 +769,20 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             }
 
             composable(Routes.FINANCE) {
+                FinanceHomeScreen(
+                    repository = repository,
+                    onAdd = { navController.navigate(Routes.financeAdd()) },
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    onSeeAll = { navController.navigate(Routes.FINANCE_TRANS) },
+                    onEdit = { id -> navController.navigate(Routes.financeAdd(txnId = id)) }
+                )
+            }
+            composable(Routes.FINANCE_TRANS) {
                 FinanceTransScreen(
                     repository = repository,
                     onAdd = { navController.navigate(Routes.financeAdd()) },
-                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                    onOpenModules = { navController.navigate(Routes.MODULES) },
+                    onEdit = { id -> navController.navigate(Routes.financeAdd(txnId = id)) }
                 )
             }
             composable(Routes.FINANCE_STATS) { FinanceStatsScreen(repository) }
@@ -802,14 +816,19 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             }
             composable(
                 Routes.FINANCE_ADD,
-                arguments = listOf(navArgument("accountId") { type = NavType.StringType; nullable = true; defaultValue = "" })
+                arguments = listOf(
+                    navArgument("accountId") { type = NavType.StringType; nullable = true; defaultValue = "" },
+                    navArgument("txnId") { type = NavType.StringType; nullable = true; defaultValue = "" }
+                )
             ) { entry ->
                 val prefill = entry.arguments?.getString("accountId")?.takeIf { it.isNotBlank() }
+                val txnId = entry.arguments?.getString("txnId")?.takeIf { it.isNotBlank() }
                 FinanceAddScreen(
                     repository = repository,
                     onDone = { navController.popBackStack() },
                     onBack = { navController.popBackStack() },
-                    prefillAccountId = prefill
+                    prefillAccountId = prefill,
+                    txnId = txnId
                 )
             }
             composable(Routes.FINANCE_INBOX) {
