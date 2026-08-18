@@ -1232,6 +1232,7 @@ def _items_query(
     q: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    direction: str | None = None,
 ):
     uid = vault_id(user)
     qry = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
@@ -1244,6 +1245,11 @@ def _items_query(
     methods = METHOD_FILTERS.get((method or "").strip().lower())
     if methods:
         qry = qry.filter(models.ExpenseAnalyserItem.payment_method.in_(methods))
+    flow = (direction or "").strip().lower()
+    if flow == "credit":
+        qry = qry.filter(models.ExpenseAnalyserItem.direction == "credit")
+    elif flow == "debit":
+        qry = qry.filter(models.ExpenseAnalyserItem.direction != "credit")
     needle = (q or "").strip()
     if needle:
         like = f"%{needle}%"
@@ -1283,12 +1289,13 @@ def list_items(
     q: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    direction: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[models.ExpenseAnalyserItem]:
     qry = _items_query(
         db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, direction=direction,
     )
     date_key = _item_date_expr()
     return (
@@ -1310,10 +1317,11 @@ def count_items(
     q: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
+    direction: str | None = None,
 ) -> int:
     qry = _items_query(
         db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
-        date_from=date_from, date_to=date_to,
+        date_from=date_from, date_to=date_to, direction=direction,
     )
     return int(qry.count() or 0)
 

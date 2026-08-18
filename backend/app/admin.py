@@ -4305,6 +4305,7 @@ def expense_analyser_home(
     q: str = "",
     date_from: str = "",
     date_to: str = "",
+    direction: str = "",
     page: int = 1,
     db: Session = Depends(get_db),
 ):
@@ -4321,10 +4322,12 @@ def expense_analyser_home(
     filter_q = (q or "").strip()[:80]
     filter_from = ea._clean_day(date_from) or ""
     filter_to = ea._clean_day(date_to) or ""
+    filter_dir = direction if direction in ("debit", "credit") else ""
     open_statuses = ("pending", "missed", "matched", "corrected")
     list_kw = dict(
         method=filter_method or None, q=filter_q or None,
         date_from=filter_from or None, date_to=filter_to or None,
+        direction=filter_dir or None,
     )
     if filter_status:
         total = ea.count_items(db, user, status=filter_status, **list_kw)
@@ -4370,12 +4373,13 @@ def expense_analyser_home(
         q=filter_q or None,
         date_from=filter_from or None,
         date_to=filter_to or None,
+        direction=filter_dir or None,
     )
     return templates.TemplateResponse("expense_analyser.html", _ea_ctx(
         request, user, "ea_inbox",
         status=st, items=items, accounts=accounts,
         filter_status=filter_status, filter_method=filter_method, filter_q=filter_q,
-        filter_from=filter_from, filter_to=filter_to, period=period,
+        filter_from=filter_from, filter_to=filter_to, filter_dir=filter_dir, period=period,
         inr=inr,
         pager=pager, pager_prev=pager_prev, pager_next=pager_next,
         ea_cats=ea_cats, cat_picks=cat_picks,
