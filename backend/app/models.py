@@ -2,7 +2,8 @@ import enum
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, String, DateTime, ForeignKey, Enum, Boolean, Integer, Text, Numeric, Table
+    Column, String, DateTime, ForeignKey, Enum, Boolean, Integer, Text, Numeric, Table,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -781,6 +782,23 @@ class AiChatMessage(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     thread = relationship("AiChatThread", back_populates="messages")
+
+
+class AiBrainMemory(Base):
+    """Durable household facts Ask AI learns and reuses (encrypted at rest)."""
+    __tablename__ = "ai_brain_memories"
+    __table_args__ = (
+        UniqueConstraint("user_id", "slug", name="uq_ai_brain_user_slug"),
+    )
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    kind = Column(String(20), nullable=False, default="fact")  # fact | preference | alias | habit
+    slug = Column(String(80), nullable=False)
+    content_enc = Column(Text, nullable=False)
+    source = Column(String(20), nullable=False, default="chat")  # chat | action | manual
+    active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AiUsageLog(Base):

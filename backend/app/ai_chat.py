@@ -1,9 +1,9 @@
 """Ask AI — vault-wide Q&A over Health, Money, Expense Analyser, Shopping List,
 Digital Diary, Locker, URLs.
 
-Secrets stay out of the prompt: no password vault plaintext, locker ID numbers,
-hospital patient IDs, or API keys. The model only sees titles, dates, amounts,
-and similar metadata.
+Secrets stay out of the prompt: no password vault plaintext or names, locker ID
+numbers, medical record text, or API keys. Password and medical questions are
+answered on this server with view links — they never go to the AI provider.
 """
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ When the user asks for:
 - a doctor / specialist / phone number (e.g. gynaecology, paediatrician, “Dr Mehta number”): use the Doctors directory in the snapshot. Answer with name, specialty, hospital, and phone. If several match, list them. If none match, say so and suggest opening Health Vault → Doctors.
 - spend / income lookups: use Money Manager ledger figures only. Digital Diary charges/notes are journal text — never treat them as today’s (or any day’s) Money Manager expense total unless the user asked about the diary. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant; do not count unposted alerts as ledger spend.
 - “today” / “todays” / “ippo” spend: use the snapshot line “Today (Money Manager)” and that date’s listed ledger rows. Do not use a different date from chat history or diary.
+- highest / biggest / costliest paid item or purchase: use Money Manager ledger rows. The **payee** is the item/title (e.g. Home Purchase, HDFC Bank). Category names like Shopping are not the item. Shopping List grocery rows usually have no rupee amount — do not invent one. If a payee is listed, never say the name is missing.
 - a credit-card (or any account) statement for a month: list that account's transactions for the month with date, payee, category, amount, and a total. Say if the account was not found.
 - shopping / groceries / “did I buy X” / “X vaangiya?”: use the Shopping List section and any Manglish glossary hints. Prefer item names over merchant payees for products (oil/enna, rice/ari, atta, etc.).
 - create / suggest a shopping list: propose a clear list from the snapshot (history frequencies and/or items the user named, including Manglish). Explain briefly, then emit ONE vault-action block (see below) so the user can approve creation.
@@ -50,8 +51,7 @@ When the user asks for:
   - If destination is unclear → briefly confirm amount + what they spent on, then ask: Money Manager (ledger) or Digital Diary (journal)? Do NOT emit any vault-action until they choose.
   - Short follow-ups like “money”, “money manager”, “ledger”, “diary”, “dairy” refer to the latest expense in the thread — then emit the matching vault-action.
 - calculate / total / split charges then save: show a markdown table with Total; ask Money Manager vs Diary if unclear; emit create_finance_txn or create_diary_entry only after they choose (or if they already chose).
-- IDs / Aadhaar / PAN: you may name the Document Vault item and expiry, never an ID number (those are omitted on purpose).
-- passwords / logins: you may name entries. Never claim to know a password.
+- IDs / Aadhaar / PAN / medical records / passwords: those details are NOT in this snapshot and must not be guessed. The app answers those on the server with a view link. Never invent a password, ID number, lab value, or hospital report.
 
 Creating a shopping list — after your normal markdown answer, if (and only if) the user wants a new list created, append exactly one fenced block:
 
@@ -88,6 +88,16 @@ Rules for vault-action:
 - Do NOT emit vault-action while asking Money Manager vs Diary — wait for their choice
 - For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes, folders, or ledger rows the user is dictating, use their words freely.
 
+Household brain — if the snapshot has a HOUSEHOLD BRAIN section, treat those as lasting preferences (brands, aliases, default accounts, “we always…”). Do not let them override live ledger totals or shopping-list rows.
+
+When the user teaches a lasting fact, preference, nickname, or correction (e.g. “remember…”, “always use Home for petrol”, “ulli means shallot here”), after your normal answer emit ONE vault-memory block. Skip one-off questions. Never store passwords, OTPs, ID numbers, card numbers, or medical report values.
+
+```vault-memory
+{"memories":[{"kind":"preference","slug":"cooking-oil","content":"Prefer coconut oil, not sunflower"}]}
+```
+
+kind must be fact, preference, alias, or habit. slug is a short kebab-case key. content is one short sentence.
+
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
 """
 
@@ -119,7 +129,18 @@ _YESTERDAY_RE = re.compile(
     re.I,
 )
 _FOLLOWUP_RE = re.compile(
-    r"\b(sure|really|confirm|which|list|they|them|details|break\s*down|itemize)\b",
+    r"\b(sure|really|confirm|which|list|they|them|details|break\s*down|itemize|"
+    r"what was that|what is that|item name|the name)\b",
+    re.I,
+)
+_HIGHEST_RE = re.compile(
+    r"\b(highest|highst|hight|hght|costliest|biggest|largest|max(?:imum)?|"
+    r"most\s+expensive|kooduthal)\b",
+    re.I,
+)
+_PURCHASE_RE = re.compile(
+    r"\b(paid|pay|pid|price|priced|item|purchase|purchases|expense|expenses|"
+    r"spend|spent|adichu|vaangi|cost)\b",
     re.I,
 )
 
@@ -209,6 +230,325 @@ def format_money_manager_day_reply(db: Session, user: models.User, day: str) -> 
         )
     lines.append("")
     lines.append("_Source: Money Manager ledger (Digital Diary notes are not counted)._")
+    return "\n".join(lines)
+
+
+def wants_highest_expense(question: str) -> bool:
+    q = (question or "").strip()
+    if not q:
+        return False
+    if not _HIGHEST_RE.search(q):
+        return False
+    return bool(_PURCHASE_RE.search(q) or re.search(r"\b(item|purchase|purchases)\b", q, re.I))
+
+
+def should_answer_highest_expense(
+    question: str,
+    history: list[dict] | None = None,
+) -> bool:
+    if wants_highest_expense(question):
+        return True
+    if not _FOLLOWUP_RE.search(question or ""):
+        return False
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "user":
+            continue
+        if wants_highest_expense(m.get("content") or ""):
+            return True
+        break
+    return False
+
+
+def format_highest_expense_reply(db: Session, user: models.User, question: str = "") -> str:
+    """Largest Money Manager expense in the asked months — never Shopping List or diary."""
+    uid = _uid(user)
+    today = vault_now()
+    months = detect_months(question, today) or [f"{today:%Y-%m}"]
+    starts = [_month_bounds(ym)[0] for ym in months]
+    ends = [_month_bounds(ym)[1] for ym in months]
+    cats = {
+        c.id: c.name
+        for c in db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).all()
+    }
+    accts = {
+        a.id: a.name
+        for a in db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid).all()
+    }
+    rows = (
+        db.query(models.FinanceTransaction)
+        .filter(
+            models.FinanceTransaction.user_id == uid,
+            models.FinanceTransaction.deleted_at.is_(None),
+            models.FinanceTransaction.txn_type == "expense",
+            models.FinanceTransaction.txn_date >= min(starts),
+            models.FinanceTransaction.txn_date <= max(ends),
+        )
+        .order_by(models.FinanceTransaction.amount.desc(), models.FinanceTransaction.txn_date.desc())
+        .limit(5)
+        .all()
+    )
+    window = ", ".join(
+        datetime.strptime(ym + "-01", "%Y-%m-%d").strftime("%b %Y") for ym in months
+    )
+    lines = [
+        f"**Largest Money Manager expense ({window})**",
+        "",
+    ]
+    if not rows:
+        lines.append("There is no expense on the Money Manager ledger in this window.")
+        lines.append("Open Money Manager → Transactions to add one.")
+        lines.append("")
+        lines.append("_Source: Money Manager ledger (not Shopping List, not Digital Diary)._")
+        return "\n".join(lines)
+    top = rows[0]
+    title = (top.payee or "").strip() or cats.get(top.category_id) or "Expense"
+    lines.append(f"**{title}** · **{_inr(top.amount)}**")
+    lines.append(f"- Date: {top.txn_date}")
+    lines.append(f"- Category: {cats.get(top.category_id) or '—'}")
+    lines.append(f"- Account: {accts.get(top.account_id) or '—'}")
+    if top.payment_method:
+        lines.append(f"- Paid by: {top.payment_method.replace('_', ' ')}")
+    if top.description and top.payee and top.description != top.payee:
+        lines.append(f"- Note: {top.description}")
+    if len(rows) > 1:
+        lines.append("")
+        lines.append("Next largest:")
+        for t in rows[1:]:
+            name = (t.payee or "").strip() or cats.get(t.category_id) or "Expense"
+            lines.append(f"- {t.txn_date} · {name} · {_inr(t.amount)}")
+    lines.append("")
+    lines.append("_Source: Money Manager ledger. Payee is the item title; category is only a tag._")
+    return "\n".join(lines)
+
+
+_PASSWORD_ASK_RE = re.compile(
+    r"\b(password|passwd|pwd|passcode|login|logins|credential|credentials|"
+    r"username|user\s*id|userid)\b",
+    re.I,
+)
+_HEALTH_ASK_RE = re.compile(
+    r"\b(medical|health|hospital|lab|labs|report|reports|prescription|"
+    r"scan|x-?ray|blood|allergy|allergies|vaccine|vaccination|doctor|dr\.?|"
+    r"gynae|gyne|paediat|pedia|specialist)\b",
+    re.I,
+)
+_LOCKER_ASK_RE = re.compile(
+    r"\b(aadhaar|aadhar|pan|passport|license|licence|id\s*card|locker|"
+    r"document vault|driving)\b",
+    re.I,
+)
+_NEEDLE_STOP_RE = re.compile(
+    r"\b(what|whats|what's|which|where|is|are|my|the|a|an|for|of|to|please|"
+    r"show|tell|give|me|find|open|view|see|stored|saved|vault|"
+    r"password|passwd|pwd|passcode|login|logins|credential|credentials|"
+    r"username|medical|health|hospital|lab|report|prescription|document|"
+    r"documents|card|number|id)\b",
+    re.I,
+)
+
+
+def _search_needle(question: str) -> str:
+    cleaned = _NEEDLE_STOP_RE.sub(" ", question or "")
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def _tokens_match(hay: str, needle: str) -> bool:
+    hay = (hay or "").lower()
+    tokens = [t for t in (needle or "").lower().split() if len(t) >= 2]
+    if not tokens:
+        return False
+    return all(t in hay for t in tokens)
+
+
+def wants_password_lookup(question: str) -> bool:
+    q = (question or "").strip()
+    if not q:
+        return False
+    return bool(_PASSWORD_ASK_RE.search(q))
+
+
+def wants_health_lookup(question: str) -> bool:
+    q = (question or "").strip()
+    if not q:
+        return False
+    if wants_password_lookup(q) or _SPEND_RE.search(q):
+        return False
+    return bool(_HEALTH_ASK_RE.search(q))
+
+
+def wants_locker_lookup(question: str) -> bool:
+    q = (question or "").strip()
+    if not q:
+        return False
+    if wants_password_lookup(q) or _SPEND_RE.search(q):
+        return False
+    return bool(_LOCKER_ASK_RE.search(q))
+
+
+def format_password_lookup_reply(db: Session, user: models.User, question: str) -> str:
+    """Local Password Vault links — secrets never leave this server."""
+    uid = _uid(user)
+    items = (
+        db.query(models.VaultItem)
+        .filter(models.VaultItem.user_id == uid, models.VaultItem.deleted_at.is_(None))
+        .order_by(models.VaultItem.name)
+        .all()
+    )
+    needle = _search_needle(question)
+    hits = []
+    for it in items:
+        hay = " ".join([it.name or "", it.item_type or "", it.uris or ""])
+        if needle and _tokens_match(hay, needle):
+            hits.append(it)
+        elif needle and needle.lower() in hay.lower():
+            hits.append(it)
+    if needle and not hits:
+        hits = [
+            it for it in items
+            if any(t in " ".join([it.name or "", it.uris or ""]).lower()
+                   for t in needle.lower().split() if len(t) >= 3)
+        ]
+    lines = [
+        "**Password Vault**",
+        "",
+        "The password stays on this server. It is **not** sent to the AI provider.",
+        "Open the login here to view or copy it:",
+        "",
+    ]
+    shown = hits[:12] if needle else items[:8]
+    if not items:
+        lines.append("No logins saved yet. Open [Password Vault](/admin/passwords) to add one.")
+        return "\n".join(lines)
+    if needle and not shown:
+        lines.append(f"No login matched **{needle}**.")
+        lines.append("Open [Password Vault](/admin/passwords) to browse.")
+        return "\n".join(lines)
+    for it in shown:
+        kind = (it.item_type or "login").replace("_", " ")
+        lines.append(f"- [{it.name}](/admin/passwords/{it.id}) · {kind}")
+    if not needle and len(items) > 8:
+        lines.append(f"- …and {len(items) - 8} more in [Password Vault](/admin/passwords)")
+    return "\n".join(lines)
+
+
+def format_health_lookup_reply(db: Session, user: models.User, question: str) -> str:
+    """Local Health Vault links — reports never go to the AI provider."""
+    uid = _uid(user)
+    people = (
+        db.query(models.Person)
+        .filter(models.Person.user_id == uid)
+        .all()
+    )
+    pids = [p.id for p in people]
+    person_name = {p.id: p.name for p in people}
+    needle = _search_needle(question)
+    lines = [
+        "**Health Vault**",
+        "",
+        "Medical records stay on this server. They are **not** sent to the AI provider.",
+        "",
+    ]
+    if re.search(r"\b(doctor|dr\.?|gynae|gyne|paediat|pedia|specialist|phone|number)\b", question or "", re.I):
+        doctors = (
+            db.query(models.Doctor)
+            .filter(models.Doctor.user_id == uid)
+            .order_by(models.Doctor.name)
+            .all()
+        )
+        matched = []
+        for d in doctors:
+            hay = " ".join(x for x in [d.name, d.specialty, d.hospital_name, d.notes] if x)
+            if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
+                matched.append(d)
+        if matched:
+            lines.append("Doctors (open Health Vault to edit):")
+            for d in matched[:12]:
+                phone = f" · {d.phone}" if d.phone else ""
+                lines.append(
+                    f"- {d.name} · {d.specialty or '—'} · {d.hospital_name or '—'}{phone}"
+                )
+            lines.append("")
+            lines.append("[Open Doctors](/admin/doctors)")
+            return "\n".join(lines)
+        lines.append("No matching doctor in the directory.")
+        lines.append("[Open Doctors](/admin/doctors)")
+        return "\n".join(lines)
+
+    if not pids:
+        lines.append("No family profiles yet. [Open Health Vault](/admin)")
+        return "\n".join(lines)
+    docs = (
+        db.query(models.Document)
+        .filter(
+            models.Document.person_id.in_(pids),
+            models.Document.deleted_at.is_(None),
+        )
+        .order_by(models.Document.doc_date.desc(), models.Document.created_at.desc())
+        .limit(80)
+        .all()
+    )
+    hits = []
+    for d in docs:
+        hay = " ".join([
+            d.title or "", d.hospital_name or "", _enum(d.category) or "",
+            d.custom_category or "", person_name.get(d.person_id, ""),
+        ])
+        if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
+            hits.append(d)
+    shown = hits[:12] if needle else docs[:8]
+    if not shown:
+        lines.append("No matching health document.")
+        lines.append("[Open Health Vault](/admin)")
+        return "\n".join(lines)
+    lines.append("Open the record to view it (nothing below is sent off-server):")
+    for d in shown:
+        who = person_name.get(d.person_id, "")
+        title = d.title or "Document"
+        lines.append(
+            f"- [{title}](/admin/documents/{d.id}) · {who} · "
+            f"{d.hospital_name or '—'} · {d.doc_date or 'undated'}"
+        )
+    lines.append("")
+    lines.append("[All documents](/admin)")
+    return "\n".join(lines)
+
+
+def format_locker_lookup_reply(db: Session, user: models.User, question: str) -> str:
+    """Local Document Vault (locker) links — ID numbers stay on this server."""
+    uid = _uid(user)
+    items = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.user_id == uid)
+        .order_by(models.LockerItem.title)
+        .all()
+    )
+    needle = _search_needle(question)
+    hits = []
+    for it in items:
+        hay = " ".join([it.title or "", it.doc_type or "", it.custom_type or "", it.holder_name or ""])
+        if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
+            hits.append(it)
+    shown = hits[:12] if needle else items[:8]
+    lines = [
+        "**Document Vault**",
+        "",
+        "ID numbers stay on this server. They are **not** sent to the AI provider.",
+        "Open the document here:",
+        "",
+    ]
+    if not items:
+        lines.append("No locker documents yet. [Open Document Vault](/admin/locker)")
+        return "\n".join(lines)
+    if needle and not shown:
+        lines.append(f"No document matched **{needle}**.")
+        lines.append("[Open Document Vault](/admin/locker)")
+        return "\n".join(lines)
+    for it in shown:
+        lines.append(
+            f"- [{it.title}](/admin/locker/{it.id}) · "
+            f"{(it.doc_type or '').replace('_', ' ')}"
+            + (f" · expiry {it.expiry_date}" if it.expiry_date else "")
+        )
     return "\n".join(lines)
 
 
@@ -537,6 +877,8 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     tz_label = settings.VAULT_TIMEZONE
     ledger_day = resolve_ledger_day(q, today)
 
+    from app import ai_brain
+
     lines: list[str] = [
         f"# VAULT SNAPSHOT",
         f"Generated: {today:%Y-%m-%d %H:%M} ({tz_label}). Today is {today:%A %d %B %Y} ({today_s}).",
@@ -544,6 +886,9 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         "For spend totals by day, prefer Money Manager over Digital Diary.",
         "",
     ]
+    brain_block = ai_brain.format_brain_context(db, user)
+    if brain_block:
+        lines.append(brain_block)
     if ledger_day:
         lines.append("## CANONICAL ANSWER (use this for today’s/yesterday’s spend)")
         lines.append(
@@ -552,223 +897,24 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         )
         lines.append("")
 
-    people = (
-        db.query(models.Person)
+    people_n = db.query(models.Person).filter(models.Person.user_id == uid).count()
+    doc_n = (
+        db.query(models.Document)
+        .filter(models.Document.deleted_at.is_(None))
+        .join(models.Person, models.Document.person_id == models.Person.id)
         .filter(models.Person.user_id == uid)
-        .order_by(models.Person.created_at)
-        .all()
+        .count()
     )
-    pids = [p.id for p in people]
-    person_name = {p.id: p.name for p in people}
-
-    # ---- Health ----
+    doctor_n = db.query(models.Doctor).filter(models.Doctor.user_id == uid).count()
     lines.append("## Health Vault")
-    if not people:
-        lines.append("No family profiles yet.")
-    for p in people:
-        rel = _enum(p.relation) or "other"
-        bits = [f"{p.name} ({rel})"]
-        if p.dob:
-            bits.append(f"dob {p.dob}")
-        if p.blood_group:
-            bits.append(f"blood {p.blood_group}")
-        if p.allergies:
-            bits.append(f"allergies: {_clip(p.allergies, 120)}")
-        if p.conditions:
-            bits.append(f"conditions: {_clip(p.conditions, 120)}")
-        lines.append("- " + "; ".join(bits))
-        cards = (
-            db.query(models.HospitalCard)
-            .filter(models.HospitalCard.person_id == p.id)
-            .all()
-        )
-        for c in cards:
-            extra = []
-            if c.ward:
-                extra.append(f"ward {c.ward}")
-            if c.valid_till:
-                extra.append(f"valid till {c.valid_till}")
-            lines.append(
-                f"  hospital card: {c.hospital_name}"
-                + (f" ({', '.join(extra)})" if extra else "")
-                + " — patient ID omitted"
-            )
-
-    hospitals: list[str] = []
-    seen_h = set()
-    if pids:
-        for row in (
-            db.query(models.HospitalCard.hospital_name)
-            .filter(models.HospitalCard.person_id.in_(pids))
-            .all()
-        ):
-            if row[0] and row[0] not in seen_h:
-                seen_h.add(row[0])
-                hospitals.append(row[0])
-        for row in (
-            db.query(models.Document.hospital_name)
-            .filter(
-                models.Document.person_id.in_(pids),
-                models.Document.hospital_name.isnot(None),
-                models.Document.deleted_at.is_(None),
-            )
-            .all()
-        ):
-            if row[0] and row[0] not in seen_h:
-                seen_h.add(row[0])
-                hospitals.append(row[0])
-    hit_hospitals = _match_names(q, hospitals, min_len=3)
-
-    docs_q = db.query(models.Document).filter(models.Document.deleted_at.is_(None))
-    if pids:
-        docs_q = docs_q.filter(models.Document.person_id.in_(pids))
-    else:
-        docs_q = docs_q.filter(False)
-    docs = docs_q.order_by(models.Document.doc_date.desc(), models.Document.created_at.desc()).limit(80).all()
-
-    extra_docs: list[models.Document] = []
-    if hit_hospitals and pids:
-        extra_docs = (
-            db.query(models.Document)
-            .filter(
-                models.Document.person_id.in_(pids),
-                models.Document.hospital_name.in_(hit_hospitals),
-                models.Document.deleted_at.is_(None),
-            )
-            .order_by(models.Document.doc_date.desc())
-            .limit(60)
-            .all()
-        )
-    seen_doc = {d.id for d in docs}
-    for d in extra_docs:
-        if d.id not in seen_doc:
-            docs.append(d)
-            seen_doc.add(d.id)
-
-    if docs:
-        lines.append("Health documents (title / hospital / date / category / amount):")
-        for d in docs[:100]:
-            who = person_name.get(d.person_id, "")
-            cat = _enum(d.category)
-            amt = f" {_inr(d.amount)}" if d.amount else ""
-            lines.append(
-                f"- {d.doc_date or 'undated'} · {who} · {cat}"
-                f"{' / ' + d.custom_category if d.custom_category else ''}"
-                f" · {d.title} · {d.hospital_name or '—'}"
-                f"{amt}"
-            )
-            if hit_hospitals and d.extracted_text and (
-                (d.hospital_name or "") in hit_hospitals
-                or re.search(r"\b(report|lab|bill|result)\b", q, re.I)
-            ):
-                lines.append(f"  excerpt: {_clip(d.extracted_text, 280)}")
-    else:
-        lines.append("No health documents stored.")
-
-    doctors = (
-        db.query(models.Doctor)
-        .filter(models.Doctor.user_id == uid)
-        .order_by(models.Doctor.name.asc())
-        .all()
+    lines.append(
+        f"{people_n} family profiles, {doc_n} documents, {doctor_n} doctors. "
+        "Medical records, lab text, allergies, and hospital cards stay on this server "
+        "and are not sent to the AI provider. Ask “password for …” or “Aster reports” "
+        "and Ask AI returns a view link from this vault."
     )
-    if doctors:
-        lines.append("Doctors directory (name / specialty / hospital / phone) — use this for doctor number lookups:")
-        for d in doctors:
-            lines.append(
-                f"- {d.name}"
-                f" · specialty: {d.specialty or '—'}"
-                f" · hospital: {d.hospital_name or '—'}"
-                f" · phone: {d.phone or '—'}"
-                + (f" · notes: {_clip(d.notes, 80)}" if d.notes else "")
-            )
-        # Prefer matching specialty/name when the question looks like a doctor lookup
-        if re.search(r"\b(doctor|dr\.?|gynae|gyne|paediat|pedia|cardio|ortho|dentist|specialist|phone|number|call|whatsapp)\b", q, re.I):
-            matched = []
-            q_low = q.lower()
-            for d in doctors:
-                blob = " ".join(
-                    x for x in [d.name, d.specialty, d.hospital_name, d.notes] if x
-                ).lower()
-                if any(tok and tok in blob for tok in re.findall(r"[a-zA-Z]{3,}", q_low)):
-                    matched.append(d)
-            if matched:
-                lines.append("Doctors matching this question (prefer these):")
-                for d in matched[:12]:
-                    lines.append(
-                        f"- {d.name} · {d.specialty or '—'} · {d.hospital_name or '—'} · phone {d.phone or '—'}"
-                    )
-    else:
-        lines.append("Doctors directory: empty (no phone numbers saved yet).")
 
-    if pids:
-        visits = (
-            db.query(models.Visit)
-            .filter(models.Visit.person_id.in_(pids))
-            .order_by(models.Visit.visit_date.desc())
-            .limit(20)
-            .all()
-        )
-        if visits:
-            lines.append("Recent visits:")
-            for v in visits:
-                lines.append(
-                    f"- {v.visit_date or 'undated'} · {person_name.get(v.person_id, '')} · "
-                    f"{v.hospital_name or '—'} · {v.doctor_name or ''} · {v.reason or ''}"
-                )
-        labs = (
-            db.query(models.LabReading)
-            .filter(models.LabReading.person_id.in_(pids))
-            .order_by(models.LabReading.measured_at.desc())
-            .limit(30)
-            .all()
-        )
-        if labs:
-            lines.append("Lab readings:")
-            for r in labs:
-                lines.append(
-                    f"- {r.measured_at or 'undated'} · {person_name.get(r.person_id, '')} · "
-                    f"{r.metric} {r.value} {r.unit or ''}"
-                )
-        meds = (
-            db.query(models.Medicine)
-            .filter(models.Medicine.person_id.in_(pids))
-            .order_by(models.Medicine.created_at.desc())
-            .limit(20)
-            .all()
-        )
-        if meds:
-            lines.append("Medicines:")
-            for m in meds:
-                lines.append(
-                    f"- {person_name.get(m.person_id, '')} · {m.name} {m.dose or ''} {m.timing or ''}"
-                )
-        claims = (
-            db.query(models.Claim)
-            .filter(models.Claim.person_id.in_(pids))
-            .order_by(models.Claim.created_at.desc())
-            .limit(15)
-            .all()
-        )
-        if claims:
-            lines.append("Insurance claims:")
-            for c in claims:
-                lines.append(
-                    f"- {person_name.get(c.person_id, '')} · {c.insurer or '—'} · "
-                    f"{c.status} · {c.amount or ''} · {c.claim_number or ''}"
-                )
-        reminders = (
-            db.query(models.Reminder)
-            .filter(models.Reminder.person_id.in_(pids), models.Reminder.is_active.is_(True))
-            .order_by(models.Reminder.remind_at)
-            .limit(15)
-            .all()
-        )
-        if reminders:
-            lines.append("Active reminders:")
-            for r in reminders:
-                when = r.remind_at.strftime("%Y-%m-%d") if r.remind_at else ""
-                lines.append(f"- {when} · {person_name.get(r.person_id, '')} · {r.title}")
-
+    # ---- Money ----
     # ---- Money ----
     lines.append("")
     lines.append("## Money Manager")

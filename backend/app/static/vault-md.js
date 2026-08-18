@@ -9,7 +9,12 @@
     var t = esc(s);
     t = t.replace(/`([^`]+)`/g, "<code>$1</code>");
     t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    t = t.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" rel="noopener" target="_blank">$1</a>');
+    t = t.replace(/\[([^\]]+)\]\((https?:[^)\s]+|\/admin\/[^)\s]+)\)/g, function (_, label, href) {
+      if (href.indexOf("/admin/") === 0) {
+        return '<a href="' + href + '">' + label + "</a>";
+      }
+      return '<a href="' + href + '" rel="noopener" target="_blank">' + label + "</a>";
+    });
     return t;
   }
 

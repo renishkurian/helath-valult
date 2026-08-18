@@ -778,6 +778,10 @@ class HealthVaultRepository(
     suspend fun listAiChatThreads() = api.listAiChatThreads()
     suspend fun getAiChatThread(id: String) = api.getAiChatThread(id)
     suspend fun deleteAiChatThread(id: String) = api.deleteAiChatThread(id)
+    suspend fun listAiBrain() = api.listAiBrain()
+    suspend fun teachAiBrain(content: String, kind: String = "preference") =
+        api.teachAiBrain(AiBrainMemoryIn(content = content, kind = kind))
+    suspend fun forgetAiBrain(id: String) = api.forgetAiBrain(id)
     suspend fun aiChat(message: String, threadId: String? = null) =
         api.aiChat(AiChatIn(message = message, thread_id = threadId))
     suspend fun applyAiShopList(action: AiVaultAction) = api.applyAiShopList(action)

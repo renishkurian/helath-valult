@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Lock
@@ -47,7 +48,7 @@ enum class LockerTab { LOCKER, EXPIRING }
 
 enum class UrlTab { LINKS, FAVORITES, MANAGE }
 
-enum class AiTab { ASK, PROVIDERS, LOGS }
+enum class AiTab { ASK, BRAIN, PROVIDERS, LOGS }
 
 enum class ExpenseTab { INBOX, INSIGHTS, LOG, SETTINGS }
 
@@ -104,6 +105,13 @@ fun AiBottomNav(current: AiTab, onSelect: (AiTab) -> Unit) {
             onClick = { onSelect(AiTab.ASK) },
             icon = { Icon(Icons.Filled.SmartToy, contentDescription = "Ask AI") },
             label = { Text("Ask") },
+            colors = navColors
+        )
+        NavigationBarItem(
+            selected = current == AiTab.BRAIN,
+            onClick = { onSelect(AiTab.BRAIN) },
+            icon = { Icon(Icons.Filled.Psychology, contentDescription = "Brain") },
+            label = { Text("Brain") },
             colors = navColors
         )
         NavigationBarItem(

@@ -54,6 +54,7 @@
   {% set mod_key = 'ai' %}
   {% set nav_items = [
     {'key':'ai_ask','label':'Ask AI','short':'Ask','href':'/admin/ai','icon':'bi-chat-dots'},
+    {'key':'ai_brain','label':'Brain','short':'Brain','href':'/admin/ai/brain','icon':'bi-lightbulb'},
     {'key':'ai_providers','label':'Providers','short':'Keys','href':'/admin/ai/providers','icon':'bi-key'},
     {'key':'ai_logs','label':'Usage logs','short':'Logs','href':'/admin/ai/logs','icon':'bi-journal-text'}
   ] %}
@@ -225,7 +226,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=40">
+<link rel="stylesheet" href="/static/vault.css?v=41">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">

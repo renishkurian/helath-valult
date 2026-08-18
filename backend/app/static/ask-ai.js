@@ -36,10 +36,14 @@
     if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
   }
 
+  function isBrainCommand(text) {
+    return /^(remember|forget|don't forget|do not forget|always|never|i prefer)\b/i.test(String(text || "").trim());
+  }
+
   function setBusy(on) {
     state.busy = on;
-    if (sendBtn) sendBtn.disabled = on || !boot.hasProvider;
-    if (input) input.disabled = on || !boot.hasProvider;
+    if (sendBtn) sendBtn.disabled = on;
+    if (input) input.disabled = on;
   }
 
   function showConversation(hasMsgs) {
@@ -290,6 +294,17 @@
     return turn;
   }
 
+  function learnedNote(items) {
+    if (!items || !items.length) return null;
+    var el = document.createElement("div");
+    el.className = "ask-learned";
+    var bits = items.slice(0, 3).map(function (m) { return esc(m.content || ""); }).filter(Boolean);
+    el.innerHTML = '<i class="bi bi-lightbulb"></i> Saved to brain' +
+      (bits.length ? " · " + bits.join("; ") : "") +
+      ' <a href="/admin/ai/brain">Review</a>';
+    return el;
+  }
+
   function renderMessages(messages) {
     msgsEl.innerHTML = "";
     (messages || []).forEach(function (m) {
@@ -420,7 +435,10 @@
   async function send(text) {
     text = (text || "").trim();
     if (!text || state.busy) return;
-    if (!boot.hasProvider) return;
+    if (!boot.hasProvider && !isBrainCommand(text)) {
+      window.location.href = "/admin/ai/providers";
+      return;
+    }
     showConversation(true);
     msgsEl.appendChild(bubble("user", text, false));
     var think = bubble("assistant", "", true);
@@ -438,6 +456,11 @@
       state.threadId = body.thread_id;
       titleEl.textContent = body.title || "Chat";
       renderMessages(body.messages || []);
+      var note = learnedNote(body.learned);
+      if (note && msgsEl) {
+        var last = msgsEl.querySelector(".ask-turn.assistant:last-child .ask-bubble");
+        if (last) last.appendChild(note);
+      }
       await loadThreads();
     } catch (e) {
       think.querySelector(".ask-bubble").innerHTML =
@@ -539,5 +562,5 @@
   });
 
   loadThreads();
-  if (boot.hasProvider && input) input.focus();
+  if (input) input.focus();
 })();

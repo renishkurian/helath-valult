@@ -536,6 +536,12 @@ def _export_ai(db: Session, owner: str) -> dict:
                 "created_at": m.created_at,
             } for m in msgs],
         })
+    memories = (
+        db.query(models.AiBrainMemory)
+        .filter(models.AiBrainMemory.user_id == owner, models.AiBrainMemory.active.is_(True))
+        .order_by(models.AiBrainMemory.updated_at.desc())
+        .all()
+    )
     return {
         "providers": [{
             "name": p.name, "kind": p.kind, "model": p.model,
@@ -543,6 +549,12 @@ def _export_ai(db: Session, owner: str) -> dict:
             "api_key": crypto.decrypt_text(p.api_key_enc),
         } for p in providers],
         "threads": thread_out,
+        "brain": [{
+            "kind": m.kind, "slug": m.slug,
+            "content": crypto.decrypt_text(m.content_enc) or "",
+            "source": m.source,
+            "created_at": m.created_at, "updated_at": m.updated_at,
+        } for m in memories],
     }
 
 
@@ -561,7 +573,7 @@ def _restore_modules(db: Session, owner: str, zf: zipfile.ZipFile, manifest: dic
     restored = {
         "people": 0, "documents": 0, "cards": 0,
         "locker": 0, "passwords": 0, "finance_accounts": 0, "finance_txns": 0,
-        "urls": 0, "shop_lists": 0, "shop_items": 0, "shop_catalog": 0, "ea_items": 0, "ai_threads": 0,
+        "urls": 0, "shop_lists": 0, "shop_items": 0, "shop_catalog": 0, "ea_items": 0, "ai_threads": 0, "ai_brain": 0,
         "diary": 0,
     }
     for person_entry in manifest.get("people", []):
@@ -1252,6 +1264,27 @@ def _restore_ai(db: Session, owner: str, ai: dict, restored: dict) -> None:
                 content_enc=crypto.encrypt_text(m.get("content") or ""),
             ))
         restored["ai_threads"] += 1
+    for mem in ai.get("brain") or []:
+        content = (mem.get("content") or "").strip()
+        slug = (mem.get("slug") or "").strip()
+        if not content or not slug:
+            continue
+        exists = (
+            db.query(models.AiBrainMemory)
+            .filter(models.AiBrainMemory.user_id == owner, models.AiBrainMemory.slug == slug)
+            .first()
+        )
+        if exists:
+            continue
+        db.add(models.AiBrainMemory(
+            user_id=owner,
+            kind=(mem.get("kind") or "fact")[:20],
+            slug=slug[:80],
+            content_enc=crypto.encrypt_text(content),
+            source=(mem.get("source") or "manual")[:20],
+            active=True,
+        ))
+        restored["ai_brain"] = restored.get("ai_brain", 0) + 1
 
 
 @router.get("/export")

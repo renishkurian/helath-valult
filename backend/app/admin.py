@@ -3984,6 +3984,45 @@ def ai_home(request: Request, db: Session = Depends(get_db)):
     ))
 
 
+@router.get("/ai/brain", response_class=HTMLResponse)
+def ai_brain_page(request: Request, db: Session = Depends(get_db)):
+    from app import ai_brain
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    memories = ai_brain.list_memories(db, user)
+    return templates.TemplateResponse("ai_brain.html", _ai_ctx(
+        request, user, "ai_brain", memories=memories,
+    ))
+
+
+@router.post("/ai/brain")
+def ai_brain_add(
+    request: Request, content: str = Form(...), kind: str = Form("fact"),
+    db: Session = Depends(get_db),
+):
+    from app import ai_brain
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    row = ai_brain.upsert_memory(db, user, content=content, kind=kind, source="manual")
+    db.commit()
+    if not row:
+        return RedirectResponse("/admin/ai/brain?err=Could+not+save+that", status_code=302)
+    return RedirectResponse("/admin/ai/brain?ok=1", status_code=302)
+
+
+@router.post("/ai/brain/{memory_id}/forget")
+def ai_brain_forget(memory_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import ai_brain
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ai_brain.forget_memory(db, user, memory_id)
+    db.commit()
+    return RedirectResponse("/admin/ai/brain?ok=forgot", status_code=302)
+
+
 @router.get("/ai/ask/threads")
 def ai_ask_threads(request: Request, db: Session = Depends(get_db)):
     from app import ai_chat

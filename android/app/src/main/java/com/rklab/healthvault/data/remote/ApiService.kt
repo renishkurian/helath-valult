@@ -703,6 +703,15 @@ interface ApiService {
     @DELETE("ai/chat/threads/{id}")
     suspend fun deleteAiChatThread(@Path("id") id: String): Response<Unit>
 
+    @GET("ai/brain")
+    suspend fun listAiBrain(): List<AiBrainMemoryOut>
+
+    @POST("ai/brain")
+    suspend fun teachAiBrain(@Body body: AiBrainMemoryIn): AiBrainMemoryOut
+
+    @DELETE("ai/brain/{id}")
+    suspend fun forgetAiBrain(@Path("id") id: String): Response<Unit>
+
     @POST("ai/chat")
     suspend fun aiChat(@Body body: AiChatIn): AiChatReplyOut
 

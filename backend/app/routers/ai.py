@@ -128,6 +128,47 @@ def delete_chat_thread(
     return {"ok": True}
 
 
+@router.get("/brain", response_model=list[schemas.AiBrainMemoryOut])
+def list_brain(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import ai_brain
+    require_owner(current_user)
+    return [schemas.AiBrainMemoryOut(**m) for m in ai_brain.list_memories(db, current_user)]
+
+
+@router.post("/brain", response_model=schemas.AiBrainMemoryOut)
+def teach_brain(
+    body: schemas.AiBrainMemoryIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import ai_brain
+    require_owner(current_user)
+    row = ai_brain.upsert_memory(
+        db, current_user, content=body.content, kind=body.kind, source="manual",
+    )
+    if not row:
+        raise HTTPException(400, "Could not save that (too short, or looks like a secret)")
+    db.commit()
+    return schemas.AiBrainMemoryOut(**row)
+
+
+@router.delete("/brain/{memory_id}")
+def forget_brain(
+    memory_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import ai_brain
+    require_owner(current_user)
+    if not ai_brain.forget_memory(db, current_user, memory_id):
+        raise HTTPException(404, "Memory not found")
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/chat", response_model=schemas.AiChatReplyOut)
 def chat(
     body: schemas.AiChatIn,

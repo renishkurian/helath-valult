@@ -34,6 +34,7 @@ import com.rklab.healthvault.ui.components.UrlBottomNav
 import com.rklab.healthvault.ui.components.AiTab
 import com.rklab.healthvault.ui.components.AiBottomNav
 import com.rklab.healthvault.ui.screens.ai.AiAskScreen
+import com.rklab.healthvault.ui.screens.ai.AiBrainScreen
 import com.rklab.healthvault.ui.screens.ai.AiProvidersScreen
 import com.rklab.healthvault.ui.screens.ai.AiUsageLogsScreen
 import com.rklab.healthvault.ui.components.ExpenseTab
@@ -110,6 +111,7 @@ private object Routes {
     const val URLS_ITEM = "urls_item/{itemId}"
     const val AI = "ai"
     const val AI_PROVIDERS = "ai_providers"
+    const val AI_BRAIN = "ai_brain"
     const val AI_LOGS = "ai_logs"
     const val EXPENSE = "expense"
     const val EXPENSE_INSIGHTS = "expense_insights"
@@ -253,7 +255,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
     val diaryTabs = setOf(Routes.DIARY, Routes.DIARY_PINNED)
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
-    val aiTabs = setOf(Routes.AI, Routes.AI_PROVIDERS, Routes.AI_LOGS)
+    val aiTabs = setOf(Routes.AI, Routes.AI_BRAIN, Routes.AI_PROVIDERS, Routes.AI_LOGS)
     val expenseTabs = setOf(Routes.EXPENSE, Routes.EXPENSE_INSIGHTS, Routes.EXPENSE_LOG, Routes.EXPENSE_SETTINGS)
     val trackerTabs = setOf(Routes.TRACKER, Routes.TRACKER_FRIENDS, Routes.TRACKER_CATALOG, Routes.TRACKER_TRASH)
     val onFinanceAccount = currentRoute?.startsWith("finance_account/") == true
@@ -383,6 +385,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 }
             } else if (currentRoute in aiTabs) {
                 val current = when (currentRoute) {
+                    Routes.AI_BRAIN -> AiTab.BRAIN
                     Routes.AI_PROVIDERS -> AiTab.PROVIDERS
                     Routes.AI_LOGS -> AiTab.LOGS
                     else -> AiTab.ASK
@@ -390,6 +393,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 AiBottomNav(current = current) { tab ->
                     val route = when (tab) {
                         AiTab.ASK -> Routes.AI
+                        AiTab.BRAIN -> Routes.AI_BRAIN
                         AiTab.PROVIDERS -> Routes.AI_PROVIDERS
                         AiTab.LOGS -> Routes.AI_LOGS
                     }
@@ -727,6 +731,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
 
             composable(Routes.AI) {
                 AiAskScreen(
+                    repository = repository,
+                    onOpenModules = { navController.navigate(Routes.MODULES) }
+                )
+            }
+            composable(Routes.AI_BRAIN) {
+                AiBrainScreen(
                     repository = repository,
                     onOpenModules = { navController.navigate(Routes.MODULES) }
                 )

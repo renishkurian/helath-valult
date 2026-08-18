@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Household brain{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">AI</div>
+    <h1 class="page-title">Household brain</h1>
+    <p class="page-lead">
+      Ask AI learns lasting facts here — brands, aliases, default accounts — without retraining the model.
+      Memories stay encrypted in this vault and are injected into later chats.
+    </p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-secondary" href="/admin/ai"><i class="bi bi-chat-dots"></i> Ask AI</a>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') == 'forgot' %}
+<div class="alert alert-info mb-4" role="status">Forgotten.</div>
+{% elif request.query_params.get('ok') %}
+<div class="alert alert-success mb-4" role="status">Saved to the brain.</div>
+{% endif %}
+{% if request.query_params.get('err') %}
+<div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('err') }}</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-lightbulb"></i> Memories</div>
+      <div class="val">{{ memories|length }}</div>
+      <div class="sub">active in Ask AI</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-8">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-chat-quote"></i> Teach in chat</div>
+      <div class="val" style="font-size:1rem;">Remember that…</div>
+      <div class="sub">or “forget coconut oil” · “ulli means shallot”</div>
+    </div>
+  </div>
+</div>
+
+<div class="surface mb-4">
+  <div class="section-head"><h2>Add a memory</h2></div>
+  <form method="post" action="/admin/ai/brain" class="row g-2 align-items-end">
+    <div class="col-md-7">
+      <label class="form-label" for="brain-content">Fact</label>
+      <input class="form-control" id="brain-content" name="content" required minlength="8" maxlength="240"
+        placeholder="Prefer coconut oil, not sunflower">
+    </div>
+    <div class="col-md-3">
+      <label class="form-label" for="brain-kind">Kind</label>
+      <select class="form-select" id="brain-kind" name="kind">
+        <option value="fact">Fact</option>
+        <option value="preference" selected>Preference</option>
+        <option value="alias">Alias</option>
+        <option value="habit">Habit</option>
+      </select>
+    </div>
+    <div class="col-md-2">
+      <button class="btn btn-primary w-100" type="submit">Save</button>
+    </div>
+  </form>
+  <p class="small text-muted mt-2 mb-0">Passwords, OTPs, and ID numbers are refused.</p>
+</div>
+
+{% if memories %}
+<div class="section-head"><h2>Learned</h2></div>
+<div class="list-rows mb-4">
+  {% for m in memories %}
+  <div class="list-row">
+    <span class="row-body">
+      <span class="row-title">{{ m.content }}</span>
+      <span class="row-meta">{{ m.kind }} · {{ m.source }}{% if m.updated_at %} · {{ m.updated_at[:16].replace('T', ' ') }}{% endif %}</span>
+    </span>
+    <form method="post" action="/admin/ai/brain/{{ m.id }}/forget" data-confirm="Forget this memory?">
+      <button class="btn btn-ghost" type="submit" aria-label="Forget"><i class="bi bi-trash3"></i></button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state mb-4">
+  <i class="bi bi-lightbulb"></i>
+  <p>Nothing learned yet. In Ask AI say “remember we prefer coconut oil”, or add a fact above.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -2065,6 +2065,14 @@ body.ask-ai .app-main{
 .ask-hint{
   margin-top:.5rem; text-align:center; font-size:.6875rem; color:var(--v-ink-3);
 }
+.ask-learned{
+  margin-top:.65rem; padding:.45rem .65rem; border-radius:.65rem;
+  background:var(--v-gold-soft, rgba(228,195,122,.12));
+  border:1px solid var(--v-gold-line, rgba(228,195,122,.35));
+  color:var(--v-ink-2); font-size:.75rem; line-height:1.35;
+}
+.ask-learned i{ color:var(--v-gold, #E4C37A); margin-right:.25rem; }
+.ask-learned a{ color:var(--v-gold, #E4C37A); }
 
 .ask-rail-mask{
   position:fixed; inset:0; z-index:1040; background:rgba(0,0,0,.45);

@@ -14,6 +14,13 @@
     </div>
     <div class="ask-rail-list" id="ask-threads" role="list"></div>
     <div class="ask-rail-foot">
+      <a class="ask-provider" href="/admin/ai/brain">
+        <i class="bi bi-lightbulb"></i>
+        <span>
+          <strong>Household brain</strong>
+          <em>Learned facts &amp; habits</em>
+        </span>
+      </a>
       {% if summary.has_default %}
       <button class="btn btn-outline-secondary btn-sm ask-test w-100" type="button" id="ask-test">
         <i class="bi bi-lightning"></i> Test connection
@@ -61,7 +68,7 @@
       <div class="ask-empty" id="ask-empty">
         <div class="ask-mark" aria-hidden="true"><i class="bi bi-stars"></i></div>
         <h2>Ask anything in this vault</h2>
-        <p>Hospital reports, card statements, shopping lists, diary notes — answered from your private data. For spends, Ask AI will ask Money Manager vs Diary before saving.</p>
+        <p>Hospital reports, card statements, shopping lists, diary notes — answered from your private data. Say <strong>remember that…</strong> to teach the household brain. For spends, Ask AI will ask Money Manager vs Diary before saving.</p>
         <div class="ask-hints" id="ask-hints"></div>
       </div>
       <div class="ask-msgs" id="ask-msgs" hidden></div>
@@ -71,18 +78,16 @@
       <label class="visually-hidden" for="ask-input">Message</label>
       <div class="ask-box">
         <textarea id="ask-input" rows="1" maxlength="8000"
-          placeholder="English, Manglish, or Malayalam — e.g. kazhinja maasam enna vaangiya?"
-          {% if not summary.has_default %}disabled{% endif %}></textarea>
-        <button class="ask-send" type="submit" id="ask-send" aria-label="Send"
-          {% if not summary.has_default %}disabled{% endif %}>
+          placeholder="English, Manglish, or Malayalam — e.g. kazhinja maasam enna vaangiya?"></textarea>
+        <button class="ask-send" type="submit" id="ask-send" aria-label="Send">
           <i class="bi bi-arrow-up"></i>
         </button>
       </div>
       <div class="ask-hint">
         {% if summary.has_default %}
-        Uses {{ summary.default_name }} · answers stay on this vault · Enter to send
+        Uses {{ summary.default_name }} · brain learns from “remember…” · Enter to send
         {% else %}
-        <a href="/admin/ai/providers">Save a provider</a> to start chatting. Heuristics still tag SMS and mail without a key.
+        <a href="/admin/ai/providers">Save a provider</a> to chat about the vault. You can still say “remember that…” to teach the brain.
         {% endif %}
       </div>
     </form>
@@ -90,6 +95,6 @@
 </div>
 <div class="ask-rail-mask" id="ask-rail-mask" hidden></div>
 <script id="ask-ai-boot" type="application/json">{{ boot|safe }}</script>
-<script src="/static/vault-md.js?v=1"></script>
-<script src="/static/ask-ai.js?v=12"></script>
+<script src="/static/vault-md.js?v=2"></script>
+<script src="/static/ask-ai.js?v=13"></script>
 {% endblock %}

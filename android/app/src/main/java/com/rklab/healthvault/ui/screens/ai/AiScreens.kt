@@ -69,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rklab.healthvault.data.model.AiBrainMemoryOut
 import com.rklab.healthvault.data.model.AiChatMessageOut
 import com.rklab.healthvault.data.model.AiChatThreadOut
 import com.rklab.healthvault.data.model.AiProviderIn
@@ -202,7 +203,11 @@ fun AiAskScreen(
     fun send(text: String) {
         val msg = text.trim()
         if (msg.isEmpty() || busy) return
-        if (status?.has_default != true) {
+        val brainCmd = Regex(
+            """^\s*(remember|forget|don't forget|do not forget|always|never|i prefer)\b""",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(msg)
+        if (status?.has_default != true && !brainCmd) {
             Toast.makeText(context, "Add a provider first", Toast.LENGTH_SHORT).show()
             return
         }
@@ -216,6 +221,9 @@ fun AiAskScreen(
                     threadId = it.thread_id
                     title = it.title
                     messages = it.messages
+                    if (it.learned.isNotEmpty()) {
+                        Toast.makeText(context, "Saved to household brain", Toast.LENGTH_SHORT).show()
+                    }
                     reloadThreads()
                 }
                 .onFailure {
@@ -958,6 +966,115 @@ fun AiUsageLogsScreen(
                     if (!row.response_text.isNullOrBlank()) {
                         Text("Response", color = InkSoft, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(top = 6.dp))
                         Text(row.response_text!!, color = Ink, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(48.dp)) }
+        }
+    }
+}
+
+@Composable
+fun AiBrainScreen(
+    repository: HealthVaultRepository,
+    onOpenModules: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var memories by remember { mutableStateOf<List<AiBrainMemoryOut>>(emptyList()) }
+    var draft by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+
+    fun reload() {
+        scope.launch {
+            runCatching { repository.listAiBrain() }
+                .onSuccess { memories = it }
+                .onFailure {
+                    Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show()
+                }
+        }
+    }
+
+    LaunchedEffect(Unit) { reload() }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(HubBg)
+            .padding(16.dp)
+    ) {
+        TextButton(onClick = onOpenModules) { Text("Modules", color = InkSoft) }
+        Text("Household brain", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+        Text(
+            "Ask AI remembers facts you teach — brands, aliases, default accounts. Say “remember that…” in chat, or add one here.",
+            color = InkSoft,
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Prefer coconut oil, not sunflower") },
+            singleLine = true
+        )
+        Spacer(Modifier.height(8.dp))
+        Button(
+            onClick = {
+                val text = draft.trim()
+                if (text.length < 8 || busy) return@Button
+                busy = true
+                scope.launch {
+                    runCatching { repository.teachAiBrain(text) }
+                        .onSuccess {
+                            draft = ""
+                            reload()
+                            Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
+                        }
+                        .onFailure {
+                            Toast.makeText(context, errMessage(it), Toast.LENGTH_LONG).show()
+                        }
+                    busy = false
+                }
+            },
+            enabled = !busy && draft.trim().length >= 8,
+            colors = ButtonDefaults.buttonColors(containerColor = VaultGold, contentColor = Color(0xFF18130A))
+        ) { Text(if (busy) "Saving…" else "Save to brain") }
+        Spacer(Modifier.height(16.dp))
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (memories.isEmpty()) {
+                item {
+                    Text("Nothing learned yet.", color = InkSoft, modifier = Modifier.padding(24.dp))
+                }
+            }
+            items(memories, key = { it.id }) { row ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .border(1.dp, LineColor, RoundedCornerShape(12.dp))
+                        .background(HubGlass)
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(row.content, color = Ink, fontWeight = FontWeight.Medium)
+                        Text(
+                            listOfNotNull(row.kind, row.source).joinToString(" · "),
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    IconButton(onClick = {
+                        scope.launch {
+                            runCatching { repository.forgetAiBrain(row.id) }
+                                .onSuccess { reload() }
+                                .onFailure {
+                                    Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show()
+                                }
+                        }
+                    }) {
+                        Icon(Icons.Filled.Delete, contentDescription = "Forget", tint = InkSoft)
                     }
                 }
             }

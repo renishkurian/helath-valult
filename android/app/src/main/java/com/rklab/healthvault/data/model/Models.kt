@@ -1100,7 +1100,23 @@ data class AiChatReplyOut(
     val title: String,
     val reply: String,
     val messages: List<AiChatMessageOut> = emptyList(),
-    val action: AiVaultAction? = null
+    val action: AiVaultAction? = null,
+    val learned: List<AiBrainMemoryOut> = emptyList()
+)
+
+data class AiBrainMemoryOut(
+    val id: String,
+    val kind: String = "fact",
+    val slug: String = "",
+    val content: String = "",
+    val source: String = "chat",
+    val created_at: String? = null,
+    val updated_at: String? = null
+)
+
+data class AiBrainMemoryIn(
+    val content: String,
+    val kind: String? = "preference"
 )
 
 data class AiShopItemProposal(

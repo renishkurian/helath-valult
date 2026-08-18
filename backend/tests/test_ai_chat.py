@@ -101,6 +101,46 @@ def test_resolve_ledger_day_and_deterministic_today_spend():
         db.close()
 
 
+def test_highest_purchase_uses_ledger_payee_not_category():
+    from app.ai_chat import ask, wants_highest_expense, should_answer_highest_expense
+
+    q = "in my purchase which is teh hght pid item"
+    assert wants_highest_expense(q) is True
+    assert should_answer_highest_expense("what was that", [{"role": "user", "content": q}]) is True
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        acc = models.FinanceAccount(user_id=uid, name="Home", account_type="cash")
+        db.add(acc)
+        db.flush()
+        cat = models.FinanceCategory(user_id=uid, name="Shopping", kind="expense")
+        db.add(cat)
+        db.flush()
+        db.add(models.FinanceTransaction(
+            user_id=uid, account_id=acc.id, category_id=cat.id,
+            txn_type="expense", amount=Decimal("209.00"),
+            txn_date="2026-08-15", payee="Home Purchase",
+        ))
+        db.add(models.FinanceTransaction(
+            user_id=uid, account_id=acc.id, category_id=cat.id,
+            txn_type="expense", amount=Decimal("88.00"),
+            txn_date="2026-08-16", payee="HDFC Bank",
+        ))
+        db.commit()
+        out = ask(db, user, q)
+        assert "Home Purchase" in out["reply"]
+        assert "209" in out["reply"]
+        assert "962" not in out["reply"]
+        assert "not available" not in out["reply"].lower()
+        follow = ask(db, user, "what was that", thread_id=out["thread_id"])
+        assert "Home Purchase" in follow["reply"]
+    finally:
+        db.close()
+
+
 def test_manglish_query_hints():
     from app.ai_chat import _manglish_query_hints
     hits = _manglish_query_hints("list il ulli sharkara enna atta podi vekkanam")
@@ -322,6 +362,11 @@ def test_admin_ask_page_and_session_chat():
     providers = session.get("/admin/ai/providers")
     assert providers.status_code == 200
     assert "Add provider" in providers.text
+
+    brain = session.get("/admin/ai/brain")
+    assert brain.status_code == 200
+    assert "Household brain" in brain.text
+    assert "remember" in brain.text.lower()
 
     db = SessionLocal()
     try:
@@ -659,3 +704,66 @@ def test_diary_folder_action_and_api():
 
     dup = client.post("/diary/categories", headers=headers, json={"name": "Thidanad trip"})
     assert dup.status_code == 400
+
+
+def test_household_brain_learns_from_chat_without_provider():
+    from app.ai_brain import extract_vault_memory
+
+    cleaned, items = extract_vault_memory(
+        "Noted.\n\n```vault-memory\n"
+        '{"memories":[{"kind":"preference","slug":"oil","content":"Prefer coconut oil"}]}\n```'
+    )
+    assert "vault-memory" not in cleaned
+    assert items[0]["content"] == "Prefer coconut oil"
+
+    headers, email = _headers()
+    taught = client.post(
+        "/ai/chat",
+        headers=headers,
+        json={"message": "Remember that we always buy coconut oil, not sunflower"},
+    )
+    assert taught.status_code == 200, taught.text
+    body = taught.json()
+    assert body["learned"]
+    assert any("coconut" in (m.get("content") or "").lower() for m in body["learned"])
+
+    listed = client.get("/ai/brain", headers=headers)
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert any("coconut" in (m.get("content") or "").lower() for m in rows)
+
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        ctx = build_vault_context(db, user, "which oil should I buy")
+    finally:
+        db.close()
+    assert "HOUSEHOLD BRAIN" in ctx
+    assert "coconut" in ctx.lower()
+
+    secret = client.post(
+        "/ai/chat",
+        headers=headers,
+        json={"message": "Remember my password is hunter2secret"},
+    )
+    assert secret.status_code == 200, secret.text
+    assert secret.json()["learned"] == []
+
+    forgot = client.post(
+        "/ai/chat",
+        headers=headers,
+        json={"message": "Forget coconut oil"},
+    )
+    assert forgot.status_code == 200, forgot.text
+    after = client.get("/ai/brain", headers=headers).json()
+    assert not any("coconut" in (m.get("content") or "").lower() for m in after)
+
+    added = client.post(
+        "/ai/brain",
+        headers=headers,
+        json={"content": "Petrol usually posts to the Home cash account", "kind": "habit"},
+    )
+    assert added.status_code == 200, added.text
+    mem_id = added.json()["id"]
+    gone = client.delete(f"/ai/brain/{mem_id}", headers=headers)
+    assert gone.status_code == 200

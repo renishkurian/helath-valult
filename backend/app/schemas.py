@@ -1160,12 +1160,28 @@ class AiChatThreadDetailOut(BaseModel):
     messages: List[AiChatMessageOut] = []
 
 
+class AiBrainMemoryOut(BaseModel):
+    id: str
+    kind: str
+    slug: str
+    content: str
+    source: str = "chat"
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class AiBrainMemoryIn(BaseModel):
+    content: str = Field(min_length=8, max_length=240)
+    kind: Optional[str] = None
+
+
 class AiChatReplyOut(BaseModel):
     thread_id: str
     title: str
     reply: str
     messages: List[AiChatMessageOut] = []
     action: Optional[dict] = None
+    learned: List[AiBrainMemoryOut] = []
 
 
 class AiShopListActionIn(BaseModel):
