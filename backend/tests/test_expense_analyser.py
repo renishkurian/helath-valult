@@ -44,6 +44,48 @@ def test_default_sync_query_includes_south_indian_bank():
     })
 
 
+def test_list_items_filters_method_and_sorts_by_date():
+    from app.expense_analyser import list_items
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-old", kind="alert",
+            amount=Decimal("42.00"), payee="HDFC UPI", txn_date="2026-08-10",
+            payment_method="upi", status="pending", direction="debit",
+        ))
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-sib", kind="alert",
+            amount=Decimal("5775.00"), payee="Jibin S", txn_date="2026-08-17",
+            payment_method="upi", status="pending", direction="debit",
+        ))
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-atm", kind="alert",
+            amount=Decimal("2000.00"), payee="ATM", txn_date="2026-08-17",
+            payment_method="atm", status="pending", direction="debit",
+        ))
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-cc", kind="alert",
+            amount=Decimal("1500.00"), payee="Axis", txn_date="2026-08-16",
+            payment_method="credit_card", status="pending", direction="debit",
+        ))
+        db.commit()
+        dated = list_items(db, user, statuses=["pending"])
+        assert [i.txn_date for i in dated] == ["2026-08-17", "2026-08-17", "2026-08-16", "2026-08-10"]
+        upi = list_items(db, user, method="upi")
+        assert [i.payee for i in upi] == ["Jibin S", "HDFC UPI"]
+        found = list_items(db, user, q="5775")
+        assert len(found) == 1 and found[0].payee == "Jibin S"
+        api = client.get("/expense-analyser/items", headers=headers, params={"method": "upi"})
+        assert api.status_code == 200
+        assert any(abs(float(r["amount"]) - 5775) < 0.01 for r in api.json())
+    finally:
+        db.close()
+
+
 def test_status_endpoint_unconnected():
     headers, _ = _headers()
     r = client.get("/expense-analyser/status", headers=headers)

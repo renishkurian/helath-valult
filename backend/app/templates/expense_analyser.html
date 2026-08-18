@@ -116,19 +116,42 @@
 </div>
 {% endif %}
 
+{% set qs_status = ('status=' ~ filter_status ~ '&') if filter_status else '' %}
+{% set qs_method = ('method=' ~ filter_method ~ '&') if filter_method else '' %}
+{% set qs_q = ('q=' ~ filter_q|urlencode ~ '&') if filter_q else '' %}
 <div class="section-head d-flex flex-wrap gap-2 align-items-center justify-content-between">
   <h2>Inbox</h2>
-  <div class="d-flex gap-2 flex-wrap">
-    <a class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser">All open</a>
-    <a class="btn btn-sm {% if filter_status == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=pending">Pending</a>
-    <a class="btn btn-sm {% if filter_status == 'missed' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=missed">Missed</a>
-    <a class="btn btn-sm {% if filter_status == 'matched' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=matched">Matched</a>
-    <a class="btn btn-sm {% if filter_status == 'posted' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=posted">Posted</a>
-  </div>
+  <form method="get" action="/admin/expense-analyser" class="d-flex gap-2">
+    {% if filter_status %}<input type="hidden" name="status" value="{{ filter_status }}">{% endif %}
+    {% if filter_method %}<input type="hidden" name="method" value="{{ filter_method }}">{% endif %}
+    <input class="form-control form-control-sm" type="search" name="q" value="{{ filter_q }}" placeholder="Search amount, payee…" style="min-width:12rem;">
+    <button class="btn btn-sm btn-outline-secondary" type="submit">Find</button>
+  </form>
+</div>
+<div class="d-flex gap-2 flex-wrap mb-2">
+  <a class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_method }}{{ qs_q.rstrip('&') }}">All open</a>
+  <a class="btn btn-sm {% if filter_status == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=pending&{{ qs_method }}{{ qs_q }}">Pending</a>
+  <a class="btn btn-sm {% if filter_status == 'missed' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=missed&{{ qs_method }}{{ qs_q }}">Missed</a>
+  <a class="btn btn-sm {% if filter_status == 'matched' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=matched&{{ qs_method }}{{ qs_q }}">Matched</a>
+  <a class="btn btn-sm {% if filter_status == 'posted' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=posted&{{ qs_method }}{{ qs_q }}">Posted</a>
+</div>
+<div class="d-flex gap-2 flex-wrap align-items-center mb-3">
+  <span class="small text-muted">Type</span>
+  <a class="btn btn-sm {% if not filter_method %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_q.rstrip('&') }}">All</a>
+  <a class="btn btn-sm {% if filter_method == 'upi' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=upi&{{ qs_q }}">UPI</a>
+  <a class="btn btn-sm {% if filter_method == 'atm' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=atm&{{ qs_q }}">ATM</a>
+  <a class="btn btn-sm {% if filter_method == 'card' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=card&{{ qs_q }}">Card</a>
+  <span class="small text-muted ms-1">Sorted by date, newest first</span>
 </div>
 
 {% if not items %}
-<p class="text-muted">No items yet. Connect Gmail and sync, or widen the search query in settings.</p>
+<p class="text-muted">
+  {% if filter_method or filter_q or filter_status %}
+  No matching items. Clear the type filter or search, or Sync Gmail if a new alert is missing.
+  {% else %}
+  No items yet. Connect Gmail and sync, or widen the search query in settings.
+  {% endif %}
+</p>
 {% else %}
 {% include "_pager.html" %}
 <form method="post" action="/admin/expense-analyser/retag-selected" id="ea-bulk-retag" class="d-flex flex-wrap gap-2 align-items-center mb-3 p-2 rounded border" style="border-color:rgba(255,255,255,.08)!important;background:rgba(255,255,255,.03);">

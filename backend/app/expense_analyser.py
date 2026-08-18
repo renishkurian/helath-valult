@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import String, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app import crypto, finance_ai, gmail, models
@@ -23,6 +24,11 @@ from app.drive_backup import oauth_creds, oauth_ready
 log = logging.getLogger("vault.expense_analyser")
 
 STATUSES = ("pending", "matched", "corrected", "posted", "ignored", "missed")
+METHOD_FILTERS = {
+    "upi": ("upi",),
+    "atm": ("atm",),
+    "card": ("credit_card", "debit_card"),
+}
 KINDS = ("alert", "bill", "bill_line")
 _TEXT_LIMIT = 6000
 _SYNC_BUSY: dict[str, float] = {}
@@ -1174,6 +1180,47 @@ def retag_pending_items(
     db.commit()
     return {"scanned": scanned, "updated": updated}
 
+def _items_query(
+    db: Session,
+    user: models.User,
+    *,
+    status: str | None = None,
+    statuses: list[str] | tuple[str, ...] | None = None,
+    kind: str | None = None,
+    method: str | None = None,
+    q: str | None = None,
+):
+    uid = vault_id(user)
+    qry = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
+    if status:
+        qry = qry.filter(models.ExpenseAnalyserItem.status == status)
+    elif statuses:
+        qry = qry.filter(models.ExpenseAnalyserItem.status.in_(list(statuses)))
+    if kind:
+        qry = qry.filter(models.ExpenseAnalyserItem.kind == kind)
+    methods = METHOD_FILTERS.get((method or "").strip().lower())
+    if methods:
+        qry = qry.filter(models.ExpenseAnalyserItem.payment_method.in_(methods))
+    needle = (q or "").strip()
+    if needle:
+        like = f"%{needle}%"
+        clauses = [
+            models.ExpenseAnalyserItem.payee.ilike(like),
+            models.ExpenseAnalyserItem.subject.ilike(like),
+            models.ExpenseAnalyserItem.from_addr.ilike(like),
+            models.ExpenseAnalyserItem.raw_snippet.ilike(like),
+        ]
+        digits = re.sub(r"[^\d.]", "", needle)
+        if digits:
+            clauses.append(cast(models.ExpenseAnalyserItem.amount, String).like(f"%{digits}%"))
+            try:
+                clauses.append(models.ExpenseAnalyserItem.amount == Decimal(digits))
+            except Exception:
+                pass
+        qry = qry.filter(or_(*clauses))
+    return qry
+
+
 def list_items(
     db: Session,
     user: models.User,
@@ -1181,27 +1228,21 @@ def list_items(
     status: str | None = None,
     statuses: list[str] | tuple[str, ...] | None = None,
     kind: str | None = None,
+    method: str | None = None,
+    q: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[models.ExpenseAnalyserItem]:
-    from sqlalchemy import func
-
-    uid = vault_id(user)
-    q = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
-    if status:
-        q = q.filter(models.ExpenseAnalyserItem.status == status)
-    elif statuses:
-        q = q.filter(models.ExpenseAnalyserItem.status.in_(list(statuses)))
-    if kind:
-        q = q.filter(models.ExpenseAnalyserItem.kind == kind)
+    qry = _items_query(
+        db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
+    )
+    date_key = func.coalesce(
+        func.nullif(models.ExpenseAnalyserItem.txn_date, ""),
+        func.strftime("%Y-%m-%d", models.ExpenseAnalyserItem.received_at),
+        func.strftime("%Y-%m-%d", models.ExpenseAnalyserItem.created_at),
+    )
     return (
-        q.order_by(
-            func.coalesce(
-                models.ExpenseAnalyserItem.received_at,
-                models.ExpenseAnalyserItem.created_at,
-            ).desc(),
-            models.ExpenseAnalyserItem.created_at.desc(),
-        )
+        qry.order_by(date_key.desc(), models.ExpenseAnalyserItem.created_at.desc())
         .offset(max(0, offset))
         .limit(max(1, min(300, limit)))
         .all()
@@ -1215,16 +1256,13 @@ def count_items(
     status: str | None = None,
     statuses: list[str] | tuple[str, ...] | None = None,
     kind: str | None = None,
+    method: str | None = None,
+    q: str | None = None,
 ) -> int:
-    uid = vault_id(user)
-    q = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
-    if status:
-        q = q.filter(models.ExpenseAnalyserItem.status == status)
-    elif statuses:
-        q = q.filter(models.ExpenseAnalyserItem.status.in_(list(statuses)))
-    if kind:
-        q = q.filter(models.ExpenseAnalyserItem.kind == kind)
-    return int(q.count() or 0)
+    qry = _items_query(
+        db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
+    )
+    return int(qry.count() or 0)
 
 
 def get_item(db: Session, user: models.User, item_id: str) -> models.ExpenseAnalyserItem:

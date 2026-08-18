@@ -51,6 +51,8 @@ def list_items(
     status: str | None = None,
     statuses: str | None = None,
     kind: str | None = None,
+    method: str | None = None,
+    q: str | None = None,
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -61,6 +63,7 @@ def list_items(
     rows = ea.list_items(
         db, current_user,
         status=status or None, statuses=status_list, kind=kind or None,
+        method=method or None, q=q or None,
         limit=limit, offset=offset,
     )
     return [_item_out(r) for r in rows]
