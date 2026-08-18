@@ -200,6 +200,7 @@ def test_analyser_upi_breakdown_matches_insights_category_total():
         assert "47,275" in reply or "47275" in reply.replace(",", "")
         assert "Jibin" in reply
         assert "Axis" in reply
+        assert "payment_method" in reply.lower() or "payment method" in reply.lower() or "Inbox UPI filter" in reply
     finally:
         db.close()
 

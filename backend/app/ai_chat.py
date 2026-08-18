@@ -319,19 +319,42 @@ def parse_question_amount(question: str) -> float | None:
         return None
 
 
+def _question_hits_insights_total(db: Session, user: models.User, question: str) -> bool:
+    amt = parse_question_amount(question)
+    if amt is None or amt < 50:
+        return False
+    from app.expense_analyser import insights
+    ym = (detect_months(question, vault_now()) or [vault_now().strftime("%Y-%m")])[0]
+    return _match_insights_slice(insights(db, user, ym), amt) is not None
+
+
 def wants_analyser_upi_breakdown(question: str) -> bool:
     q = question or ""
-    if not _UPI_RE.search(q):
-        return False
-    if _ANALYSER_RE.search(q):
+    if _ANALYSER_RE.search(q) and (_UPI_RE.search(q) or parse_question_amount(q)):
         return True
-    if parse_question_amount(q) and re.search(r"\b(list|break\s*down|itemize|total)\b", q, re.I):
+    if _UPI_RE.search(q) and parse_question_amount(q) and re.search(
+        r"\b(list|break\s*down|itemize|total|insights?)\b", q, re.I,
+    ):
         return True
     return False
 
 
+def _match_insights_slice(report: dict, amount: float | None) -> tuple[str, dict] | None:
+    if amount is None:
+        return None
+    for kind, key in (("category", "by_category"), ("method", "by_method")):
+        for row in report.get(key) or []:
+            try:
+                got = float(row.get("amount") or 0)
+            except (TypeError, ValueError):
+                continue
+            if abs(got - amount) < 1:
+                return kind, row
+    return None
+
+
 def format_analyser_upi_breakdown(db: Session, user: models.User, question: str = "") -> str:
-    """Full Expense Analyser UPI list for the month — matches Insights category total."""
+    """Expand a quoted rupee figure against live Insights totals (category or method)."""
     from app.expense_analyser import insights, _item_day
 
     today = vault_now()
@@ -339,6 +362,7 @@ def format_analyser_upi_breakdown(db: Session, user: models.User, question: str 
     ym = months[0]
     report = insights(db, user, ym)
     asked = parse_question_amount(question)
+    matched = _match_insights_slice(report, asked)
     uid = _uid(user)
     rows = (
         db.query(models.ExpenseAnalyserItem)
@@ -356,48 +380,58 @@ def format_analyser_upi_breakdown(db: Session, user: models.User, question: str 
         if day and day.startswith(ym) and (item.direction or "") != "credit":
             month_rows.append(item)
 
-    def _is_cat_upi(it) -> bool:
-        return "upi" in (it.suggested_category or "").lower()
+    slice_kind, slice_row = matched if matched else ("category", None)
+    slice_name = (slice_row or {}).get("name") or ""
+    if slice_kind == "method" and slice_name:
+        show = [it for it in month_rows if (it.payment_method or "").lower() == slice_name.lower()]
+        heading = f"payment method **{slice_name}**"
+    elif slice_name:
+        show = [
+            it for it in month_rows
+            if (it.suggested_category or "").strip().lower() == slice_name.lower()
+        ]
+        heading = f"Insights category **{slice_name}**"
+    else:
+        # Default: Insights UPI / transfers category, plus true UPI method for contrast.
+        show = [it for it in month_rows if "upi" in (it.suggested_category or "").lower()]
+        heading = "Insights category **UPI / transfers**"
 
-    def _is_method_upi(it) -> bool:
-        return (it.payment_method or "").lower() == "upi" or _looks_like_upi(
-            it.payment_method, it.subject, it.raw_snippet,
-        )
-
-    cat_rows = [it for it in month_rows if _is_cat_upi(it)]
-    method_rows = [it for it in month_rows if _is_method_upi(it)]
-    cat_total = sum(abs(_f(it.amount)) for it in cat_rows)
-    method_total = sum(abs(_f(it.amount)) for it in method_rows)
+    cat_upi = [it for it in month_rows if "upi" in (it.suggested_category or "").lower()]
+    method_upi = [it for it in month_rows if (it.payment_method or "").lower() == "upi"]
+    cat_total = sum(abs(_f(it.amount)) for it in cat_upi)
+    method_total = sum(abs(_f(it.amount)) for it in method_upi)
+    listed_total = sum(abs(_f(it.amount)) for it in show)
     label = report.get("label") or ym
 
     lines = [
-        f"**Expense Analyser UPI for {label}** (live inbox, not Money Manager)",
+        f"**Expense Analyser · {label}** (live inbox totals — same rules as Insights)",
+        "",
+        "How this is stored: Insights **By category** sums `suggested_category` on debits. "
+        "Inbox **UPI** filter sums `payment_method=upi`. Those are different fields.",
+        "",
+        f"Insights UPI / transfers (category): **{_inr(cat_total)}** · {len(cat_upi)} items",
+        f"Inbox UPI filter (method): **{_inr(method_total)}** · {len(method_upi)} items",
         "",
     ]
-    if asked and abs(asked - cat_total) < 1:
+    if asked and matched:
         lines.append(
-            f"₹ {asked:,.2f} is the Insights **category total** for "
-            f"**UPI / transfers** — it is the sum of **{len(cat_rows)}** debit alerts, not one payment."
+            f"**₹ {asked:,.2f}** matches {heading} — a **sum of {len(show)} alerts**, not one transaction."
         )
         lines.append("")
-    lines.append(f"UPI / transfers (category): **{_inr(cat_total)}** · {len(cat_rows)} items")
-    lines.append(f"UPI (payment method): **{_inr(method_total)}** · {len(method_rows)} items")
-    if abs(cat_total - method_total) >= 1:
+    elif asked and abs(asked - listed_total) >= 1:
         lines.append(
-            "Those two numbers differ when a card/ATM/netbanking alert is tagged "
-            "“UPI / transfers”. Insights uses the **category** figure."
+            f"No single alert is ₹ {asked:,.2f}. Closest stored totals are category "
+            f"{_inr(cat_total)} vs method {_inr(method_total)}."
         )
-    lines.append("")
+        lines.append("")
 
-    show = sorted(cat_rows, key=lambda it: abs(_f(it.amount)), reverse=True)
+    show = sorted(show, key=lambda it: abs(_f(it.amount)), reverse=True)
     if not show:
-        show = sorted(method_rows, key=lambda it: abs(_f(it.amount)), reverse=True)
-    if not show:
-        lines.append("No UPI-tagged debit alerts in this month.")
+        lines.append("No matching debit alerts in this month.")
         return "\n".join(lines)
 
-    lines.append("| Date | Status | Payee | Method | Amount |")
-    lines.append("| --- | --- | --- | --- | ---: |")
+    lines.append("| Date | Status | Payee | Method | Category | Amount |")
+    lines.append("| --- | --- | --- | --- | --- | ---: |")
     running = 0.0
     extra = 0
     extra_sum = 0.0
@@ -411,14 +445,15 @@ def format_analyser_upi_breakdown(db: Session, user: models.User, question: str 
         lines.append(
             f"| {it.txn_date or '—'} | {it.status or 'pending'} | "
             f"{it.payee or it.subject or '—'} | "
-            f"{(it.payment_method or '—').replace('_', ' ')} | {_inr(it.amount).replace('₹ ', '')} |"
+            f"{(it.payment_method or '—').replace('_', ' ')} | "
+            f"{it.suggested_category or '—'} | {_inr(it.amount).replace('₹ ', '')} |"
         )
     if extra:
-        lines.append(f"| | | _{extra} more_ | | {_inr(extra_sum).replace('₹ ', '')} |")
+        lines.append(f"| | | _{extra} more_ | | | {_inr(extra_sum).replace('₹ ', '')} |")
         running += extra_sum
-    lines.append(f"| | | **Listed total** | | **{_inr(running).replace('₹ ', '')}** |")
+    lines.append(f"| | | **Listed total** | | | **{_inr(running).replace('₹ ', '')}** |")
     lines.append("")
-    lines.append("_Source: Expense Analyser inbox. Ignored rows and credits are excluded, same as Insights._")
+    lines.append("_Ignored rows, credits, and statement headers are excluded — same as Insights._")
     return "\n".join(lines)
 
 
@@ -1391,6 +1426,20 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
             )
 
     # ---- Expense Analyser ----
+    lines.append("")
+    lines.append("## HOW EXPENSE ANALYSER AMOUNTS ARE STORED")
+    lines.append(
+        "- Insights **By category** = sum of `suggested_category` on debit alerts for the month "
+        "(ignored/credits/statement headers excluded). “UPI / transfers” is a category label, not always UPI rails."
+    )
+    lines.append(
+        "- Inbox filter **UPI** = `payment_method=upi` only. That total is often smaller than Insights UPI / transfers."
+    )
+    lines.append("- Money Manager = posted ledger only. Pending Gmail is not ledger spend.")
+    lines.append(
+        "- If the user quotes a rupee amount that matches an Insights total below, that amount is a SUM. "
+        "List every contributing row. Do not say a 90k UPI payment is missing."
+    )
     lines.append("")
     lines.append("## Expense Analyser (Gmail bank/card alerts)")
     conn = (
@@ -2389,7 +2438,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
                 source=resolve_spend_source(text, history),
             )
         return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_analyser_upi_breakdown(text):
+    if wants_analyser_upi_breakdown(text) or _question_hits_insights_total(db, user, text):
         reply = format_analyser_upi_breakdown(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
     if should_answer_highest_expense(text, history):
