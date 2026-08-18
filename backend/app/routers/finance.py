@@ -12,7 +12,7 @@ from fastapi.responses import Response
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import settings, vault_now
 from app.database import get_db
 from app import models, schemas, crypto
 from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
@@ -1334,6 +1334,9 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
     method_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
     method_n: dict[str, int] = defaultdict(int)
     acct_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    payee_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    payee_n: dict[str, int] = defaultdict(int)
+    payee_cat: dict[str, str] = {}
     weekday_amt = [Decimal("0")] * 7
     weekday_n = [0] * 7
     hist_amt = [Decimal("0")] * len(_HIST_BUCKETS)
@@ -1368,6 +1371,10 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
             method_n[PAYMENT_LABELS.get(mkey, mkey.replace("_", " ").title())] += 1
             aname = accts.get(t.account_id).name if accts.get(t.account_id) else "Account"
             acct_amt[aname] += amt
+            pname = (t.payee or "").strip() or cname
+            payee_amt[pname] += amt
+            payee_n[pname] += 1
+            payee_cat[pname] = cname
             try:
                 wd = datetime.strptime(t.txn_date, "%Y-%m-%d").weekday()  # Mon=0
             except ValueError:
@@ -1418,8 +1425,57 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
             "amount": _f(hist_amt[i]),
             "count": hist_n[i],
             "pct": _f(hist_n[i] * 100 / hist_total),
-            "color": "#3FE0C5",
+            "color": "#4DD8E0",
         })
+
+    now = vault_now()
+    is_current = ym == now.strftime("%Y-%m")
+    today_day = now.day if is_current else None
+    days_elapsed = now.day if is_current else last_day
+    days_logged = sum(1 for d in daily.values() if d["expense"] or d["income"])
+    avg_day = _f(expense / last_day) if last_day else 0.0
+    projected = _f(expense)
+    if is_current and days_elapsed > 0:
+        projected = _f(expense / days_elapsed * last_day)
+    month_pct = _f(days_elapsed * 100 / last_day) if last_day else 0.0
+    first_wd = datetime(y, m, 1).weekday()  # Mon=0
+    heatmap_pad = (first_wd + 1) % 7  # Sunday-first
+
+    spent_by_cat_id: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    for t in txns:
+        if t.txn_type == "expense" and t.category_id:
+            spent_by_cat_id[t.category_id] += _dec(t.amount)
+    budget_rows = db.query(models.FinanceBudget).filter(
+        models.FinanceBudget.user_id == uid, models.FinanceBudget.year_month == ym,
+    ).all()
+    budgets = []
+    for b in budget_rows:
+        cat = cats.get(b.category_id)
+        name = cat.name if cat else "Category"
+        spent = spent_by_cat_id.get(b.category_id, Decimal("0"))
+        cap = _dec(b.amount) or Decimal("1")
+        budgets.append({
+            "name": name,
+            "spent": _f(spent),
+            "budget": _f(b.amount),
+            "pct": _f(min(Decimal("999"), spent * 100 / cap)),
+            "over": spent > _dec(b.amount),
+            "color": (cat.color if cat and cat.color else "#F5B942"),
+        })
+    if not budgets:
+        for row in _slice_rows(cat_amt, cat_n, cat_color)[:5]:
+            budgets.append({
+                "name": row["name"],
+                "spent": row["amount"],
+                "budget": 0.0,
+                "pct": row["pct"],
+                "over": False,
+                "color": row["color"],
+            })
+
+    payee_rows = _slice_rows(payee_amt, payee_n)[:6]
+    for row in payee_rows:
+        row["meta"] = payee_cat.get(row["name"]) or "Expense"
 
     return {
         "year_month": ym,
@@ -1430,13 +1486,23 @@ def build_charts(db: Session, user: models.User, year_month: str | None = None) 
         "expense": _f(expense),
         "total": _f(income - expense),
         "txn_count": len(txns),
+        "avg_day": avg_day,
+        "days_in_month": last_day,
+        "days_elapsed": days_elapsed,
+        "days_logged": days_logged,
+        "month_pct": month_pct,
+        "projected": projected,
+        "today_day": today_day,
+        "heatmap_pad": heatmap_pad,
         "daily": [daily[d] for d in range(1, last_day + 1)],
         "categories": _slice_rows(cat_amt, cat_n, cat_color),
         "methods": _slice_rows(method_amt, method_n),
         "accounts": _slice_rows(acct_amt),
+        "payees": payee_rows,
         "weekday": weekday_rows,
         "histogram": hist_rows,
         "trend": trend,
+        "budgets": budgets,
     }
 
 

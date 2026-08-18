@@ -954,6 +954,7 @@ class FinanceChartSlice(BaseModel):
     count: int = 0
     pct: float = 0
     color: Optional[str] = None
+    meta: Optional[str] = None
 
 
 class FinanceDailyPoint(BaseModel):
@@ -973,6 +974,15 @@ class FinanceTrendPoint(BaseModel):
     net: float = 0
 
 
+class FinanceBudgetSlice(BaseModel):
+    name: str
+    spent: float = 0
+    budget: float = 0
+    pct: float = 0
+    over: bool = False
+    color: Optional[str] = None
+
+
 class FinanceChartsOut(BaseModel):
     year_month: str
     label: str
@@ -982,13 +992,23 @@ class FinanceChartsOut(BaseModel):
     expense: float = 0
     total: float = 0
     txn_count: int = 0
+    avg_day: float = 0
+    days_in_month: int = 0
+    days_elapsed: int = 0
+    days_logged: int = 0
+    month_pct: float = 0
+    projected: float = 0
+    today_day: Optional[int] = None
+    heatmap_pad: int = 0
     daily: List[FinanceDailyPoint] = []
     categories: List[FinanceChartSlice] = []
     methods: List[FinanceChartSlice] = []
     accounts: List[FinanceChartSlice] = []
+    payees: List[FinanceChartSlice] = []
     weekday: List[FinanceChartSlice] = []
     histogram: List[FinanceChartSlice] = []
     trend: List[FinanceTrendPoint] = []
+    budgets: List[FinanceBudgetSlice] = []
 
 
 class FinanceBudgetIn(BaseModel):

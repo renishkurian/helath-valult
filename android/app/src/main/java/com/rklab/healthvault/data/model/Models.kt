@@ -709,7 +709,8 @@ data class FinanceChartSlice(
     val amount: Double = 0.0,
     val count: Int = 0,
     val pct: Double = 0.0,
-    val color: String? = null
+    val color: String? = null,
+    val meta: String? = null
 )
 data class FinanceDailyPoint(
     val date: String = "",

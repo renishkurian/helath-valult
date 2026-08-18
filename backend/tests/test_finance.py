@@ -292,6 +292,9 @@ def test_finance_charts_endpoint():
     assert len(body["weekday"]) == 7
     assert len(body["trend"]) == 12
     assert any(s["amount"] == 250 for s in body["categories"])
+    assert body["payees"]
+    assert body["days_in_month"] >= 28
+    assert "heatmap_pad" in body
 
 
 def test_update_transaction():
@@ -602,6 +605,7 @@ def test_admin_account_statement_and_recurring_pages():
     assert r.status_code == 200, r.text
     assert "Internal Server Error" not in r.text
     assert "Daily flow" in r.text
+    assert "Spend heatmap" in r.text
     assert "Amount histogram" in r.text
 
 
