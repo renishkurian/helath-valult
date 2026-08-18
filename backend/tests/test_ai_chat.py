@@ -54,6 +54,11 @@ def test_resolve_ledger_day_and_deterministic_today_spend():
     assert resolve_ledger_day("yesterday spend", today) == "2026-08-15"
     assert resolve_ledger_day("any upi trasaction today?", today) == "2026-08-16"
     assert resolve_ledger_day("what about yesterday", today) == "2026-08-15"
+    from app.ai_chat import needs_spend_clarify, resolve_spend_source
+    assert needs_spend_clarify("any upi trasaction today?") is True
+    assert needs_spend_clarify("todays total expense") is False
+    assert resolve_spend_source("gmail") == "analyser"
+    assert resolve_spend_source("ledger") == "ledger"
     assert should_answer_ledger_day(
         "are u sure",
         [{"role": "user", "content": "todays total expense"}],
@@ -135,10 +140,13 @@ def test_upi_day_includes_unposted_gmail_alerts():
         assert "1500" not in reply.replace(",", "")
         assert "Axis" not in reply
         out = ask(db, user, "any upi trasaction today?")
-        assert "42.00" in out["reply"].replace(",", "")
-        assert "HDFC UPI" in out["reply"]
-        yday = ask(db, user, "what about yesterday")
-        assert "Money Manager" in yday["reply"]
+        assert "Which should I check?" in out["reply"]
+        assert "42.00" not in out["reply"].replace(",", "")
+        picked = ask(db, user, "gmail", thread_id=out["thread_id"])
+        assert "42.00" in picked["reply"].replace(",", "")
+        assert "HDFC UPI" in picked["reply"]
+        yday = ask(db, user, "what about yesterday", thread_id=out["thread_id"])
+        assert "Expense Analyser" in yday["reply"] or "Gmail" in yday["reply"]
     finally:
         db.close()
 

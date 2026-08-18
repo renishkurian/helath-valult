@@ -31,6 +31,12 @@ SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money M
 
 Language: The user may write in English, Malayalam script, or Manglish (Malayalam in Latin letters, e.g. “kazhinja maasam enna vaangiya?”, “atta podi koode list undaakkan”). Understand all three. Reply in the same style the user used when helpful (short Manglish is fine); otherwise use clear English. Always keep vault facts accurate. Treat “dairy” as a common typo for Digital Diary when the intent is clearly a journal/note.
 
+Clarify first (smart, not chatty):
+- If you cannot answer correctly without knowing which module, which person, which day/month, or posted ledger vs Gmail inbox, ask ONE short question. Then wait. Do not guess. Do not invent a ₹0 total while mail is still pending.
+- One question at a time. Offer numbered choices when helpful (e.g. Money Manager ledger / Expense Analyser Gmail / both).
+- Do not ask when they already named the module, person, or date, or when their message is a choice from your last question.
+- After they clarify, answer from the snapshot only — still do not invent facts.
+
 For questions about existing vault data, answer only from the VAULT SNAPSHOT. Do not invent hospitals, reports, transactions, balances, shopping items, or past diary entries. If the snapshot lacks the answer, say what is missing and which module to open.
 
 When the user asks for:
@@ -86,6 +92,7 @@ Rules for vault-action:
 - When charges[] or finance amount is present, show the numbers clearly in the visible reply
 - Do NOT emit vault-action for pure questions (e.g. “did I buy oil?” / “diary il enthu ezhuthi?” / “how much petrol this month?”)
 - Do NOT emit vault-action while asking Money Manager vs Diary — wait for their choice
+- Do NOT emit vault-action while asking a clarifying question — wait for their choice
 - For history-based shop lists, prefer frequent checked items from the months asked — do not invent past purchases. For new diary notes, folders, or ledger rows the user is dictating, use their words freely.
 
 Household brain — if the snapshot has a HOUSEHOLD BRAIN section, treat those as lasting preferences (brands, aliases, default accounts, “we always…”). Do not let them override live ledger totals or shopping-list rows.
@@ -172,7 +179,7 @@ def should_answer_ledger_day(
     day = resolve_ledger_day(question, today)
     if day:
         return day
-    if not _FOLLOWUP_RE.search(question or ""):
+    if not (_FOLLOWUP_RE.search(question or "") or _source_from_text(question)):
         return None
     for m in reversed(history or []):
         if (m.get("role") or "") != "user":
@@ -181,6 +188,85 @@ def should_answer_ledger_day(
         if day:
             return day
     return None
+
+
+_SOURCE_LEDGER_RE = re.compile(r"\b(ledger|money\s*manager|posted|finance)\b", re.I)
+_SOURCE_GMAIL_RE = re.compile(
+    r"\b(gmail|inbox|pending|analyser|analyzer|mail|alerts?)\b", re.I,
+)
+_SOURCE_BOTH_RE = re.compile(r"\b(both|all(\s+of\s+them)?|everywhere)\b", re.I)
+_LEDGER_INTENT_RE = re.compile(
+    r"\b(total\s+(expense|expenses|spend|spending)|how much(\s+\w+){0,3}\s+spend)\b",
+    re.I,
+)
+_CLARIFY_MARK = "Which should I check?"
+
+
+def _source_from_text(question: str) -> str | None:
+    q = (question or "").strip()
+    if not q:
+        return None
+    both = bool(_SOURCE_BOTH_RE.search(q))
+    gmail = bool(_SOURCE_GMAIL_RE.search(q))
+    ledger = bool(_SOURCE_LEDGER_RE.search(q))
+    if both or (gmail and ledger):
+        return "both"
+    if gmail:
+        return "analyser"
+    if ledger:
+        return "ledger"
+    return None
+
+
+def resolve_spend_source(question: str, history: list[dict] | None = None) -> str | None:
+    source = _source_from_text(question)
+    if source:
+        return source
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "user":
+            continue
+        source = _source_from_text(m.get("content") or "")
+        if source:
+            return source
+        if len((m.get("content") or "").split()) > 12:
+            continue
+    return None
+
+
+def needs_spend_clarify(question: str, history: list[dict] | None = None) -> bool:
+    """Ask which source when a day/UPI question does not name ledger vs Gmail."""
+    if resolve_spend_source(question, history):
+        return False
+    if _LEDGER_INTENT_RE.search(question or ""):
+        return False
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "assistant":
+            continue
+        if _CLARIFY_MARK in (m.get("content") or ""):
+            return False
+        break
+    q = question or ""
+    if wants_upi(q, history):
+        return True
+    if re.search(r"\b(trans?actions?|trasactions?|alerts?)\b", q, re.I):
+        return True
+    if re.search(r"\bany\b", q, re.I) and (_TODAY_RE.search(q) or _YESTERDAY_RE.search(q)):
+        return True
+    return False
+
+
+def format_spend_clarify(day: str, question: str = "") -> str:
+    try:
+        label = datetime.strptime(day, "%Y-%m-%d").strftime("%A %d %B %Y")
+    except ValueError:
+        label = day
+    topic = "UPI" if wants_upi(question) else "transactions"
+    return (
+        f"I can check **{topic}** for {label} in two places — they are not the same:\n\n"
+        "1. **Money Manager (ledger)** — already posted as spend\n"
+        "2. **Expense Analyser (Gmail)** — bank/UPI alerts still waiting in Inbox\n\n"
+        f"{_CLARIFY_MARK} Reply **ledger**, **gmail**, or **both**."
+    )
 
 
 def wants_upi(question: str, history: list[dict] | None = None) -> bool:
@@ -206,9 +292,13 @@ def format_money_manager_day_reply(
     day: str,
     question: str = "",
     history: list[dict] | None = None,
+    source: str | None = None,
 ) -> str:
     """Deterministic day spend: Money Manager ledger, plus unposted Gmail alerts."""
     uid = _uid(user)
+    source = source or resolve_spend_source(question, history) or "both"
+    show_ledger = source in ("ledger", "both")
+    show_ea = source in ("analyser", "both")
     upi_only = wants_upi(question, history)
     cats = {
         c.id: c.name
@@ -234,31 +324,35 @@ def format_money_manager_day_reply(
             t for t in txns
             if _looks_like_upi(t.payment_method, t.payee, t.notes, getattr(t, "description", None))
         ]
+    if not show_ledger:
+        txns = []
     total = sum(_f(t.amount) for t in txns)
     try:
         label = datetime.strptime(day, "%Y-%m-%d").strftime("%A %d %B %Y")
     except ValueError:
         label = day
     topic = "UPI" if upi_only else "expenses"
-    lines = [
-        f"**Money Manager {topic} for {label}**",
-        "",
-        f"Ledger total: **{_inr(total)}**",
-        "",
-    ]
-    if not txns:
-        lines.append("No matching expense entries on the Money Manager ledger for this date.")
-        lines.append("")
-    else:
-        lines.append("| Payee | Category | Account | Amount |")
-        lines.append("| --- | --- | --- | ---: |")
-        for t in txns:
-            acct = acct_by_id.get(t.account_id)
-            lines.append(
-                f"| {t.payee or '—'} | {cats.get(t.category_id) or '—'} | "
-                f"{acct.name if acct else '—'} | {_inr(t.amount).replace('₹ ', '')} |"
-            )
-        lines.append("")
+    lines: list[str] = []
+    if show_ledger:
+        lines.extend([
+            f"**Money Manager {topic} for {label}**",
+            "",
+            f"Ledger total: **{_inr(total)}**",
+            "",
+        ])
+        if not txns:
+            lines.append("No matching expense entries on the Money Manager ledger for this date.")
+            lines.append("")
+        else:
+            lines.append("| Payee | Category | Account | Amount |")
+            lines.append("| --- | --- | --- | ---: |")
+            for t in txns:
+                acct = acct_by_id.get(t.account_id)
+                lines.append(
+                    f"| {t.payee or '—'} | {cats.get(t.category_id) or '—'} | "
+                    f"{acct.name if acct else '—'} | {_inr(t.amount).replace('₹ ', '')} |"
+                )
+            lines.append("")
 
     ea_rows = (
         db.query(models.ExpenseAnalyserItem)
@@ -276,6 +370,8 @@ def format_money_manager_day_reply(
             it for it in ea_rows
             if _looks_like_upi(it.payment_method, it.subject, it.raw_snippet, it.from_addr)
         ]
+    if not show_ea:
+        ea_rows = []
     if ea_rows:
         ea_total = sum(abs(_f(it.amount)) for it in ea_rows if it.amount is not None)
         lines.append("**Expense Analyser — Gmail alerts not yet on the ledger**")
@@ -293,7 +389,7 @@ def format_money_manager_day_reply(
         lines.append("")
         lines.append("These are in Expense Analyser Inbox — post them to Money Manager if they should count as spend.")
         lines.append("")
-    elif not txns:
+    elif show_ea and not txns:
         lines.append("No matching Gmail alerts in Expense Analyser for this date either.")
         lines.append("")
 
@@ -2103,7 +2199,13 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     # Secrets and ledger facts stay on this server — never sent to the AI provider.
     ledger_day = should_answer_ledger_day(text, history)
     if ledger_day:
-        reply = format_money_manager_day_reply(db, user, ledger_day, question=text, history=history)
+        if needs_spend_clarify(text, history):
+            reply = format_spend_clarify(ledger_day, text)
+        else:
+            reply = format_money_manager_day_reply(
+                db, user, ledger_day, question=text, history=history,
+                source=resolve_spend_source(text, history),
+            )
         return _store_deterministic_reply(db, user, thread, text, reply)
     if should_answer_highest_expense(text, history):
         source_q = text
