@@ -76,7 +76,7 @@
             <input class="form-check-input" type="checkbox" id="auto-sync" name="enabled" value="1" {% if status.enabled %}checked{% endif %} {% if not status.connected %}disabled{% endif %}>
             <label class="form-check-label" for="auto-sync">Sync Gmail once a day</label>
           </div>
-          <label class="form-label" for="sync-hour">Preferred hour (server local time)</label>
+          <label class="form-label" for="sync-hour">Preferred hour ({{ status.timezone or 'Asia/Kolkata' }})</label>
           <select class="form-select" id="sync-hour" name="hour" {% if not status.connected %}disabled{% endif %}>
             {% for h in range(0, 24) %}
             <option value="{{ h }}" {% if status.hour == h %}selected{% endif %}>
@@ -84,7 +84,12 @@
             </option>
             {% endfor %}
           </select>
-          <div class="form-text mt-2">Runs after this hour, at most once per calendar day. Needs Gmail connected and the vault service up.</div>
+          <div class="form-text mt-2">
+            Runs after this hour, at most once per calendar day, while the vault service is up.
+            {% if status.connected and not status.enabled %}
+            Daily sync is off right now — scheduled Gmail import will not run until you enable it and save.
+            {% endif %}
+          </div>
           <button class="btn btn-primary mt-3" type="submit" {% if not status.connected %}disabled{% endif %}>Save schedule</button>
         </form>
       </div>

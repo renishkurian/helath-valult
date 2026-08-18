@@ -213,6 +213,52 @@ def test_bulk_delete_transactions():
     payees = {t["payee"] for t in left}
     assert "Keep" in payees
     assert "One" not in payees and "Two" not in payees
+    trash = client.get("/finance/trash", headers=headers).json()
+    trash_payees = {t["payee"] for t in trash}
+    assert "One" in trash_payees and "Two" in trash_payees
+    restore_id = next(t["id"] for t in trash if t["payee"] == "One")
+    r = client.post(f"/finance/transactions/{restore_id}/restore", headers=headers)
+    assert r.status_code == 200, r.text
+    left = client.get("/finance/transactions", headers=headers, params={"year_month": "2026-08"}).json()
+    assert "One" in {t["payee"] for t in left}
+    r = client.post("/finance/trash/empty", headers=headers)
+    assert r.status_code == 200, r.text
+    assert client.get("/finance/trash", headers=headers).json() == []
+    left = client.get("/finance/transactions", headers=headers, params={"year_month": "2026-08"}).json()
+    assert "Keep" in {t["payee"] for t in left}
+    assert "One" in {t["payee"] for t in left}
+
+
+def test_finance_charts_endpoint():
+    import uuid
+    email = f"charts-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Charts User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    cats = client.get("/finance/categories", headers=headers).json()
+    expense_cat = next(c for c in cats if c["kind"] == "expense" and not c.get("parent_id"))
+    client.post("/finance/transactions", headers=headers, json={
+        "account_id": accounts[0]["id"],
+        "category_id": expense_cat["id"],
+        "txn_type": "expense",
+        "amount": 250,
+        "txn_date": "2026-08-16",
+        "payee": "Cafe",
+        "payment_method": "upi",
+    })
+    r = client.get("/finance/charts", headers=headers, params={"year_month": "2026-08"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["year_month"] == "2026-08"
+    assert body["expense"] == 250
+    assert len(body["daily"]) >= 28
+    assert body["histogram"]
+    assert len(body["weekday"]) == 7
+    assert len(body["trend"]) == 12
+    assert any(s["amount"] == 250 for s in body["categories"])
 
 
 def test_update_transaction():
@@ -516,6 +562,14 @@ def test_admin_account_statement_and_recurring_pages():
     r = client.get("/admin/finance/more")
     assert r.status_code == 200, r.text
     assert "Recurring" in r.text
+    r = client.get("/admin/finance/trash")
+    assert r.status_code == 200, r.text
+    assert "Trash" in r.text
+    r = client.get("/admin/finance/charts?month=2026-08")
+    assert r.status_code == 200, r.text
+    assert "Internal Server Error" not in r.text
+    assert "Daily flow" in r.text
+    assert "Amount histogram" in r.text
 
 
 def test_transaction_optional_image():

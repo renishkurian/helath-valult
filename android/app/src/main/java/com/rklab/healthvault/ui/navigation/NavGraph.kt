@@ -90,6 +90,7 @@ private object Routes {
     const val FINANCE_STATS = "finance_stats"
     const val FINANCE_ACCOUNTS = "finance_accounts"
     const val FINANCE_MORE = "finance_more"
+    const val FINANCE_TRASH = "finance_trash"
     const val FINANCE_ADD = "finance_add?accountId={accountId}&txnId={txnId}"
     const val FINANCE_ACCOUNT = "finance_account/{accountId}"
     const val FINANCE_INBOX = "finance_inbox"
@@ -248,7 +249,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
 
     val mainTabs = setOf(Routes.HOME, Routes.DOCTORS, Routes.CARE, Routes.REMINDERS, Routes.FAMILY)
     val passwordTabs = setOf(Routes.VAULT, Routes.VAULT_GENERATOR, Routes.VAULT_HEALTH, "vault_sends?itemId={itemId}")
-    val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_TRANS, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE)
+    val financeTabs = setOf(Routes.FINANCE, Routes.FINANCE_TRANS, Routes.FINANCE_STATS, Routes.FINANCE_ACCOUNTS, Routes.FINANCE_MORE, Routes.FINANCE_TRASH)
     val lockerTabs = setOf(Routes.LOCKER, Routes.LOCKER_EXPIRING)
     val diaryTabs = setOf(Routes.DIARY, Routes.DIARY_PINNED)
     val urlTabs = setOf(Routes.URLS, Routes.URLS_FAVORITES, Routes.URLS_MANAGE)
@@ -343,7 +344,7 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     currentRoute == Routes.FINANCE_TRANS -> FinanceTab.TRANS
                     currentRoute == Routes.FINANCE_STATS -> FinanceTab.STATS
                     currentRoute == Routes.FINANCE_ACCOUNTS || onFinanceAccount -> FinanceTab.ACCOUNTS
-                    currentRoute == Routes.FINANCE_MORE -> FinanceTab.MORE
+                    currentRoute == Routes.FINANCE_MORE || currentRoute == Routes.FINANCE_TRASH -> FinanceTab.MORE
                     else -> FinanceTab.HOME
                 }
                 FinanceBottomNav(current = current) { tab ->
@@ -808,8 +809,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                     onOpenInbox = { navController.navigate(Routes.FINANCE_INBOX) },
                     onOpenEmi = { navController.navigate(Routes.FINANCE_EMI) },
                     onOpenAiProviders = { navController.navigate(Routes.AI_PROVIDERS) },
-                    onOpenExpense = { navController.navigate(Routes.EXPENSE) }
+                    onOpenExpense = { navController.navigate(Routes.EXPENSE) },
+                    onOpenTrash = { navController.navigate(Routes.FINANCE_TRASH) }
                 )
+            }
+            composable(Routes.FINANCE_TRASH) {
+                FinanceTrashScreen(repository) { navController.popBackStack() }
             }
             composable(Routes.FINANCE_EMI) {
                 FinanceEmiScreen(repository) { navController.popBackStack() }

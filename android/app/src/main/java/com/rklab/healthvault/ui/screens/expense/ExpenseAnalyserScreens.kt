@@ -712,7 +712,7 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                         enabled = st?.connected == true
                     )
                 }
-                Text("Preferred hour (server local time)", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                Text("Preferred hour (${st?.timezone ?: "Asia/Kolkata"})", color = InkSoft, style = MaterialTheme.typography.bodySmall)
                 Box {
                     OutlinedButton(onClick = { hourOpen = true }, enabled = st?.connected == true, modifier = Modifier.padding(top = 6.dp)) {
                         Text("%02d:00".format(st?.hour ?: 6))

@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy.orm import Session
 from app.templating import nice_name, setup_templates
 
@@ -1900,16 +1900,33 @@ async def public_add_item(token: str, request: Request, db: Session = Depends(ge
 
 
 @public_router.post("/public/{token}/items/{item_id}/toggle")
-def public_toggle(token: str, item_id: str, db: Session = Depends(get_db)):
+def public_toggle(token: str, item_id: str, request: Request, db: Session = Depends(get_db)):
+    wants_json = "application/json" in (request.headers.get("accept") or "") or (
+        request.headers.get("x-requested-with") == "fetch"
+    )
     try:
         share, lst = _list_by_token(db, token)
     except HTTPException:
+        if wants_json:
+            return JSONResponse({"ok": False, "detail": "List not found"}, status_code=404)
         return HTMLResponse("<h1>List not found</h1>", status_code=404)
     item = next((i for i in lst.items if i.id == item_id), None)
     if item and item.status == "approved":
         item.checked = not bool(item.checked)
         _touch_list(lst)
         db.commit()
+    elif wants_json:
+        return JSONResponse({"ok": False, "detail": "Item not found"}, status_code=404)
+    if wants_json:
+        items = list(lst.items or [])
+        return JSONResponse({
+            "ok": True,
+            "id": item.id,
+            "checked": bool(item.checked),
+            "revision": _list_revision(lst),
+            "item_count": len(items),
+            "checked_count": sum(1 for i in items if i.checked),
+        })
     return RedirectResponse(f"/shop/{token}", status_code=302)
 
 

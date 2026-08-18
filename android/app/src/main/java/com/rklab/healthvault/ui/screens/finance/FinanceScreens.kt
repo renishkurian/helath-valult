@@ -42,7 +42,6 @@ import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
 import kotlinx.coroutines.launch
 import java.io.File
-import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -203,8 +202,8 @@ fun FinanceTransScreen(
         pendingDelete?.let { txn ->
             AlertDialog(
                 onDismissRequest = { pendingDelete = null },
-                title = { Text("Delete this entry?") },
-                text = { Text("This cannot be undone.") },
+                title = { Text("Move to trash?") },
+                text = { Text("You can restore it from Trash later.") },
                 confirmButton = {
                     TextButton(onClick = {
                         val id = txn.id
@@ -214,7 +213,7 @@ fun FinanceTransScreen(
                                 .onSuccess { reload() }
                                 .onFailure { error = it.message }
                         }
-                    }) { Text("Delete", color = StampRed) }
+                    }) { Text("Move to trash", color = StampRed) }
                 },
                 dismissButton = {
                     TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
@@ -322,7 +321,7 @@ internal fun FinanceTxnCard(
                     }
                     onDelete?.let {
                         DropdownMenuItem(
-                            text = { Text("Delete", color = StampRed) },
+                            text = { Text("Move to trash", color = StampRed) },
                             onClick = { menu = false; it() }
                         )
                     }
@@ -350,29 +349,125 @@ private fun SummaryChip(label: String, value: String, color: Color, modifier: Mo
 @Composable
 fun FinanceStatsScreen(repository: HealthVaultRepository) {
     val scope = rememberCoroutineScope()
-    val month = remember { LocalDate.now().format(monthFmt) }
-    var kind by remember { mutableStateOf("expense") }
-    var report by remember { mutableStateOf<FinanceReportOut?>(null) }
-    LaunchedEffect(kind) {
-        scope.launch { runCatching { report = repository.financeReports(month, kind) } }
-    }
-    Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
-        Text("Stats", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = kind == "income", onClick = { kind = "income" }, label = { Text("Income") })
-            FilterChip(selected = kind == "expense", onClick = { kind = "expense" }, label = { Text("Expenses") })
+    var month by remember { mutableStateOf(YearMonth.now()) }
+    val monthKey = month.format(monthFmt)
+    var charts by remember { mutableStateOf<FinanceChartsOut?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(monthKey) {
+        scope.launch {
+            runCatching { charts = repository.financeCharts(monthKey) }
+                .onFailure { error = it.message }
         }
-        Spacer(Modifier.height(16.dp))
-        Text(inr(report?.total ?: 0.0), color = if (kind == "income") IncomeBlue else ExpenseRed, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.height(16.dp))
-        LazyColumn {
-            items(report?.rows ?: emptyList()) { row ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+    }
+    val data = charts
+    LazyColumn(
+        Modifier.fillMaxSize().background(HubBg),
+        contentPadding = PaddingValues(20.dp, 16.dp, 20.dp, 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("CHARTS", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("‹", color = InkSoft, modifier = Modifier.clickable { month = month.minusMonths(1) }.padding(end = 8.dp), fontWeight = FontWeight.Bold)
+                Text(month.format(monthLabelFmt), style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+                Text("›", color = InkSoft, modifier = Modifier.clickable { month = month.plusMonths(1) }.padding(start = 8.dp), fontWeight = FontWeight.Bold)
+            }
+        }
+        error?.let { item { Text(it, color = StampRed) } }
+        if (data != null) {
+            item {
+                Text(inr(data.expense), color = ExpenseRed, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("Expenses · income ${inr(data.income)}", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+            }
+            item {
+                Text("Daily expenses", color = Ink, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                MiniBars(
+                    values = data.daily.map { it.expense.toFloat() },
+                    labels = data.daily.map { it.day.toString() },
+                    color = ExpenseRed,
+                    showEvery = 5
+                )
+            }
+            item {
+                Text("Amount histogram", color = Ink, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                MiniBars(
+                    values = data.histogram.map { it.count.toFloat() },
+                    labels = data.histogram.map { it.name.replace("₹", "") },
+                    color = Sage
+                )
+            }
+            item {
+                Text("Weekday spend", color = Ink, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                MiniBars(
+                    values = data.weekday.map { it.amount.toFloat() },
+                    labels = data.weekday.map { it.name },
+                    color = ExpenseRed
+                )
+            }
+            item {
+                Text("Last 12 months", color = Ink, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                MiniBars(
+                    values = data.trend.map { it.expense.toFloat() },
+                    labels = data.trend.map { it.label },
+                    color = ExpenseRed
+                )
+            }
+            items(data.categories) { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("${row.pct.toInt()}%  ${row.name}", color = Ink)
                     Text(inr(row.amount), color = Ink, fontWeight = FontWeight.SemiBold)
                 }
-                HorizontalDivider(color = LineColor)
+                LinearProgressIndicator(
+                    progress = (row.pct / 100.0).toFloat().coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(99.dp)),
+                    color = ExpenseRed,
+                    trackColor = HubGlass,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniBars(
+    values: List<Float>,
+    labels: List<String>,
+    color: Color,
+    showEvery: Int = 1
+) {
+    val max = values.maxOrNull()?.coerceAtLeast(0.01f) ?: 1f
+    Row(
+        Modifier.fillMaxWidth().height(132.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        values.forEachIndexed { i, v ->
+            Column(
+                Modifier.weight(1f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height((104.dp * (v / max)).coerceAtLeast(2.dp))
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(color.copy(alpha = 0.9f))
+                )
+                if (showEvery <= 1 || i % showEvery == 0 || i == values.lastIndex) {
+                    Text(
+                        labels.getOrElse(i) { "" },
+                        color = InkSoft,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1
+                    )
+                } else {
+                    Spacer(Modifier.height(14.dp))
+                }
             }
         }
     }
@@ -385,7 +480,8 @@ fun FinanceMoreScreen(
     onOpenInbox: () -> Unit,
     onOpenEmi: () -> Unit = {},
     onOpenAiProviders: () -> Unit = {},
-    onOpenExpense: () -> Unit = {}
+    onOpenExpense: () -> Unit = {},
+    onOpenTrash: () -> Unit = {}
 ) {
     Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
@@ -393,6 +489,7 @@ fun FinanceMoreScreen(
         IncomingSmsToggle()
         Spacer(Modifier.height(8.dp))
         MoreRow("Recurring payments", "EMI, chitty, loan, rent — auto-add and due alerts") { onOpenEmi() }
+        MoreRow("Trash", "Restore deleted entries or empty them for good") { onOpenTrash() }
         MoreRow("Expense Analyser", "Gmail bank alerts — match, fill gaps, then post") { onOpenExpense() }
         MoreRow("AI & SMS inbox", "Review pending tags or paste a message") { onOpenInbox() }
         MoreRow("AI providers", "Shared keys for SMS tagging and Ask AI") { onOpenAiProviders() }

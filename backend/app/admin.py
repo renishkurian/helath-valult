@@ -3021,6 +3021,48 @@ def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_
     return RedirectResponse(f"/admin/finance/transactions{qs}", status_code=302)
 
 
+@router.get("/finance/trash", response_class=HTMLResponse)
+def finance_trash_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import list_trash, inr
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = list_trash(db=db, current_user=user)
+    return templates.TemplateResponse("finance_trash.html", _fn_ctx(
+        request, user, "fn_trash", items=items, inr=inr,
+    ))
+
+
+@router.post("/finance/trash/empty")
+def finance_trash_empty(request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import empty_trash
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    empty_trash(db=db, current_user=user)
+    return RedirectResponse("/admin/finance/trash", status_code=302)
+
+
+@router.post("/finance/transactions/{txn_id}/restore")
+def finance_restore_txn(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import restore_transaction
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    restore_transaction(txn_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/trash", status_code=302)
+
+
+@router.post("/finance/transactions/{txn_id}/permanent")
+def finance_permanent_txn(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import permanent_delete_transaction
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    permanent_delete_transaction(txn_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/trash", status_code=302)
+
+
 @router.get("/finance/stats", response_class=HTMLResponse)
 def finance_stats(
     request: Request,
@@ -3028,24 +3070,29 @@ def finance_stats(
     kind: str = "expense",
     db: Session = Depends(get_db),
 ):
-    from app.routers import finance as fn
-    from app.routers.finance import inr, _shift_month
+    qs = []
+    if month:
+        qs.append(f"month={month}")
+    if kind and kind != "expense":
+        qs.append(f"kind={kind}")
+    suffix = ("?" + "&".join(qs)) if qs else ""
+    return RedirectResponse(f"/admin/finance/charts{suffix}", status_code=302)
+
+
+@router.get("/finance/charts", response_class=HTMLResponse)
+def finance_charts(
+    request: Request,
+    month: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import build_charts, inr
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     ym = month or datetime.utcnow().strftime("%Y-%m")
-    report = fn.reports(year_month=ym, kind=kind, db=db, current_user=user)
-    circ = 2 * 3.14159265 * 40
-    offset = 0.0
-    slices = []
-    for row in report["rows"]:
-        length = circ * (row["pct"] / 100)
-        slices.append({**row, "dash": f"{length:.2f} {circ:.2f}", "offset": f"{-offset:.2f}"})
-        offset += length
-    label = datetime.strptime(ym + "-01", "%Y-%m-%d").strftime("%b %Y")
-    return templates.TemplateResponse("finance_stats.html", _fn_ctx(
-        request, user, "fn_stats", report=report, slices=slices, inr=inr,
-        year_month=ym, kind=kind, label=label, prev=_shift_month(ym, -1), next=_shift_month(ym, 1),
+    charts = build_charts(db, user, ym)
+    return templates.TemplateResponse("finance_charts.html", _fn_ctx(
+        request, user, "fn_stats", charts=charts, inr=inr,
     ))
 
 
@@ -4415,6 +4462,9 @@ def expense_analyser_google_callback(
         row.refresh_token_enc = crypto.encrypt_text(refresh)
         if access:
             row.connected_email = gmail.user_email(access)
+        row.enabled = True
+        if row.hour is None:
+            row.hour = 6
         db.commit()
     except Exception:
         return RedirectResponse("/admin/expense-analyser/settings?err=token", status_code=302)
@@ -4755,9 +4805,25 @@ def tracker_add_item(
 def tracker_toggle_item(list_id: str, item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import tracker as tr
     user = _tr_user(request, db)
+    wants_json = "application/json" in (request.headers.get("accept") or "") or (
+        request.headers.get("x-requested-with") == "fetch"
+    )
     if not user:
+        if wants_json:
+            return JSONResponse({"error": "auth"}, status_code=401)
         return RedirectResponse("/admin/login", status_code=302)
-    tr.toggle_item(list_id, item_id, db=db, current_user=user)
+    item = tr.toggle_item(list_id, item_id, db=db, current_user=user)
+    if wants_json:
+        lst = tr.get_list(list_id, db=db, current_user=user)
+        return JSONResponse({
+            "ok": True,
+            "id": item.id,
+            "checked": bool(item.checked),
+            "revision": lst.revision,
+            "item_count": lst.item_count,
+            "checked_count": lst.checked_count,
+            "pending_count": lst.pending_count,
+        })
     return RedirectResponse(f"/admin/tracker/lists/{list_id}", status_code=302)
 
 

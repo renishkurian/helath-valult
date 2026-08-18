@@ -24,6 +24,16 @@
   </div>
 </div>
 
+{% if status.connected and not status.enabled %}
+<div class="alert alert-warning" role="alert">
+  Daily auto-sync is off, so the log only shows manual pulls.
+  <a href="/admin/expense-analyser/settings">Turn it on under Gmail &amp; sync</a>.
+</div>
+{% elif status.connected and status.enabled %}
+<div class="alert alert-info" role="alert">
+  Scheduled import runs after {{ '%02d'|format(status.hour) }}:00 {{ status.timezone or 'Asia/Kolkata' }}. Trigger column will say <strong>Scheduled</strong> when the daily job runs.
+</div>
+{% endif %}
 {% if status.syncing %}
 <div class="alert alert-info" role="alert">
   <i class="bi bi-arrow-repeat"></i> Sync is running on the server. Refresh in a moment to see the new log entry.

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Trash — Money Manager{% endblock %}
+{% block content %}
+{% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
+{% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/finance">Money Manager</a>
+      <i class="bi bi-chevron-right"></i>
+      Trash
+    </div>
+    <h1 class="page-title">Trash</h1>
+    <p class="page-lead">Deleted entries stay here until you restore them or empty the trash.</p>
+  </div>
+  {% if items %}
+  <div class="page-actions">
+    <form method="post" action="/admin/finance/trash/empty" data-confirm="Permanently delete everything in trash? This cannot be undone.">
+      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Empty trash</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  {% if items %}
+  <div class="card-header">
+    <span class="card-ico bad"><i class="bi bi-trash3"></i></span>
+    <div><h2>Deleted entries</h2></div>
+    <span class="badge badge-soft ms-auto">{{ items|length }}</span>
+  </div>
+  {% endif %}
+  <div class="list-rows">
+    {% for item in items %}
+    <div class="list-row">
+      <span class="mm-card-ico {{ item.txn_type }}">
+        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
+      </span>
+      <div class="row-body">
+        <div class="row-title truncate">{{ item.payee or item.category_name or item.txn_type }}</div>
+        <div class="row-meta">
+          {{ item.category_name or item.txn_type }}
+          · {{ item.account_name }}
+          · {{ item.txn_date }}
+          {% if item.deleted_at %} · deleted {{ item.deleted_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+        </div>
+      </div>
+      <div class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
+        {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}
+      </div>
+      <div class="row-actions">
+        <form method="post" action="/admin/finance/transactions/{{ item.id }}/restore">
+          <button class="btn btn-outline-light btn-sm" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+        </form>
+        <form method="post" action="/admin/finance/transactions/{{ item.id }}/permanent" data-confirm="Delete this entry forever?">
+          <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-x-lg"></i> Delete</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-trash3"></i></div>
+      <div class="empty-title">Trash is empty</div>
+      <p>Entries you delete from the ledger wait here before they are gone for good.</p>
+      <a class="btn btn-primary" href="/admin/finance/transactions"><i class="bi bi-receipt"></i> Back to transactions</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

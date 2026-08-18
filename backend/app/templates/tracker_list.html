@@ -18,7 +18,7 @@
 {% set checked_n = lst.checked_count or 0 %}
 {% set pct = ((checked_n / item_n * 100)|round(0, 'floor')|int) if item_n else 0 %}
 {% block content %}
-<div id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-suggest="{{ suggest_url or '' }}" data-live="/admin/tracker/lists/{{ lst.id }}/live" data-revision="{{ revision or '' }}">
+<div id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-suggest="{{ suggest_url or '' }}" data-live="/admin/tracker/lists/{{ lst.id }}/live" data-revision="{{ revision or '' }}" data-completed="{{ '1' if lst.completed else '0' }}">
 <script type="application/json" id="shop-catalog-data">{{ catalog_json | safe }}</script>
 <div class="page-head">
   <div>
@@ -76,7 +76,7 @@
     <div class="stat"><div class="lbl">Items</div><div class="val">{{ item_n }}</div></div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="stat"><div class="lbl">Checked</div><div class="val">{{ checked_n }}</div></div>
+    <div class="stat"><div class="lbl">Checked</div><div class="val" id="shop-stat-checked">{{ checked_n }}</div></div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat {% if lst.pending_count %}accent{% endif %}"><div class="lbl">Pending</div><div class="val">{{ lst.pending_count }}</div></div>
@@ -87,10 +87,10 @@
 </div>
 <div class="shop-progress mb-4">
   <div class="d-flex justify-content-between small text-muted mb-1">
-    <span>{% if lst.completed %}Done{% elif checked_n %}Shopping{% else %}Planning{% endif %}</span>
-    <span>{{ pct }}% · {{ checked_n }} of {{ item_n }}</span>
+    <span id="shop-progress-state">{% if lst.completed %}Done{% elif checked_n %}Shopping{% else %}Planning{% endif %}</span>
+    <span id="shop-progress-counts">{{ pct }}% · {{ checked_n }} of {{ item_n }}</span>
   </div>
-  <div class="shop-progress-bar"><span style="width:{{ pct }}%"></span></div>
+  <div class="shop-progress-bar"><span id="shop-progress-fill" style="width:{{ pct }}%"></span></div>
 </div>
 
 {% if lst.finance_txn_id %}
@@ -312,7 +312,7 @@
   {% for item in approved %}
   <div class="shop-item-block shop-item {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
     <div class="list-row">
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/toggle">
+      <form class="js-shop-toggle" method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/toggle">
         <button class="btn btn-ghost p-0" type="submit" aria-label="{% if item.checked %}Uncheck{% else %}Check{% endif %}">
           <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
         </button>
@@ -382,5 +382,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/shop-list.js?v=6"></script>
+<script src="/static/shop-list.js?v=7"></script>
 {% endblock %}

@@ -366,6 +366,10 @@ class HealthVaultRepository(
         return destination
     }
     suspend fun deleteFinanceTransaction(id: String) = api.deleteFinanceTransaction(id)
+    suspend fun listFinanceTrash() = api.listFinanceTrash()
+    suspend fun emptyFinanceTrash() = api.emptyFinanceTrash()
+    suspend fun restoreFinanceTransaction(id: String) = api.restoreFinanceTransaction(id)
+    suspend fun permanentDeleteFinanceTransaction(id: String) = api.permanentDeleteFinanceTransaction(id)
     suspend fun listFinanceEmis(status: String? = null) = api.listFinanceEmis(status)
     suspend fun createFinanceEmi(body: FinanceEmiIn) = api.createFinanceEmi(body)
     suspend fun postFinanceEmi(id: String) = api.postFinanceEmi(id)
@@ -373,6 +377,7 @@ class HealthVaultRepository(
     suspend fun deleteFinanceEmi(id: String) = api.deleteFinanceEmi(id)
     suspend fun financeReports(yearMonth: String? = null, kind: String = "expense") =
         api.financeReports(yearMonth, kind)
+    suspend fun financeCharts(yearMonth: String? = null) = api.financeCharts(yearMonth)
     suspend fun listFinanceAiKeys() = api.listFinanceAiKeys()
     suspend fun createFinanceAiKey(body: FinanceAiKeyIn) = api.createFinanceAiKey(body)
     suspend fun listFinanceMessages() = api.listFinanceMessages()

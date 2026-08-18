@@ -90,6 +90,35 @@ def test_schedule_and_insights():
     assert "debit_total" in r.json()
 
 
+def test_should_run_now_uses_india_day_and_retries_failures():
+    from datetime import datetime
+    from app.expense_analyser import should_run_now
+
+    row = models.ExpenseAnalyserConnection(
+        user_id="sched-tz",
+        refresh_token_enc="x",
+        enabled=True,
+        hour=6,
+        last_ok=True,
+        # 13:53 UTC 16 Aug = 19:23 IST same calendar day
+        last_sync_at=datetime(2026, 8, 16, 13, 53, 0),
+    )
+    assert should_run_now(row, datetime(2026, 8, 16, 20, 0)) is False
+    assert should_run_now(row, datetime(2026, 8, 17, 5, 59)) is False
+    assert should_run_now(row, datetime(2026, 8, 17, 6, 1)) is True
+    assert should_run_now(row, datetime(2026, 8, 18, 8, 12)) is True
+
+    # UTC evening of 17th is already 18th in India — counts as today's sync
+    row.last_sync_at = datetime(2026, 8, 17, 23, 30, 0)
+    row.last_ok = True
+    assert should_run_now(row, datetime(2026, 8, 18, 8, 12)) is False
+
+    row.last_ok = False
+    row.last_sync_at = datetime(2026, 8, 18, 2, 12, 0)  # 07:42 IST
+    assert should_run_now(row, datetime(2026, 8, 18, 7, 50)) is False
+    assert should_run_now(row, datetime(2026, 8, 18, 8, 15)) is True
+
+
 def test_html_to_text_and_statement_detect():
     html = "<html><body><p>Your <b>credit card statement</b> is ready<br>Rs.120.00</p></body></html>"
     text = html_to_text(html)

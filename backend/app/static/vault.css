@@ -282,6 +282,12 @@ hr{ border-color:var(--v-line); opacity:1; }
   flex:1; min-width:0; width:100%;
   padding:2rem 2.25rem 5.5rem;
   max-width:1320px;
+  scroll-padding-bottom:5.5rem;
+}
+body:has(.fab) .app-main,
+body:has(.ask-ai-fab) .app-main{
+  padding-bottom:7.75rem;
+  scroll-padding-bottom:7.75rem;
 }
 @media (min-width:992px){ .app-main{ margin-left:var(--v-side-w); } }
 
@@ -636,8 +642,8 @@ hr{ border-color:var(--v-line); opacity:1; }
 .ask-ai-fab i{ font-size:1.15rem; line-height:1; }
 .ask-ai-fab:hover{ transform:translateY(-2px); color:var(--v-on-gold); }
 .ask-ai-fab:active{ transform:translateY(0) scale(0.98); }
-body:has(.ask-ai-fab) .fab{ right:calc(1.5rem + 7.25rem); }
-body:has(.ask-ai-fab) .hv-fab{ right:calc(1.25rem + 7.25rem); }
+body:has(.ask-ai-fab) .fab{ right:calc(1.5rem + 9.25rem); }
+body:has(.ask-ai-fab) .hv-fab{ right:calc(1.25rem + 9.25rem); }
 
 /* --------------------------------------------------------------------------
    9. Forms
@@ -1501,7 +1507,7 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 }
 .mm-card .dropdown .btn-icon{ width:44px; height:44px; flex:0 0 44px; }
 .mm-card .mm-txn-check{ flex:0 0 auto; width:1.25rem; height:1.25rem; }
-.mm-fab-spacer{ height:5.25rem; }
+.mm-fab-spacer{ height:6.5rem; }
 .dropdown-item{ width:100%; }
 
 .mm-cal{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
@@ -1551,6 +1557,14 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 .bar-head{ display:flex; align-items:baseline; justify-content:space-between; gap:.75rem; font-size:.8125rem; }
 .bar-head .b-name{ font-weight:600; letter-spacing:-0.01em; }
 .bar-head .b-val{ font-variant-numeric:tabular-nums; font-weight:600; color:var(--v-ink-2); }
+.mm-chart-wrap{ width:100%; }
+.mm-chart-wrap canvas{ display:block; width:100%; height:220px; }
+.mm-chart-wrap.mm-chart-lg canvas{ height:260px; }
+.mm-chart-wrap.mm-chart-donut canvas{ height:240px; }
+.mm-chart-legend{ display:flex; flex-wrap:wrap; gap:.75rem 1rem; font-size:.75rem; color:var(--v-ink-3); }
+.mm-chart-legend i{
+  display:inline-block; width:.65rem; height:.65rem; border-radius:3px; margin-right:.35rem; vertical-align:middle;
+}
 
 /* --------------------------------------------------------------------------
    18. URL Vault
@@ -1705,6 +1719,11 @@ details.reveal > summary i{ font-size:1rem; }
   .app-topbar .brand-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .app-main{ padding:1rem 1rem calc(var(--v-tabbar-h) + env(safe-area-inset-bottom) + 1.25rem); }
   body.has-tabbar .app-main{ padding-bottom:1.25rem; }
+  body.has-tabbar:has(.fab) .app-main,
+  body.has-tabbar:has(.ask-ai-fab) .app-main{
+    padding-bottom:calc(6.25rem + env(safe-area-inset-bottom));
+    scroll-padding-bottom:calc(6.25rem + env(safe-area-inset-bottom));
+  }
   body.has-composer .app-main{
     padding-bottom:calc(6.75rem + env(safe-area-inset-bottom));
   }
@@ -1722,8 +1741,8 @@ details.reveal > summary i{ font-size:1rem; }
     right:1rem;
     bottom:calc(var(--v-tabbar-h) + env(safe-area-inset-bottom) + 0.75rem);
   }
-  body:has(.ask-ai-fab) .fab{ right:calc(1rem + 7.25rem); }
-  body:has(.ask-ai-fab) .hv-fab{ right:calc(1rem + 7.25rem); }
+  body:has(.ask-ai-fab) .fab{ right:calc(1rem + 9.25rem); }
+  body:has(.ask-ai-fab) .hv-fab{ right:calc(1rem + 9.25rem); }
   .table > thead th,.table > tbody > tr > td{ padding:.75rem .875rem; }
   .facts{ gap:1rem 1.75rem; }
   .form-control,.form-select,.btn{ font-size:1rem; min-height:44px; }

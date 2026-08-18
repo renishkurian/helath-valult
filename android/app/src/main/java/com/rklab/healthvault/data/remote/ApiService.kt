@@ -561,6 +561,18 @@ interface ApiService {
     @DELETE("finance/transactions/{id}")
     suspend fun deleteFinanceTransaction(@Path("id") id: String): Response<Unit>
 
+    @GET("finance/trash")
+    suspend fun listFinanceTrash(): List<FinanceTxnOut>
+
+    @POST("finance/trash/empty")
+    suspend fun emptyFinanceTrash(): Response<Unit>
+
+    @POST("finance/transactions/{id}/restore")
+    suspend fun restoreFinanceTransaction(@Path("id") id: String): FinanceTxnOut
+
+    @POST("finance/transactions/{id}/permanent")
+    suspend fun permanentDeleteFinanceTransaction(@Path("id") id: String): Response<Unit>
+
     @GET("finance/emis")
     suspend fun listFinanceEmis(@Query("status") status: String? = null): List<FinanceEmiOut>
 
@@ -581,6 +593,9 @@ interface ApiService {
         @Query("year_month") yearMonth: String? = null,
         @Query("kind") kind: String = "expense"
     ): FinanceReportOut
+
+    @GET("finance/charts")
+    suspend fun financeCharts(@Query("year_month") yearMonth: String? = null): FinanceChartsOut
 
     @GET("finance/ai-keys")
     suspend fun listFinanceAiKeys(): List<FinanceAiKeyOut>

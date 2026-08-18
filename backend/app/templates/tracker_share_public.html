@@ -59,7 +59,7 @@
       <div class="shop-item-block shop-item {% if item.checked %}checked{% endif %}">
         <div class="list-row">
           {% if item.status == 'approved' %}
-          <form method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/toggle">
+          <form class="js-shop-toggle" method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/toggle">
             <button class="btn btn-ghost p-0" type="submit" aria-label="Toggle">
               <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
             </button>
@@ -113,7 +113,7 @@
     </form>
   </div>
 </div>
-<script src="/static/shop-list.js?v=6"></script>
+<script src="/static/shop-list.js?v=7"></script>
 <script>
 (function(){
   var guest = document.getElementById("guest");

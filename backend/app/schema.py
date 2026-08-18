@@ -71,6 +71,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("image_path", "VARCHAR(500)"),
         ("image_mime", "VARCHAR(80)"),
         ("emi_id", "VARCHAR(32)"),
+        ("deleted_at", "DATETIME"),
     ],
     "finance_messages": [
         ("payment_method", "VARCHAR(30)"),
@@ -135,6 +136,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_ai_usage_logs_user_id", "ai_usage_logs", "user_id"),
     ("ix_ai_usage_logs_client", "ai_usage_logs", "client"),
     ("ix_ai_usage_logs_created_at", "ai_usage_logs", "created_at"),
+    ("ix_finance_transactions_deleted_at", "finance_transactions", "deleted_at"),
     ("ix_shop_statement_pdfs_user_id", "shop_statement_pdfs", "user_id"),
     ("ix_shop_statement_pdfs_gmail_message_id", "shop_statement_pdfs", "gmail_message_id"),
     ("ix_shop_statement_pdfs_status", "shop_statement_pdfs", "status"),

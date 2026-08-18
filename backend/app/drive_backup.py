@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app import crypto, gdrive, models
-from app.config import settings
+from app.config import settings, utc_naive_to_vault, vault_now
 from app.deps import vault_id
 
 log = logging.getLogger("vault.gdrive")
@@ -86,11 +86,13 @@ def status_dict(row: models.GoogleDriveBackup | None, db: Session | None = None)
 def should_run_now(row: models.GoogleDriveBackup, now: datetime | None = None) -> bool:
     if not row.enabled or not row.refresh_token_enc or not row.password_enc:
         return False
-    now = now or datetime.now()
+    now = now or vault_now()
     if now.hour < int(row.hour or 3):
         return False
-    if row.last_run_at and row.last_ok and row.last_run_at.date() == now.date():
-        return False
+    if row.last_run_at and row.last_ok:
+        last_local = utc_naive_to_vault(row.last_run_at)
+        if last_local.date() == now.date():
+            return False
     return True
 
 

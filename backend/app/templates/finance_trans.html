@@ -84,7 +84,7 @@
   action="/admin/finance/transactions/bulk-delete"
   id="mm-bulk-delete"
   class="mm-bulk mb-3"
-  data-confirm="Delete the selected entries? This cannot be undone."
+  data-confirm="Move the selected entries to trash?"
 >
   <input type="hidden" name="month" value="{{ ledger.year_month }}">
   <input type="hidden" name="view" value="{{ view }}">
@@ -94,7 +94,7 @@
   </label>
   <span class="small text-muted" id="mm-selected-count">0 selected</span>
   <button class="btn btn-sm btn-outline-danger" type="submit" id="mm-delete-selected" disabled>
-    <i class="bi bi-trash3"></i> Delete selected
+    <i class="bi bi-trash3"></i> Move to trash
   </button>
 </form>
 {% endif %}
@@ -149,8 +149,8 @@
           {% endif %}
           <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
           <li>
-            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Delete this entry?">
-              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
+            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Move this entry to trash?">
+              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
             </form>
           </li>
         </ul>
@@ -206,8 +206,8 @@
           {% endif %}
           <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
           <li>
-            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Delete this entry?">
-              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
+            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Move this entry to trash?">
+              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
             </form>
           </li>
         </ul>
@@ -252,10 +252,10 @@
     if (form.getAttribute("data-confirm-base")) {
       /* keep */
     } else {
-      form.setAttribute("data-confirm-base", form.getAttribute("data-confirm") || "Delete the selected entries?");
+      form.setAttribute("data-confirm-base", form.getAttribute("data-confirm") || "Move the selected entries to trash?");
     }
-    var base = form.getAttribute("data-confirm-base") || "Delete the selected entries?";
-    form.setAttribute("data-confirm", n ? ("Delete " + n + " selected entr" + (n === 1 ? "y" : "ies") + "? This cannot be undone.") : base);
+    var base = form.getAttribute("data-confirm-base") || "Move the selected entries to trash?";
+    form.setAttribute("data-confirm", n ? ("Move " + n + " selected entr" + (n === 1 ? "y" : "ies") + " to trash?") : base);
   }
   if (all) all.addEventListener("change", function(){
     checks().forEach(function(c){ c.checked = all.checked; });

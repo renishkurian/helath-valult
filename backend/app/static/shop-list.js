@@ -266,8 +266,100 @@
 
   var liveUrl = root.getAttribute("data-live");
   var revision = root.getAttribute("data-revision") || "";
+  var toggleBusy = 0;
+
+  function applyChecked(block, checked) {
+    block.classList.toggle("checked", !!checked);
+    var btn = block.querySelector(".js-shop-toggle button");
+    var icon = btn && btn.querySelector("i");
+    if (icon) icon.className = "bi " + (checked ? "bi-check-circle-fill" : "bi-circle");
+    if (btn) btn.setAttribute("aria-label", checked ? "Uncheck" : "Check");
+  }
+
+  function paintProgress(checkedCount, itemCount) {
+    var completed = root.getAttribute("data-completed") === "1";
+    var pct = itemCount ? Math.floor((checkedCount / itemCount) * 100) : 0;
+    var state = document.getElementById("shop-progress-state");
+    var counts = document.getElementById("shop-progress-counts");
+    var bar = document.getElementById("shop-progress-fill");
+    var stat = document.getElementById("shop-stat-checked");
+    if (state) state.textContent = completed ? "Done" : (checkedCount ? "Shopping" : "Planning");
+    if (counts) counts.textContent = pct + "% · " + checkedCount + " of " + itemCount;
+    if (bar) bar.style.width = pct + "%";
+    if (stat) stat.textContent = String(checkedCount);
+  }
+
+  function paintProgressFromDom() {
+    var rows = document.querySelectorAll("#shop-item-rows .shop-item");
+    if (!rows.length) return;
+    var checked = 0;
+    Array.prototype.forEach.call(rows, function (row) {
+      if (row.classList.contains("checked")) checked += 1;
+    });
+    paintProgress(checked, rows.length);
+  }
+
+  function setRevision(value) {
+    if (!value) return;
+    revision = value;
+    root.setAttribute("data-revision", value);
+  }
+
+  root.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form || !form.classList || !form.classList.contains("js-shop-toggle")) return;
+    e.preventDefault();
+    if (form.getAttribute("data-busy") === "1") return;
+    var block = form.closest(".shop-item");
+    if (!block) return;
+    var was = block.classList.contains("checked");
+    var next = !was;
+    var action = form.getAttribute("action") || form.action;
+    form.setAttribute("data-busy", "1");
+    toggleBusy += 1;
+    applyChecked(block, next);
+    paintProgressFromDom();
+    fetch(action, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+    })
+      .then(function (r) {
+        if (r.status === 401) {
+          location.reload();
+          return null;
+        }
+        if (!r.ok) throw new Error("toggle failed");
+        var ct = r.headers.get("content-type") || "";
+        if (ct.indexOf("application/json") < 0) {
+          location.reload();
+          return null;
+        }
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data) return;
+        if (typeof data.checked === "boolean") applyChecked(block, data.checked);
+        setRevision(data.revision);
+        if (typeof data.checked_count === "number" && typeof data.item_count === "number") {
+          paintProgress(data.checked_count, data.item_count);
+        } else {
+          paintProgressFromDom();
+        }
+      })
+      .catch(function () {
+        applyChecked(block, was);
+        paintProgressFromDom();
+      })
+      .then(function () {
+        form.removeAttribute("data-busy");
+        toggleBusy = Math.max(0, toggleBusy - 1);
+      });
+  });
+
   if (liveUrl) {
     setInterval(function () {
+      if (toggleBusy) return;
       var active = document.activeElement;
       if (active && active.matches && active.matches("input, textarea, select")) return;
       if (root.querySelector(".shop-edit-form:not([hidden])")) return;

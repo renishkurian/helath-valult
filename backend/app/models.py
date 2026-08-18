@@ -692,6 +692,7 @@ class FinanceTransaction(Base):
     emi_id = Column(String(32), ForeignKey("finance_emis.id"), nullable=True, index=True)
     image_path = Column(String(500), nullable=True)
     image_mime = Column(String(80), nullable=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

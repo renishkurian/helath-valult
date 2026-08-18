@@ -664,6 +664,7 @@ data class FinanceTxnOut(
     val tags: String? = null,
     val source: String = "manual",
     val has_image: Boolean = false,
+    val deleted_at: String? = null,
     val created_at: String = ""
 )
 data class FinanceTxnIn(
@@ -702,6 +703,45 @@ data class FinanceReportOut(
     val kind: String,
     val total: Double = 0.0,
     val rows: List<FinanceReportRow> = emptyList()
+)
+data class FinanceChartSlice(
+    val name: String,
+    val amount: Double = 0.0,
+    val count: Int = 0,
+    val pct: Double = 0.0,
+    val color: String? = null
+)
+data class FinanceDailyPoint(
+    val date: String = "",
+    val day: Int = 0,
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val net: Double = 0.0,
+    val count: Int = 0
+)
+data class FinanceTrendPoint(
+    val year_month: String = "",
+    val label: String = "",
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val net: Double = 0.0
+)
+data class FinanceChartsOut(
+    val year_month: String,
+    val label: String = "",
+    val prev: String = "",
+    val next: String = "",
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val total: Double = 0.0,
+    val txn_count: Int = 0,
+    val daily: List<FinanceDailyPoint> = emptyList(),
+    val categories: List<FinanceChartSlice> = emptyList(),
+    val methods: List<FinanceChartSlice> = emptyList(),
+    val accounts: List<FinanceChartSlice> = emptyList(),
+    val weekday: List<FinanceChartSlice> = emptyList(),
+    val histogram: List<FinanceChartSlice> = emptyList(),
+    val trend: List<FinanceTrendPoint> = emptyList()
 )
 data class FinanceEmiIn(
     val name: String,
@@ -1177,6 +1217,7 @@ data class ExpenseAnalyserStatusOut(
     val sync_query: String? = null,
     val enabled: Boolean = false,
     val hour: Int = 6,
+    val timezone: String = "Asia/Kolkata",
     val last_sync_at: String? = null,
     val last_ok: Boolean? = null,
     val last_error: String? = null,

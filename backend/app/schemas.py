@@ -944,7 +944,51 @@ class FinanceTxnOut(BaseModel):
     tags: Optional[str] = None
     source: str = "manual"
     has_image: bool = False
+    deleted_at: Optional[datetime] = None
     created_at: datetime
+
+
+class FinanceChartSlice(BaseModel):
+    name: str
+    amount: float = 0
+    count: int = 0
+    pct: float = 0
+    color: Optional[str] = None
+
+
+class FinanceDailyPoint(BaseModel):
+    date: str
+    day: int
+    income: float = 0
+    expense: float = 0
+    net: float = 0
+    count: int = 0
+
+
+class FinanceTrendPoint(BaseModel):
+    year_month: str
+    label: str
+    income: float = 0
+    expense: float = 0
+    net: float = 0
+
+
+class FinanceChartsOut(BaseModel):
+    year_month: str
+    label: str
+    prev: str
+    next: str
+    income: float = 0
+    expense: float = 0
+    total: float = 0
+    txn_count: int = 0
+    daily: List[FinanceDailyPoint] = []
+    categories: List[FinanceChartSlice] = []
+    methods: List[FinanceChartSlice] = []
+    accounts: List[FinanceChartSlice] = []
+    weekday: List[FinanceChartSlice] = []
+    histogram: List[FinanceChartSlice] = []
+    trend: List[FinanceTrendPoint] = []
 
 
 class FinanceBudgetIn(BaseModel):
@@ -1500,6 +1544,7 @@ class ExpenseAnalyserStatusOut(BaseModel):
     sync_query: Optional[str] = None
     enabled: bool = False
     hour: int = 6
+    timezone: str = "Asia/Kolkata"
     last_sync_at: Optional[str] = None
     last_ok: Optional[bool] = None
     last_error: Optional[str] = None

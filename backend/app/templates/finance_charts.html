@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}Charts{% endblock %}
+{% block content %}
+{% set c = charts %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Money Manager</div>
+    <h1 class="page-title">Charts</h1>
+    <p class="page-lead">Daily flow, category mix, amount histogram, and weekday pattern for {{ c.label }}.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/charts?month={{ c.prev }}" aria-label="Previous month">
+      <i class="bi bi-chevron-left"></i>
+    </a>
+    <span class="mm-dash-month">{{ c.label }}</span>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/charts?month={{ c.next }}" aria-label="Next month">
+      <i class="bi bi-chevron-right"></i>
+    </a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Income</div>
+      <div class="val mm-income">{{ inr(c.income) }}</div>
+      <div class="sub">{{ c.label }}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Expenses</div>
+      <div class="val mm-expense">{{ inr(c.expense) }}</div>
+      <div class="sub">{{ c.txn_count }} entries</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-plus-lg"></i> Net</div>
+      <div class="val {% if c.total >= 0 %}mm-income{% else %}mm-expense{% endif %}">{{ inr(c.total) }}</div>
+      <div class="sub">income minus expenses</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-tags"></i> Categories</div>
+      <div class="val">{{ c.categories | length }}</div>
+      <div class="sub">with spend this month</div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-graph-up"></i></span>
+    <div>
+      <h2>Daily flow</h2>
+      <div class="card-sub">Income and expenses by day</div>
+    </div>
+    <div class="mm-chart-legend ms-auto">
+      <span><i style="background:var(--v-income)"></i> Income</span>
+      <span><i style="background:var(--v-expense)"></i> Expenses</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="mm-chart-wrap mm-chart-lg">
+      <canvas id="fn-daily" aria-label="Daily income and expense line chart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico bad"><i class="bi bi-pie-chart"></i></span>
+        <div>
+          <h2>Spend mix</h2>
+          <div class="card-sub">Share of expenses</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if c.categories %}
+        <div class="mm-chart-wrap mm-chart-donut">
+          <canvas id="fn-donut" aria-label="Expense category donut"></canvas>
+        </div>
+        {% else %}
+        <div class="empty-state py-4">
+          <div class="empty-title">No expenses this month</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico bad"><i class="bi bi-bar-chart"></i></span>
+        <div>
+          <h2>By category</h2>
+          <div class="card-sub">Largest spend first</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for s in c.categories[:8] %}
+        <div class="bar-row">
+          <div class="bar-head">
+            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+            <span class="b-val">{{ inr(s.amount) }} · {{ '%d'|format(s.pct|round(0)) }}%</span>
+          </div>
+          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+        </div>
+        {% else %}
+        <div class="empty-state py-4">
+          <div class="empty-title">Nothing to split yet</div>
+          <p>Add expenses and the mix fills in.</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-distribute-vertical"></i></span>
+        <div>
+          <h2>Amount histogram</h2>
+          <div class="card-sub">How many expenses fall in each size band</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="mm-chart-wrap">
+          <canvas id="fn-hist" aria-label="Expense amount histogram"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-calendar-week"></i></span>
+        <div>
+          <h2>Weekday pattern</h2>
+          <div class="card-sub">Spend by day of week</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="mm-chart-wrap">
+          <canvas id="fn-weekday" aria-label="Weekday spend histogram"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">
+    <span class="card-ico gold"><i class="bi bi-calendar3"></i></span>
+    <div>
+      <h2>Last 12 months</h2>
+      <div class="card-sub">Income versus expenses</div>
+    </div>
+    <div class="mm-chart-legend ms-auto">
+      <span><i style="background:var(--v-income)"></i> Income</span>
+      <span><i style="background:var(--v-expense)"></i> Expenses</span>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="mm-chart-wrap mm-chart-lg">
+      <canvas id="fn-trend" aria-label="Twelve month income versus expense bars"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-credit-card"></i></span>
+        <div>
+          <h2>Payment methods</h2>
+          <div class="card-sub">UPI, card, cash</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for s in c.methods %}
+        <div class="bar-row">
+          <div class="bar-head">
+            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+            <span class="b-val">{{ inr(s.amount) }} · {{ s.count }}</span>
+          </div>
+          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No method data this month.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">
+        <span class="card-ico good"><i class="bi bi-wallet2"></i></span>
+        <div>
+          <h2>By account</h2>
+          <div class="card-sub">Where expenses posted</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% for s in c.accounts %}
+        <div class="bar-row">
+          <div class="bar-head">
+            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
+            <span class="b-val">{{ inr(s.amount) }}</span>
+          </div>
+          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No account spend this month.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="fn-charts-data">{{ c | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vault-charts.js?v=1"></script>
+<script>
+(function(){
+  var el = document.getElementById("fn-charts-data");
+  if (!el || !window.VaultCharts) return;
+  var data;
+  try { data = JSON.parse(el.textContent || "{}"); } catch (e) { return; }
+  function draw(){
+    var daily = data.daily || [];
+    var dayLabels = daily.map(function(d){ return String(d.day); });
+    var dailyEl = document.getElementById("fn-daily");
+    if (dailyEl) VaultCharts.line(dailyEl, {
+      labels: dayLabels,
+      series: [
+        { color: "#6FCF8E", fill: "#6FCF8E", values: daily.map(function(d){ return d.income || 0; }) },
+        { color: "#E8615C", fill: "#E8615C", values: daily.map(function(d){ return d.expense || 0; }) }
+      ]
+    });
+    var donut = document.getElementById("fn-donut");
+    if (donut) VaultCharts.donut(donut, { rows: data.categories || [] });
+    var hist = data.histogram || [];
+    var histEl = document.getElementById("fn-hist");
+    if (histEl) VaultCharts.histogram(histEl, {
+      labels: hist.map(function(h){ return h.name; }),
+      values: hist.map(function(h){ return h.count || 0; }),
+      color: "#3FE0C5"
+    });
+    var wd = data.weekday || [];
+    var wdEl = document.getElementById("fn-weekday");
+    if (wdEl) VaultCharts.histogram(wdEl, {
+      labels: wd.map(function(h){ return h.name; }),
+      values: wd.map(function(h){ return h.amount || 0; }),
+      color: "#E8615C"
+    });
+    var trend = data.trend || [];
+    var trendEl = document.getElementById("fn-trend");
+    if (trendEl) VaultCharts.bars(trendEl, {
+      labels: trend.map(function(t){ return t.label; }),
+      series: [
+        { color: "#6FCF8E", values: trend.map(function(t){ return t.income || 0; }) },
+        { color: "#E8615C", values: trend.map(function(t){ return t.expense || 0; }) }
+      ]
+    });
+  }
+  draw();
+  var t;
+  window.addEventListener("resize", function(){
+    clearTimeout(t);
+    t = setTimeout(draw, 120);
+  });
+})();
+</script>
+{% endblock %}

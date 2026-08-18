@@ -16,6 +16,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app import crypto, finance_ai, gmail, models
+from app.config import settings, utc_naive_to_vault, vault_now
 from app.deps import vault_id
 from app.drive_backup import oauth_creds, oauth_ready
 
@@ -232,6 +233,7 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
         "sync_query": (row.sync_query if row and row.sync_query else gmail.DEFAULT_SYNC_QUERY),
         "enabled": bool(row.enabled) if row else False,
         "hour": int(row.hour if row and row.hour is not None else 6),
+        "timezone": settings.VAULT_TIMEZONE,
         "last_sync_at": row.last_sync_at.isoformat() if row and row.last_sync_at else None,
         "last_ok": row.last_ok if row else None,
         "last_error": row.last_error if row else None,
@@ -358,6 +360,7 @@ def _find_ledger_match(
     amt = Decimal(str(amount))
     q = db.query(models.FinanceTransaction).filter(
         models.FinanceTransaction.user_id == uid,
+        models.FinanceTransaction.deleted_at.is_(None),
         models.FinanceTransaction.amount == amt,
         models.FinanceTransaction.txn_type.in_(("expense", "income", "transfer")),
     )
@@ -1589,12 +1592,57 @@ def save_schedule(
 def should_run_now(row: models.ExpenseAnalyserConnection, now: datetime | None = None) -> bool:
     if not row.enabled or not row.refresh_token_enc:
         return False
-    now = now or datetime.now()
+    now = now or vault_now()
     if now.hour < int(row.hour or 6):
         return False
-    if row.last_sync_at and row.last_ok and row.last_sync_at.date() == now.date():
+    if not row.last_sync_at:
+        return True
+    last_local = utc_naive_to_vault(row.last_sync_at)
+    if last_local.date() != now.date():
+        return True
+    if row.last_ok:
         return False
-    return True
+    # Failed earlier today — retry after a half hour instead of every minute.
+    return (now - last_local).total_seconds() >= 30 * 60
+
+
+_STALLED_SCHEDULES_FIXED = False
+
+
+def _enable_connected_without_schedule(db: Session) -> None:
+    """Turn daily sync on for mailboxes that were connected but never scheduled.
+
+    The old default left ``enabled`` off, so the in-process job never ran.
+    Skip vaults that already have a scheduled log — they chose the setting.
+    """
+    global _STALLED_SCHEDULES_FIXED
+    if _STALLED_SCHEDULES_FIXED:
+        return
+    rows = (
+        db.query(models.ExpenseAnalyserConnection)
+        .filter(
+            models.ExpenseAnalyserConnection.refresh_token_enc.isnot(None),
+            models.ExpenseAnalyserConnection.enabled.is_(False),
+        )
+        .all()
+    )
+    for row in rows:
+        had_scheduled = (
+            db.query(models.ExpenseAnalyserSyncLog.id)
+            .filter(
+                models.ExpenseAnalyserSyncLog.user_id == row.user_id,
+                models.ExpenseAnalyserSyncLog.trigger == "scheduled",
+            )
+            .first()
+        )
+        if had_scheduled:
+            continue
+        row.enabled = True
+        if row.hour is None:
+            row.hour = 6
+        log.info("Enabled daily Gmail sync for connected vault %s", row.user_id)
+    db.commit()
+    _STALLED_SCHEDULES_FIXED = True
 
 
 def run_due_syncs() -> None:
@@ -1603,6 +1651,7 @@ def run_due_syncs() -> None:
 
     db = SessionLocal()
     try:
+        _enable_connected_without_schedule(db)
         rows = (
             db.query(models.ExpenseAnalyserConnection)
             .filter(
@@ -1611,23 +1660,22 @@ def run_due_syncs() -> None:
             )
             .all()
         )
-        now = datetime.now()
+        now = vault_now()
+        due_ids = []
         for row in rows:
             if not should_run_now(row, now):
                 continue
-            user = db.query(models.User).filter(models.User.id == row.user_id).first()
-            if not user:
+            if _is_syncing(row.user_id):
                 continue
-            try:
-                result = sync_gmail(db, user, trigger="scheduled")
-                log.info(
-                    "Expense Analyser sync for %s: created=%s error=%s",
-                    user.email, result.get("created"), result.get("error"),
-                )
-            except Exception:
-                log.exception("Expense Analyser sync failed for %s", user.email)
+            due_ids.append(row.user_id)
     finally:
         db.close()
+
+    for uid in due_ids:
+        if start_sync_background(uid, trigger="scheduled"):
+            log.info("Started scheduled Expense Analyser sync for %s", uid)
+        else:
+            log.info("Scheduled Expense Analyser sync already running for %s", uid)
 
 
 _CHART_COLORS = [

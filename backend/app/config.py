@@ -1,6 +1,8 @@
 from __future__ import annotations
 import os
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -69,6 +71,25 @@ class Settings:
 
 settings = Settings()
 settings.STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def vault_tz() -> ZoneInfo:
+    try:
+        return ZoneInfo(settings.VAULT_TIMEZONE)
+    except Exception:
+        return ZoneInfo("Asia/Kolkata")
+
+
+def vault_now() -> datetime:
+    """Naive local datetime in VAULT_TIMEZONE (India by default)."""
+    return datetime.now(vault_tz()).replace(tzinfo=None)
+
+
+def utc_naive_to_vault(dt: datetime) -> datetime:
+    """Convert stored UTC-naive timestamps (utcnow) into vault local time."""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(vault_tz()).replace(tzinfo=None)
 
 if not settings.MASTER_KEY:
     # Fail loudly rather than silently storing medical data unencrypted.

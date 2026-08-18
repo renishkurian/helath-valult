@@ -19,7 +19,7 @@ from app.deps import require_enabled_module, get_current_user, require_owner, va
 from app.extract import enhance_scan
 from app.finance_ai import (
     EXPENSE_CATEGORIES,
-    INCOME_CATEGORIES, PAYMENT_METHODS,
+    INCOME_CATEGORIES, PAYMENT_METHODS, PAYMENT_LABELS,
     build_description, classify_message, split_messages,
 )
 
@@ -160,8 +160,7 @@ def _get_category(db: Session, user: models.User, category_id: str) -> models.Fi
 
 def _account_balance(db: Session, account: models.FinanceAccount) -> Decimal:
     uid = account.user_id
-    txns = db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
+    txns = _txn_query(db, uid).filter(
         (models.FinanceTransaction.account_id == account.id)
         | (models.FinanceTransaction.to_account_id == account.id),
     ).all()
@@ -225,8 +224,16 @@ def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.Fina
         txn_type=t.txn_type, amount=_f(t.amount), currency=t.currency or "INR",
         txn_date=t.txn_date, txn_time=t.txn_time, payee=t.payee, notes=t.notes,
         description=t.description, payment_method=t.payment_method, tags=t.tags,
-        source=t.source or "manual", has_image=bool(t.image_path), created_at=t.created_at,
+        source=t.source or "manual", has_image=bool(t.image_path),
+        deleted_at=t.deleted_at, created_at=t.created_at,
     )
+
+
+def _txn_query(db: Session, uid: str, *, include_deleted: bool = False):
+    q = db.query(models.FinanceTransaction).filter(models.FinanceTransaction.user_id == uid)
+    if not include_deleted:
+        q = q.filter(models.FinanceTransaction.deleted_at.is_(None))
+    return q
 
 
 def _account_out(db: Session, a: models.FinanceAccount) -> schemas.FinanceAccountOut:
@@ -248,8 +255,7 @@ def _month_ie(txns) -> tuple[Decimal, Decimal]:
 
 def _txns_in_month(db: Session, uid: str, year_month: str):
     start, end = _month_bounds(year_month)
-    return db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
+    return _txn_query(db, uid).filter(
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
     ).all()
@@ -257,8 +263,7 @@ def _txns_in_month(db: Session, uid: str, year_month: str):
 
 def _txns_before(db: Session, uid: str, year_month: str):
     start, _ = _month_bounds(year_month)
-    return db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
+    return _txn_query(db, uid).filter(
         models.FinanceTransaction.txn_date < start,
     ).all()
 
@@ -387,11 +392,20 @@ def _assert_category_for_account(cat: models.FinanceCategory | None, account_id:
         raise HTTPException(400, "That category belongs to another account")
 
 
-def _get_txn(db: Session, user: models.User, txn_id: str) -> models.FinanceTransaction:
-    row = db.query(models.FinanceTransaction).filter(
+def _get_txn(
+    db: Session,
+    user: models.User,
+    txn_id: str,
+    *,
+    include_deleted: bool = False,
+) -> models.FinanceTransaction:
+    q = db.query(models.FinanceTransaction).filter(
         models.FinanceTransaction.id == txn_id,
         models.FinanceTransaction.user_id == _owned(db, user),
-    ).first()
+    )
+    if not include_deleted:
+        q = q.filter(models.FinanceTransaction.deleted_at.is_(None))
+    row = q.first()
     if not row:
         raise HTTPException(404, "Transaction not found")
     return row
@@ -691,7 +705,7 @@ def list_transactions(
 ):
     ensure_defaults(db, current_user)
     uid = _owned(db, current_user)
-    query = db.query(models.FinanceTransaction).filter(models.FinanceTransaction.user_id == uid)
+    query = _txn_query(db, uid)
     if year_month:
         start, end = _month_bounds(year_month)
         query = query.filter(models.FinanceTransaction.txn_date >= start, models.FinanceTransaction.txn_date <= end)
@@ -836,17 +850,14 @@ def bulk_delete_transactions(
     if len(ids) > 200:
         raise HTTPException(400, "Too many transactions (max 200)")
     uid = _owned(db, current_user)
+    now = datetime.utcnow()
     rows = (
-        db.query(models.FinanceTransaction)
-        .filter(
-            models.FinanceTransaction.user_id == uid,
-            models.FinanceTransaction.id.in_(ids),
-        )
+        _txn_query(db, uid)
+        .filter(models.FinanceTransaction.id.in_(ids))
         .all()
     )
     for row in rows:
-        _drop_txn_image(row)
-        db.delete(row)
+        row.deleted_at = now
     db.commit()
     return {"ok": True, "deleted": len(rows)}
 
@@ -859,6 +870,64 @@ def delete_transaction(
 ):
     require_owner(current_user)
     row = _get_txn(db, current_user, txn_id)
+    row.deleted_at = datetime.utcnow()
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/trash", response_model=list[schemas.FinanceTxnOut])
+def list_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    require_owner(current_user)
+    uid = _owned(db, current_user)
+    rows = (
+        _txn_query(db, uid, include_deleted=True)
+        .filter(models.FinanceTransaction.deleted_at.isnot(None))
+        .order_by(models.FinanceTransaction.deleted_at.desc())
+        .all()
+    )
+    accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
+    return [_txn_out(t, accounts, categories) for t in rows]
+
+
+@router.post("/trash/empty")
+def empty_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+    require_owner(current_user)
+    uid = _owned(db, current_user)
+    rows = (
+        _txn_query(db, uid, include_deleted=True)
+        .filter(models.FinanceTransaction.deleted_at.isnot(None))
+        .all()
+    )
+    for row in rows:
+        _drop_txn_image(row)
+        db.delete(row)
+    db.commit()
+    return {"ok": True, "deleted": len(rows)}
+
+
+@router.post("/transactions/{txn_id}/restore", response_model=schemas.FinanceTxnOut)
+def restore_transaction(
+    txn_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _get_txn(db, current_user, txn_id, include_deleted=True)
+    row.deleted_at = None
+    db.commit()
+    db.refresh(row)
+    uid = _owned(db, current_user)
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+
+
+@router.post("/transactions/{txn_id}/permanent")
+def permanent_delete_transaction(
+    txn_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = _get_txn(db, current_user, txn_id, include_deleted=True)
     _drop_txn_image(row)
     db.delete(row)
     db.commit()
@@ -911,8 +980,7 @@ def list_budgets(
     ).all()
     cats = _cat_map(db, uid)
     spent_map: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
-    txns = db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
+    txns = _txn_query(db, uid).filter(
         models.FinanceTransaction.txn_type == "expense",
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
@@ -1188,8 +1256,7 @@ def reports(
     ym = year_month or datetime.utcnow().strftime("%Y-%m")
     start, end = _month_bounds(ym)
     want = "income" if kind == "income" else "expense"
-    txns = db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
+    txns = _txn_query(db, uid).filter(
         models.FinanceTransaction.txn_type == want,
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
@@ -1208,6 +1275,178 @@ def reports(
         key=lambda r: r["amount"], reverse=True,
     )
     return {"year_month": ym, "kind": want, "total": _f(sum(buckets.values(), Decimal("0"))), "rows": rows}
+
+
+_HIST_BUCKETS = (
+    (0, 100, "Under ₹100"),
+    (100, 500, "₹100–500"),
+    (500, 1000, "₹500–1k"),
+    (1000, 2000, "₹1k–2k"),
+    (2000, 5000, "₹2k–5k"),
+    (5000, 10000, "₹5k–10k"),
+    (10000, None, "₹10k+"),
+)
+_WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_CHART_PALETTE = CAT_COLORS + ["#3FE0C5", "#D4A657", "#9C8CF0", "#5FA8D3"]
+
+
+def _slice_rows(buckets: dict[str, Decimal], counts: dict[str, int] | None = None, colors: dict[str, str] | None = None) -> list[dict]:
+    total = sum(buckets.values(), Decimal("0")) or Decimal("1")
+    rows = []
+    for i, (name, amount) in enumerate(sorted(buckets.items(), key=lambda kv: kv[1], reverse=True)):
+        color = (colors or {}).get(name) or _CHART_PALETTE[i % len(_CHART_PALETTE)]
+        rows.append({
+            "name": name,
+            "amount": _f(amount),
+            "count": int((counts or {}).get(name, 0)),
+            "pct": _f(amount * 100 / total),
+            "color": color,
+        })
+    return rows
+
+
+def build_charts(db: Session, user: models.User, year_month: str | None = None) -> dict:
+    """Dashboard series: daily trend, categories, histogram, weekday, 12-month."""
+    ensure_defaults(db, user)
+    ym = year_month or datetime.utcnow().strftime("%Y-%m")
+    try:
+        datetime.strptime(ym + "-01", "%Y-%m-%d")
+    except ValueError:
+        ym = datetime.utcnow().strftime("%Y-%m")
+    uid = _owned(db, user)
+    start, end = _month_bounds(ym)
+    y, m = [int(p) for p in ym.split("-")]
+    last_day = calendar.monthrange(y, m)[1]
+    txns = _txn_query(db, uid).filter(
+        models.FinanceTransaction.txn_date >= start,
+        models.FinanceTransaction.txn_date <= end,
+    ).all()
+    cats = _cat_map(db, uid)
+    accts = _acct_map(db, uid)
+
+    daily = {
+        d: {"date": f"{y:04d}-{m:02d}-{d:02d}", "day": d, "income": 0.0, "expense": 0.0, "net": 0.0, "count": 0}
+        for d in range(1, last_day + 1)
+    }
+    cat_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    cat_n: dict[str, int] = defaultdict(int)
+    cat_color: dict[str, str] = {}
+    method_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    method_n: dict[str, int] = defaultdict(int)
+    acct_amt: dict[str, Decimal] = defaultdict(lambda: Decimal("0"))
+    weekday_amt = [Decimal("0")] * 7
+    weekday_n = [0] * 7
+    hist_amt = [Decimal("0")] * len(_HIST_BUCKETS)
+    hist_n = [0] * len(_HIST_BUCKETS)
+    income = Decimal("0")
+    expense = Decimal("0")
+
+    for t in txns:
+        try:
+            day = int(t.txn_date[-2:])
+        except (TypeError, ValueError):
+            continue
+        bucket = daily.get(day)
+        amt = _dec(t.amount)
+        if bucket is None:
+            continue
+        bucket["count"] += 1
+        if t.txn_type == "income":
+            bucket["income"] += _f(amt)
+            income += amt
+        elif t.txn_type == "expense":
+            bucket["expense"] += _f(amt)
+            expense += amt
+            cat = cats.get(t.category_id) if t.category_id else None
+            cname = cat.name if cat else "Other"
+            cat_amt[cname] += amt
+            cat_n[cname] += 1
+            if cname not in cat_color:
+                cat_color[cname] = (cat.color if cat and cat.color else _CHART_PALETTE[len(cat_color) % len(_CHART_PALETTE)])
+            mkey = t.payment_method or "other"
+            method_amt[PAYMENT_LABELS.get(mkey, mkey.replace("_", " ").title())] += amt
+            method_n[PAYMENT_LABELS.get(mkey, mkey.replace("_", " ").title())] += 1
+            aname = accts.get(t.account_id).name if accts.get(t.account_id) else "Account"
+            acct_amt[aname] += amt
+            try:
+                wd = datetime.strptime(t.txn_date, "%Y-%m-%d").weekday()  # Mon=0
+            except ValueError:
+                wd = 0
+            weekday_amt[wd] += amt
+            weekday_n[wd] += 1
+            val = _f(amt)
+            placed = False
+            for i, (lo, hi, _label) in enumerate(_HIST_BUCKETS):
+                if val >= lo and (hi is None or val < hi):
+                    hist_amt[i] += amt
+                    hist_n[i] += 1
+                    placed = True
+                    break
+            if not placed:
+                hist_amt[-1] += amt
+                hist_n[-1] += 1
+        bucket["net"] = bucket["income"] - bucket["expense"]
+
+    trend = []
+    for i in range(-11, 1):
+        t_ym = _shift_month(ym, i)
+        t_income, t_expense = _month_ie(_txns_in_month(db, uid, t_ym))
+        ty, tm = [int(p) for p in t_ym.split("-")]
+        trend.append({
+            "year_month": t_ym,
+            "label": datetime(ty, tm, 1).strftime("%b"),
+            "income": _f(t_income),
+            "expense": _f(t_expense),
+            "net": _f(t_income - t_expense),
+        })
+
+    weekday_rows = []
+    wd_total = sum(weekday_amt) or Decimal("1")
+    for i, name in enumerate(_WEEKDAYS):
+        weekday_rows.append({
+            "name": name,
+            "amount": _f(weekday_amt[i]),
+            "count": weekday_n[i],
+            "pct": _f(weekday_amt[i] * 100 / wd_total),
+            "color": "#E8615C" if i < 5 else "#D4A657",
+        })
+    hist_rows = []
+    hist_total = sum(hist_n) or 1
+    for i, (_lo, _hi, label) in enumerate(_HIST_BUCKETS):
+        hist_rows.append({
+            "name": label,
+            "amount": _f(hist_amt[i]),
+            "count": hist_n[i],
+            "pct": _f(hist_n[i] * 100 / hist_total),
+            "color": "#3FE0C5",
+        })
+
+    return {
+        "year_month": ym,
+        "label": datetime(y, m, 1).strftime("%b %Y"),
+        "prev": _shift_month(ym, -1),
+        "next": _shift_month(ym, 1),
+        "income": _f(income),
+        "expense": _f(expense),
+        "total": _f(income - expense),
+        "txn_count": len(txns),
+        "daily": [daily[d] for d in range(1, last_day + 1)],
+        "categories": _slice_rows(cat_amt, cat_n, cat_color),
+        "methods": _slice_rows(method_amt, method_n),
+        "accounts": _slice_rows(acct_amt),
+        "weekday": weekday_rows,
+        "histogram": hist_rows,
+        "trend": trend,
+    }
+
+
+@router.get("/charts", response_model=schemas.FinanceChartsOut)
+def charts(
+    year_month: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return build_charts(db, current_user, year_month)
 
 
 # ---------- AI keys (compat aliases → shared /ai/providers) ----------
@@ -1433,8 +1672,7 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
     ensure_defaults(db, user)
     uid = _owned(db, user)
     start, end = _month_bounds(year_month)
-    query = db.query(models.FinanceTransaction).filter(
-        models.FinanceTransaction.user_id == uid,
+    query = _txn_query(db, uid).filter(
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
     )

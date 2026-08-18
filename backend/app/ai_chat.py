@@ -14,13 +14,12 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
 from app import ai_providers as ap
 from app import crypto, models
-from app.config import settings
+from app.config import settings, vault_now
 from app.deps import vault_id
 from app.finance_ai import DEFAULT_BASES, DEFAULT_MODELS
 
@@ -102,15 +101,6 @@ def _uid(user: models.User) -> str:
     return vault_id(user)
 
 
-def vault_now() -> datetime:
-    """Naive local datetime for vault calendar ‘today’ (default Asia/Kolkata)."""
-    try:
-        tz = ZoneInfo(settings.VAULT_TIMEZONE)
-    except Exception:
-        tz = ZoneInfo("Asia/Kolkata")
-    return datetime.now(tz).replace(tzinfo=None)
-
-
 def vault_today() -> str:
     return vault_now().strftime("%Y-%m-%d")
 
@@ -186,6 +176,7 @@ def format_money_manager_day_reply(db: Session, user: models.User, day: str) -> 
         db.query(models.FinanceTransaction)
         .filter(
             models.FinanceTransaction.user_id == uid,
+            models.FinanceTransaction.deleted_at.is_(None),
             models.FinanceTransaction.txn_date == day,
             models.FinanceTransaction.txn_type == "expense",
         )
@@ -830,6 +821,7 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         db.query(models.FinanceTransaction)
         .filter(
             models.FinanceTransaction.user_id == uid,
+            models.FinanceTransaction.deleted_at.is_(None),
             models.FinanceTransaction.txn_date == today_s,
         )
         .order_by(models.FinanceTransaction.created_at.desc())
@@ -859,6 +851,7 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
             db.query(models.FinanceTransaction)
             .filter(
                 models.FinanceTransaction.user_id == uid,
+                models.FinanceTransaction.deleted_at.is_(None),
                 models.FinanceTransaction.txn_date >= start,
                 models.FinanceTransaction.txn_date <= end,
             )

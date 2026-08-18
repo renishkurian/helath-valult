@@ -211,8 +211,8 @@ fun FinanceBottomNav(current: FinanceTab, onSelect: (FinanceTab) -> Unit) {
         NavigationBarItem(
             selected = current == FinanceTab.STATS,
             onClick = { onSelect(FinanceTab.STATS) },
-            icon = { Icon(Icons.Filled.BarChart, contentDescription = "Insight") },
-            label = { Text("Insight") },
+            icon = { Icon(Icons.Filled.BarChart, contentDescription = "Charts") },
+            label = { Text("Charts") },
             colors = navColors
         )
         NavigationBarItem(

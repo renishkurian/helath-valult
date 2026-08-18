@@ -184,7 +184,7 @@ def test_admin_list_detail_renders_quick_add():
     assert "Use AI (Malayalam" in page.text
     assert 'id="shop-catalog-data"' in page.text
     assert 'data-suggest="/admin/tracker/suggest"' in page.text
-    assert "shop-list.js?v=6" in page.text
+    assert "shop-list.js?v=7" in page.text
     assert "shop-chip-section" in page.text
     assert "shop-chip-heading" in page.text
     assert "Internal Server Error" not in page.text
@@ -198,6 +198,47 @@ def test_admin_list_detail_renders_quick_add():
     suggest = session.get("/admin/tracker/suggest", params={"q": "vazhuth"})
     assert suggest.status_code == 200, suggest.text
     assert any(row.get("english") == "Brinjal" for row in suggest.json())
+
+
+def test_admin_toggle_item_json_skips_redirect():
+    email = "shop-toggle@example.com"
+    headers = _headers(email)
+    created = client.post("/tracker/lists", headers=headers, json={"name": "Market"}).json()
+    item = client.post(
+        f"/tracker/lists/{created['id']}/items",
+        headers=headers,
+        json={"name": "Milk"},
+    ).json()
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    page = session.get(f"/admin/tracker/lists/{created['id']}")
+    assert page.status_code == 200
+    assert "js-shop-toggle" in page.text
+
+    toggled = session.post(
+        f"/admin/tracker/lists/{created['id']}/items/{item['id']}/toggle",
+        headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+        follow_redirects=False,
+    )
+    assert toggled.status_code == 200, toggled.text
+    body = toggled.json()
+    assert body["ok"] is True
+    assert body["checked"] is True
+    assert body["checked_count"] == 1
+    assert body["item_count"] >= 1
+    assert body["revision"]
+
+    fallback = session.post(
+        f"/admin/tracker/lists/{created['id']}/items/{item['id']}/toggle",
+        follow_redirects=False,
+    )
+    assert fallback.status_code in (302, 303)
+    assert f"/admin/tracker/lists/{created['id']}" in fallback.headers.get("location", "")
 
 
 def test_family_share_auto_approves_and_polls_revision():
@@ -236,7 +277,20 @@ def test_family_share_auto_approves_and_polls_revision():
     assert "shop-composer" in page.text
     assert "shop-member-bar" not in page.text
     assert "js-shop-edit" in page.text
+    assert "js-shop-toggle" in page.text
     assert "Internal Server Error" not in page.text
+
+    milk = next(i for i in body["items"] if "Milk" in i["name"])
+    toggled = client.post(
+        f"/tracker/public/{token}/items/{milk['id']}/toggle",
+        headers={"Accept": "application/json", "X-Requested-With": "fetch"},
+        follow_redirects=False,
+    )
+    assert toggled.status_code == 200, toggled.text
+    out = toggled.json()
+    assert out["ok"] is True
+    assert out["checked"] is True
+    assert out["revision"]
 
 
 def test_admin_statements_moved_to_expense_analyser():
