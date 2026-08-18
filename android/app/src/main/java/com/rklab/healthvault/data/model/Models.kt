@@ -1408,12 +1408,17 @@ data class ExpenseAnalyserInsightsOut(
     val next: String = "",
     val debit_total: Double = 0.0,
     val credit_total: Double = 0.0,
+    val net: Double = 0.0,
     val item_count: Int = 0,
+    val avg_day: Double = 0.0,
+    val projected: Double = 0.0,
     val by_category: List<ExpenseAnalyserSlice> = emptyList(),
     val by_method: List<ExpenseAnalyserSlice> = emptyList(),
     val by_day: List<ExpenseAnalyserDayBar> = emptyList(),
     val by_status: List<ExpenseAnalyserStatusSlice> = emptyList(),
-    val top_payees: List<ExpenseAnalyserSlice> = emptyList()
+    val top_payees: List<ExpenseAnalyserSlice> = emptyList(),
+    val weekday: List<ExpenseAnalyserSlice> = emptyList(),
+    val histogram: List<ExpenseAnalyserSlice> = emptyList()
 )
 
 // ---------- Shopping List ----------

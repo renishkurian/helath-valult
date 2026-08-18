@@ -478,13 +478,20 @@ fun ExpenseAnalyserInsightsScreen(repository: HealthVaultRepository, onOpenModul
         Text("${r.item_count} items this month", color = InkSoft, style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatBox("Spent", inr(r.debit_total), Modifier.weight(1f), ExpenseRed)
+            StatBox("Debits", inr(r.debit_total), Modifier.weight(1f), ExpenseRed)
             StatBox("Credits", inr(r.credit_total), Modifier.weight(1f), IncomeBlue)
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatBox("Net", inr(r.net), Modifier.weight(1f), if (r.net >= 0) IncomeBlue else ExpenseRed)
+            StatBox("Projected", inr(r.projected), Modifier.weight(1f), Ink)
         }
         Spacer(Modifier.height(16.dp))
         SliceSection("By category", r.by_category)
         SliceSection("Top payees", r.top_payees)
         SliceSection("By method", r.by_method)
+        SliceSection("Weekday", r.weekday)
+        SliceSection("Histogram", r.histogram)
         if (r.by_day.isNotEmpty()) {
             Text("By day", color = Ink, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp))
             r.by_day.forEach { day ->

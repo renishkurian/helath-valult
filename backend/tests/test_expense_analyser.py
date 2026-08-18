@@ -136,6 +136,9 @@ def test_schedule_and_insights():
         report = insights(db, user)
         assert report["debit_total"] >= 250
         assert any(s["name"] == "Food & dining" for s in report["by_category"])
+        assert len(report["daily"]) >= 28
+        assert len(report["weekday"]) == 7
+        assert report["histogram"]
 
         row = models.ExpenseAnalyserConnection(
             user_id=uid, refresh_token_enc="x", enabled=True, hour=0,

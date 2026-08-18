@@ -1,6 +1,6 @@
 /* Money Manager Charts — SVG spark, daily flow, donut. Data from #fn-charts-data. */
 (function () {
-  var el = document.getElementById("fn-charts-data");
+  var el = document.getElementById("mmx-charts-data") || document.getElementById("fn-charts-data");
   if (!el) return;
   var data;
   try { data = JSON.parse(el.textContent || "{}"); } catch (e) { return; }

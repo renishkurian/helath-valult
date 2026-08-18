@@ -9,6 +9,7 @@ import logging
 import re
 import threading
 import time
+import calendar
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -1868,6 +1869,119 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
         for d, v in days_sorted
     ]
 
+    y, m = [int(p) for p in ym.split("-")]
+    last_day = calendar.monthrange(y, m)[1]
+    credit_by_day: dict[str, float] = {}
+    count_by_day: dict[str, int] = {}
+    weekday_amt = [0.0] * 7
+    weekday_n = [0] * 7
+    hist_n = [0] * 7
+    hist_amt = [0.0] * 7
+    hist_labels = (
+        "Under ₹100", "₹100–500", "₹500–1k", "₹1k–2k", "₹2k–5k", "₹5k–10k", "₹10k+",
+    )
+    hist_bounds = (100, 500, 1000, 2000, 5000, 10000, None)
+    for item in month_rows:
+        day = _item_day(item) or f"{ym}-01"
+        count_by_day[day] = count_by_day.get(day, 0) + 1
+        amt = float(item.amount or 0)
+        if item.direction == "credit":
+            credit_by_day[day] = credit_by_day.get(day, 0) + amt
+            continue
+        try:
+            wd = datetime.strptime(day, "%Y-%m-%d").weekday()
+        except ValueError:
+            wd = 0
+        weekday_amt[wd] += amt
+        weekday_n[wd] += 1
+        placed = False
+        for i, hi in enumerate(hist_bounds):
+            lo = 0 if i == 0 else hist_bounds[i - 1]
+            if amt >= lo and (hi is None or amt < hi):
+                hist_n[i] += 1
+                hist_amt[i] += amt
+                placed = True
+                break
+        if not placed:
+            hist_n[-1] += 1
+            hist_amt[-1] += amt
+
+    daily = []
+    for day_n in range(1, last_day + 1):
+        key = f"{ym}-{day_n:02d}"
+        daily.append({
+            "date": key,
+            "day": day_n,
+            "expense": round(by_day.get(key, 0.0), 2),
+            "income": round(credit_by_day.get(key, 0.0), 2),
+            "count": count_by_day.get(key, 0),
+        })
+    wd_names = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+    wd_total = sum(weekday_amt) or 1.0
+    weekday = [
+        {
+            "name": wd_names[i],
+            "amount": round(weekday_amt[i], 2),
+            "count": weekday_n[i],
+            "pct": round(100.0 * weekday_amt[i] / wd_total, 1),
+            "color": "#E8615C" if i < 5 else "#D4A657",
+        }
+        for i in range(7)
+    ]
+    hist_total = sum(hist_n) or 1
+    histogram = [
+        {
+            "name": hist_labels[i],
+            "amount": round(hist_amt[i], 2),
+            "count": hist_n[i],
+            "pct": round(100.0 * hist_n[i] / hist_total, 1),
+            "color": "#4DD8E0",
+        }
+        for i in range(7)
+    ]
+    now = vault_now()
+    is_current = ym == now.strftime("%Y-%m")
+    today_day = now.day if is_current else None
+    days_elapsed = now.day if is_current else last_day
+    days_logged = sum(1 for d in daily if d["expense"] or d["income"])
+    avg_day = round(debit_total / last_day, 2) if last_day else 0.0
+    projected = round(debit_total, 2)
+    if is_current and days_elapsed > 0:
+        projected = round(debit_total / days_elapsed * last_day, 2)
+    month_pct = round(100.0 * days_elapsed / last_day, 1) if last_day else 0.0
+    first_wd = datetime(y, m, 1).weekday()
+    heatmap_pad = (first_wd + 1) % 7
+    net = round(credit_total - debit_total, 2)
+
+    trend = []
+    for i in range(-11, 1):
+        ty, tm = y, m + i
+        while tm < 1:
+            tm += 12
+            ty -= 1
+        while tm > 12:
+            tm -= 12
+            ty += 1
+        t_ym = f"{ty:04d}-{tm:02d}"
+        t_deb = 0.0
+        t_cred = 0.0
+        for item in rows:
+            day = _item_day(item)
+            if not day or not day.startswith(t_ym):
+                continue
+            amt = float(item.amount or 0)
+            if item.direction == "credit":
+                t_cred += amt
+            else:
+                t_deb += amt
+        trend.append({
+            "year_month": t_ym,
+            "label": datetime(ty, tm, 1).strftime("%b"),
+            "income": round(t_cred, 2),
+            "expense": round(t_deb, 2),
+            "net": round(t_cred - t_deb, 2),
+        })
+
     return {
         "year_month": ym,
         "label": label,
@@ -1875,13 +1989,26 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
         "next": nxt,
         "debit_total": round(debit_total, 2),
         "credit_total": round(credit_total, 2),
+        "net": net,
         "item_count": len(month_rows),
+        "avg_day": avg_day,
+        "days_in_month": last_day,
+        "days_elapsed": days_elapsed,
+        "days_logged": days_logged,
+        "month_pct": month_pct,
+        "projected": projected,
+        "today_day": today_day,
+        "heatmap_pad": heatmap_pad,
         "by_category": _slices(by_cat, cat_count),
         "by_method": _slices(by_method, method_count),
         "by_day": day_bars,
+        "daily": daily,
+        "weekday": weekday,
+        "histogram": histogram,
         "by_status": [
             {"name": k, "count": v, "color": _CHART_COLORS[i % len(_CHART_COLORS)]}
             for i, (k, v) in enumerate(sorted(status_count.items(), key=lambda x: -x[1]))
         ],
         "top_payees": _slices(by_payee, payee_count)[:10],
+        "trend": trend,
     }

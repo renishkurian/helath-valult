@@ -1,213 +1,313 @@
 {% extends "base.html" %}
 {% block title %}Insights{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <div class="eyebrow">Expense Analyser</div>
-    <h1 class="page-title">{{ report.label }}</h1>
-    <p class="page-lead">Spend from Gmail alerts this month — before posting to Money Manager.</p>
+{% set r = report %}
+{% set cats = r.by_category or [] %}
+{% set daily = r.daily or [] %}
+<div class="mmx">
+  <div class="mmx-top">
+    <div>
+      <div class="eyebrow">Vault · Expense Analyser</div>
+      <h1 class="page-title">{{ r.label }}</h1>
+      <p class="page-lead mb-0">Spend from Gmail alerts this month — before posting to Money Manager</p>
+    </div>
+    <div class="mmx-nav">
+      <a class="btn btn-ghost btn-icon" href="/admin/expense-analyser/insights?month={{ r.prev }}" aria-label="Previous month">
+        <i class="bi bi-chevron-left"></i>
+      </a>
+      <span class="label">{{ r.label }}</span>
+      <a class="btn btn-ghost btn-icon" href="/admin/expense-analyser/insights?month={{ r.next }}" aria-label="Next month">
+        <i class="bi bi-chevron-right"></i>
+      </a>
+    </div>
   </div>
-  <div class="page-actions">
-    <a class="btn btn-outline-light btn-icon" href="/admin/expense-analyser/insights?month={{ report.prev }}" aria-label="Previous month">
-      <i class="bi bi-chevron-left"></i>
-    </a>
-    <a class="btn btn-outline-light btn-icon" href="/admin/expense-analyser/insights?month={{ report.next }}" aria-label="Next month">
-      <i class="bi bi-chevron-right"></i>
-    </a>
-  </div>
-</div>
 
-<div class="row g-3 mb-4">
-  <div class="col-6 col-lg-3">
-    <div class="stat accent">
-      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Debits</div>
-      <div class="val mm-expense">{{ inr(report.debit_total) }}</div>
-      <div class="sub">{{ report.label }}</div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="stat">
-      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Credits</div>
-      <div class="val mm-income">{{ inr(report.credit_total) }}</div>
-      <div class="sub">alerts detected</div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="stat">
-      <div class="lbl"><i class="bi bi-envelope"></i> Items</div>
-      <div class="val">{{ report.item_count }}</div>
-      <div class="sub">excluding ignored</div>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="stat">
-      <div class="lbl"><i class="bi bi-tags"></i> Categories</div>
-      <div class="val">{{ report.by_category | length }}</div>
-      <div class="sub">with spend</div>
-    </div>
-  </div>
-</div>
-
-<div class="row g-3 mb-4">
-  <div class="col-lg-7">
-    <div class="card h-100">
-      <div class="card-header">
-        <span class="card-ico bad"><i class="bi bi-bar-chart"></i></span>
+  <div class="mmx-grid">
+    <section class="mmx-card mmx-hero" aria-label="Net from mail">
+      <div class="mmx-hero-spark"><svg id="mmx-spark" viewBox="0 0 800 230" preserveAspectRatio="none"></svg></div>
+      <div class="mmx-hero-top">
         <div>
-          <h2>By category</h2>
-          <div class="card-sub">Debit share for {{ report.label }}</div>
+          <div class="mmx-hero-label">Net from mail</div>
+          <div class="mmx-hero-num {% if r.net >= 0 %}pos{% else %}neg{% endif %}">{{ inr(r.net) }}</div>
+          <div class="mmx-hero-meta">Credits minus debits · {{ r.item_count }} alerts this month</div>
         </div>
-      </div>
-      <div class="card-body">
-        {% for s in report.by_category %}
-        <div class="bar-row">
-          <div class="bar-head">
-            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
-            <span class="b-val">{{ inr(s.amount) }} · {{ '%d'|format(s.pct|round(0)) }}%</span>
-          </div>
-          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
-        </div>
+        {% if r.net >= 0 %}
+        <span class="mmx-chip ok"><i class="bi bi-arrow-up-short"></i> Credits lead</span>
         {% else %}
-        <div class="empty-state">
-          <div class="empty-ico"><i class="bi bi-pie-chart"></i></div>
-          <div class="empty-title">No spend this month</div>
-          <p>Sync Gmail or pick another month.</p>
-        </div>
-        {% endfor %}
+        <span class="mmx-chip burn"><i class="bi bi-arrow-down-short"></i> Debits lead</span>
+        {% endif %}
       </div>
-    </div>
-  </div>
-  <div class="col-lg-5">
-    <div class="card h-100">
-      <div class="card-header">
-        <span class="card-ico info"><i class="bi bi-credit-card"></i></span>
-        <div>
-          <h2>By payment method</h2>
-          <div class="card-sub">UPI, card, and more</div>
-        </div>
+      <div class="mmx-legend">
+        <span><i style="background:var(--mmx-in)"></i>Credits {{ inr(r.credit_total) }}</span>
+        <span><i style="background:var(--mmx-out)"></i>Debits {{ inr(r.debit_total) }}</span>
+        <span><i style="background:var(--mmx-violet)"></i>{{ cats|length }} categories</span>
       </div>
-      <div class="card-body">
-        {% for s in report.by_method %}
-        <div class="bar-row">
-          <div class="bar-head">
-            <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name | labelize }}</span>
-            <span class="b-val">{{ inr(s.amount) }} · {{ s.count }}</span>
-          </div>
-          <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
-        </div>
-        {% else %}
-        <p class="text-muted mb-0">No method data yet.</p>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</div>
+    </section>
 
-<div class="row g-3 mb-4">
-  <div class="col-lg-8">
-    <div class="card h-100">
-      <div class="card-header">
-        <span class="card-ico gold"><i class="bi bi-calendar3"></i></span>
+    <div class="mmx-stats">
+      <div class="mmx-pill">
         <div>
-          <h2>Daily spend</h2>
-          <div class="card-sub">Debits by day</div>
+          <div class="l">Credits</div>
+          <div class="v mm-income">{{ inr(r.credit_total) }}</div>
+        </div>
+        <span class="mmx-ico" style="background:rgba(53,214,138,0.1);color:var(--mmx-in)"><i class="bi bi-arrow-down-left"></i></span>
+      </div>
+      <div class="mmx-pill">
+        <div>
+          <div class="l">Debits</div>
+          <div class="v mm-expense">{{ inr(r.debit_total) }}</div>
+        </div>
+        <span class="mmx-ico" style="background:rgba(255,111,111,0.1);color:var(--mmx-out)"><i class="bi bi-arrow-up-right"></i></span>
+      </div>
+      <div class="mmx-pill">
+        <div>
+          <div class="l">Avg / day</div>
+          <div class="v">{{ inr(r.avg_day) }}</div>
+        </div>
+        <span class="mmx-ico" style="background:rgba(139,140,249,0.1);color:var(--mmx-violet)"><i class="bi bi-calendar3"></i></span>
+      </div>
+    </div>
+
+    <section class="mmx-card mmx-c8">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(255,111,111,0.1);color:var(--mmx-out)"><i class="bi bi-graph-up"></i></span>
+          <div><div class="mmx-t">Daily flow</div><div class="mmx-d">Credits vs debits by day</div></div>
+        </div>
+        <div class="mmx-legend mb-0">
+          <span><i style="background:var(--mmx-in)"></i>In</span>
+          <span><i style="background:var(--mmx-out)"></i>Out</span>
         </div>
       </div>
-      <div class="card-body">
-        {% if report.by_day %}
-        <div class="ea-day-chart" role="img" aria-label="Daily spend bars">
-          {% for d in report.by_day %}
-          <div class="ea-day-col" title="{{ d.date }}: {{ inr(d.amount) }}">
-            <div class="ea-day-bar-wrap">
-              <span class="ea-day-bar" style="height:{{ d.pct }}%;"></span>
-            </div>
-            <div class="ea-day-lbl">{{ d.label }}</div>
+      <div class="mmx-flow"><svg id="mmx-flow" viewBox="0 0 900 210" preserveAspectRatio="none"></svg></div>
+    </section>
+
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(139,140,249,0.1);color:var(--mmx-violet)"><i class="bi bi-pie-chart"></i></span>
+          <div><div class="mmx-t">Spend mix</div><div class="mmx-d">Share of debits</div></div>
+        </div>
+      </div>
+      {% if cats %}
+      <div class="mmx-donut">
+        <svg id="mmx-donut" width="120" height="120" viewBox="0 0 120 120" aria-label="Spend mix"></svg>
+        <div class="mmx-donut-leg">
+          {% for s in cats[:6] %}
+          <div class="row">
+            <span class="n"><i style="background:{{ s.color }}"></i><span>{{ s.name }}</span></span>
+            <span class="v">{{ '%d'|format(s.pct|round(0)) }}%</span>
           </div>
           {% endfor %}
         </div>
-        {% else %}
-        <p class="text-muted mb-0">No daily amounts for this month.</p>
-        {% endif %}
       </div>
-    </div>
-  </div>
-  <div class="col-lg-4">
-    <div class="card h-100">
-      <div class="card-header">
-        <span class="card-ico good"><i class="bi bi-inbox"></i></span>
-        <div>
-          <h2>Inbox status</h2>
-          <div class="card-sub">Review pipeline</div>
+      {% else %}
+      <p class="text-muted mb-0">No debit alerts this month. Sync Gmail first.</p>
+      {% endif %}
+    </section>
+
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(255,111,111,0.1);color:var(--mmx-out)"><i class="bi bi-bar-chart-steps"></i></span>
+          <div><div class="mmx-t">By category</div><div class="mmx-d">Largest debit first</div></div>
         </div>
       </div>
-      <div class="card-body">
-        {% for s in report.by_status %}
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <span><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name | labelize }}</span>
-          <strong>{{ s.count }}</strong>
+      {% for s in cats[:8] %}
+      <div class="mmx-bar">
+        <div class="top">
+          <span class="n"><i style="background:{{ s.color }}"></i><span>{{ s.name }}</span></span>
+          <span class="v">{{ inr(s.amount) }} · {{ '%d'|format(s.pct|round(0)) }}%</span>
         </div>
-        {% else %}
-        <p class="text-muted mb-0">Empty inbox for this month.</p>
+        <div class="mmx-track"><div class="mmx-fill" style="background:{{ s.color }};--w:{{ [s.pct, 100]|min }}%"></div></div>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">No spend to split yet.</p>
+      {% endfor %}
+    </section>
+
+    <section class="mmx-card mmx-c8">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(63,224,197,0.12);color:var(--v-teal)"><i class="bi bi-inbox"></i></span>
+          <div><div class="mmx-t">Inbox status</div><div class="mmx-d">Review pipeline for {{ r.label }}</div></div>
+        </div>
+      </div>
+      {% set stmax = r.item_count or 1 %}
+      {% for s in r.by_status %}
+      <div class="mmx-bar">
+        <div class="top">
+          <span class="n"><i style="background:{{ s.color }}"></i><span>{{ s.name | labelize }}</span></span>
+          <span class="v">{{ s.count }}</span>
+        </div>
+        <div class="mmx-track"><div class="mmx-fill" style="background:{{ s.color }};--w:{{ (100 * s.count / stmax)|round(0)|int }}%"></div></div>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">Empty inbox for this month.</p>
+      {% endfor %}
+    </section>
+
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(77,216,224,0.12);color:var(--mmx-cyan)"><i class="bi bi-calendar3"></i></span>
+          <div><div class="mmx-t">Spend heatmap</div><div class="mmx-d">Daily debit intensity</div></div>
+        </div>
+      </div>
+      <div class="mmx-heat">
+        {% for d in ['S','M','T','W','T','F','S'] %}<div class="mmx-dow">{{ d }}</div>{% endfor %}
+        {% for _ in range(r.heatmap_pad or 0) %}<div class="mmx-cell empty"></div>{% endfor %}
+        {% set peak = namespace(v=0) %}
+        {% for d in daily %}{% if d.expense > peak.v %}{% set peak.v = d.expense %}{% endif %}{% endfor %}
+        {% for d in daily %}
+        {% set a = 0.04 if d.expense == 0 else ([0.18, d.expense / (peak.v or 1)]|max) %}
+        <div class="mmx-cell {% if r.today_day == d.day %}today{% endif %}"
+             style="background:rgba(255,111,111,{{ '%.2f'|format(a) }});{% if d.expense %}color:#fff{% endif %}"
+             title="{{ d.date }} · {{ inr(d.expense) }}">{{ d.day }}</div>
         {% endfor %}
       </div>
-    </div>
-  </div>
-</div>
+    </section>
 
-<div class="card">
-  <div class="card-header">
-    <span class="card-ico"><i class="bi bi-shop"></i></span>
-    <div>
-      <h2>Top payees</h2>
-      <div class="card-sub">Largest debit counterparts</div>
-    </div>
-  </div>
-  <div class="card-body">
-    {% for s in report.top_payees %}
-    <div class="bar-row">
-      <div class="bar-head">
-        <span class="b-name"><span class="dot me-1" style="background:{{ s.color }}"></span>{{ s.name }}</span>
-        <span class="b-val">{{ inr(s.amount) }} · {{ s.count }} txns</span>
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(255,111,111,0.1);color:var(--mmx-out)"><i class="bi bi-bar-chart"></i></span>
+          <div><div class="mmx-t">Weekday pattern</div><div class="mmx-d">Debits by day of week</div></div>
+        </div>
       </div>
-      <div class="bar"><span style="width:{{ s.pct }}%;background:{{ s.color }}"></span></div>
-    </div>
-    {% else %}
-    <p class="text-muted mb-0">No payees yet — sync Gmail first.</p>
-    {% endfor %}
+      {% set wdmax = namespace(v=0) %}
+      {% for w in r.weekday %}{% if w.amount > wdmax.v %}{% set wdmax.v = w.amount %}{% endif %}{% endfor %}
+      <div class="mmx-bars">
+        {% for w in r.weekday %}
+        {% set h = 3 if w.amount == 0 else ([8, (w.amount / (wdmax.v or 1) * 100)]|max) %}
+        <div class="mmx-col">
+          <div class="bar" style="--h:{{ h }}%;background:linear-gradient(180deg,#ff8f8f,#ff6f6f)"></div>
+          <div class="lbl">{{ w.name[:3] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(77,216,224,0.12);color:var(--mmx-cyan)"><i class="bi bi-distribute-vertical"></i></span>
+          <div><div class="mmx-t">Amount histogram</div><div class="mmx-d">Debits grouped by size</div></div>
+        </div>
+      </div>
+      {% set hmax = namespace(v=0) %}
+      {% for h in r.histogram %}{% if h.count > hmax.v %}{% set hmax.v = h.count %}{% endif %}{% endfor %}
+      <div class="mmx-bars">
+        {% for h in r.histogram %}
+        {% set hh = 3 if h.count == 0 else ([8, (h.count / (hmax.v or 1) * 100)]|max) %}
+        <div class="mmx-col">
+          <div class="bar" style="--h:{{ hh }}%;background:linear-gradient(180deg,#6ee8ee,#4dd8e0)"></div>
+          <div class="lbl">{{ h.name.replace('₹','').split('–')[0][:6] }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(139,140,249,0.1);color:var(--mmx-violet)"><i class="bi bi-people"></i></span>
+          <div><div class="mmx-t">Top payees</div><div class="mmx-d">Largest debit counterparts</div></div>
+        </div>
+      </div>
+      {% for p in r.top_payees[:6] %}
+      <div class="mmx-payee">
+        <div class="mmx-av" style="background:{{ p.color }}22;color:{{ p.color }}">{{ (p.name or '?')[:1]|upper }}</div>
+        <div class="mmx-pinfo">
+          <div class="mmx-pname">{{ p.name }}</div>
+          <div class="mmx-pmeta">{{ p.count }} alert{% if p.count != 1 %}s{% endif %}</div>
+        </div>
+        <div class="mmx-pamt">{{ inr(p.amount) }}</div>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">No payees yet — sync Gmail first.</p>
+      {% endfor %}
+    </section>
+
+    <section class="mmx-card mmx-c8">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(53,214,138,0.1);color:var(--mmx-in)"><i class="bi bi-calendar-range"></i></span>
+          <div><div class="mmx-t">Last 12 months</div><div class="mmx-d">Credits versus debits from mail</div></div>
+        </div>
+        <div class="mmx-legend mb-0">
+          <span><i style="background:var(--mmx-in)"></i>Credits</span>
+          <span><i style="background:var(--mmx-out)"></i>Debits</span>
+        </div>
+      </div>
+      {% set momax = namespace(v=0) %}
+      {% for t in r.trend %}
+        {% set m = [t.income, t.expense]|max %}
+        {% if m > momax.v %}{% set momax.v = m %}{% endif %}
+      {% endfor %}
+      <div class="mmx-mo">
+        {% for t in r.trend %}
+        {% set eh = 0 if t.expense == 0 else ([4, t.expense / (momax.v or 1) * 100]|max) %}
+        {% set ih = 0 if t.income == 0 else ([4, t.income / (momax.v or 1) * 100]|max) %}
+        <div class="col">
+          <div class="stack">
+            <div class="seg" style="--h:{{ eh }}%;background:#ff6f6f"></div>
+            <div class="seg" style="--h:{{ ih }}%;background:#35d68a"></div>
+          </div>
+          <div class="lbl">{{ t.label }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="mmx-card mmx-c4">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(245,185,66,0.12);color:var(--mmx-amber)"><i class="bi bi-activity"></i></span>
+          <div><div class="mmx-t">Month-end projection</div><div class="mmx-d">At current daily debit rate</div></div>
+        </div>
+      </div>
+      <div class="mmx-proj mm-expense">{{ inr(r.projected) }}</div>
+      <div class="mmx-d">Projected debits by month end · {{ r.days_logged }} of {{ r.days_in_month }} days logged</div>
+      <div class="mmx-ptrack"><div class="mmx-pfill" style="--w:{{ [r.month_pct, 100]|min }}%"></div></div>
+      <div class="mmx-d" style="margin-top:8px">{{ '%d'|format(r.month_pct|round(0)) }}% of month elapsed</div>
+    </section>
+
+    <section class="mmx-card mmx-c6">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(255,111,111,0.1);color:var(--mmx-out)"><i class="bi bi-credit-card"></i></span>
+          <div><div class="mmx-t">Payment methods</div><div class="mmx-d">UPI, card, and more</div></div>
+        </div>
+      </div>
+      {% for s in r.by_method %}
+      <div class="mmx-bar">
+        <div class="top">
+          <span class="n"><i style="background:{{ s.color }}"></i><span>{{ s.name | labelize }}{% if s.count %} · {{ s.count }}{% endif %}</span></span>
+          <span class="v">{{ inr(s.amount) }}</span>
+        </div>
+        <div class="mmx-track"><div class="mmx-fill" style="background:{{ s.color }};--w:{{ [s.pct, 100]|min }}%"></div></div>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">No method data yet.</p>
+      {% endfor %}
+    </section>
+
+    <section class="mmx-card mmx-c6">
+      <div class="mmx-head">
+        <div class="mmx-title">
+          <span class="mmx-ico" style="background:rgba(139,140,249,0.1);color:var(--mmx-violet)"><i class="bi bi-envelope"></i></span>
+          <div><div class="mmx-t">Items</div><div class="mmx-d">Alerts counted this month</div></div>
+        </div>
+      </div>
+      <div class="mmx-proj">{{ r.item_count }}</div>
+      <div class="mmx-d">excluding ignored · {{ cats|length }} categories with debit</div>
+      <a class="btn btn-outline-light btn-sm mt-3" href="/admin/expense-analyser">Open inbox</a>
+    </section>
   </div>
 </div>
-
-<style>
-.ea-day-chart {
-  display: flex;
-  align-items: flex-end;
-  gap: .35rem;
-  min-height: 10rem;
-  overflow-x: auto;
-  padding-top: .5rem;
-}
-.ea-day-col {
-  flex: 1 0 1.1rem;
-  max-width: 2rem;
-  text-align: center;
-}
-.ea-day-bar-wrap {
-  height: 8rem;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-.ea-day-bar {
-  display: block;
-  width: 70%;
-  min-height: 2px;
-  border-radius: .25rem .25rem 0 0;
-  background: linear-gradient(180deg, #5EEAD4, #2dd4bf88);
-}
-.ea-day-lbl {
-  font-size: .65rem;
-  color: var(--text-muted, #94a3b8);
-  margin-top: .25rem;
-}
-</style>
+<script type="application/json" id="mmx-charts-data">{{ {'daily': r.daily, 'categories': r.by_category} | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script src="/static/finance-charts.js?v=2"></script>
 {% endblock %}
