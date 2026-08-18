@@ -52,6 +52,8 @@ def test_resolve_ledger_day_and_deterministic_today_spend():
     assert resolve_ledger_day("todays total expesne", today) == "2026-08-16"
     assert resolve_ledger_day("What is the todays total expense", today) == "2026-08-16"
     assert resolve_ledger_day("yesterday spend", today) == "2026-08-15"
+    assert resolve_ledger_day("any upi trasaction today?", today) == "2026-08-16"
+    assert resolve_ledger_day("what about yesterday", today) == "2026-08-15"
     assert should_answer_ledger_day(
         "are u sure",
         [{"role": "user", "content": "todays total expense"}],
@@ -101,6 +103,46 @@ def test_resolve_ledger_day_and_deterministic_today_spend():
         db.close()
 
 
+def test_upi_day_includes_unposted_gmail_alerts():
+    from app.ai_chat import ask, format_money_manager_day_reply, vault_today
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        day = vault_today()
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-upi-1", kind="alert",
+            subject="UPI transaction", from_addr="alerts@hdfcbank.bank.in",
+            amount=Decimal("42.00"), payee="HDFC UPI", txn_date=day,
+            payment_method="upi", status="pending", direction="debit",
+        ))
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-cc-1", kind="alert",
+            subject="Credit card statement AUGUST 2026",
+            from_addr="cc.statements@axis.bank.in",
+            amount=Decimal("1500.00"), payee="Axis", txn_date=day,
+            payment_method="credit_card", status="pending", direction="debit",
+        ))
+        db.commit()
+        reply = format_money_manager_day_reply(
+            db, user, day, question="any upi trasaction today?",
+        )
+        assert "42.00" in reply.replace(",", "")
+        assert "HDFC UPI" in reply
+        assert "Expense Analyser" in reply
+        assert "1500" not in reply.replace(",", "")
+        assert "Axis" not in reply
+        out = ask(db, user, "any upi trasaction today?")
+        assert "42.00" in out["reply"].replace(",", "")
+        assert "HDFC UPI" in out["reply"]
+        yday = ask(db, user, "what about yesterday")
+        assert "Money Manager" in yday["reply"]
+    finally:
+        db.close()
+
+
 def test_highest_purchase_uses_ledger_payee_not_category():
     from app.ai_chat import ask, wants_highest_expense, should_answer_highest_expense
 
@@ -137,6 +179,32 @@ def test_highest_purchase_uses_ledger_payee_not_category():
         assert "not available" not in out["reply"].lower()
         follow = ask(db, user, "what was that", thread_id=out["thread_id"])
         assert "Home Purchase" in follow["reply"]
+    finally:
+        db.close()
+
+
+def test_password_lookup_is_local_view_link_not_secret():
+    from app.ai_chat import ask, wants_password_lookup
+
+    assert wants_password_lookup("what is my password for Gmail") is True
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        item = models.VaultItem(
+            user_id=uid, name="Gmail", item_type="login",
+            username="secret-user", password_enc="encrypted-password-blob",
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        out = ask(db, user, "what is my password for Gmail")
+        assert "/admin/passwords/" + item.id in out["reply"]
+        assert "Gmail" in out["reply"]
+        assert "encrypted-password-blob" not in out["reply"]
+        assert "secret-user" not in out["reply"]
+        assert "not" in out["reply"].lower() and "sent" in out["reply"].lower()
     finally:
         db.close()
 
@@ -203,18 +271,19 @@ def test_context_includes_hospital_and_card_not_secrets():
     finally:
         db.close()
 
-    assert "Aster Medcity" in ctx
-    assert "CBC report" in ctx
     assert "HDFC Millennia" in ctx
     assert "Amazon Pay" in ctx
     assert "2,499.00" in ctx
-    assert "PAN card" in ctx
-    assert "Gmail" in ctx
     assert "should-never-appear-plain" not in ctx
     assert "encrypted-password-blob" not in ctx
     assert "secret-user" not in ctx
     assert "PAN-SECRET" not in ctx
-    assert "omitted" in ctx.lower()
+    assert "Haemoglobin" not in ctx
+    assert "not sent to the AI provider" in ctx
+    # Login names and medical titles stay off the provider snapshot
+    assert "Gmail (" not in ctx
+    assert "CBC report" not in ctx
+    assert "PAN card" not in ctx
 
 
 def test_today_money_manager_block_in_context():
@@ -303,28 +372,13 @@ def test_chat_roundtrip_with_mocked_llm():
     assert r.status_code == 200, r.text
     body = r.json()
     assert "KIMS" in body["reply"]
+    assert "Lipid profile" in body["reply"]
+    assert "/admin/documents/" in body["reply"]
+    assert "not" in body["reply"].lower() and "sent" in body["reply"].lower()
     assert body["thread_id"]
     assert len(body["messages"]) == 2
     assert body["messages"][0]["role"] == "user"
     assert body["messages"][1]["role"] == "assistant"
-
-    # Usage log written for Ask AI
-    db = SessionLocal()
-    try:
-        user = db.query(models.User).filter(models.User.email == email).first()
-        logs = db.query(models.AiUsageLog).filter(models.AiUsageLog.user_id == vault_id(user)).all()
-        assert len(logs) >= 1
-        log = logs[-1]
-        assert log.client == "ask_ai"
-        assert log.model == "openai/gpt-4o-mini"
-        assert log.prompt_tokens == 120
-        assert log.completion_tokens == 40
-        assert log.total_tokens == 160
-        assert log.ok is True
-        assert log.request_text
-        assert "KIMS" in (log.response_text or "") or log.response_text
-    finally:
-        db.close()
 
     listed = client.get("/ai/chat/threads", headers=headers)
     assert listed.status_code == 200
@@ -383,7 +437,7 @@ def test_admin_ask_page_and_session_chat():
         "content": "Nothing filed yet.", "kind": "ollama", "model": "llama3.2",
         "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
     }):
-        chat = session.post("/admin/ai/ask/send", json={"message": "Any hospital reports?"})
+        chat = session.post("/admin/ai/ask/send", json={"message": "Summarise my shopping lists"})
     assert chat.status_code == 200, chat.text
     payload = chat.json()
     assert payload["reply"] == "Nothing filed yet."

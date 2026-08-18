@@ -117,9 +117,10 @@ def vault_today() -> str:
 
 _SPEND_RE = re.compile(
     r"\b(expense|expenses|spend|spent|spending|total|kharcha?|adichu|vaangi|"
-    r"paid|payment|outflow|debit)\b",
+    r"paid|payment|outflow|debit|trans?actions?|trasactions?|txn)\b",
     re.I,
 )
+_UPI_RE = re.compile(r"\bupi\b", re.I)
 _TODAY_RE = re.compile(
     r"\b(today|todays|today'?s|ippo|innu|ee\s*divasam|ee\s*naal)\b",
     re.I,
@@ -156,7 +157,7 @@ def resolve_ledger_day(question: str, today: datetime | None = None) -> str | No
     )
     if _TODAY_RE.search(q) and (spendish or len(q.split()) <= 4):
         return today.strftime("%Y-%m-%d")
-    if _YESTERDAY_RE.search(q) and spendish:
+    if _YESTERDAY_RE.search(q) and (spendish or len(q.split()) <= 6):
         return (today - timedelta(days=1)).strftime("%Y-%m-%d")
     return None
 
@@ -182,9 +183,33 @@ def should_answer_ledger_day(
     return None
 
 
-def format_money_manager_day_reply(db: Session, user: models.User, day: str) -> str:
-    """Deterministic Money Manager day total — never uses Digital Diary."""
+def wants_upi(question: str, history: list[dict] | None = None) -> bool:
+    if _UPI_RE.search(question or ""):
+        return True
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "user":
+            continue
+        if _UPI_RE.search(m.get("content") or ""):
+            return True
+        break
+    return False
+
+
+def _looks_like_upi(*parts: str | None) -> bool:
+    hay = " ".join(p or "" for p in parts).lower()
+    return bool(_UPI_RE.search(hay))
+
+
+def format_money_manager_day_reply(
+    db: Session,
+    user: models.User,
+    day: str,
+    question: str = "",
+    history: list[dict] | None = None,
+) -> str:
+    """Deterministic day spend: Money Manager ledger, plus unposted Gmail alerts."""
     uid = _uid(user)
+    upi_only = wants_upi(question, history)
     cats = {
         c.id: c.name
         for c in db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).all()
@@ -204,32 +229,75 @@ def format_money_manager_day_reply(db: Session, user: models.User, day: str) -> 
         .order_by(models.FinanceTransaction.created_at.desc())
         .all()
     )
+    if upi_only:
+        txns = [
+            t for t in txns
+            if _looks_like_upi(t.payment_method, t.payee, t.notes, getattr(t, "description", None))
+        ]
     total = sum(_f(t.amount) for t in txns)
     try:
         label = datetime.strptime(day, "%Y-%m-%d").strftime("%A %d %B %Y")
     except ValueError:
         label = day
+    topic = "UPI" if upi_only else "expenses"
     lines = [
-        f"**Money Manager expenses for {label}**",
+        f"**Money Manager {topic} for {label}**",
         "",
-        f"Total: **{_inr(total)}**",
+        f"Ledger total: **{_inr(total)}**",
         "",
     ]
     if not txns:
-        lines.append("No expense entries on the ledger for this date.")
+        lines.append("No matching expense entries on the Money Manager ledger for this date.")
         lines.append("")
-        lines.append("_Source: Money Manager (not Digital Diary)._")
-        return "\n".join(lines)
-    lines.append("| Payee | Category | Account | Amount |")
-    lines.append("| --- | --- | --- | ---: |")
-    for t in txns:
-        acct = acct_by_id.get(t.account_id)
-        lines.append(
-            f"| {t.payee or '—'} | {cats.get(t.category_id) or '—'} | "
-            f"{acct.name if acct else '—'} | {_inr(t.amount).replace('₹ ', '')} |"
+    else:
+        lines.append("| Payee | Category | Account | Amount |")
+        lines.append("| --- | --- | --- | ---: |")
+        for t in txns:
+            acct = acct_by_id.get(t.account_id)
+            lines.append(
+                f"| {t.payee or '—'} | {cats.get(t.category_id) or '—'} | "
+                f"{acct.name if acct else '—'} | {_inr(t.amount).replace('₹ ', '')} |"
+            )
+        lines.append("")
+
+    ea_rows = (
+        db.query(models.ExpenseAnalyserItem)
+        .filter(
+            models.ExpenseAnalyserItem.user_id == uid,
+            models.ExpenseAnalyserItem.txn_date == day,
+            models.ExpenseAnalyserItem.status.notin_(("posted", "ignored")),
+            models.ExpenseAnalyserItem.kind.in_(("alert", "bill_line")),
         )
-    lines.append("")
-    lines.append("_Source: Money Manager ledger (Digital Diary notes are not counted)._")
+        .order_by(models.ExpenseAnalyserItem.created_at.desc())
+        .all()
+    )
+    if upi_only:
+        ea_rows = [
+            it for it in ea_rows
+            if _looks_like_upi(it.payment_method, it.subject, it.raw_snippet, it.from_addr)
+        ]
+    if ea_rows:
+        ea_total = sum(abs(_f(it.amount)) for it in ea_rows if it.amount is not None)
+        lines.append("**Expense Analyser — Gmail alerts not yet on the ledger**")
+        lines.append("")
+        lines.append(f"Inbox total: **{_inr(ea_total)}** · {len(ea_rows)} item(s) still pending review.")
+        lines.append("")
+        lines.append("| Status | Payee | Method | Amount |")
+        lines.append("| --- | --- | --- | ---: |")
+        for it in ea_rows[:25]:
+            lines.append(
+                f"| {it.status or 'pending'} | {it.payee or it.subject or '—'} | "
+                f"{(it.payment_method or '—').replace('_', ' ')} | "
+                f"{_inr(it.amount).replace('₹ ', '') if it.amount is not None else '—'} |"
+            )
+        lines.append("")
+        lines.append("These are in Expense Analyser Inbox — post them to Money Manager if they should count as spend.")
+        lines.append("")
+    elif not txns:
+        lines.append("No matching Gmail alerts in Expense Analyser for this date either.")
+        lines.append("")
+
+    lines.append("_Ledger source: Money Manager. Unposted mail: Expense Analyser. Digital Diary is not counted._")
     return "\n".join(lines)
 
 
@@ -341,23 +409,30 @@ _NEEDLE_STOP_RE = re.compile(
     r"\b(what|whats|what's|which|where|is|are|my|the|a|an|for|of|to|please|"
     r"show|tell|give|me|find|open|view|see|stored|saved|vault|"
     r"password|passwd|pwd|passcode|login|logins|credential|credentials|"
-    r"username|medical|health|hospital|lab|report|prescription|document|"
-    r"documents|card|number|id)\b",
+    r"username|medical|health|hospital|lab|report|reports|prescription|document|"
+    r"documents|card|number|id|any)\b",
     re.I,
 )
 
 
 def _search_needle(question: str) -> str:
-    cleaned = _NEEDLE_STOP_RE.sub(" ", question or "")
+    cleaned = re.sub(r"[^\w\u0d00-\u0d7f]+", " ", question or "", flags=re.UNICODE)
+    cleaned = _NEEDLE_STOP_RE.sub(" ", cleaned)
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
 def _tokens_match(hay: str, needle: str) -> bool:
     hay = (hay or "").lower()
-    tokens = [t for t in (needle or "").lower().split() if len(t) >= 2]
+    fillers = {"have", "has", "had", "with", "from", "about", "this", "that", "does", "did", "any"}
+    tokens = [
+        t for t in (needle or "").lower().split()
+        if len(t) >= 3 and t not in fillers
+    ]
     if not tokens:
         return False
-    return all(t in hay for t in tokens)
+    if all(t in hay for t in tokens):
+        return True
+    return any(len(t) >= 4 and t in hay for t in tokens)
 
 
 def wants_password_lookup(question: str) -> bool:
@@ -915,7 +990,6 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     )
 
     # ---- Money ----
-    # ---- Money ----
     lines.append("")
     lines.append("## Money Manager")
     accounts = (
@@ -1122,29 +1196,13 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         )
         lines.extend(_diary_snapshot_lines(db, uid, q))
 
-    # ---- Locker ----
+    # ---- Locker (counts only — IDs never leave this server) ----
+    locker_n = db.query(models.LockerItem).filter(models.LockerItem.user_id == uid).count()
     lines.append("")
-    lines.append("## Document Vault (IDs & papers — ID numbers omitted)")
-    locker = (
-        db.query(models.LockerItem)
-        .filter(models.LockerItem.user_id == uid)
-        .order_by(models.LockerItem.expiry_date.asc(), models.LockerItem.created_at.desc())
-        .limit(40)
-        .all()
+    lines.append(
+        f"## Document Vault: {locker_n} ID/paper items. Titles and ID numbers stay on this "
+        "server and are not sent to the AI provider. Ask for an ID document to get a view link."
     )
-    if locker:
-        soon = (today + timedelta(days=90)).strftime("%Y-%m-%d")
-        for it in locker:
-            flag = ""
-            if it.expiry_date and it.expiry_date <= soon:
-                flag = " EXPIRING"
-            lines.append(
-                f"- {it.title} · {it.doc_type}"
-                f"{' / ' + it.custom_type if it.custom_type else ''} · "
-                f"{it.holder_name or ''} · {it.issuer or ''} · expiry {it.expiry_date or '—'}{flag}"
-            )
-    else:
-        lines.append("No locker items.")
 
     # ---- URLs ----
     url_n = (
@@ -1173,22 +1231,16 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     for u in urls:
         lines.append(f"- {u.title} · {cat_map.get(u.category_id) or 'uncategorised'}" + (" ★" if u.favorite else ""))
 
-    # ---- Passwords (counts + names only) ----
-    pw_q = db.query(models.VaultItem).filter(
-        models.VaultItem.user_id == uid, models.VaultItem.deleted_at.is_(None)
+    # ---- Passwords (count only — names and secrets never leave this server) ----
+    pw_n = (
+        db.query(models.VaultItem)
+        .filter(models.VaultItem.user_id == uid, models.VaultItem.deleted_at.is_(None))
+        .count()
     )
-    pw_n = pw_q.count()
-    by_type: dict[str, int] = defaultdict(int)
-    names = []
-    for it in pw_q.order_by(models.VaultItem.name).limit(40).all():
-        by_type[it.item_type or "login"] += 1
-        names.append(f"{it.name} ({it.item_type})")
     lines.append("")
     lines.append(
-        f"## Password Vault: {pw_n} items "
-        + ("(" + ", ".join(f"{k} {v}" for k, v in sorted(by_type.items())) + "). " if pw_n else "")
-        + "Secrets are not included. Names: "
-        + (", ".join(names) if names else "none")
+        f"## Password Vault: {pw_n} items. Login names and passwords stay on this server "
+        "and are not sent to the AI provider. Ask “password for Gmail” to get a view link."
     )
 
     text = "\n".join(lines)
@@ -1360,8 +1412,7 @@ def _diary_snapshot_lines(db: Session, uid: str, question: str = "") -> list[str
             f"{' · tags ' + e.tags if e.tags else ''}"
             f"{' · mood ' + e.mood if e.mood else ''}{pin}"
         )
-        if body:
-            lines.append(f"  {_clip(body, 220)}")
+        # Diary body stays on this server — titles only go to the provider.
         shown += 1
         if shown >= 30:
             break
@@ -1987,6 +2038,36 @@ def delete_thread(db: Session, user: models.User, thread_id: str) -> bool:
     return True
 
 
+def _store_deterministic_reply(
+    db: Session,
+    user: models.User,
+    thread: models.AiChatThread,
+    text: str,
+    reply: str,
+) -> dict:
+    now = datetime.utcnow()
+    db.add(models.AiChatMessage(
+        thread_id=thread.id, role="user", content_enc=crypto.encrypt_text(text), created_at=now,
+    ))
+    db.add(models.AiChatMessage(
+        thread_id=thread.id, role="assistant", content_enc=crypto.encrypt_text(reply),
+        created_at=now + timedelta(seconds=1),
+    ))
+    if thread.title in {"New chat", ""}:
+        thread.title = _title_from(text)
+    thread.updated_at = now
+    db.commit()
+    db.refresh(thread)
+    detail = thread_detail(db, user, thread.id)
+    return {
+        "thread_id": thread.id,
+        "title": thread.title,
+        "reply": reply,
+        "action": None,
+        "messages": detail["messages"] if detail else [],
+    }
+
+
 def ask(db: Session, user: models.User, message: str, thread_id: str | None = None) -> dict:
     import time
     from app import ai_usage
@@ -2011,31 +2092,37 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     )
     history = [_msg_out(m) for m in prior[-MAX_HISTORY:]]
 
-    # Day spend totals come straight from Money Manager — never trust the LLM/diary here.
+    from app import ai_brain
+    brain_only = ai_brain.apply_brain_command(db, user, text)
+    if brain_only:
+        reply, learned, _forgotten = brain_only
+        result = _store_deterministic_reply(db, user, thread, text, reply)
+        result["learned"] = learned
+        return result
+
+    # Secrets and ledger facts stay on this server — never sent to the AI provider.
     ledger_day = should_answer_ledger_day(text, history)
     if ledger_day:
-        reply = format_money_manager_day_reply(db, user, ledger_day)
-        now = datetime.utcnow()
-        db.add(models.AiChatMessage(
-            thread_id=thread.id, role="user", content_enc=crypto.encrypt_text(text), created_at=now,
-        ))
-        db.add(models.AiChatMessage(
-            thread_id=thread.id, role="assistant", content_enc=crypto.encrypt_text(reply),
-            created_at=now + timedelta(seconds=1),
-        ))
-        if thread.title in {"New chat", ""}:
-            thread.title = _title_from(text)
-        thread.updated_at = now
-        db.commit()
-        db.refresh(thread)
-        detail = thread_detail(db, user, thread.id)
-        return {
-            "thread_id": thread.id,
-            "title": thread.title,
-            "reply": reply,
-            "action": None,
-            "messages": detail["messages"] if detail else [],
-        }
+        reply = format_money_manager_day_reply(db, user, ledger_day, question=text, history=history)
+        return _store_deterministic_reply(db, user, thread, text, reply)
+    if should_answer_highest_expense(text, history):
+        source_q = text
+        if not wants_highest_expense(text):
+            for m in reversed(history or []):
+                if (m.get("role") or "") == "user" and wants_highest_expense(m.get("content") or ""):
+                    source_q = m.get("content") or text
+                    break
+        reply = format_highest_expense_reply(db, user, source_q)
+        return _store_deterministic_reply(db, user, thread, text, reply)
+    if wants_password_lookup(text):
+        reply = format_password_lookup_reply(db, user, text)
+        return _store_deterministic_reply(db, user, thread, text, reply)
+    if wants_locker_lookup(text):
+        reply = format_locker_lookup_reply(db, user, text)
+        return _store_deterministic_reply(db, user, thread, text, reply)
+    if wants_health_lookup(text):
+        reply = format_health_lookup_reply(db, user, text)
+        return _store_deterministic_reply(db, user, thread, text, reply)
 
     bundle = ap.get_default_bundle(db, user)
     if not bundle:
