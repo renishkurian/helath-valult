@@ -24,6 +24,26 @@ def _headers(email: str | None = None):
     return {"Authorization": f"Bearer {r.json()['access_token']}"}, email
 
 
+def test_default_sync_query_includes_south_indian_bank():
+    from app.gmail import DEFAULT_SYNC_QUERY
+    from app.expense_analyser import _effective_sync_query, _looks_like_bank_alert
+
+    assert "southindianbank.com" in DEFAULT_SYNC_QUERY
+    class _Row:
+        sync_query = (
+            "("
+            "from:(hdfcbank.net OR hdfcbank.com OR sbi.co.in) "
+            "OR subject:(transaction OR spent)"
+            ") newer_than:45d"
+        )
+    q = _effective_sync_query(_Row())
+    assert "southindianbank.com" in q
+    assert _looks_like_bank_alert({
+        "from_addr": "SIB Alerts <alerts@southindianbank.com>",
+        "subject": "Transaction Alert!",
+    })
+
+
 def test_status_endpoint_unconnected():
     headers, _ = _headers()
     r = client.get("/expense-analyser/status", headers=headers)

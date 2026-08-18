@@ -23,6 +23,26 @@ def test_heuristic_debit_upi():
     assert out["date"] == "2026-08-13"
 
 
+def test_heuristic_south_indian_bank_upi_alert():
+    html = """
+    <html><body>
+    <p>Dear Customer, This is to inform you that,</p>
+    <p><span>INR 5775</span> was spent from your SOUTH INDIAN BANK account XXXXX5835
+    Info - UPI/SBIN/659519060532/JIBIN S/UPI on 17-08-2026</p>
+    </body></html>
+    """
+    from app.gmail import html_to_text
+    text = html_to_text(html)
+    out = classify_heuristic(text)
+    assert out["direction"] == "debit"
+    assert out["amount"] == 5775
+    assert out["payment_method"] == "upi"
+    assert out["date"] == "2026-08-17"
+    assert out["payee"]
+    assert "JIBIN" in out["payee"].upper()
+    assert out["payee"].upper().rstrip(".").endswith("S")
+
+
 def test_heuristic_hdfc_upi_txn_subject_style():
     out = classify_heuristic(
         "Dear Customer, You have done a UPI txn from HDFC Bank A/c XX1234 "

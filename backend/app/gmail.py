@@ -25,7 +25,8 @@ DEFAULT_SYNC_QUERY = (
     "OR alerts.hdfcbank.com OR instalerts.hdfcbank.com OR hdfcbank.bank.in "
     "OR sbi.co.in OR onlinesbi.com OR icicibank.com OR axisbank.com OR kotak.com "
     "OR yesbank.in OR indusind.com OR citibank.com OR americanexpress.com OR amex "
-    "OR rblbank.com OR idfcfirstbank.com OR phonepe.com OR googlepay OR paytm.com "
+    "OR rblbank.com OR idfcfirstbank.com OR southindianbank.com OR southindianbank.co.in "
+    "OR sib.co.in OR phonepe.com OR googlepay OR paytm.com "
     "OR amazonpay)"
     " OR subject:(debited OR credited OR spent OR withdrawn OR \"txn\" OR transaction "
     "OR statement OR \"credit card\" OR \"e-statement\" OR \"e statement\")"
@@ -40,7 +41,7 @@ DEFAULT_PDF_QUERY = (
     "OR \"credit card\" OR \"account statement\" OR \"monthly statement\") "
     "OR from:(hdfcbank OR sbi.co.in OR onlinesbi OR icicibank OR axisbank "
     "OR kotak.com OR yesbank OR indusind OR rblbank OR idfcfirstbank "
-    "OR americanexpress OR amex)"
+    "OR southindianbank OR sib.co.in OR americanexpress OR amex)"
     ")"
 )
 

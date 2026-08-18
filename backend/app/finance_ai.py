@@ -108,7 +108,10 @@ _KNOWN_MERCHANT_HINT_RE = re.compile(
 )
 
 _AMOUNT_RE = re.compile(
-    r"(?:rs\.?|inr|₹)\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{1,2})?|[0-9]+(?:\.[0-9]{1,2})?)",
+    r"(?:rs\.?|inr|₹)\s*("
+    r"[0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?"
+    r"|[0-9]+(?:\.[0-9]{1,2})?"
+    r")",
     re.I,
 )
 _AMOUNT_ALT_RE = re.compile(
@@ -149,7 +152,12 @@ _PAYEE_RE = re.compile(
     re.I,
 )
 _INFO_PAYEE_RE = re.compile(
-    r"(?:info|merchant)\s*:\s*([A-Z0-9][A-Za-z0-9 .&@/_-]{2,50})",
+    r"(?:info|merchant)\s*[:\-–]\s*([A-Z0-9][A-Za-z0-9 .&@/_-]{2,50})",
+    re.I,
+)
+# South Indian Bank / NPCI style: UPI/SBIN/659519060532/JIBIN S/UPI
+_UPI_SLASH_PAYEE_RE = re.compile(
+    r"\bUPI/[A-Z]{2,10}/\d{6,}/([^/\n]{2,40})/UPI\b",
     re.I,
 )
 _PAYEE_CUT_RE = re.compile(
@@ -301,7 +309,7 @@ def format_payee(payee: str | None) -> str | None:
         low = part.lower()
         if low in _PAYEE_BRANDS:
             parts.append(_PAYEE_BRANDS[low])
-        elif part.isupper() and len(part) <= 5:
+        elif part.isupper() and len(part) <= 5 and len(part) != 1:
             parts.append(part)
         else:
             parts.append(part[:1].upper() + part[1:].lower())
@@ -323,9 +331,9 @@ def normalize_payee(payee: str | None) -> str | None:
         return None
     if len(text.split()) > 6:
         text = " ".join(text.split()[:4]).strip(" .-_")
-    # Drop trailing single-letter leftovers from cut alerts ("FLIPKART I").
+    # Drop trailing "I" leftovers from cut "INR" ("FLIPKART I"). Keep "JIBIN S".
     parts = text.split()
-    while parts and len(parts[-1]) == 1:
+    while parts and parts[-1].upper() == "I" and len(parts[-1]) == 1:
         parts.pop()
     text = " ".join(parts).strip(" .-_")
     if len(text) < 2 or _JUNK_PAYEE_RE.match(text):
@@ -334,9 +342,20 @@ def normalize_payee(payee: str | None) -> str | None:
 
 
 def _guess_payee(text: str) -> str | None:
-    m = _INFO_PAYEE_RE.search(text or "")
+    m = _UPI_SLASH_PAYEE_RE.search(text or "")
     if m:
         payee = normalize_payee(m.group(1))
+        if payee and payee.lower() not in {"upi", "sbin", "imps"}:
+            return payee
+    m = _INFO_PAYEE_RE.search(text or "")
+    if m:
+        raw = m.group(1)
+        slash = _UPI_SLASH_PAYEE_RE.search(raw) or _UPI_SLASH_PAYEE_RE.search(text or "")
+        if slash:
+            payee = normalize_payee(slash.group(1))
+            if payee and payee.lower() not in {"upi", "sbin", "imps"}:
+                return payee
+        payee = normalize_payee(raw)
         if payee:
             return payee
     m = _PAYEE_RE.search(text or "")

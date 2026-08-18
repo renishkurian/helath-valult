@@ -298,13 +298,26 @@ def _effective_sync_query(row: models.ExpenseAnalyserConnection) -> str:
         return gmail.DEFAULT_SYNC_QUERY
     # Older shipped defaults omitted hdfcbank.com / instalerts — upgrade in place.
     if "hdfcbank.net OR alerts.hdfcbank.net" in q and "hdfcbank.com" not in q:
-        return gmail.DEFAULT_SYNC_QUERY
+        q = gmail.DEFAULT_SYNC_QUERY
+    if "southindianbank" not in q.lower() and "sib.co.in" not in q.lower():
+        q = re.sub(
+            r"from:\(([^)]+)\)",
+            lambda m: f"from:({m.group(1)} OR southindianbank.com OR southindianbank.co.in OR sib.co.in)",
+            q,
+            count=1,
+            flags=re.I,
+        )
+        if "southindianbank" not in q.lower():
+            q = f"({q}) OR from:(southindianbank.com OR sib.co.in)"
     return q
 
 
 def _looks_like_bank_alert(mail: dict[str, Any]) -> bool:
     blob = f"{mail.get('from_addr') or ''} {mail.get('subject') or ''}".lower()
-    banks = ("hdfc", "icici", "sbi", "axis", "kotak", "yesbank", "indusind", "rbl", "idfc", "amex")
+    banks = (
+        "hdfc", "icici", "sbi", "axis", "kotak", "yesbank", "indusind", "rbl", "idfc",
+        "amex", "southindianbank", "south indian bank", "sib alerts",
+    )
     keys = ("txn", "transaction", "debited", "credited", "spent", "upi", "credit card")
     return any(b in blob for b in banks) and any(k in blob for k in keys)
 
@@ -459,7 +472,7 @@ def sync_gmail(
     db: Session,
     user: models.User,
     *,
-    max_messages: int = 80,
+    max_messages: int = 200,
     trigger: str = "manual",
     use_ai: bool = False,
 ) -> dict[str, Any]:
@@ -628,6 +641,7 @@ _BANK_HINTS = (
     ("RBL", ("rblbank", "rbl")),
     ("IDFC", ("idfc",)),
     ("Amex", ("americanexpress", "amex")),
+    ("South Indian Bank", ("southindianbank", "south indian bank", "sib.co.in", "sib alerts")),
 )
 
 
