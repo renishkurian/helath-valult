@@ -317,8 +317,17 @@ def _effective_sync_query(row: models.ExpenseAnalyserConnection) -> str:
             count=1,
             flags=re.I,
         )
-        if "sib.bank.in" not in q.lower():
-            q = f"({q}) OR from:(sib.bank.in OR sibalerts OR southindianbank.com)"
+    # Keep SIB debit alerts outside the long from:(…) group — Gmail drops later ORs.
+    if "from:alerts@sib.co.in" not in q.lower():
+        q = re.sub(
+            r"\)\s*newer_than:",
+            " OR from:alerts@sib.co.in OR from:sib.co.in) newer_than:",
+            q,
+            count=1,
+            flags=re.I,
+        )
+        if "from:alerts@sib.co.in" not in q.lower():
+            q = f"({q}) OR from:alerts@sib.co.in OR from:sib.co.in"
     return q
 
 
@@ -327,7 +336,7 @@ def _looks_like_bank_alert(mail: dict[str, Any]) -> bool:
     banks = (
         "hdfc", "icici", "sbi", "axis", "kotak", "yesbank", "indusind", "rbl", "idfc",
         "amex", "southindianbank", "south indian bank", "sib alerts",
-        "sib.bank.in", "sibalerts",
+        "sib.bank.in", "sibalerts", "sib.co.in",
     )
     keys = ("txn", "transaction", "debited", "credited", "spent", "upi", "credit card")
     return any(b in blob for b in banks) and any(k in blob for k in keys)
@@ -497,6 +506,11 @@ def sync_gmail(
         if row.sync_query != query:
             row.sync_query = query
         ids = gmail.list_message_ids_paged(token, query, limit=max_messages)
+        # SIB debit alerts use alerts@sib.co.in; Gmail drops them from the long from:(…) OR list.
+        sib_ids = gmail.list_message_ids_paged(
+            token, "from:alerts@sib.co.in newer_than:45d in:anywhere", limit=40,
+        )
+        ids = list(dict.fromkeys(list(sib_ids) + list(ids)))
         out["fetched"] = len(ids)
         known = _known_gmail_ids(db, uid)
         ai_bundle = None

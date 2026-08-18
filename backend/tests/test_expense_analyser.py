@@ -31,6 +31,8 @@ def test_default_sync_query_includes_south_indian_bank():
     assert "southindianbank.com" in DEFAULT_SYNC_QUERY
     assert "sib.bank.in" in DEFAULT_SYNC_QUERY
     assert "sibalerts" in DEFAULT_SYNC_QUERY
+    assert "from:alerts@sib.co.in" in DEFAULT_SYNC_QUERY
+    assert "Debit Alert" in DEFAULT_SYNC_QUERY
     class _Row:
         sync_query = (
             "("
@@ -41,6 +43,8 @@ def test_default_sync_query_includes_south_indian_bank():
     q = _effective_sync_query(_Row())
     assert "southindianbank.com" in q
     assert "sib.bank.in" in q
+    assert "from:alerts@sib.co.in" in q
+    assert ")) newer_than" not in q.replace(" ", "")
     assert _looks_like_bank_alert({
         "from_addr": "SIB Alerts <alerts@sib.bank.in>",
         "subject": "Transaction Alert!",

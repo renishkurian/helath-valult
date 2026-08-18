@@ -28,9 +28,10 @@ DEFAULT_SYNC_QUERY = (
     "OR rblbank.com OR idfcfirstbank.com OR southindianbank.com OR southindianbank.co.in "
     "OR sib.co.in OR sib.bank.in OR sibalerts OR phonepe.com OR googlepay OR paytm.com "
     "OR amazonpay)"
-    " OR subject:(debited OR credited OR spent OR withdrawn OR \"txn\" OR transaction "
+    " OR subject:(debit OR debited OR credited OR spent OR withdrawn OR \"txn\" OR transaction "
     "OR statement OR \"credit card\" OR \"e-statement\" OR \"e statement\" "
-    "OR \"SIB Alerts\" OR \"SOUTH INDIAN BANK\")"
+    "OR \"SIB Alerts\" OR \"SOUTH INDIAN BANK\" OR \"Debit Alert\")"
+    " OR from:alerts@sib.co.in OR from:sib.co.in OR from:sib.bank.in"
     " OR (\"SOUTH INDIAN BANK\" spent)"
     ") newer_than:45d"
 )

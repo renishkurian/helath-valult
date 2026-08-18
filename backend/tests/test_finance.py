@@ -43,6 +43,19 @@ def test_heuristic_south_indian_bank_upi_alert():
     assert out["payee"].upper().rstrip(".").endswith("S")
 
 
+def test_heuristic_sib_debit_alert_subject_style():
+    out = classify_heuristic(
+        "Dear Customer, This is to inform you that, "
+        "INR 40000 was spent from your SOUTH INDIAN BANK account XXXXX5835 "
+        "Info - UPI/PUNB/659577041995/RAMANATHAN NAIR D/UPI on 17-08-2026"
+    )
+    assert out["direction"] == "debit"
+    assert out["amount"] == 40000
+    assert out["payment_method"] == "upi"
+    assert out["date"] == "2026-08-17"
+    assert "RAMANATHAN" in (out["payee"] or "").upper()
+
+
 def test_heuristic_hdfc_upi_txn_subject_style():
     out = classify_heuristic(
         "Dear Customer, You have done a UPI txn from HDFC Bank A/c XX1234 "

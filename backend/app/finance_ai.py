@@ -119,7 +119,7 @@ _AMOUNT_ALT_RE = re.compile(
     re.I,
 )
 _DEBIT_RE = re.compile(
-    r"\b(debited|debit|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to|"
+    r"\b(debited|debit(?:\s+alert)?|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to|"
     r"used for a (?:transaction|purchase|payment)|"
     r"upi txn|done a (?:upi )?txn|txn from|txn of|transaction of)\b",
     re.I,
