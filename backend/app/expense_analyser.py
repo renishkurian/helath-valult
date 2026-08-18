@@ -1206,6 +1206,21 @@ def retag_pending_items(
     db.commit()
     return {"scanned": scanned, "updated": updated}
 
+def _item_date_expr():
+    return func.coalesce(
+        func.nullif(models.ExpenseAnalyserItem.txn_date, ""),
+        func.strftime("%Y-%m-%d", models.ExpenseAnalyserItem.received_at),
+        func.strftime("%Y-%m-%d", models.ExpenseAnalyserItem.created_at),
+    )
+
+
+def _clean_day(value: str | None) -> str | None:
+    raw = (value or "").strip()[:10]
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", raw):
+        return raw
+    return None
+
+
 def _items_query(
     db: Session,
     user: models.User,
@@ -1215,6 +1230,8 @@ def _items_query(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ):
     uid = vault_id(user)
     qry = db.query(models.ExpenseAnalyserItem).filter(models.ExpenseAnalyserItem.user_id == uid)
@@ -1244,6 +1261,14 @@ def _items_query(
             except Exception:
                 pass
         qry = qry.filter(or_(*clauses))
+    start = _clean_day(date_from)
+    end = _clean_day(date_to)
+    if start or end:
+        day = _item_date_expr()
+        if start:
+            qry = qry.filter(day >= start)
+        if end:
+            qry = qry.filter(day <= end)
     return qry
 
 
@@ -1256,17 +1281,16 @@ def list_items(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[models.ExpenseAnalyserItem]:
     qry = _items_query(
         db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
+        date_from=date_from, date_to=date_to,
     )
-    date_key = func.coalesce(
-        func.nullif(models.ExpenseAnalyserItem.txn_date, ""),
-        func.strftime("%Y-%m-%d", models.ExpenseAnalyserItem.received_at),
-        func.strftime("%Y-%m-%d", models.ExpenseAnalyserItem.created_at),
-    )
+    date_key = _item_date_expr()
     return (
         qry.order_by(date_key.desc(), models.ExpenseAnalyserItem.created_at.desc())
         .offset(max(0, offset))
@@ -1284,11 +1308,45 @@ def count_items(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
 ) -> int:
     qry = _items_query(
         db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
+        date_from=date_from, date_to=date_to,
     )
     return int(qry.count() or 0)
+
+
+def filter_totals(
+    db: Session,
+    user: models.User,
+    **kwargs,
+) -> dict[str, Any]:
+    """Debit/credit sums for the current inbox filter (all matching rows, not one page)."""
+    qry = _items_query(db, user, **kwargs)
+    debit = 0.0
+    credit = 0.0
+    n = 0
+    for direction, amount, kind in qry.with_entities(
+        models.ExpenseAnalyserItem.direction,
+        models.ExpenseAnalyserItem.amount,
+        models.ExpenseAnalyserItem.kind,
+    ).all():
+        if kind == "bill" or amount is None:
+            continue
+        n += 1
+        amt = abs(float(amount))
+        if (direction or "") == "credit":
+            credit += amt
+        else:
+            debit += amt
+    return {
+        "debit": round(debit, 2),
+        "credit": round(credit, 2),
+        "net": round(credit - debit, 2),
+        "count": n,
+    }
 
 
 def get_item(db: Session, user: models.User, item_id: str) -> models.ExpenseAnalyserItem:

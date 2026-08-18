@@ -119,34 +119,76 @@
 {% set qs_status = ('status=' ~ filter_status ~ '&') if filter_status else '' %}
 {% set qs_method = ('method=' ~ filter_method ~ '&') if filter_method else '' %}
 {% set qs_q = ('q=' ~ filter_q|urlencode ~ '&') if filter_q else '' %}
+{% set qs_from = ('date_from=' ~ filter_from ~ '&') if filter_from else '' %}
+{% set qs_to = ('date_to=' ~ filter_to ~ '&') if filter_to else '' %}
+{% set qs_rest = (qs_method ~ qs_q ~ qs_from ~ qs_to) %}
 <div class="section-head d-flex flex-wrap gap-2 align-items-center justify-content-between">
   <h2>Inbox</h2>
-  <form method="get" action="/admin/expense-analyser" class="d-flex gap-2">
+  <form method="get" action="/admin/expense-analyser" class="d-flex flex-wrap gap-2 align-items-end">
     {% if filter_status %}<input type="hidden" name="status" value="{{ filter_status }}">{% endif %}
     {% if filter_method %}<input type="hidden" name="method" value="{{ filter_method }}">{% endif %}
-    <input class="form-control form-control-sm" type="search" name="q" value="{{ filter_q }}" placeholder="Search amount, payee…" style="min-width:12rem;">
-    <button class="btn btn-sm btn-outline-secondary" type="submit">Find</button>
+    <div>
+      <label class="form-label small mb-0" for="ea-from">From</label>
+      <input class="form-control form-control-sm" id="ea-from" type="date" name="date_from" value="{{ filter_from }}">
+    </div>
+    <div>
+      <label class="form-label small mb-0" for="ea-to">To</label>
+      <input class="form-control form-control-sm" id="ea-to" type="date" name="date_to" value="{{ filter_to }}">
+    </div>
+    <div>
+      <label class="form-label small mb-0" for="ea-q">Search</label>
+      <input class="form-control form-control-sm" id="ea-q" type="search" name="q" value="{{ filter_q }}" placeholder="Amount, payee…" style="min-width:10rem;">
+    </div>
+    <button class="btn btn-sm btn-outline-secondary" type="submit">Apply</button>
+    {% if filter_from or filter_to or filter_q %}
+    <a class="btn btn-sm btn-ghost" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method.rstrip('&') }}">Clear dates</a>
+    {% endif %}
   </form>
 </div>
 <div class="d-flex gap-2 flex-wrap mb-2">
-  <a class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_method }}{{ qs_q.rstrip('&') }}">All open</a>
-  <a class="btn btn-sm {% if filter_status == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=pending&{{ qs_method }}{{ qs_q }}">Pending</a>
-  <a class="btn btn-sm {% if filter_status == 'missed' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=missed&{{ qs_method }}{{ qs_q }}">Missed</a>
-  <a class="btn btn-sm {% if filter_status == 'matched' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=matched&{{ qs_method }}{{ qs_q }}">Matched</a>
-  <a class="btn btn-sm {% if filter_status == 'posted' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=posted&{{ qs_method }}{{ qs_q }}">Posted</a>
+  <a class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_rest.rstrip('&') }}">All open</a>
+  <a class="btn btn-sm {% if filter_status == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=pending&{{ qs_rest }}">Pending</a>
+  <a class="btn btn-sm {% if filter_status == 'missed' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=missed&{{ qs_rest }}">Missed</a>
+  <a class="btn btn-sm {% if filter_status == 'matched' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=matched&{{ qs_rest }}">Matched</a>
+  <a class="btn btn-sm {% if filter_status == 'posted' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=posted&{{ qs_rest }}">Posted</a>
 </div>
 <div class="d-flex gap-2 flex-wrap align-items-center mb-3">
   <span class="small text-muted">Type</span>
-  <a class="btn btn-sm {% if not filter_method %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_q.rstrip('&') }}">All</a>
-  <a class="btn btn-sm {% if filter_method == 'upi' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=upi&{{ qs_q }}">UPI</a>
-  <a class="btn btn-sm {% if filter_method == 'atm' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=atm&{{ qs_q }}">ATM</a>
-  <a class="btn btn-sm {% if filter_method == 'card' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=card&{{ qs_q }}">Card</a>
+  <a class="btn btn-sm {% if not filter_method %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_q }}{{ qs_from }}{{ qs_to.rstrip('&') }}">All</a>
+  <a class="btn btn-sm {% if filter_method == 'upi' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=upi&{{ qs_q }}{{ qs_from }}{{ qs_to }}">UPI</a>
+  <a class="btn btn-sm {% if filter_method == 'atm' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=atm&{{ qs_q }}{{ qs_from }}{{ qs_to }}">ATM</a>
+  <a class="btn btn-sm {% if filter_method == 'card' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=card&{{ qs_q }}{{ qs_from }}{{ qs_to }}">Card</a>
   <span class="small text-muted ms-1">Sorted by date, newest first</span>
 </div>
+{% if period %}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-up-right"></i> Debit</div>
+      <div class="val mm-expense">{{ inr(period.debit) }}</div>
+      <div class="sub">{% if filter_from or filter_to %}{{ filter_from or '…' }} → {{ filter_to or '…' }}{% else %}this filter{% endif %} · {{ period.count }} items</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-4">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-arrow-down-left"></i> Credit</div>
+      <div class="val mm-income">{{ inr(period.credit) }}</div>
+      <div class="sub">money in</div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-4">
+    <div class="stat accent">
+      <div class="lbl"><i class="bi bi-calculator"></i> Net</div>
+      <div class="val">{{ inr(period.net) }}</div>
+      <div class="sub">credit minus debit</div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 {% if not items %}
 <p class="text-muted">
-  {% if filter_method or filter_q or filter_status %}
+  {% if filter_method or filter_q or filter_status or filter_from or filter_to %}
   No matching items. Clear the type filter or search, or Sync Gmail if a new alert is missing.
   {% else %}
   No items yet. Connect Gmail and sync, or widen the search query in settings.

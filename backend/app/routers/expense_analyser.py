@@ -53,6 +53,8 @@ def list_items(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db),
@@ -64,6 +66,7 @@ def list_items(
         db, current_user,
         status=status or None, statuses=status_list, kind=kind or None,
         method=method or None, q=q or None,
+        date_from=date_from or None, date_to=date_to or None,
         limit=limit, offset=offset,
     )
     return [_item_out(r) for r in rows]

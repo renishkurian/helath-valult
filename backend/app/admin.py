@@ -4303,6 +4303,8 @@ def expense_analyser_home(
     status: str = "",
     method: str = "",
     q: str = "",
+    date_from: str = "",
+    date_to: str = "",
     page: int = 1,
     db: Session = Depends(get_db),
 ):
@@ -4317,8 +4319,13 @@ def expense_analyser_home(
     filter_status = status if status in ("pending", "missed", "matched", "posted", "ignored", "corrected") else ""
     filter_method = method if method in ea.METHOD_FILTERS else ""
     filter_q = (q or "").strip()[:80]
+    filter_from = ea._clean_day(date_from) or ""
+    filter_to = ea._clean_day(date_to) or ""
     open_statuses = ("pending", "missed", "matched", "corrected")
-    list_kw = dict(method=filter_method or None, q=filter_q or None)
+    list_kw = dict(
+        method=filter_method or None, q=filter_q or None,
+        date_from=filter_from or None, date_to=filter_to or None,
+    )
     if filter_status:
         total = ea.count_items(db, user, status=filter_status, **list_kw)
         pager = paginate(page=page, per_page=25, total=total)
@@ -4326,6 +4333,7 @@ def expense_analyser_home(
             db, user, status=filter_status,
             limit=pager["per_page"], offset=pager["offset"], **list_kw,
         )
+        period = ea.filter_totals(db, user, status=filter_status, **list_kw)
     else:
         total = ea.count_items(db, user, statuses=open_statuses, **list_kw)
         pager = paginate(page=page, per_page=25, total=total)
@@ -4333,6 +4341,7 @@ def expense_analyser_home(
             db, user, statuses=open_statuses,
             limit=pager["per_page"], offset=pager["offset"], **list_kw,
         )
+        period = ea.filter_totals(db, user, statuses=open_statuses, **list_kw)
     accounts = list_accounts(db=db, current_user=user)
     cat_rows = (
         db.query(models.FinanceCategory)
@@ -4359,11 +4368,14 @@ def expense_analyser_home(
         status=filter_status or None,
         method=filter_method or None,
         q=filter_q or None,
+        date_from=filter_from or None,
+        date_to=filter_to or None,
     )
     return templates.TemplateResponse("expense_analyser.html", _ea_ctx(
         request, user, "ea_inbox",
         status=st, items=items, accounts=accounts,
         filter_status=filter_status, filter_method=filter_method, filter_q=filter_q,
+        filter_from=filter_from, filter_to=filter_to, period=period,
         inr=inr,
         pager=pager, pager_prev=pager_prev, pager_next=pager_next,
         ea_cats=ea_cats, cat_picks=cat_picks,

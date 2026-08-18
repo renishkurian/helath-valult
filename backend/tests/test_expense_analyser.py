@@ -90,6 +90,14 @@ def test_list_items_filters_method_and_sorts_by_date():
         assert [i.payee for i in upi] == ["Jibin S", "HDFC UPI"]
         found = list_items(db, user, q="5775")
         assert len(found) == 1 and found[0].payee == "Jibin S"
+        day = list_items(db, user, date_from="2026-08-17", date_to="2026-08-17")
+        assert {i.payee for i in day} == {"Jibin S", "ATM"}
+        from app.expense_analyser import filter_totals
+        tot = filter_totals(
+            db, user, method="upi", date_from="2026-08-10", date_to="2026-08-17",
+        )
+        assert tot["debit"] == 5817.0
+        assert tot["credit"] == 0
         api = client.get("/expense-analyser/items", headers=headers, params={"method": "upi"})
         assert api.status_code == 200
         assert any(abs(float(r["amount"]) - 5775) < 0.01 for r in api.json())
