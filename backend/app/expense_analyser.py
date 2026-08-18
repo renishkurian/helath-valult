@@ -530,6 +530,9 @@ def sync_gmail(
                 body = mail.get("text") or ""
                 if len(body) < 80 or finance_ai._parse_amount(body) is None:
                     mail = gmail.hydrate_message_text(token, mail)
+                    snippet = (mail.get("snippet") or "").strip()
+                    if snippet and finance_ai._parse_amount(mail.get("text") or "") is None:
+                        mail["text"] = f"{mail.get('text') or ''}\n{snippet}".strip()
                 mail["text"] = (mail.get("text") or "")[:_TEXT_LIMIT]
             except Exception as exc:  # noqa: BLE001 — per-message soft fail
                 log.warning("gmail message %s failed: %s", mid, exc)

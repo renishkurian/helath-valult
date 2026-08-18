@@ -233,6 +233,27 @@ def test_best_txn_date_prefers_gmail_when_body_is_stale():
     assert _best_txn_date({"txn_date": "2026-08-05"}, mail, kind="bill_line") == "2026-08-05"
 
 
+def test_extract_message_uses_snippet_when_html_is_tiny():
+    payload = {
+        "id": "m-sib",
+        "threadId": "t-sib",
+        "snippet": "INR 5775 was spent from your SOUTH INDIAN BANK account XXXXX5835 Info - UPI/SBIN/1/JIBIN S/UPI",
+        "payload": {
+            "headers": [
+                {"name": "Subject", "value": "Debit Alert From SIB"},
+                {"name": "From", "value": "SIB Alerts <alerts@sib.co.in>"},
+            ],
+            "mimeType": "text/html",
+            "body": {
+                "data": "U291dGggSW5kaWFuIEJhbms=",  # "South Indian Bank"
+            },
+        },
+    }
+    mail = extract_message(payload)
+    assert "5775" in (mail["text"] or "")
+    assert mail["subject"] == "Debit Alert From SIB"
+
+
 def test_extract_message_plain():
     payload = {
         "id": "m1",

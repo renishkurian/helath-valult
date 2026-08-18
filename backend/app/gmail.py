@@ -238,9 +238,11 @@ def extract_message(payload: dict[str, Any]) -> dict[str, Any]:
     _walk_parts(root, parts, pending)
     plain = next((t for m, t in parts if m == "text/plain"), None)
     html = next((t for m, t in parts if m == "text/html"), None)
+    snippet = (payload.get("snippet") or "").strip()
     text = (plain or "").strip() or (html_to_text(html) if html else "")
-    if not text:
-        text = (payload.get("snippet") or "").strip()
+    # SIB HTML alerts are image-only; Gmail snippet still has "INR 5775 was spent…".
+    if snippet and (not text or len(text) < 80):
+        text = snippet if not text else f"{text}\n{snippet}"
 
     return {
         "id": payload.get("id"),
