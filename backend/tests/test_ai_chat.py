@@ -142,9 +142,20 @@ def test_upi_day_includes_unposted_gmail_alerts():
         out = ask(db, user, "any upi trasaction today?")
         assert "Which should I check?" in out["reply"]
         assert "42.00" not in out["reply"].replace(",", "")
-        picked = ask(db, user, "gmail", thread_id=out["thread_id"])
+        picked = ask(db, user, "2", thread_id=out["thread_id"])
         assert "42.00" in picked["reply"].replace(",", "")
         assert "HDFC UPI" in picked["reply"]
+        assert "Inbox" in picked["reply"] or "Expense Analyser" in picked["reply"]
+        # Recheck in the same thread must re-read live DB, not repeat a stale chat answer.
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-upi-sib", kind="alert",
+            subject="Transaction Alert!", from_addr="alerts@southindianbank.com",
+            amount=Decimal("5775.00"), payee="Jibin S", txn_date=day,
+            payment_method="upi", status="pending", direction="debit",
+        ))
+        db.commit()
+        again = ask(db, user, "double checkit", thread_id=out["thread_id"])
+        assert "5775" in again["reply"].replace(",", "")
         yday = ask(db, user, "what about yesterday", thread_id=out["thread_id"])
         assert "Expense Analyser" in yday["reply"] or "Gmail" in yday["reply"]
     finally:

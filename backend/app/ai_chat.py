@@ -124,7 +124,7 @@ def vault_today() -> str:
 
 _SPEND_RE = re.compile(
     r"\b(expense|expenses|spend|spent|spending|total|kharcha?|adichu|vaangi|"
-    r"paid|payment|outflow|debit|trans?actions?|trasactions?|txn)\b",
+    r"paid|payment|outflow|debit|trans?actions?|trasactions?|trasnactions?|txn)\b",
     re.I,
 )
 _UPI_RE = re.compile(r"\bupi\b", re.I)
@@ -138,9 +138,16 @@ _YESTERDAY_RE = re.compile(
 )
 _FOLLOWUP_RE = re.compile(
     r"\b(sure|really|confirm|which|list|they|them|details|break\s*down|itemize|"
-    r"what was that|what is that|item name|the name)\b",
+    r"what was that|what is that|item name|the name|"
+    r"double\s*check(?:it)?|checkit|re-?check|check\s+(?:it\s+)?(?:once\s+more|again)|"
+    r"once more|refresh)\b",
     re.I,
 )
+_CHOICE_SOURCE = {
+    "1": "ledger", "one": "ledger",
+    "2": "analyser", "two": "analyser",
+    "3": "both", "three": "both",
+}
 _HIGHEST_RE = re.compile(
     r"\b(highest|highst|hight|hght|costliest|biggest|largest|max(?:imum)?|"
     r"most\s+expensive|kooduthal)\b",
@@ -179,7 +186,10 @@ def should_answer_ledger_day(
     day = resolve_ledger_day(question, today)
     if day:
         return day
-    if not (_FOLLOWUP_RE.search(question or "") or _source_from_text(question)):
+    if not (
+        _FOLLOWUP_RE.search(question or "")
+        or _source_from_text(question, numbered=_clarify_pending(history))
+    ):
         return None
     for m in reversed(history or []):
         if (m.get("role") or "") != "user":
@@ -202,10 +212,29 @@ _LEDGER_INTENT_RE = re.compile(
 _CLARIFY_MARK = "Which should I check?"
 
 
-def _source_from_text(question: str) -> str | None:
+def _clarify_pending(history: list[dict] | None) -> bool:
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "assistant":
+            continue
+        return _CLARIFY_MARK in (m.get("content") or "")
+    return False
+
+
+def _thread_asked_clarify(history: list[dict] | None) -> bool:
+    return any(
+        (m.get("role") or "") == "assistant" and _CLARIFY_MARK in (m.get("content") or "")
+        for m in (history or [])
+    )
+
+
+def _source_from_text(question: str, *, numbered: bool = False) -> str | None:
     q = (question or "").strip()
     if not q:
         return None
+    if numbered:
+        key = re.sub(r"[.\)\:]$", "", q.strip().lower())
+        if key in _CHOICE_SOURCE:
+            return _CHOICE_SOURCE[key]
     both = bool(_SOURCE_BOTH_RE.search(q))
     gmail = bool(_SOURCE_GMAIL_RE.search(q))
     ledger = bool(_SOURCE_LEDGER_RE.search(q))
@@ -219,13 +248,15 @@ def _source_from_text(question: str) -> str | None:
 
 
 def resolve_spend_source(question: str, history: list[dict] | None = None) -> str | None:
-    source = _source_from_text(question)
+    numbered_now = _clarify_pending(history)
+    source = _source_from_text(question, numbered=numbered_now)
     if source:
         return source
+    asked = _thread_asked_clarify(history)
     for m in reversed(history or []):
         if (m.get("role") or "") != "user":
             continue
-        source = _source_from_text(m.get("content") or "")
+        source = _source_from_text(m.get("content") or "", numbered=asked)
         if source:
             return source
         if len((m.get("content") or "").split()) > 12:
@@ -265,7 +296,7 @@ def format_spend_clarify(day: str, question: str = "") -> str:
         f"I can check **{topic}** for {label} in two places — they are not the same:\n\n"
         "1. **Money Manager (ledger)** — already posted as spend\n"
         "2. **Expense Analyser (Gmail)** — bank/UPI alerts still waiting in Inbox\n\n"
-        f"{_CLARIFY_MARK} Reply **ledger**, **gmail**, or **both**."
+        f"{_CLARIFY_MARK} Reply **1**, **2**, **both**, **ledger**, or **gmail**."
     )
 
 
@@ -374,10 +405,18 @@ def format_money_manager_day_reply(
         ea_rows = []
     if ea_rows:
         ea_total = sum(abs(_f(it.amount)) for it in ea_rows if it.amount is not None)
-        lines.append("**Expense Analyser — Gmail alerts not yet on the ledger**")
-        lines.append("")
-        lines.append(f"Inbox total: **{_inr(ea_total)}** · {len(ea_rows)} item(s) still pending review.")
-        lines.append("")
+        if source == "analyser":
+            lines.extend([
+                f"**Expense Analyser {topic} for {label}** (live Gmail inbox)",
+                "",
+                f"Total: **{_inr(ea_total)}** · {len(ea_rows)} alert(s), not posted to Money Manager yet.",
+                "",
+            ])
+        else:
+            lines.append("**Expense Analyser — Gmail alerts not yet on the ledger**")
+            lines.append("")
+            lines.append(f"Inbox total: **{_inr(ea_total)}** · {len(ea_rows)} item(s) still pending review.")
+            lines.append("")
         lines.append("| Status | Payee | Method | Amount |")
         lines.append("| --- | --- | --- | ---: |")
         for it in ea_rows[:25]:
