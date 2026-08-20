@@ -61,3 +61,62 @@ def test_locker_upload_list_download_delete():
     assert gone.status_code == 204
     empty = client.get("/locker", headers=headers).json()
     assert empty == []
+
+
+def test_locker_family_profiles_and_search_all():
+    import uuid
+    email = f"locker-fam-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Family Locker",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    people = client.get("/people", headers=headers)
+    assert people.status_code == 200, people.text
+    self_id = people.json()[0]["id"]
+    child = client.post("/people", headers=headers, json={
+        "name": "Appu", "relation": "child",
+    })
+    assert child.status_code == 201, child.text
+    child_id = child.json()["id"]
+
+    r1 = client.post(
+        "/locker", headers=headers,
+        data={"title": "PAN card", "doc_type": "pan", "person_id": self_id},
+        files=[("files", ("pan.pdf", b"%PDF-1.4 a", "application/pdf"))],
+    )
+    assert r1.status_code == 201, r1.text
+    assert r1.json()["person_id"] == self_id
+    assert r1.json()["person_name"]
+
+    r2 = client.post(
+        "/locker", headers=headers,
+        data={
+            "title": "School ID", "doc_type": "other", "custom_type": "School ID",
+            "person_id": child_id,
+        },
+        files=[("files", ("id.pdf", b"%PDF-1.4 b", "application/pdf"))],
+    )
+    assert r2.status_code == 201, r2.text
+    assert r2.json()["person_id"] == child_id
+
+    only_child = client.get("/locker", headers=headers, params={"person_id": child_id})
+    assert only_child.status_code == 200
+    assert len(only_child.json()) == 1
+    assert only_child.json()[0]["title"] == "School ID"
+
+    # Search spans every profile even if a person filter would otherwise apply.
+    search = client.get("/locker", headers=headers, params={"q": "PAN", "person_id": child_id})
+    assert search.status_code == 200
+    titles = {row["title"] for row in search.json()}
+    assert "PAN card" in titles
+
+    by_name = client.get("/locker", headers=headers, params={"q": "Appu"})
+    assert by_name.status_code == 200
+    assert any(row["title"] == "School ID" for row in by_name.json())
+
+    summary = client.get("/locker/summary", headers=headers).json()
+    assert summary["total"] == 2
+    assert any(p["id"] == child_id and p["count"] == 1 for p in summary["people"])
+    assert summary["unassigned"] == 0

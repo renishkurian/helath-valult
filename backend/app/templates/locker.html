@@ -6,6 +6,19 @@
   'voter_id':'#22D3EE','certificate':'#FF8095','rc':'#F5A65B','insurance':'#F0C36A',
   'warranty':'#84CC16','property':'#38BDF8','other':'#8B95A8'
 } %}
+{% set rel_label = {'self':'You','spouse':'Spouse','child':'Child','parent':'Parent','other':'Family'} %}
+{% set person = person or '' %}
+{% set qs_type = ('&doc_type=' ~ doc_type) if doc_type else '' %}
+{% set qs_person = ('&person=' ~ person) if person else '' %}
+{% if person and person != 'none' and doc_type %}
+  {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type ~ '&person=' ~ person %}
+{% elif person and person != 'none' %}
+  {% set add_href = '/admin/locker/add?person=' ~ person %}
+{% elif doc_type %}
+  {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type %}
+{% else %}
+  {% set add_href = '/admin/locker/add' %}
+{% endif %}
 {# Expiry colouring uses the same 60-day window the locker router treats as "expiring". #}
 {% set now = items[0].created_at.utcnow() if items else None %}
 {% set today = now.strftime('%Y-%m-%d') if now else '' %}
@@ -22,7 +35,7 @@
     <p class="page-lead">IDs, papers, and warranties — scan on Android or upload here; files stay encrypted on your Pi.</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-primary" href="/admin/locker/add{% if doc_type %}?doc_type={{ doc_type }}{% endif %}">
+    <a class="btn btn-primary" href="{{ add_href }}">
       <i class="bi bi-camera"></i> Scan / add
     </a>
   </div>
@@ -45,9 +58,9 @@
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat">
-      <div class="lbl"><i class="bi bi-folder2"></i> Types in use</div>
-      <div class="val">{{ summary.types | selectattr('count') | list | length }}</div>
-      <div class="sub">of {{ summary.types | length }} categories</div>
+      <div class="lbl"><i class="bi bi-people"></i> Profiles</div>
+      <div class="val">{{ summary.people | length }}</div>
+      <div class="sub">family members</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
@@ -55,17 +68,18 @@
       <div class="lbl"><i class="bi bi-list-ul"></i> Showing</div>
       <div class="val">{{ items | length }}</div>
       <div class="sub">
-        {% if expiring %}expiring soon{% elif q %}search results{% elif doc_type %}one document type{% else %}all documents{% endif %}
+        {% if q %}search across everyone{% elif expiring %}expiring soon{% elif person == 'none' %}unassigned{% elif person %}one profile{% elif doc_type %}one document type{% else %}all documents{% endif %}
       </div>
     </div>
   </div>
 </div>
 
 <form class="filter-bar" method="get" action="/admin/locker">
+  {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
   <div class="search-field">
     <i class="bi bi-search"></i>
     <label class="visually-hidden" for="lk-q">Search documents</label>
-    <input class="form-control" id="lk-q" type="search" name="q" value="{{ q }}" placeholder="Search title, holder, issuer…">
+    <input class="form-control" id="lk-q" type="search" name="q" value="{{ q }}" placeholder="Search all profiles — title, holder, issuer…">
   </div>
   <label class="visually-hidden" for="lk-type">Document type</label>
   <select class="form-select grow" id="lk-type" name="doc_type">
@@ -75,23 +89,69 @@
     {% endfor %}
   </select>
   <button class="btn btn-outline-light" type="submit"><i class="bi bi-funnel"></i> Filter</button>
-  {% if q or doc_type or expiring %}
+  {% if q or doc_type or expiring or person %}
   <a class="btn btn-ghost" href="/admin/locker">Clear</a>
   {% endif %}
 </form>
 
-<div class="section-head"><h2>Folders</h2></div>
-<div class="folder-grid mb-4">
-  <a class="folder {% if not doc_type and not expiring %}on{% endif %}" href="/admin/locker">
-    <span class="folder-name"><i class="bi bi-collection"></i> All</span>
+<div class="section-head d-flex flex-wrap align-items-center justify-content-between gap-2">
+  <h2>Family profiles</h2>
+  <a class="btn btn-ghost btn-sm" href="/admin/family"><i class="bi bi-people"></i> Manage family</a>
+</div>
+<div class="folder-grid mb-3">
+  <a class="folder {% if not person and not expiring %}on{% endif %}" href="/admin/locker?{{ ('doc_type=' ~ doc_type) if doc_type else '' }}">
+    <span class="folder-name"><i class="bi bi-collection"></i> All people</span>
     <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
   </a>
-  <a class="folder {% if expiring %}on{% endif %}" href="/admin/locker?expiring=1">
+  <a class="folder {% if person == 'none' %}on{% endif %}" href="/admin/locker?person=none{{ qs_type }}">
+    <span class="folder-name"><i class="bi bi-dash-lg"></i> Unassigned</span>
+    <span class="fcount">{{ '%02d'|format(summary.unassigned or 0) }}</span>
+  </a>
+  {% for p in summary.people %}
+  <a class="folder {% if person == p.id %}on{% endif %}" href="/admin/locker?person={{ p.id }}{{ qs_type }}">
+    <span class="folder-name">
+      <span class="folder-dot" style="background:#43D9C4"></span>
+      {{ p.name }}
+      <span class="small text-faint ms-1">{{ rel_label.get(p.relation, p.relation) }}</span>
+    </span>
+    <span class="fcount">{{ '%02d'|format(p.count) }}</span>
+  </a>
+  {% endfor %}
+</div>
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <form class="d-flex flex-wrap gap-2 align-items-end" method="post" action="/admin/locker/person">
+      <div class="flex-grow-1" style="min-width:12rem">
+        <label class="form-label small mb-0" for="lk-person-name">Add family profile</label>
+        <input class="form-control" id="lk-person-name" name="name" required placeholder="e.g. Amma, Appu">
+      </div>
+      <div style="min-width:8rem">
+        <label class="form-label small mb-0" for="lk-person-rel">Relation</label>
+        <select class="form-select" id="lk-person-rel" name="relation">
+          <option value="spouse">Spouse</option>
+          <option value="child">Child</option>
+          <option value="parent">Parent</option>
+          <option value="other" selected>Other</option>
+        </select>
+      </div>
+      <button class="btn btn-outline-light" type="submit"><i class="bi bi-person-plus"></i> Add</button>
+    </form>
+    <div class="form-text mt-2 mb-0">Same family list as Health Vault. Search always lists matches from every profile.</div>
+  </div>
+</div>
+
+<div class="section-head"><h2>Document types</h2></div>
+<div class="folder-grid mb-4">
+  <a class="folder {% if not doc_type and not expiring %}on{% endif %}" href="/admin/locker?{{ ('person=' ~ person) if person else '' }}">
+    <span class="folder-name"><i class="bi bi-collection"></i> All types</span>
+    <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
+  </a>
+  <a class="folder {% if expiring %}on{% endif %}" href="/admin/locker?expiring=1{{ qs_person }}">
     <span class="folder-name"><i class="bi bi-clock-history"></i> Expiring</span>
     <span class="fcount">{{ '%02d'|format(summary.expiring) }}</span>
   </a>
   {% for t in summary.types %}
-  <a class="folder {% if doc_type==t.id %}on{% endif %}" href="/admin/locker?doc_type={{ t.id }}">
+  <a class="folder {% if doc_type==t.id %}on{% endif %}" href="/admin/locker?doc_type={{ t.id }}{{ qs_person }}">
     <span class="folder-name">
       <span class="folder-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
       {{ t.label }}
@@ -108,6 +168,7 @@
       <thead>
         <tr>
           <th>Document</th>
+          <th>Profile</th>
           <th>Holder</th>
           <th>Expiry</th>
           <th>Files</th>
@@ -125,6 +186,13 @@
                 <span class="small text-faint">{{ item.type_label }}{% if item.issuer %} · {{ item.issuer }}{% endif %}</span>
               </span>
             </a>
+          </td>
+          <td>
+            {% if item.person_name %}
+              <a class="text-reset text-decoration-none" href="/admin/locker?person={{ item.person_id }}">{{ item.person_name }}</a>
+            {% else %}
+              <span class="text-faint">Unassigned</span>
+            {% endif %}
           </td>
           <td>{{ item.holder_name or '—' }}</td>
           <td>
@@ -149,17 +217,17 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             <div class="empty-state">
               <div class="empty-ico"><i class="bi bi-safe2"></i></div>
-              {% if q or doc_type or expiring %}
+              {% if q or doc_type or expiring or person %}
                 <div class="empty-title">Nothing matches this filter</div>
                 <p>Try another search term, or clear the filter to see every document.</p>
                 <a class="btn btn-outline-light" href="/admin/locker"><i class="bi bi-arrow-counterclockwise"></i> Clear filter</a>
               {% else %}
                 <div class="empty-title">No documents yet</div>
                 <p>File Aadhaar, PAN, vehicle RC, insurance, and warranties — all encrypted on your own server.</p>
-                <a class="btn btn-primary" href="/admin/locker/add"><i class="bi bi-plus-lg"></i> Add the first document</a>
+                <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> Add the first document</a>
               {% endif %}
             </div>
           </td>

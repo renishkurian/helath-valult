@@ -3551,11 +3551,17 @@ def _lk_user(request, db):
     return require_login(request, db)
 
 
+def _lk_people(db, user):
+    from app.routers import locker as lk
+    return lk._people_for(db, user)
+
+
 @router.get("/locker", response_class=HTMLResponse)
 def locker_home(
     request: Request,
     doc_type: str = "",
     q: str = "",
+    person: str = "",
     expiring: str = "",
     db: Session = Depends(get_db),
 ):
@@ -3565,13 +3571,14 @@ def locker_home(
         return RedirectResponse("/admin/login", status_code=302)
     summary = lk.locker_summary(db=db, current_user=user)
     items = lk.list_items(
-        doc_type=doc_type or None, q=q or None, expiring=bool(expiring),
-        db=db, current_user=user,
+        doc_type=doc_type or None, q=q or None, person_id=person or None,
+        expiring=bool(expiring), db=db, current_user=user,
     )
     return templates.TemplateResponse("locker.html", _lk_ctx(
         request, user, "lk_expiring" if expiring else "lk_home",
-        summary=summary, items=items,
-        doc_type=doc_type, q=q, expiring=bool(expiring), types=lk.LOCKER_TYPES,
+        summary=summary, items=items, people=summary.people,
+        doc_type=doc_type, q=q, person=person, expiring=bool(expiring),
+        types=lk.LOCKER_TYPES, active_person_id=person or None,
     ))
 
 
@@ -3579,14 +3586,18 @@ def locker_home(
 def locker_add_page(
     request: Request,
     doc_type: str = "other",
+    person: str = "",
     db: Session = Depends(get_db),
 ):
     from app.routers import locker as lk
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    people = _lk_people(db, user)
     return templates.TemplateResponse("locker_add.html", _lk_ctx(
-        request, user, "lk_add", types=lk.LOCKER_TYPES, prefill_type=doc_type or "other",
+        request, user, "lk_add", types=lk.LOCKER_TYPES, people=people,
+        prefill_type=doc_type or "other", prefill_person=person or "",
+        active_person_id=person or None,
     ))
 
 
@@ -3596,6 +3607,7 @@ async def locker_add(
     title: str = Form(...),
     doc_type: str = Form("other"),
     custom_type: str = Form(""),
+    person_id: str = Form(""),
     holder_name: str = Form(""),
     issuer: str = Form(""),
     id_number: str = Form(""),
@@ -3610,14 +3622,43 @@ async def locker_add(
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    await lk.create_item(
+    item = await lk.create_item(
         title=title, doc_type=doc_type, custom_type=custom_type or None,
+        person_id=person_id or None,
         holder_name=holder_name or None, issuer=issuer or None,
         id_number=id_number or None, issued_on=issued_on or None,
         expiry_date=expiry_date or None, tags=tags or None, notes=notes or None,
         files=files, db=db, current_user=user,
     )
-    return RedirectResponse("/admin/locker", status_code=302)
+    dest = f"/admin/locker?person={item.person_id}" if item.person_id else "/admin/locker"
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/locker/person")
+def locker_add_person(
+    request: Request,
+    name: str = Form(...),
+    relation: str = Form("other"),
+    db: Session = Depends(get_db),
+):
+    """Quick-add a family profile from Document Vault (same people table as Health)."""
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    clean = (name or "").strip()
+    if not clean:
+        return RedirectResponse("/admin/locker", status_code=302)
+    try:
+        rel = models.Relation(relation)
+    except ValueError:
+        rel = models.Relation.other
+    initials = "".join([p[0].upper() for p in clean.split()[:2]]) or "FM"
+    person = models.Person(
+        user_id=vault_id(user), name=clean, relation=rel, avatar_initials=initials,
+    )
+    db.add(person)
+    db.commit()
+    return RedirectResponse(f"/admin/locker?person={person.id}", status_code=302)
 
 
 @router.get("/locker/{item_id}", response_class=HTMLResponse)
@@ -3628,8 +3669,10 @@ def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_d
         return RedirectResponse("/admin/login", status_code=302)
     item = lk.get_item(item_id, db=db, current_user=user)
     files = lk.list_files(item_id, db=db, current_user=user)
+    people = _lk_people(db, user)
     return templates.TemplateResponse("locker_item.html", _lk_ctx(
         request, user, "lk_home", item=item, files=files, types=lk.LOCKER_TYPES,
+        people=people, active_person_id=item.person_id,
     ))
 
 
@@ -3640,6 +3683,7 @@ def locker_item_update(
     title: str = Form(...),
     doc_type: str = Form("other"),
     custom_type: str = Form(""),
+    person_id: str = Form(""),
     holder_name: str = Form(""),
     issuer: str = Form(""),
     id_number: str = Form(""),
@@ -3656,6 +3700,7 @@ def locker_item_update(
         return RedirectResponse("/admin/login", status_code=302)
     lk.update_item(item_id, sc.LockerItemUpdate(
         title=title, doc_type=doc_type, custom_type=custom_type or None,
+        person_id=person_id or None,
         holder_name=holder_name or None, issuer=issuer or None,
         id_number=id_number or None, issued_on=issued_on or None,
         expiry_date=expiry_date or None, tags=tags or None, notes=notes or None,

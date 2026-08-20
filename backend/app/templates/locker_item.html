@@ -37,6 +37,10 @@
   <div class="card-body">
     <div class="facts">
       <div class="fact">
+        <div class="lbl">Profile</div>
+        <div class="val">{{ item.person_name or 'Unassigned' }}</div>
+      </div>
+      <div class="fact">
         <div class="lbl">Holder</div>
         <div class="val">{{ item.holder_name or '—' }}</div>
       </div>
@@ -105,6 +109,15 @@
             <div class="col-md-6">
               <label class="form-label" for="lk-custom">Custom type</label>
               <input class="form-control" id="lk-custom" name="custom_type" value="{{ item.custom_type or '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-person">Family profile</label>
+              <select class="form-select" id="lk-person" name="person_id">
+                <option value="">Unassigned</option>
+                {% for p in people %}
+                <option value="{{ p.id }}" {% if item.person_id==p.id %}selected{% endif %}>{{ p.name }}{% if p.relation %} · {{ p.relation.value }}{% endif %}</option>
+                {% endfor %}
+              </select>
             </div>
             <div class="col-md-6">
               <label class="form-label" for="lk-title">Title <span class="req">*</span></label>

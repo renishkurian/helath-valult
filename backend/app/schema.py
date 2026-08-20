@@ -106,6 +106,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("finance_txn_id", "VARCHAR(32)"),
         ("finance_category_id", "VARCHAR(32)"),
     ],
+    "locker_items": [
+        ("person_id", "VARCHAR(32)"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [
@@ -146,6 +149,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_shop_lists_finance_category_id", "shop_lists", "finance_category_id"),
     ("ix_vault_send_chat_messages_request_id", "vault_send_chat_messages", "request_id"),
     ("ix_vault_send_chat_messages_created_at", "vault_send_chat_messages", "created_at"),
+    ("ix_locker_items_person_id", "locker_items", "person_id"),
 ]
 
 

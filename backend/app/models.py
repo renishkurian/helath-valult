@@ -906,6 +906,7 @@ class LockerItem(Base):
     __tablename__ = "locker_items"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=True, index=True)
     doc_type = Column(String(40), default=LockerDocType.other.value, nullable=False, index=True)
     custom_type = Column(String(120), nullable=True)
     title = Column(String(255), nullable=False, index=True)
@@ -920,6 +921,7 @@ class LockerItem(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    person = relationship("Person")
     files = relationship(
         "LockerFile", back_populates="item", cascade="all, delete-orphan",
         order_by="LockerFile.created_at",

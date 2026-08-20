@@ -1374,6 +1374,7 @@ class LockerItemUpdate(BaseModel):
     title: Optional[str] = None
     doc_type: Optional[str] = None
     custom_type: Optional[str] = None
+    person_id: Optional[str] = None
     holder_name: Optional[str] = None
     issuer: Optional[str] = None
     id_number: Optional[str] = None
@@ -1384,11 +1385,20 @@ class LockerItemUpdate(BaseModel):
     pinned: Optional[bool] = None
 
 
+class LockerPersonOut(BaseModel):
+    id: str
+    name: str
+    relation: str = "other"
+    count: int = 0
+
+
 class LockerItemOut(BaseModel):
     id: str
     doc_type: str
     type_label: str
     custom_type: Optional[str] = None
+    person_id: Optional[str] = None
+    person_name: Optional[str] = None
     title: str
     holder_name: Optional[str] = None
     issuer: Optional[str] = None
@@ -1413,7 +1423,9 @@ class LockerTypeOut(BaseModel):
 class LockerSummaryOut(BaseModel):
     total: int = 0
     expiring: int = 0
+    unassigned: int = 0
     types: List[LockerTypeOut] = []
+    people: List[LockerPersonOut] = []
 
 
 # ---------- Digital Diary ----------

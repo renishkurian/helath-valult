@@ -33,12 +33,41 @@ LOCKER_TYPES = [
 ]
 TYPE_LABELS = {k: v for k, v in LOCKER_TYPES}
 TYPE_IDS = {k for k, _ in LOCKER_TYPES}
+_RELATION_ORDER = ("self", "spouse", "child", "parent", "other")
 
 
 def type_label(doc_type: str, custom_type: Optional[str] = None) -> str:
     if doc_type == "other" and custom_type:
         return custom_type
     return TYPE_LABELS.get(doc_type, custom_type or doc_type.replace("_", " ").title())
+
+
+def _people_for(db: Session, user: models.User) -> list[models.Person]:
+    rows = (
+        db.query(models.Person)
+        .filter(models.Person.user_id == vault_id(user))
+        .all()
+    )
+    return sorted(
+        rows,
+        key=lambda p: (
+            _RELATION_ORDER.index(p.relation.value) if p.relation and p.relation.value in _RELATION_ORDER else 99,
+            (p.name or "").lower(),
+        ),
+    )
+
+
+def _resolve_person(
+    db: Session, user: models.User, person_id: Optional[str],
+) -> Optional[models.Person]:
+    pid = (person_id or "").strip()
+    if not pid:
+        return None
+    return (
+        db.query(models.Person)
+        .filter(models.Person.id == pid, models.Person.user_id == vault_id(user))
+        .first()
+    )
 
 
 def _to_file_out(f: models.LockerFile) -> schemas.LockerFileOut:
@@ -48,13 +77,18 @@ def _to_file_out(f: models.LockerFile) -> schemas.LockerFileOut:
     )
 
 
-def _to_out(item: models.LockerItem) -> schemas.LockerItemOut:
+def _to_out(item: models.LockerItem, person_name: Optional[str] = None) -> schemas.LockerItemOut:
     first = item.files[0] if item.files else None
+    pname = person_name
+    if pname is None and getattr(item, "person", None) is not None:
+        pname = item.person.name
     return schemas.LockerItemOut(
         id=item.id,
         doc_type=item.doc_type,
         type_label=type_label(item.doc_type, item.custom_type),
         custom_type=item.custom_type,
+        person_id=item.person_id,
+        person_name=pname,
         title=item.title,
         holder_name=item.holder_name,
         issuer=item.issuer,
@@ -117,12 +151,29 @@ def locker_summary(
         if i.expiry_date and today <= i.expiry_date <= soon
     )
     counts: dict[str, int] = {k: 0 for k, _ in LOCKER_TYPES}
+    person_counts: dict[str, int] = {}
+    unassigned = 0
     for item in items:
         counts[item.doc_type] = counts.get(item.doc_type, 0) + 1
+        if item.person_id:
+            person_counts[item.person_id] = person_counts.get(item.person_id, 0) + 1
+        else:
+            unassigned += 1
+    people = [
+        schemas.LockerPersonOut(
+            id=p.id,
+            name=p.name,
+            relation=p.relation.value if p.relation else "other",
+            count=person_counts.get(p.id, 0),
+        )
+        for p in _people_for(db, current_user)
+    ]
     return schemas.LockerSummaryOut(
         total=len(items),
         expiring=expiring,
+        unassigned=unassigned,
         types=[schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES],
+        people=people,
     )
 
 
@@ -130,6 +181,7 @@ def locker_summary(
 def list_items(
     doc_type: Optional[str] = None,
     q: Optional[str] = None,
+    person_id: Optional[str] = None,
     expiring: bool = False,
     pinned: bool = False,
     db: Session = Depends(get_db),
@@ -140,15 +192,32 @@ def list_items(
         query = query.filter(models.LockerItem.doc_type == doc_type)
     if pinned:
         query = query.filter(models.LockerItem.pinned.is_(True))
-    if q:
-        like = f"%{q.strip()}%"
-        query = query.filter(or_(
+    # Search always spans every family profile; person filter applies only when not searching.
+    needle = (q or "").strip()
+    if needle:
+        like = f"%{needle}%"
+        people_ids = [
+            row[0] for row in db.query(models.Person.id).filter(
+                models.Person.user_id == vault_id(current_user),
+                models.Person.name.ilike(like),
+            ).all()
+        ]
+        clauses = [
             models.LockerItem.title.ilike(like),
             models.LockerItem.holder_name.ilike(like),
             models.LockerItem.issuer.ilike(like),
             models.LockerItem.tags.ilike(like),
             models.LockerItem.custom_type.ilike(like),
-        ))
+        ]
+        if people_ids:
+            clauses.append(models.LockerItem.person_id.in_(people_ids))
+        query = query.filter(or_(*clauses))
+    else:
+        pid = (person_id or "").strip()
+        if pid == "none":
+            query = query.filter(models.LockerItem.person_id.is_(None))
+        elif pid:
+            query = query.filter(models.LockerItem.person_id == pid)
     if expiring:
         today = datetime.utcnow().strftime("%Y-%m-%d")
         soon = (datetime.utcnow() + timedelta(days=60)).strftime("%Y-%m-%d")
@@ -157,7 +226,9 @@ def list_items(
             models.LockerItem.expiry_date >= today,
             models.LockerItem.expiry_date <= soon,
         )
-    return [_to_out(i) for i in query.order_by(models.LockerItem.created_at.desc()).all()]
+    rows = query.order_by(models.LockerItem.created_at.desc()).all()
+    names = {p.id: p.name for p in _people_for(db, current_user)}
+    return [_to_out(i, names.get(i.person_id)) for i in rows]
 
 
 @router.post("", response_model=schemas.LockerItemOut, status_code=201)
@@ -165,6 +236,7 @@ async def create_item(
     title: str = Form(...),
     doc_type: str = Form("other"),
     custom_type: Optional[str] = Form(None),
+    person_id: Optional[str] = Form(None),
     holder_name: Optional[str] = Form(None),
     issuer: Optional[str] = Form(None),
     id_number: Optional[str] = Form(None),
@@ -180,12 +252,17 @@ async def create_item(
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
     kind, custom = _norm_type(doc_type, custom_type)
+    person = _resolve_person(db, current_user, person_id)
+    holder = (holder_name or "").strip() or None
+    if person and not holder:
+        holder = person.name
     item = models.LockerItem(
         user_id=vault_id(current_user),
+        person_id=person.id if person else None,
         doc_type=kind,
         custom_type=custom,
         title=title.strip(),
-        holder_name=(holder_name or "").strip() or None,
+        holder_name=holder,
         issuer=(issuer or "").strip() or None,
         id_number_enc=crypto.encrypt_text(id_number),
         issued_on=issued_on or None,
@@ -198,7 +275,7 @@ async def create_item(
     await _save_files(item, files, current_user, db)
     db.commit()
     db.refresh(item)
-    return _to_out(item)
+    return _to_out(item, person.name if person else None)
 
 
 async def _save_files(
@@ -239,7 +316,12 @@ def get_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    return _to_out(_owned(item_id, db, current_user))
+    item = _owned(item_id, db, current_user)
+    pname = None
+    if item.person_id:
+        person = _resolve_person(db, current_user, item.person_id)
+        pname = person.name if person else None
+    return _to_out(item, pname)
 
 
 @router.patch("/{item_id}", response_model=schemas.LockerItemOut)
@@ -261,6 +343,11 @@ def update_item(
         item.custom_type = custom
         data.pop("doc_type", None)
         data.pop("custom_type", None)
+    if "person_id" in data:
+        person = _resolve_person(db, current_user, data.pop("person_id"))
+        item.person_id = person.id if person else None
+        if person and not data.get("holder_name") and not item.holder_name:
+            item.holder_name = person.name
     if "id_number" in data:
         item.id_number_enc = crypto.encrypt_text(data.pop("id_number"))
     if "notes" in data:
@@ -270,7 +357,11 @@ def update_item(
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
-    return _to_out(item)
+    pname = None
+    if item.person_id:
+        person = _resolve_person(db, current_user, item.person_id)
+        pname = person.name if person else None
+    return _to_out(item, pname)
 
 
 @router.delete("/{item_id}", status_code=204)
