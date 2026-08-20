@@ -3635,23 +3635,83 @@ def locker_explorer(
         items = [i for i in items if not i.folder_id]
     folder_name = None
     type_label = None
+    person_label = None
+    folder_crumbs = []
     if folder_id:
-        for f in summary.folders:
-            if f.id == folder_id:
-                folder_name = f.name
-                break
+        folder_crumbs = lk._folder_crumbs(db, user, folder_id)
+        folder_name = folder_crumbs[-1].name if folder_crumbs else None
     if type_filter:
         type_label = dict(lk.LOCKER_TYPES).get(type_filter, type_filter.replace("_", " ").title())
+    if person_filter and person_filter != "none":
+        for p in summary.people:
+            if p.id == person_filter:
+                person_label = p.name
+                break
+    # Child folders of current location (Linux: show subfolders in the pane)
+    show_children = bool(
+        not type_filter and not expiring and not unfiled and not person_filter and not q
+    )
+    child_folders = (
+        lk._child_folder_outs(db, user, folder_id or None)
+        if show_children else []
+    )
+    folder_tree = lk._folder_tree(db, user)
     view_mode = "icons" if view == "icons" else "list"
     return templates.TemplateResponse("locker_explorer.html", _lk_ctx(
         request, user, "lk_explorer",
         summary=summary, items=items, people=summary.people,
-        folders=summary.folders, types=lk.LOCKER_TYPES,
+        folders=summary.folders, folder_tree=folder_tree, child_folders=child_folders,
+        folder_crumbs=folder_crumbs, types=lk.LOCKER_TYPES,
         folder=folder_id, folder_name=folder_name, place=place_key,
-        doc_type=type_filter, type_label=type_label, person=person_filter, q=q,
+        doc_type=type_filter, type_label=type_label, person=person_filter,
+        person_label=person_label, q=q,
         view=view_mode, expiring=expiring, unfiled=unfiled,
         active_person_id=person_filter or None,
     ))
+
+
+@router.post("/locker/explorer/upload")
+async def locker_explorer_upload(
+    request: Request,
+    folder_id: str = Form(""),
+    next: str = Form(""),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """Quick-add: drop files into the current explorer folder (one document per file)."""
+    from app.routers import locker as lk
+    from pathlib import Path as P
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    fid = (folder_id or "").strip() or None
+    uploads = [f for f in (files or []) if f and f.filename]
+    if not uploads:
+        dest = (next or "").strip() or "/admin/locker/explorer"
+        return RedirectResponse(dest, status_code=302)
+    for up in uploads:
+        stem = P(up.filename or "file").stem.strip() or "Document"
+        await lk.create_item(
+            title=stem,
+            doc_type="other",
+            custom_type=None,
+            folder_id=fid,
+            person_id=None,
+            holder_name=None,
+            issuer=None,
+            id_number=None,
+            issued_on=None,
+            expiry_date=None,
+            tags=None,
+            notes=None,
+            files=[up],
+            db=db,
+            current_user=user,
+        )
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = f"/admin/locker/explorer?folder={fid}" if fid else "/admin/locker/explorer"
+    return RedirectResponse(dest, status_code=302)
 
 
 @router.get("/locker/add", response_class=HTMLResponse)
@@ -3747,6 +3807,7 @@ def locker_add_person(
 def locker_add_folder(
     request: Request,
     name: str = Form(...),
+    parent_id: str = Form(""),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -3759,11 +3820,15 @@ def locker_add_folder(
     clean = (name or "").strip()
     if not clean:
         return RedirectResponse("/admin/locker/explorer", status_code=302)
-    folder = lk.create_folder(sc.LockerFolderIn(name=clean), db=db, current_user=user)
+    folder = lk.create_folder(
+        sc.LockerFolderIn(name=clean, parent_id=(parent_id or "").strip() or None),
+        db=db,
+        current_user=user,
+    )
     dest = (next or "").strip()
     if dest.startswith("/admin/locker") and "://" not in dest:
         return RedirectResponse(dest, status_code=302)
-    return RedirectResponse(f"/admin/locker?folder={folder.id}", status_code=302)
+    return RedirectResponse(f"/admin/locker/explorer?folder={folder.id}", status_code=302)
 
 
 @router.post("/locker/folder/{folder_id}/rename")
@@ -3879,6 +3944,7 @@ def locker_item_send_create(
     max_views: str = Form(""),
     require_grant: Optional[str] = Form(None),
     require_email_otp: Optional[str] = Form(None),
+    files_only: Optional[str] = Form(None),
     allowed_emails: str = Form(""),
     next: str = Form(""),
     db: Session = Depends(get_db),
@@ -3903,6 +3969,7 @@ def locker_item_send_create(
         max_views=views,
         require_grant=bool(require_grant),
         require_email_otp=bool(require_email_otp),
+        files_only=bool(files_only),
         allowed_emails=emails,
     ), db=db, current_user=user)
     dest = (next or "").strip()

@@ -596,8 +596,19 @@ def create_send(
             "locker_holder": doc.holder_name,
             "locker_file_count": len(files),
             "locker_file_ids": [f.id for f in files],
+            "locker_files": [
+                {
+                    "id": f.id,
+                    "name": f.original_filename,
+                    "type": f.file_type or "",
+                    "size": f.file_size or 0,
+                }
+                for f in files
+            ],
             "name": body.name.strip() or doc.title,
         }
+        if body.files_only:
+            payload["locker_files_only"] = True
         if body.require_grant:
             payload["require_grant"] = True
         if body.require_email_otp:
@@ -857,10 +868,12 @@ def public_send_json(
         uris=data.get("uris") or [],
         notes=notes,
         locker_item_id=(data.get("locker_item_id") or data.get("item_id")) if row.send_type == "locker" else None,
-        locker_title=data.get("locker_title") if row.send_type == "locker" else None,
-        locker_type_label=data.get("locker_type_label") if row.send_type == "locker" else None,
+        locker_title=None if (row.send_type == "locker" and data.get("locker_files_only")) else (data.get("locker_title") if row.send_type == "locker" else None),
+        locker_type_label=None if (row.send_type == "locker" and data.get("locker_files_only")) else (data.get("locker_type_label") if row.send_type == "locker" else None),
         locker_file_count=int(data.get("locker_file_count") or 0) if row.send_type == "locker" else 0,
-        locker_holder=data.get("locker_holder") if row.send_type == "locker" else None,
+        locker_holder=None if (row.send_type == "locker" and data.get("locker_files_only")) else (data.get("locker_holder") if row.send_type == "locker" else None),
+        files_only=bool(data.get("locker_files_only")) if row.send_type == "locker" else False,
+        locker_files=list(data.get("locker_files") or []) if row.send_type == "locker" else [],
         expires_at=row.expires_at,
         has_pin=bool(row.pin_hash),
         pin_required=False,
@@ -940,9 +953,42 @@ def public_send_page(
         "totp_secret", "require_grant", "require_totp", "require_email_otp",
         "allowed_emails", "require_vault_user_email", "locker_file_ids",
     )}
+    files_only = bool(data.get("locker_files_only")) and row.send_type == "locker"
+    locker_files = []
+    if row.send_type == "locker":
+        item_id = (data.get("locker_item_id") or data.get("item_id") or "").strip()
+        allowed = set(data.get("locker_file_ids") or [])
+        if item_id:
+            item = (
+                db.query(models.LockerItem)
+                .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == row.user_id)
+                .first()
+            )
+            if item:
+                for f in (item.files or []):
+                    if allowed and f.id not in allowed:
+                        continue
+                    locker_files.append({
+                        "id": f.id,
+                        "name": f.original_filename,
+                        "type": f.file_type or "",
+                        "size": f.file_size or 0,
+                    })
+        if not locker_files:
+            locker_files = list(data.get("locker_files") or [])
+        if files_only:
+            # Do not expose document metadata on the public page.
+            shown = {
+                "locker_item_id": data.get("locker_item_id") or data.get("item_id"),
+                "locker_file_count": len(locker_files),
+                "locker_files_only": True,
+                "name": row.name,
+            }
+            notes = None
+    view_action = "document_viewed" if row.send_type == "locker" else "password_viewed"
     _record_send_view(
         row, request, db,
-        action="password_viewed",
+        action=view_action,
         email=verified_email,
         request_id=guest_req.id if guest_req else None,
     )
@@ -956,6 +1002,7 @@ def public_send_page(
     return templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
         "grant_required": False, "payload": shown, "notes": notes,
+        "files_only": files_only, "locker_files": locker_files,
         "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
     })
 

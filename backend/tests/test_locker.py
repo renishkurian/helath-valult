@@ -193,6 +193,41 @@ def test_locker_custom_folders():
     assert item_after["folder_id"] is None
 
 
+def test_locker_nested_folders():
+    import uuid
+    email = f"locker-nest-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Nest User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    root = client.post("/locker/folders", headers=headers, json={"name": "bank"})
+    assert root.status_code == 201, root.text
+    root_id = root.json()["id"]
+    assert root.json()["name"] == "Bank"
+    assert root.json().get("parent_id") in (None, "")
+
+    child = client.post("/locker/folders", headers=headers, json={"name": "statements", "parent_id": root_id})
+    assert child.status_code == 201, child.text
+    child_id = child.json()["id"]
+    assert child.json()["parent_id"] == root_id
+    assert child.json()["name"] == "Statements"
+
+    tree = client.get("/locker/folders/tree", headers=headers)
+    assert tree.status_code == 200
+    names = [(n["name"], n["depth"], n.get("parent_id")) for n in tree.json()]
+    assert ("Bank", 0, None) in [(a, b, c or None) for a, b, c in names] or any(
+        a == "Bank" and b == 0 for a, b, _ in names
+    )
+    assert any(a == "Statements" and b == 1 and c == root_id for a, b, c in names)
+
+    kids = client.get("/locker/folders", headers=headers, params={"parent_id": root_id})
+    assert kids.status_code == 200
+    assert len(kids.json()) == 1
+    assert kids.json()[0]["id"] == child_id
+
+
 def test_locker_document_share():
     import uuid
     email = f"locker-share-{uuid.uuid4().hex[:8]}@example.com"
@@ -225,6 +260,7 @@ def test_locker_document_share():
             "expires_in_hours": 6,
             "max_views": 2,
             "require_grant": False,
+            "files_only": True,
         },
     )
     assert send.status_code == 201, send.text
@@ -244,7 +280,11 @@ def test_locker_document_share():
 
     unlocked = client.get(f"/vault/public/{token}/page", params={"pin": "4242"})
     assert unlocked.status_code == 200
-    assert b"Passport" in unlocked.content or b"Document" in unlocked.content
+    assert b"passport.pdf" in unlocked.content
+    assert b"ready to print" in unlocked.content or b"Files only" in unlocked.content or b"Print" in unlocked.content
+    # Files-only mode must not expose document metadata
+    assert b"Renish" not in unlocked.content
+    assert b"Passport scan" not in unlocked.content
 
     view = client.get(f"/vault/public/{token}/locker/view", params={"pin": "4242"})
     assert view.status_code == 200

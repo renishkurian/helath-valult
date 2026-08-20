@@ -819,6 +819,8 @@ class VaultSendPublicOut(BaseModel):
     locker_type_label: Optional[str] = None
     locker_file_count: int = 0
     locker_holder: Optional[str] = None
+    files_only: bool = False
+    locker_files: List[Dict] = []
     expires_at: datetime
     has_pin: bool = False
     pin_required: bool = False
@@ -1397,16 +1399,30 @@ class LockerPersonOut(BaseModel):
     name: str
     relation: str = "other"
     count: int = 0
+    avatar_initials: Optional[str] = None
 
 
 class LockerFolderIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
+    parent_id: Optional[str] = None
 
 
 class LockerFolderOut(BaseModel):
     id: str
     name: str
+    parent_id: Optional[str] = None
     count: int = 0
+    child_count: int = 0
+    created_at: datetime
+
+
+class LockerFolderTreeOut(BaseModel):
+    id: str
+    name: str
+    parent_id: Optional[str] = None
+    count: int = 0
+    child_count: int = 0
+    depth: int = 0
     created_at: datetime
 
 

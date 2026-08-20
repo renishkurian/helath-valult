@@ -902,14 +902,16 @@ class LockerDocType(str, enum.Enum):
 
 
 class LockerFolder(Base):
-    """User-created Document Vault folder (Gas book, School papers, …)."""
+    """User-created Document Vault folder (Gas book, School papers, …). Supports nesting."""
     __tablename__ = "locker_folders"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    parent_id = Column(String(32), ForeignKey("locker_folders.id"), nullable=True, index=True)
     name = Column(String(120), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     items = relationship("LockerItem", back_populates="folder")
+    parent = relationship("LockerFolder", remote_side=[id], backref="children")
 
 
 class LockerItem(Base):

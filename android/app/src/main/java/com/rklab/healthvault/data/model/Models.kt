@@ -554,7 +554,8 @@ data class VaultSendCreate(
     val require_grant: Boolean = false,
     val require_email_otp: Boolean = false,
     val allowed_emails: List<String> = emptyList(),
-    val require_vault_user_email: Boolean = false
+    val require_vault_user_email: Boolean = false,
+    val files_only: Boolean = false
 )
 data class VaultSendOut(
     val id: String,
@@ -879,13 +880,16 @@ data class LockerTypeOut(
 )
 
 data class LockerFolderIn(
-    val name: String
+    val name: String,
+    val parent_id: String? = null
 )
 
 data class LockerFolderOut(
     val id: String,
     val name: String,
+    val parent_id: String? = null,
     val count: Int = 0,
+    val child_count: Int = 0,
     val created_at: String = ""
 )
 
@@ -893,7 +897,8 @@ data class LockerPersonOut(
     val id: String,
     val name: String,
     val relation: String = "other",
-    val count: Int = 0
+    val count: Int = 0,
+    val avatar_initials: String? = null
 )
 
 data class LockerSummaryOut(

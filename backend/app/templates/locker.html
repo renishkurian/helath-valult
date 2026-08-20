@@ -6,7 +6,6 @@
   'voter_id':'#22D3EE','certificate':'#FF8095','rc':'#F5A65B','insurance':'#F0C36A',
   'warranty':'#84CC16','property':'#38BDF8','other':'#8B95A8'
 } %}
-{% set rel_label = {'self':'You','spouse':'Spouse','child':'Child','parent':'Parent','other':'Family'} %}
 {% set person = person or '' %}
 {% set folder = folder or '' %}
 {% set qs_type = ('&doc_type=' ~ doc_type) if doc_type else '' %}
@@ -101,50 +100,24 @@
   {% endif %}
 </form>
 
-<div class="section-head d-flex flex-wrap align-items-center justify-content-between gap-2">
-  <h2>Family profiles</h2>
-  <a class="btn btn-ghost btn-sm" href="/admin/family"><i class="bi bi-people"></i> Manage family</a>
-</div>
-<div class="folder-grid mb-3">
-  <a class="folder {% if not person and not expiring %}on{% endif %}" href="/admin/locker?{{ ('doc_type=' ~ doc_type) if doc_type else (('folder=' ~ folder) if folder else '') }}">
-    <span class="folder-name"><i class="bi bi-collection"></i> All people</span>
-    <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
+<div class="chip-scroll">
+  <a class="chip {% if not person and not expiring %}active{% endif %}"
+     href="/admin/locker?{{ ('doc_type=' ~ doc_type) if doc_type else (('folder=' ~ folder) if folder else '') }}">
+    All people
+    <span class="count">{{ summary.total }}</span>
   </a>
-  <a class="folder {% if person == 'none' %}on{% endif %}" href="/admin/locker?person=none{{ qs_type }}{{ qs_folder }}">
-    <span class="folder-name"><i class="bi bi-dash-lg"></i> Unassigned</span>
-    <span class="fcount">{{ '%02d'|format(summary.unassigned or 0) }}</span>
+  <a class="chip {% if person == 'none' %}active{% endif %}" href="/admin/locker?person=none{{ qs_type }}{{ qs_folder }}">
+    Unassigned
+    <span class="count">{{ summary.unassigned or 0 }}</span>
   </a>
   {% for p in summary.people %}
-  <a class="folder {% if person == p.id %}on{% endif %}" href="/admin/locker?person={{ p.id }}{{ qs_type }}{{ qs_folder }}">
-    <span class="folder-name">
-      <span class="folder-dot" style="background:#43D9C4"></span>
-      {{ p.name | nice }}
-      <span class="small text-faint ms-1">{{ rel_label.get(p.relation, p.relation) }}</span>
-    </span>
-    <span class="fcount">{{ '%02d'|format(p.count) }}</span>
+  <a class="chip {% if person == p.id %}active{% endif %}" href="/admin/locker?person={{ p.id }}{{ qs_type }}{{ qs_folder }}">
+    <span class="avatar">{{ p.avatar_initials or (p.name[:1]|upper) }}</span>
+    {{ p.name | nice }}
+    <span class="count">{{ p.count }}</span>
   </a>
   {% endfor %}
-</div>
-<div class="card mb-4">
-  <div class="card-body py-3">
-    <form class="d-flex flex-wrap gap-2 align-items-end" method="post" action="/admin/locker/person">
-      <div class="flex-grow-1" style="min-width:12rem">
-        <label class="form-label small mb-0" for="lk-person-name">Add family profile</label>
-        <input class="form-control" id="lk-person-name" name="name" required placeholder="e.g. Amma, Appu">
-      </div>
-      <div style="min-width:8rem">
-        <label class="form-label small mb-0" for="lk-person-rel">Relation</label>
-        <select class="form-select" id="lk-person-rel" name="relation">
-          <option value="spouse">Spouse</option>
-          <option value="child">Child</option>
-          <option value="parent">Parent</option>
-          <option value="other" selected>Other</option>
-        </select>
-      </div>
-      <button class="btn btn-outline-light" type="submit"><i class="bi bi-person-plus"></i> Add</button>
-    </form>
-    <div class="form-text mt-2 mb-0">Same family list as Health Vault. Search always lists matches from every profile.</div>
-  </div>
+  <a class="chip plain" href="/admin/family"><i class="bi bi-plus-lg"></i> Add member</a>
 </div>
 
 <div class="section-head d-flex flex-wrap align-items-center justify-content-between gap-2">

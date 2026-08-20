@@ -240,22 +240,20 @@ fun LockerListScreen(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             )
-            if (!expiringOnly && people.isNotEmpty()) {
-                Text(
-                    "Family",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = InkSoft,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
-                )
+            if (!expiringOnly) {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(bottom = 8.dp)
                 ) {
                     item {
                         FilterChip(
                             selected = personId == null,
                             onClick = { personId = null },
-                            label = { Text("Everyone") }
+                            label = { Text("All people") },
+                            leadingIcon = if (personId == null) {
+                                { Icon(Icons.Filled.Apps, null, Modifier.size(16.dp)) }
+                            } else null
                         )
                     }
                     item {
@@ -269,7 +267,16 @@ fun LockerListScreen(
                         FilterChip(
                             selected = personId == p.id,
                             onClick = { personId = if (personId == p.id) null else p.id },
-                            label = { Text("${niceName(p.name)} ${p.count}") }
+                            label = {
+                                Text("${niceName(p.name)} · ${p.count}")
+                            },
+                            leadingIcon = {
+                                Text(
+                                    (p.avatar_initials ?: p.name.take(1)).uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (personId == p.id) VaultTeal else InkSoft
+                                )
+                            }
                         )
                     }
                 }
@@ -731,6 +738,7 @@ fun LockerItemScreen(
     var shareOneTime by remember { mutableStateOf(false) }
     var shareRequireGrant by remember { mutableStateOf(false) }
     var shareEmailOtp by remember { mutableStateOf(false) }
+    var shareFilesOnly by remember { mutableStateOf(false) }
     var shareAllowedEmails by remember { mutableStateOf("") }
     var shareBusy by remember { mutableStateOf(false) }
     var shareError by remember { mutableStateOf<String?>(null) }
@@ -953,6 +961,15 @@ fun LockerItemScreen(
                                 colors = fieldColors
                             )
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareFilesOnly, onCheckedChange = { shareFilesOnly = it })
+                            Text("Only file view mode", color = Ink)
+                        }
+                        Text(
+                            "Hide document details. Recipients see a print-ready file list only.",
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall
+                        )
                         shareError?.let { Text(it, color = StampRed, style = MaterialTheme.typography.bodySmall) }
                     }
                 }
@@ -991,7 +1008,8 @@ fun LockerItemScreen(
                                             max_views = if (shareOneTime) 1 else null,
                                             require_grant = shareRequireGrant,
                                             require_email_otp = shareEmailOtp,
-                                            allowed_emails = emails
+                                            allowed_emails = emails,
+                                            files_only = shareFilesOnly
                                         )
                                     )
                                 }.onSuccess { created ->
@@ -1037,6 +1055,7 @@ fun LockerItemScreen(
                         shareOneTime = false
                         shareRequireGrant = false
                         shareEmailOtp = false
+                        shareFilesOnly = false
                         shareAllowedEmails = ""
                         shareError = null
                         shareReady = null

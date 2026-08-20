@@ -3325,3 +3325,53 @@ body{
   }
   .fx-col-type, .fx-col-meta{ display:none; }
 }
+
+/* ---------- Document Explorer: collapse app nav / full screen ---------- */
+body.nav-collapsed .app-sidebar,
+body.nav-collapsed .d-none.d-lg-flex > .app-sidebar,
+body.nav-collapsed .app > .d-none.d-lg-flex{
+  display:none !important;
+}
+@media (min-width:992px){
+  body.nav-collapsed .app-main{
+    margin-left:0;
+    max-width:none;
+    padding-left:1rem;
+    padding-right:1rem;
+  }
+}
+body.fx-focus .fx-page-head .page-lead,
+body.fx-focus .fx-page-head .eyebrow,
+body.fx-focus .fx-page-head .page-title{
+  display:none;
+}
+body.fx-focus .fx-page-head{
+  margin-bottom:.5rem !important;
+  min-height:0;
+}
+body.fx-focus .fx-shell{
+  min-height:calc(100vh - 5.5rem);
+  height:calc(100vh - 5.5rem);
+  border-radius:12px;
+}
+body.fx-focus .ask-ai-fab,
+body.fx-focus .app-tabbar{
+  display:none !important;
+}
+body.fx-focus.has-tabbar .app-main{
+  padding-bottom:1rem;
+}
+
+.fx-tree-details{ margin-top:.25rem; }
+.fx-tree-details > summary.fx-tree-head{ display:flex; align-items:center; justify-content:space-between; }
+.fx-tree-details[open] > summary .bi-chevron-down{ transform:rotate(180deg); }
+.fx-drop-hint{
+  margin:.75rem .5rem; padding:.55rem .75rem; text-align:center;
+  font-size:.75rem; color:var(--v-ink-3); border:1px dashed var(--v-line); border-radius:10px;
+}
+.fx-pane.fx-drag-over{
+  outline:2px dashed var(--v-teal); outline-offset:-6px; background:rgba(67,217,196,.06);
+}
+.fx-empty.fx-dropzone{
+  border:1px dashed var(--v-line); border-radius:14px; margin:.5rem;
+}

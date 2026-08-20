@@ -110,6 +110,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("person_id", "VARCHAR(32)"),
         ("folder_id", "VARCHAR(32)"),
     ],
+    "locker_folders": [
+        ("parent_id", "VARCHAR(32)"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [

@@ -21,6 +21,9 @@
 {% elif doc_type %}
   {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type %}
   {% set here_label = type_label or (doc_type.replace('_', ' ') | title) %}
+{% elif person %}
+  {% set add_href = '/admin/locker/add?person=' ~ person %}
+  {% set here_label = (person_label | nice) if person_label else 'Profile' %}
 {% else %}
   {% set add_href = '/admin/locker/add' %}
   {% set here_label = 'Home' %}
@@ -72,7 +75,7 @@
 {% endif %}
 {% set qs_view = ('&view=icons') if view == 'icons' else '' %}
 
-<div class="page-head mb-3">
+<div class="page-head mb-3 fx-page-head">
   <div>
     <div class="eyebrow">
       <a href="/admin/modules">All modules</a>
@@ -83,6 +86,11 @@
     </div>
     <h1 class="page-title">Document Explorer</h1>
     <p class="page-lead mb-0">Browse like a file manager — folders on the left, documents on the right. Right-click for actions.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-outline-light" id="fx-toggle-nav" title="Hide left menu for full-screen explorer">
+      <i class="bi bi-arrows-fullscreen"></i> Full screen
+    </button>
   </div>
 </div>
 
@@ -96,7 +104,7 @@
   <aside class="fx-tree" aria-label="Places">
     <div class="fx-tree-head">Places</div>
     <nav class="fx-tree-nav">
-      <a class="fx-tree-item {% if place == 'home' and not folder and not doc_type %}on{% endif %}"
+      <a class="fx-tree-item {% if place == 'home' and not folder and not doc_type and not person %}on{% endif %}"
          href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}">
         <i class="bi bi-house-door"></i><span>Home</span>
         <em>{{ '%02d'|format(summary.total) }}</em>
@@ -112,43 +120,71 @@
       </a>
     </nav>
 
+    <div class="fx-tree-head">Family</div>
+    <nav class="fx-tree-nav">
+      {% for p in summary.people %}
+      <a class="fx-tree-item {% if person == p.id %}on{% endif %}"
+         href="/admin/locker/explorer?person={{ p.id }}{{ qs_view }}">
+        <span class="avatar" style="width:1.25rem;height:1.25rem;font-size:.6rem">{{ p.avatar_initials or (p.name[:1]|upper) }}</span>
+        <span>{{ p.name | nice }}</span>
+        <em>{{ '%02d'|format(p.count) }}</em>
+      </a>
+      {% endfor %}
+      <a class="fx-tree-item" href="/admin/family">
+        <i class="bi bi-plus-lg"></i><span>Add member</span>
+      </a>
+    </nav>
+
     <div class="fx-tree-head">Folders</div>
     <nav class="fx-tree-nav" id="fx-folder-tree">
-      {% for f in folders %}
+      {% for f in folder_tree %}
       <a class="fx-tree-item js-fx-folder {% if folder == f.id %}on{% endif %}"
          href="/admin/locker/explorer?folder={{ f.id }}{{ qs_view }}"
+         style="padding-left: calc(.65rem + {{ (f.depth * 0.9)|round(2) }}rem)"
          data-kind="folder"
          data-id="{{ f.id }}"
          data-name="{{ f.name }}"
-         data-count="{{ f.count }}">
-        <i class="bi bi-folder2" style="color:#F0A94E"></i>
+         data-count="{{ f.count }}"
+         data-parent="{{ f.parent_id or '' }}">
+        <i class="bi {% if f.child_count %}bi-folder2-open{% else %}bi-folder2{% endif %}" style="color:#F0A94E"></i>
         <span>{{ f.name }}</span>
-        <em>{{ '%02d'|format(f.count) }}</em>
+        <em>{{ '%02d'|format(f.count + f.child_count) }}</em>
       </a>
       {% else %}
-      <div class="fx-tree-empty">No folders yet — right-click to create one.</div>
+      <div class="fx-tree-empty">No folders yet — right-click or use New folder.</div>
       {% endfor %}
     </nav>
 
-    <div class="fx-tree-head">Types</div>
-    <nav class="fx-tree-nav">
-      {% for t in summary.types if not t.custom %}
-      <a class="fx-tree-item {% if doc_type == t.id %}on{% endif %}"
-         href="/admin/locker/explorer?doc_type={{ t.id }}{{ qs_view }}">
-        <span class="fx-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
-        <span>{{ t.label }}</span>
-        <em>{{ '%02d'|format(t.count) }}</em>
-      </a>
-      {% endfor %}
-    </nav>
+    <details class="fx-tree-details">
+      <summary class="fx-tree-head" style="cursor:pointer;list-style:none">Types <i class="bi bi-chevron-down small"></i></summary>
+      <nav class="fx-tree-nav">
+        {% for t in summary.types if not t.custom %}
+        <a class="fx-tree-item {% if doc_type == t.id %}on{% endif %}"
+           href="/admin/locker/explorer?doc_type={{ t.id }}{{ qs_view }}">
+          <span class="fx-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
+          <span>{{ t.label }}</span>
+          <em>{{ '%02d'|format(t.count) }}</em>
+        </a>
+        {% endfor %}
+      </nav>
+    </details>
   </aside>
 
   {# ---- Main pane ---- #}
   <section class="fx-main">
     <div class="fx-toolbar">
       <nav class="fx-crumbs" aria-label="Breadcrumb">
-        <a href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-hdd"></i> Vault</a>
-        {% if folder or place != 'home' or doc_type %}
+        <a href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-hdd"></i> Home</a>
+        {% if folder_crumbs %}
+          {% for c in folder_crumbs %}
+          <i class="bi bi-chevron-right"></i>
+          {% if not loop.last %}
+          <a href="/admin/locker/explorer?folder={{ c.id }}{{ qs_view }}">{{ c.name }}</a>
+          {% else %}
+          <span>{{ c.name }}</span>
+          {% endif %}
+          {% endfor %}
+        {% elif place == 'expiring' or place == 'unfiled' or doc_type or person %}
         <i class="bi bi-chevron-right"></i>
         <span>{{ here_label }}</span>
         {% endif %}
@@ -162,6 +198,11 @@
         <input type="search" name="q" value="{{ q }}" placeholder="Search…" aria-label="Search documents">
       </form>
       <div class="fx-toolbar-actions">
+        <button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar"
+                title="Toggle left menu / full screen">
+          <i class="bi bi-layout-sidebar-inset" id="fx-toggle-nav-icon"></i>
+          <span class="d-none d-xl-inline" id="fx-toggle-nav-label">Hide menu</span>
+        </button>
         <div class="btn-group" role="group" aria-label="View">
           <a class="btn btn-sm btn-outline-light {% if view == 'list' %}active{% endif %}"
              href="{{ list_href }}" title="List view">
@@ -175,11 +216,20 @@
         <button type="button" class="btn btn-sm btn-outline-light" id="fx-btn-new-folder">
           <i class="bi bi-folder-plus"></i> New folder
         </button>
-        <a class="btn btn-sm btn-primary" href="{{ add_href }}">
-          <i class="bi bi-plus-lg"></i> Add
+        <label class="btn btn-sm btn-primary mb-0" for="fx-upload-input" title="Upload files into this folder">
+          <i class="bi bi-upload"></i> Upload
+        </label>
+        <a class="btn btn-sm btn-outline-light" href="{{ add_href }}" title="Full add form">
+          <i class="bi bi-plus-lg"></i>
         </a>
       </div>
     </div>
+
+    <form id="fx-upload-form" method="post" action="/admin/locker/explorer/upload" enctype="multipart/form-data" class="d-none">
+      <input type="hidden" name="folder_id" value="{{ folder or '' }}">
+      <input type="hidden" name="next" value="{{ here_href }}">
+      <input type="file" name="files" id="fx-upload-input" multiple>
+    </form>
 
     <div class="fx-pane {% if view == 'icons' %}fx-icons{% else %}fx-list{% endif %}" id="fx-pane" tabindex="0">
       {% if view == 'list' %}
@@ -191,8 +241,9 @@
       </div>
       {% endif %}
 
-      {% if place == 'home' and not folder and not doc_type and not q %}
-        {% for f in folders %}
+      {% set child_folders = child_folders if child_folders is defined else [] %}
+      {% if child_folders %}
+        {% for f in child_folders %}
         <a class="fx-row js-fx-folder"
            href="/admin/locker/explorer?folder={{ f.id }}{{ qs_view }}"
            data-kind="folder"
@@ -203,17 +254,16 @@
           <span class="fx-col-name truncate">{{ f.name }}</span>
           {% if view == 'list' %}
           <span class="fx-col-type text-faint">Folder</span>
-          <span class="fx-col-meta text-faint">{{ f.count }} item{{ 's' if f.count != 1 else '' }}</span>
+          <span class="fx-col-meta text-faint">{{ f.child_count }} folder{{ 's' if f.child_count != 1 else '' }} · {{ f.count }} file{{ 's' if f.count != 1 else '' }}</span>
           <span class="fx-col-date text-faint">—</span>
           {% else %}
-          <span class="fx-icon-meta">{{ f.count }} item{{ 's' if f.count != 1 else '' }}</span>
+          <span class="fx-icon-meta">{{ f.count + f.child_count }} items</span>
           {% endif %}
         </a>
         {% endfor %}
       {% endif %}
 
       {% for item in items %}
-      {% set ft = (item.file_count and 'file') or 'doc' %}
       <a class="fx-row js-fx-doc"
          href="/admin/locker/{{ item.id }}"
          data-kind="doc"
@@ -240,15 +290,25 @@
         <span class="fx-icon-meta">{{ item.type_label }}</span>
         {% endif %}
       </a>
-      {% else %}
-        {% if not (place == 'home' and not folder and not doc_type and not q and folders) %}
-        <div class="fx-empty">
-          <i class="bi bi-inbox"></i>
-          <p>This location is empty.</p>
-          <p class="text-faint small">Right-click for New Folder or Add Document.</p>
-        </div>
-        {% endif %}
       {% endfor %}
+
+      {% if not child_folders and not items %}
+        <div class="fx-empty fx-dropzone" id="fx-dropzone">
+          <i class="bi bi-cloud-arrow-up"></i>
+          <p class="mb-1">This folder is empty</p>
+          <p class="text-faint small mb-3">Drop files here, or use Upload / New folder — like a Linux file manager.</p>
+          <div class="d-flex flex-wrap gap-2 justify-content-center no-print">
+            <button type="button" class="btn btn-outline-light btn-sm" id="fx-empty-new-folder">
+              <i class="bi bi-folder-plus"></i> New folder
+            </button>
+            <label class="btn btn-primary btn-sm mb-0" for="fx-upload-input">
+              <i class="bi bi-upload"></i> Upload files
+            </label>
+          </div>
+        </div>
+      {% else %}
+        <div class="fx-drop-hint no-print" id="fx-dropzone">Drop files anywhere to upload into this folder</div>
+      {% endif %}
     </div>
   </section>
 </div>
@@ -256,6 +316,7 @@
 {# Hidden action forms #}
 <form id="fx-form-new-folder" method="post" action="/admin/locker/folder" class="d-none">
   <input type="hidden" name="name" id="fx-new-folder-name" value="">
+  <input type="hidden" name="parent_id" id="fx-new-folder-parent" value="{{ folder or '' }}">
   <input type="hidden" name="next" value="{{ here_href }}">
 </form>
 <form id="fx-form-rename-folder" method="post" action="" class="d-none">
@@ -282,10 +343,11 @@
   <button type="button" class="fx-menu-item" data-action="unfile" role="menuitem"><i class="bi bi-folder-minus"></i> Remove from folder</button>
   <div class="fx-menu-sep" data-for="folder"></div>
   <button type="button" class="fx-menu-item" data-action="rename" role="menuitem"><i class="bi bi-pencil"></i> Rename…</button>
-  <button type="button" class="fx-menu-item" data-action="new-here" role="menuitem"><i class="bi bi-file-earmark-plus"></i> Add document here</button>
+  <button type="button" class="fx-menu-item" data-action="new-folder" role="menuitem"><i class="bi bi-folder-plus"></i> New subfolder…</button>
+  <button type="button" class="fx-menu-item" data-action="new-here" role="menuitem"><i class="bi bi-upload"></i> Upload here</button>
   <div class="fx-menu-sep" data-for="empty"></div>
   <button type="button" class="fx-menu-item" data-action="new-folder" role="menuitem"><i class="bi bi-folder-plus"></i> New folder…</button>
-  <button type="button" class="fx-menu-item" data-action="add" role="menuitem"><i class="bi bi-plus-lg"></i> Add document…</button>
+  <button type="button" class="fx-menu-item" data-action="add" role="menuitem"><i class="bi bi-upload"></i> Upload files…</button>
   <button type="button" class="fx-menu-item" data-action="refresh" role="menuitem"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
   <div class="fx-menu-sep" data-for="danger"></div>
   <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Delete</button>
@@ -304,8 +366,8 @@
         <label class="form-label" for="fx-move-select">Folder</label>
         <select class="form-select" id="fx-move-select">
           <option value="">— Unfiled —</option>
-          {% for f in folders %}
-          <option value="{{ f.id }}">{{ f.name }}</option>
+          {% for f in folder_tree %}
+          <option value="{{ f.id }}">{{ '—' * f.depth }}{{ f.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -319,6 +381,52 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+(function () {
+  var KEY = "hv-fx-nav-collapsed";
+  var body = document.body;
+  var headBtn = document.getElementById("fx-toggle-nav");
+  var toolBtn = document.getElementById("fx-toggle-nav-toolbar");
+  var icon = document.getElementById("fx-toggle-nav-icon");
+  var label = document.getElementById("fx-toggle-nav-label");
+  var headLabel = headBtn ? headBtn.querySelector("i") : null;
+
+  function apply(collapsed) {
+    body.classList.toggle("nav-collapsed", collapsed);
+    body.classList.toggle("fx-focus", collapsed);
+    try { localStorage.setItem(KEY, collapsed ? "1" : "0"); } catch (e) {}
+    if (icon) {
+      icon.className = collapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset";
+    }
+    if (label) label.textContent = collapsed ? "Show menu" : "Hide menu";
+    if (headBtn) {
+      headBtn.innerHTML = collapsed
+        ? '<i class="bi bi-layout-sidebar"></i> Show menu'
+        : '<i class="bi bi-arrows-fullscreen"></i> Full screen';
+    }
+  }
+
+  function toggle() { apply(!body.classList.contains("nav-collapsed")); }
+
+  var saved = false;
+  try { saved = localStorage.getItem(KEY) === "1"; } catch (e) {}
+  // Default to full-screen explorer on first visit (desktop).
+  if (localStorage.getItem(KEY) === null && window.matchMedia("(min-width:992px)").matches) {
+    saved = true;
+  }
+  apply(saved);
+
+  if (headBtn) headBtn.addEventListener("click", toggle);
+  if (toolBtn) toolBtn.addEventListener("click", toggle);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "[" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      var t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      toggle();
+    }
+  });
+})();
+</script>
 <script>
 (function () {
   var shell = document.getElementById("fx-shell");
@@ -343,7 +451,7 @@
       if (kind === "empty") {
         show = ["new-folder", "add", "refresh"].indexOf(action) >= 0 || forKind === "empty";
       } else if (kind === "folder") {
-        show = ["open", "rename", "new-here", "delete", "properties", "refresh"].indexOf(action) >= 0
+        show = ["open", "rename", "new-folder", "new-here", "delete", "properties", "refresh"].indexOf(action) >= 0
           || forKind === "folder" || forKind === "danger";
       } else if (kind === "doc") {
         show = ["open", "preview", "download", "share", "move", "unfile", "delete", "properties"].indexOf(action) >= 0
@@ -410,16 +518,53 @@
   window.addEventListener("blur", hideMenu);
   window.addEventListener("resize", hideMenu);
 
-  document.getElementById("fx-btn-new-folder").addEventListener("click", function () {
-    promptNewFolder();
-  });
-
-  function promptNewFolder() {
+  function promptNewFolder(parentId) {
     var name = window.prompt("New folder name", "New Folder");
     if (!name || !name.trim()) return;
     document.getElementById("fx-new-folder-name").value = name.trim();
+    var parent = document.getElementById("fx-new-folder-parent");
+    if (parent) parent.value = (parentId != null && parentId !== undefined) ? parentId : (shell.getAttribute("data-folder") || "");
     document.getElementById("fx-form-new-folder").submit();
   }
+
+  document.getElementById("fx-btn-new-folder").addEventListener("click", function () {
+    promptNewFolder();
+  });
+  var emptyNew = document.getElementById("fx-empty-new-folder");
+  if (emptyNew) emptyNew.addEventListener("click", function () { promptNewFolder(); });
+
+  var uploadInput = document.getElementById("fx-upload-input");
+  var uploadForm = document.getElementById("fx-upload-form");
+  if (uploadInput && uploadForm) {
+    uploadInput.addEventListener("change", function () {
+      if (uploadInput.files && uploadInput.files.length) uploadForm.submit();
+    });
+  }
+
+  // Drag-and-drop files onto pane (Linux-style)
+  var dropzone = document.getElementById("fx-dropzone") || pane;
+  ;["dragenter", "dragover"].forEach(function (ev) {
+    pane.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      pane.classList.add("fx-drag-over");
+    });
+  });
+  ;["dragleave", "drop"].forEach(function (ev) {
+    pane.addEventListener(ev, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      pane.classList.remove("fx-drag-over");
+    });
+  });
+  pane.addEventListener("drop", function (e) {
+    var files = e.dataTransfer && e.dataTransfer.files;
+    if (!files || !files.length || !uploadInput || !uploadForm) return;
+    var dt = new DataTransfer();
+    for (var i = 0; i < files.length; i++) dt.items.add(files[i]);
+    uploadInput.files = dt.files;
+    uploadForm.submit();
+  });
 
   menu.addEventListener("click", function (e) {
     var btn = e.target.closest("[data-action]");
@@ -432,11 +577,12 @@
       return;
     }
     if (action === "new-folder" || (action === "new-folder")) {
-      promptNewFolder();
+      promptNewFolder(t && t.kind === "folder" ? t.id : undefined);
       return;
     }
     if (action === "add") {
-      location.href = shell.getAttribute("data-add");
+      if (uploadInput) uploadInput.click();
+      else location.href = shell.getAttribute("data-add");
       return;
     }
     if (!t) return;
@@ -445,7 +591,14 @@
       return;
     }
     if (action === "new-here" && t.kind === "folder") {
-      location.href = "/admin/locker/add?folder=" + encodeURIComponent(t.id);
+      // Upload into this folder
+      var uf = document.getElementById("fx-upload-form");
+      if (uf) {
+        var hid = uf.querySelector('input[name="folder_id"]');
+        if (hid) hid.value = t.id;
+        uf.querySelector('input[name="next"]').value = "/admin/locker/explorer?folder=" + encodeURIComponent(t.id);
+      }
+      if (uploadInput) uploadInput.click();
       return;
     }
     if (action === "preview" && t.kind === "doc") {

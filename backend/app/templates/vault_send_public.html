@@ -9,7 +9,31 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=35">
+<link rel="stylesheet" href="/static/vault.css?v=44">
+<style>
+.locker-file-print-list{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:.65rem; }
+.locker-file-print-item{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.75rem;
+  padding:.85rem 1rem; border:1px solid var(--v-line, rgba(255,255,255,.12));
+  border-radius:12px; background:rgba(255,255,255,.03);
+}
+.locker-file-print-main{ flex:1; min-width:12rem; }
+.locker-file-print-actions{ display:flex; flex-wrap:wrap; gap:.4rem; }
+.print-only{ display:none; }
+@media print{
+  body{ background:#fff !important; color:#111 !important; }
+  .public-brand, .public-foot, .no-print, .btn-close, .card-ico{ display:none !important; }
+  .public-wrap, .public-card, .card, .card-body{ box-shadow:none !important; border:none !important; background:#fff !important; }
+  .print-only{ display:block !important; }
+  .print-title{ font-size:1.25rem; font-weight:700; margin-bottom:1rem; color:#111; }
+  .locker-file-print-item{
+    break-inside:avoid; border:1px solid #ccc !important; background:#fff !important;
+    color:#111 !important; border-radius:0; padding:.5rem 0; margin:0; border-left:none !important; border-right:none !important;
+  }
+  .locker-file-print-item .text-muted, .locker-file-print-item .small{ color:#444 !important; }
+  .locker-file-print-list{ gap:0; }
+}
+</style>
 </head>
 <body>
 <div class="public-wrap">
@@ -24,7 +48,7 @@
         <span class="card-ico gold"><i class="bi bi-send"></i></span>
         <div>
           <h2 class="truncate">{{ send.name }}</h2>
-          <div class="card-sub">{% if send.send_type == 'locker' %}Document Vault · Share{% else %}Password Vault · Send{% endif %}</div>
+          <div class="card-sub">{% if send.send_type == 'locker' %}{% if (files_only|default(false)) or (payload and payload.locker_files_only) %}Document Vault · Files only{% else %}Document Vault · Share{% endif %}{% else %}Password Vault · Send{% endif %}</div>
         </div>
       </div>
       <div class="card-body">
@@ -217,7 +241,49 @@
 
         {% else %}
           <div class="stack">
-            {% if send.send_type == 'locker' or payload.locker_item_id %}
+            {% if send.send_type == 'locker' or payload.locker_item_id or payload.locker_files_only %}
+            {% if files_only|default(false) or payload.locker_files_only %}
+            <div class="locker-files-only" id="locker-files-only">
+              <div class="d-flex flex-wrap align-items-center gap-2 mb-3 no-print">
+                <div class="me-auto">
+                  <div class="fw-semibold">Files</div>
+                  <div class="small text-muted">{{ (locker_files|length) if locker_files is defined else 0 }} file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }} · ready to print</div>
+                </div>
+                <button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()">
+                  <i class="bi bi-printer"></i> Print
+                </button>
+              </div>
+              <div class="print-only print-title">Shared files</div>
+              {% if locker_files is defined and locker_files %}
+              <ul class="locker-file-print-list">
+                {% for f in locker_files %}
+                <li class="locker-file-print-item">
+                  <div class="locker-file-print-main">
+                    <div class="fw-semibold text-break">{{ f.name }}</div>
+                    <div class="small text-muted">
+                      {% if f.type %}{{ f.type }}{% else %}File{% endif %}
+                      {% if f.size %} · {{ (f.size / 1024)|round(0)|int }} KB{% endif %}
+                    </div>
+                  </div>
+                  <div class="locker-file-print-actions no-print">
+                    <a class="btn btn-primary btn-sm"
+                       href="/vault/public/{{ token }}/locker/view?file_id={{ f.id }}{% if pin_value %}&pin={{ pin_value|urlencode }}{% endif %}"
+                       target="_blank" rel="noopener">
+                      <i class="bi bi-eye"></i> Open
+                    </a>
+                    <a class="btn btn-outline-light btn-sm"
+                       href="/vault/public/{{ token }}/locker/download?file_id={{ f.id }}{% if pin_value %}&pin={{ pin_value|urlencode }}{% endif %}">
+                      <i class="bi bi-download"></i> Download
+                    </a>
+                  </div>
+                </li>
+                {% endfor %}
+              </ul>
+              {% else %}
+              <p class="text-muted mb-0">No files on this share.</p>
+              {% endif %}
+            </div>
+            {% else %}
             <div class="surface surface-quiet" style="padding:1rem;border-radius:12px">
               <div class="form-label mb-1">Document</div>
               <div class="fw-semibold">{{ payload.locker_title or send.name }}</div>
@@ -243,6 +309,7 @@
               <div class="form-label">Notes</div>
               <div class="surface surface-quiet text-break">{{ notes }}</div>
             </div>
+            {% endif %}
             {% endif %}
             {% elif payload.text %}
             <div>

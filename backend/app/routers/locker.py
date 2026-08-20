@@ -175,19 +175,80 @@ def _folder_outs(db: Session, user: models.User, items: list[models.LockerItem] 
     for item in items:
         if item.folder_id:
             counts[item.folder_id] = counts.get(item.folder_id, 0) + 1
+    rows = _folders_for(db, user)
+    child_counts: dict[str, int] = {}
+    for f in rows:
+        if f.parent_id:
+            child_counts[f.parent_id] = child_counts.get(f.parent_id, 0) + 1
     out: list[schemas.LockerFolderOut] = []
     dirty = False
-    for f in _folders_for(db, user):
+    for f in rows:
         titled = title_name(f.name)
         if titled and f.name != titled:
             f.name = titled
             dirty = True
         out.append(schemas.LockerFolderOut(
-            id=f.id, name=f.name, count=counts.get(f.id, 0), created_at=f.created_at,
+            id=f.id,
+            name=f.name,
+            parent_id=f.parent_id,
+            count=counts.get(f.id, 0),
+            child_count=child_counts.get(f.id, 0),
+            created_at=f.created_at,
         ))
     if dirty:
         db.commit()
     return out
+
+
+def _folder_tree(db: Session, user: models.User) -> list[schemas.LockerFolderTreeOut]:
+    """Depth-first flat tree for sidebar (Linux Places-style nested folders)."""
+    folders = _folder_outs(db, user)
+    by_parent: dict[str | None, list[schemas.LockerFolderOut]] = {}
+    for f in folders:
+        by_parent.setdefault(f.parent_id, []).append(f)
+    for kids in by_parent.values():
+        kids.sort(key=lambda x: (x.name or "").lower())
+    out: list[schemas.LockerFolderTreeOut] = []
+
+    def walk(parent_id: str | None, depth: int) -> None:
+        for f in by_parent.get(parent_id, []):
+            out.append(schemas.LockerFolderTreeOut(
+                id=f.id,
+                name=f.name,
+                parent_id=f.parent_id,
+                count=f.count,
+                child_count=f.child_count,
+                depth=depth,
+                created_at=f.created_at,
+            ))
+            walk(f.id, depth + 1)
+
+    walk(None, 0)
+    return out
+
+
+def _folder_crumbs(db: Session, user: models.User, folder_id: str) -> list[schemas.LockerFolderOut]:
+    folders = {f.id: f for f in _folders_for(db, user)}
+    crumbs: list[models.LockerFolder] = []
+    cur = folders.get(folder_id)
+    seen: set[str] = set()
+    while cur and cur.id not in seen:
+        seen.add(cur.id)
+        crumbs.append(cur)
+        cur = folders.get(cur.parent_id) if cur.parent_id else None
+    crumbs.reverse()
+    return [
+        schemas.LockerFolderOut(
+            id=f.id, name=f.name, parent_id=f.parent_id, count=0, child_count=0, created_at=f.created_at,
+        )
+        for f in crumbs
+    ]
+
+
+def _child_folder_outs(
+    db: Session, user: models.User, parent_id: str | None, items: list[models.LockerItem] | None = None,
+) -> list[schemas.LockerFolderOut]:
+    return [f for f in _folder_outs(db, user, items) if (f.parent_id or None) == (parent_id or None)]
 
 
 @router.get("/types", response_model=list[schemas.LockerTypeOut])
@@ -201,6 +262,8 @@ def list_types(
         counts[item.doc_type] = counts.get(item.doc_type, 0) + 1
     out = [schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES]
     for folder in _folder_outs(db, current_user, items):
+        if folder.parent_id:
+            continue  # only top-level custom folders in type chips
         out.append(schemas.LockerTypeOut(
             id=f"folder:{folder.id}", label=folder.name, count=folder.count, custom=True,
         ))
@@ -209,10 +272,23 @@ def list_types(
 
 @router.get("/folders", response_model=list[schemas.LockerFolderOut])
 def list_folders(
+    parent_id: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    if parent_id is not None:
+        # Explicit empty string → root children only
+        pid = (parent_id or "").strip() or None
+        return _child_folder_outs(db, current_user, pid)
     return _folder_outs(db, current_user)
+
+
+@router.get("/folders/tree", response_model=list[schemas.LockerFolderTreeOut])
+def list_folder_tree(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return _folder_tree(db, current_user)
 
 
 @router.post("/folders", response_model=schemas.LockerFolderOut, status_code=201)
@@ -225,27 +301,45 @@ def create_folder(
     name = title_name(body.name)
     if not name:
         raise HTTPException(status_code=422, detail="Folder name is required")
-    existing = (
-        db.query(models.LockerFolder)
-        .filter(
-            models.LockerFolder.user_id == vault_id(current_user),
-            models.LockerFolder.name.ilike(name),
-        )
-        .first()
+    parent = None
+    parent_id = (body.parent_id or "").strip() or None
+    if parent_id:
+        parent = _resolve_folder(db, current_user, parent_id)
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent folder not found")
+    q = db.query(models.LockerFolder).filter(
+        models.LockerFolder.user_id == vault_id(current_user),
+        models.LockerFolder.name.ilike(name),
     )
+    if parent:
+        q = q.filter(models.LockerFolder.parent_id == parent.id)
+    else:
+        q = q.filter(models.LockerFolder.parent_id.is_(None))
+    existing = q.first()
     if existing:
         if existing.name != name:
             existing.name = name
             db.commit()
             db.refresh(existing)
         return schemas.LockerFolderOut(
-            id=existing.id, name=existing.name, count=0, created_at=existing.created_at,
+            id=existing.id,
+            name=existing.name,
+            parent_id=existing.parent_id,
+            count=0,
+            child_count=0,
+            created_at=existing.created_at,
         )
-    row = models.LockerFolder(user_id=vault_id(current_user), name=name)
+    row = models.LockerFolder(
+        user_id=vault_id(current_user),
+        name=name,
+        parent_id=parent.id if parent else None,
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return schemas.LockerFolderOut(id=row.id, name=row.name, count=0, created_at=row.created_at)
+    return schemas.LockerFolderOut(
+        id=row.id, name=row.name, parent_id=row.parent_id, count=0, child_count=0, created_at=row.created_at,
+    )
 
 
 @router.delete("/folders/{folder_id}", status_code=204)
@@ -258,6 +352,11 @@ def delete_folder(
     folder = _resolve_folder(db, current_user, folder_id)
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
+    # Move nested folders up one level; unfile documents in this folder only.
+    db.query(models.LockerFolder).filter(
+        models.LockerFolder.parent_id == folder.id,
+        models.LockerFolder.user_id == vault_id(current_user),
+    ).update({models.LockerFolder.parent_id: folder.parent_id}, synchronize_session=False)
     db.query(models.LockerItem).filter(
         models.LockerItem.folder_id == folder.id,
         models.LockerItem.user_id == vault_id(current_user),
@@ -293,6 +392,7 @@ def locker_summary(
             name=p.name,
             relation=p.relation.value if p.relation else "other",
             count=person_counts.get(p.id, 0),
+            avatar_initials=p.avatar_initials or ((p.name or "?")[:1].upper()),
         )
         for p in _people_for(db, current_user)
     ]
@@ -689,6 +789,7 @@ def create_locker_send(
             max_views=body.max_views,
             require_grant=body.require_grant,
             require_email_otp=body.require_email_otp,
+            files_only=body.files_only,
             allowed_emails=body.allowed_emails or [],
         ),
         db=db,
