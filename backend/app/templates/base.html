@@ -69,10 +69,11 @@
   ] %}
 {% elif active_module == 'locker' %}
   {% set mod_key = 'locker' %}
+  {% set lk_person_q = ('?person=' ~ active_person_id) if active_person_id else '' %}
   {% set nav_items = [
     {'key':'lk_home','label':'All documents','short':'Docs','href':'/admin/locker','icon':'bi-safe2'},
-    {'key':'lk_explorer','label':'Document Explorer','short':'Explore','href':'/admin/locker/explorer','icon':'bi-folder2-open'},
-    {'key':'lk_add','label':'Add document','short':'Add','href':'/admin/locker/add','icon':'bi-plus-lg'},
+    {'key':'lk_explorer','label':'Document Explorer','short':'Explore','href':'/admin/locker/explorer' ~ lk_person_q,'icon':'bi-folder2-open'},
+    {'key':'lk_add','label':'Add document','short':'Add','href':'/admin/locker/add' ~ lk_person_q,'icon':'bi-plus-lg'},
     {'key':'lk_expiring','label':'Expiring soon','short':'Soon','href':'/admin/locker?expiring=1','icon':'bi-clock-history'}
   ] %}
 {% elif active_module == 'urls' %}
@@ -227,7 +228,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=46">
+<link rel="stylesheet" href="/static/vault.css?v=47">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">
@@ -346,7 +347,7 @@
 {% endif %}
 
 <script src="/static/vendor/bootstrap.bundle.min.js"></script>
-<script src="/static/vault-dialog.js?v=1"></script>
+<script src="/static/vault-dialog.js?v=2"></script>
 <script>
 (function(){
   var box = document.getElementById("photo-lightbox");

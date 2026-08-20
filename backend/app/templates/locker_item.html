@@ -433,7 +433,7 @@
                 <input class="form-check-input" type="checkbox" name="files_only" value="1" id="lk-share-files-only">
                 <label class="form-check-label" for="lk-share-files-only">Only file view mode</label>
               </div>
-              <div class="form-text">Hide document details. Recipients see a print-ready list of all files only.</div>
+              <div class="form-text">Hide document details. Recipients see files only — Print outputs the actual images/PDFs, not the file list.</div>
             </div>
           </div>
         </div>
@@ -480,6 +480,14 @@
     otp.addEventListener("change", syncOtp);
     syncOtp();
   }
+  function openShareFromHash() {
+    if (location.hash !== "#share-locker-modal") return;
+    var el = document.getElementById("share-locker-modal");
+    if (!el || !window.bootstrap || !bootstrap.Modal) return;
+    bootstrap.Modal.getOrCreateInstance(el).show();
+  }
+  openShareFromHash();
+  window.addEventListener("hashchange", openShareFromHash);
 })();
 </script>
 <script src="/static/vault-send-chat.js?v=1"></script>

@@ -281,7 +281,8 @@ def test_locker_document_share():
     unlocked = client.get(f"/vault/public/{token}/page", params={"pin": "4242"})
     assert unlocked.status_code == 200
     assert b"passport.pdf" in unlocked.content
-    assert b"ready to print" in unlocked.content or b"Files only" in unlocked.content or b"Print" in unlocked.content
+    assert b"Print" in unlocked.content
+    assert b"locker-print-sheet" in unlocked.content or b"js-locker-print-one" in unlocked.content
     # Files-only mode must not expose document metadata
     assert b"Renish" not in unlocked.content
     assert b"Passport scan" not in unlocked.content

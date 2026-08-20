@@ -1,9 +1,10 @@
 /*!
- * Vault custom dialogs — replaces native alert/confirm with a themed modal.
+ * Vault custom dialogs — replaces native alert/confirm/prompt with a themed modal.
  * Usage:
  *   data-confirm="Message?" on a <form> or submit <button>
  *   await vaultConfirm("Message?")
  *   await vaultAlert("Message")
+ *   await vaultPrompt("Folder name", { value: "New Folder", okText: "Create" })
  */
 (function () {
   "use strict";
@@ -12,11 +13,14 @@
   var titleEl = null;
   var bodyEl = null;
   var iconEl = null;
+  var fieldWrap = null;
+  var inputEl = null;
   var cancelBtn = null;
   var okBtn = null;
   var panel = null;
   var busy = false;
   var resolveFn = null;
+  var mode = "confirm";
 
   var DANGER_RE = /\b(delete|trash|remove|revoke|block|disconnect|forever|permanent|empty|destroy)\b/i;
 
@@ -34,6 +38,10 @@
       '  <div class="vdlg-copy">' +
       '    <h2 class="vdlg-title" id="vdlg-title">Confirm</h2>' +
       '    <p class="vdlg-body" id="vdlg-body"></p>' +
+      '    <div class="vdlg-field" id="vdlg-field" hidden>' +
+      '      <label class="visually-hidden" for="vdlg-input" id="vdlg-input-label">Value</label>' +
+      '      <input class="form-control" type="text" id="vdlg-input" autocomplete="off" maxlength="120">' +
+      "    </div>" +
       "  </div>" +
       '  <div class="vdlg-actions">' +
       '    <button type="button" class="btn btn-ghost vdlg-cancel" data-vdlg-cancel>Cancel</button>' +
@@ -44,6 +52,8 @@
     titleEl = root.querySelector(".vdlg-title");
     bodyEl = root.querySelector(".vdlg-body");
     iconEl = root.querySelector(".vdlg-icon i");
+    fieldWrap = root.querySelector("#vdlg-field");
+    inputEl = root.querySelector("#vdlg-input");
     cancelBtn = root.querySelector(".vdlg-cancel");
     okBtn = root.querySelector(".vdlg-ok");
     panel = root.querySelector(".vdlg-panel");
@@ -54,6 +64,13 @@
     okBtn.addEventListener("click", function () {
       finish(true);
     });
+    if (inputEl) {
+      inputEl.addEventListener("keydown", function (e) {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        finish(true);
+      });
+    }
     document.addEventListener("keydown", onKey);
   }
 
@@ -63,8 +80,9 @@
       e.preventDefault();
       finish(false);
     } else if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (mode === "prompt") return;
       var tag = (e.target && e.target.tagName) || "";
-      if (tag === "TEXTAREA" || tag === "A" || tag === "BUTTON") return;
+      if (tag === "TEXTAREA" || tag === "A" || tag === "BUTTON" || tag === "INPUT") return;
       e.preventDefault();
       finish(true);
     }
@@ -72,6 +90,15 @@
 
   function finish(ok) {
     if (!busy) return;
+    var promptValue = null;
+    if (ok && mode === "prompt" && inputEl) {
+      promptValue = (inputEl.value || "").trim();
+      if (!promptValue) {
+        inputEl.focus();
+        inputEl.select();
+        return;
+      }
+    }
     busy = false;
     root.classList.remove("is-open");
     window.setTimeout(function () {
@@ -80,7 +107,7 @@
     document.body.classList.remove("vdlg-open");
     var fn = resolveFn;
     resolveFn = null;
-    if (fn) fn(ok);
+    if (fn) fn(mode === "prompt" ? (ok ? promptValue : null) : ok);
   }
 
   function isDanger(message, opts) {
@@ -91,29 +118,62 @@
   function openDialog(message, opts) {
     ensureDom();
     opts = opts || {};
-    var mode = opts.mode || "confirm";
+    mode = opts.mode || "confirm";
     var danger = isDanger(message, opts);
+    var isPrompt = mode === "prompt";
 
-    titleEl.textContent = opts.title || (mode === "alert" ? "Notice" : danger ? "Please confirm" : "Confirm");
+    titleEl.textContent =
+      opts.title ||
+      (mode === "alert" ? "Notice" : isPrompt ? "Name" : danger ? "Please confirm" : "Confirm");
     bodyEl.textContent = message || "";
-    iconEl.className = "bi " + (opts.icon || (mode === "alert" ? "bi-info-circle" : danger ? "bi-trash3" : "bi-question-circle"));
+    bodyEl.hidden = !message;
+    iconEl.className =
+      "bi " +
+      (opts.icon ||
+        (mode === "alert"
+          ? "bi-info-circle"
+          : isPrompt
+            ? "bi-folder-plus"
+            : danger
+              ? "bi-trash3"
+              : "bi-question-circle"));
     root.classList.toggle("is-danger", danger && mode === "confirm");
     root.classList.toggle("is-alert", mode === "alert");
+    root.classList.toggle("is-prompt", isPrompt);
+
+    if (fieldWrap && inputEl) {
+      fieldWrap.hidden = !isPrompt;
+      if (isPrompt) {
+        inputEl.value = opts.value != null ? String(opts.value) : "";
+        inputEl.placeholder = opts.placeholder || "";
+        inputEl.maxLength = opts.maxLength || 120;
+        var lab = root.querySelector("#vdlg-input-label");
+        if (lab) lab.textContent = opts.inputLabel || opts.title || "Value";
+      }
+    }
 
     cancelBtn.hidden = mode === "alert";
     cancelBtn.textContent = opts.cancelText || "Cancel";
-    okBtn.textContent = opts.okText || (mode === "alert" ? "Got it" : danger ? "Confirm" : "OK");
-    okBtn.className = "btn vdlg-ok " + (danger && mode === "confirm" ? "btn-danger" : "btn-gold");
+    okBtn.textContent =
+      opts.okText ||
+      (mode === "alert" ? "Got it" : isPrompt ? "Save" : danger ? "Confirm" : "OK");
+    okBtn.className =
+      "btn vdlg-ok " + (danger && mode === "confirm" ? "btn-danger" : "btn-gold");
 
     return new Promise(function (resolve) {
-      if (busy && resolveFn) resolveFn(false);
+      if (busy && resolveFn) resolveFn(mode === "prompt" ? null : false);
       resolveFn = resolve;
       busy = true;
       root.hidden = false;
       document.body.classList.add("vdlg-open");
       requestAnimationFrame(function () {
         root.classList.add("is-open");
-        (mode === "alert" ? okBtn : cancelBtn).focus();
+        if (isPrompt && inputEl) {
+          inputEl.focus();
+          inputEl.select();
+        } else {
+          (mode === "alert" ? okBtn : cancelBtn).focus();
+        }
       });
     });
   }
@@ -130,6 +190,12 @@
     return openDialog(String(message == null ? "" : message), opts).then(function () {
       return true;
     });
+  }
+
+  function vaultPrompt(message, opts) {
+    opts = opts || {};
+    opts.mode = "prompt";
+    return openDialog(String(message == null ? "" : message), opts);
   }
 
   function confirmMessage(el) {
@@ -234,6 +300,7 @@
 
   window.vaultConfirm = vaultConfirm;
   window.vaultAlert = vaultAlert;
+  window.vaultPrompt = vaultPrompt;
   window.alert = function (message) {
     vaultAlert(message);
   };

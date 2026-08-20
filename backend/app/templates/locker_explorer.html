@@ -8,72 +8,44 @@
 } %}
 {% set place = place or 'home' %}
 {% set view = view or 'list' %}
-{% set qs_view = ('&view=' ~ view) if view == 'icons' else '' %}
+{% set pid = active_person_id or '' %}
+{% set person_param = ('person=' ~ pid) if pid else '' %}
+{% set qs_person = ('&' ~ person_param) if person_param else '' %}
+{% set qs_view = ('&view=icons') if view == 'icons' else '' %}
 {% if folder %}
-  {% set add_href = '/admin/locker/add?folder=' ~ folder %}
+  {% set add_href = '/admin/locker/add?folder=' ~ folder ~ qs_person %}
   {% set here_label = folder_name or 'Folder' %}
+  {% set here_base = '/admin/locker/explorer?folder=' ~ folder %}
 {% elif place == 'expiring' %}
-  {% set add_href = '/admin/locker/add' %}
+  {% set add_href = '/admin/locker/add' ~ (('?' ~ person_param) if person_param else '') %}
   {% set here_label = 'Expiring' %}
+  {% set here_base = '/admin/locker/explorer?place=expiring' %}
 {% elif place == 'unfiled' %}
-  {% set add_href = '/admin/locker/add' %}
+  {% set add_href = '/admin/locker/add' ~ (('?' ~ person_param) if person_param else '') %}
   {% set here_label = 'Unfiled' %}
+  {% set here_base = '/admin/locker/explorer?place=unfiled' %}
 {% elif doc_type %}
-  {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type %}
+  {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type ~ qs_person %}
   {% set here_label = type_label or (doc_type.replace('_', ' ') | title) %}
-{% elif person %}
-  {% set add_href = '/admin/locker/add?person=' ~ person %}
+  {% set here_base = '/admin/locker/explorer?doc_type=' ~ doc_type %}
+{% elif pid %}
+  {% set add_href = '/admin/locker/add?person=' ~ pid %}
   {% set here_label = (person_label | nice) if person_label else 'Profile' %}
+  {% set here_base = '/admin/locker/explorer?person=' ~ pid %}
 {% else %}
   {% set add_href = '/admin/locker/add' %}
   {% set here_label = 'Home' %}
+  {% set here_base = '/admin/locker/explorer' %}
 {% endif %}
 {% if view == 'icons' %}
-  {% if folder %}
-    {% set here_href = '/admin/locker/explorer?folder=' ~ folder ~ '&view=icons' %}
-    {% set list_href = '/admin/locker/explorer?folder=' ~ folder %}
-    {% set icons_href = here_href %}
-  {% elif place == 'expiring' %}
-    {% set here_href = '/admin/locker/explorer?place=expiring&view=icons' %}
-    {% set list_href = '/admin/locker/explorer?place=expiring' %}
-    {% set icons_href = here_href %}
-  {% elif place == 'unfiled' %}
-    {% set here_href = '/admin/locker/explorer?place=unfiled&view=icons' %}
-    {% set list_href = '/admin/locker/explorer?place=unfiled' %}
-    {% set icons_href = here_href %}
-  {% elif doc_type %}
-    {% set here_href = '/admin/locker/explorer?doc_type=' ~ doc_type ~ '&view=icons' %}
-    {% set list_href = '/admin/locker/explorer?doc_type=' ~ doc_type %}
-    {% set icons_href = here_href %}
-  {% else %}
-    {% set here_href = '/admin/locker/explorer?view=icons' %}
-    {% set list_href = '/admin/locker/explorer' %}
-    {% set icons_href = here_href %}
-  {% endif %}
+  {% set here_href = here_base ~ ('&' if '?' in here_base else '?') ~ 'view=icons' %}
+  {% set list_href = here_base %}
+  {% set icons_href = here_href %}
 {% else %}
-  {% if folder %}
-    {% set here_href = '/admin/locker/explorer?folder=' ~ folder %}
-    {% set list_href = here_href %}
-    {% set icons_href = '/admin/locker/explorer?folder=' ~ folder ~ '&view=icons' %}
-  {% elif place == 'expiring' %}
-    {% set here_href = '/admin/locker/explorer?place=expiring' %}
-    {% set list_href = here_href %}
-    {% set icons_href = '/admin/locker/explorer?place=expiring&view=icons' %}
-  {% elif place == 'unfiled' %}
-    {% set here_href = '/admin/locker/explorer?place=unfiled' %}
-    {% set list_href = here_href %}
-    {% set icons_href = '/admin/locker/explorer?place=unfiled&view=icons' %}
-  {% elif doc_type %}
-    {% set here_href = '/admin/locker/explorer?doc_type=' ~ doc_type %}
-    {% set list_href = here_href %}
-    {% set icons_href = '/admin/locker/explorer?doc_type=' ~ doc_type ~ '&view=icons' %}
-  {% else %}
-    {% set here_href = '/admin/locker/explorer' %}
-    {% set list_href = here_href %}
-    {% set icons_href = '/admin/locker/explorer?view=icons' %}
-  {% endif %}
+  {% set here_href = here_base %}
+  {% set list_href = here_base %}
+  {% set icons_href = here_base ~ ('&' if '?' in here_base else '?') ~ 'view=icons' %}
 {% endif %}
-{% set qs_view = ('&view=icons') if view == 'icons' else '' %}
 
 <div class="page-head mb-3 fx-page-head">
   <div>
@@ -193,6 +165,7 @@
         {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
         {% if place and place not in ('home', 'folder') and not folder %}<input type="hidden" name="place" value="{{ place }}">{% endif %}
         {% if doc_type %}<input type="hidden" name="doc_type" value="{{ doc_type }}">{% endif %}
+        {% if pid %}<input type="hidden" name="person" value="{{ pid }}">{% endif %}
         {% if view == 'icons' %}<input type="hidden" name="view" value="icons">{% endif %}
         <i class="bi bi-search"></i>
         <input type="search" name="q" value="{{ q }}" placeholder="Search…" aria-label="Search documents">
@@ -227,6 +200,7 @@
 
     <form id="fx-upload-form" method="post" action="/admin/locker/explorer/upload" enctype="multipart/form-data" class="d-none">
       <input type="hidden" name="folder_id" value="{{ folder or '' }}">
+      <input type="hidden" name="person_id" value="{{ pid }}">
       <input type="hidden" name="next" value="{{ here_href }}">
       <input type="file" name="files" id="fx-upload-input" multiple>
     </form>
@@ -519,12 +493,26 @@
   window.addEventListener("resize", hideMenu);
 
   function promptNewFolder(parentId) {
-    var name = window.prompt("New folder name", "New Folder");
-    if (!name || !name.trim()) return;
-    document.getElementById("fx-new-folder-name").value = name.trim();
-    var parent = document.getElementById("fx-new-folder-parent");
-    if (parent) parent.value = (parentId != null && parentId !== undefined) ? parentId : (shell.getAttribute("data-folder") || "");
-    document.getElementById("fx-form-new-folder").submit();
+    var ask = window.vaultPrompt || function (msg, opts) {
+      return Promise.resolve(window.prompt(msg || "Name", (opts && opts.value) || ""));
+    };
+    ask("Choose a name for the new folder.", {
+      title: "New folder",
+      value: "New Folder",
+      placeholder: "e.g. Bank statements",
+      okText: "Create",
+      icon: "bi-folder-plus"
+    }).then(function (name) {
+      if (!name) return;
+      document.getElementById("fx-new-folder-name").value = name;
+      var parent = document.getElementById("fx-new-folder-parent");
+      if (parent) {
+        parent.value = (parentId != null && parentId !== undefined)
+          ? parentId
+          : (shell.getAttribute("data-folder") || "");
+      }
+      document.getElementById("fx-form-new-folder").submit();
+    });
   }
 
   document.getElementById("fx-btn-new-folder").addEventListener("click", function () {
@@ -614,26 +602,54 @@
       return;
     }
     if (action === "rename" && t.kind === "folder") {
-      var nn = window.prompt("Rename folder", t.name);
-      if (!nn || !nn.trim() || nn.trim() === t.name) return;
-      var rf = document.getElementById("fx-form-rename-folder");
-      rf.action = "/admin/locker/folder/" + encodeURIComponent(t.id) + "/rename";
-      document.getElementById("fx-rename-folder-name").value = nn.trim();
-      rf.submit();
+      var askRename = window.vaultPrompt || function (msg, opts) {
+        return Promise.resolve(window.prompt(msg || "Rename", (opts && opts.value) || ""));
+      };
+      askRename("Enter a new name for this folder.", {
+        title: "Rename folder",
+        value: t.name || "",
+        placeholder: "Folder name",
+        okText: "Rename",
+        icon: "bi-pencil"
+      }).then(function (nn) {
+        if (!nn || nn === t.name) return;
+        var rf = document.getElementById("fx-form-rename-folder");
+        rf.action = "/admin/locker/folder/" + encodeURIComponent(t.id) + "/rename";
+        document.getElementById("fx-rename-folder-name").value = nn;
+        rf.submit();
+      });
       return;
     }
     if (action === "delete" && t.kind === "folder") {
-      if (!window.confirm('Delete folder "' + t.name + '"? Documents inside stay and become unfiled.')) return;
-      var df = document.getElementById("fx-form-delete-folder");
-      df.action = "/admin/locker/folder/" + encodeURIComponent(t.id) + "/delete";
-      df.submit();
+      var askDelFolder = window.vaultConfirm || function (msg) {
+        return Promise.resolve(window.confirm(msg));
+      };
+      askDelFolder('Delete folder "' + t.name + '"? Documents inside stay and become unfiled.', {
+        title: "Delete folder",
+        okText: "Delete folder",
+        danger: true
+      }).then(function (ok) {
+        if (!ok) return;
+        var df = document.getElementById("fx-form-delete-folder");
+        df.action = "/admin/locker/folder/" + encodeURIComponent(t.id) + "/delete";
+        df.submit();
+      });
       return;
     }
     if (action === "delete" && t.kind === "doc") {
-      if (!window.confirm('Delete document "' + t.name + '" and its files? This cannot be undone.')) return;
-      var dd = document.getElementById("fx-form-delete-doc");
-      dd.action = "/admin/locker/" + encodeURIComponent(t.id) + "/delete";
-      dd.submit();
+      var askDelDoc = window.vaultConfirm || function (msg) {
+        return Promise.resolve(window.confirm(msg));
+      };
+      askDelDoc('Delete document "' + t.name + '" and its files? This cannot be undone.', {
+        title: "Delete document",
+        okText: "Delete",
+        danger: true
+      }).then(function (ok) {
+        if (!ok) return;
+        var dd = document.getElementById("fx-form-delete-doc");
+        dd.action = "/admin/locker/" + encodeURIComponent(t.id) + "/delete";
+        dd.submit();
+      });
       return;
     }
     if (action === "move" && t.kind === "doc") {

@@ -3543,6 +3543,14 @@ def finance_recurring_delete(emi_id: str, request: Request, db: Session = Depend
 
 
 # ---------- Document Vault ----------
+def _lk_person_id(raw: str | None) -> str | None:
+    """Real family profile id from ?person= (ignore empty / 'none')."""
+    pid = (raw or "").strip()
+    if not pid or pid == "none":
+        return None
+    return pid
+
+
 def _lk_ctx(request, user, active_nav, **extra):
     ctx = {
         "request": request, "session_user": user, "active_nav": active_nav,
@@ -3587,12 +3595,15 @@ def locker_home(
         q=q or None, person_id=person or None,
         expiring=bool(expiring), db=db, current_user=user,
     )
+    pid = _lk_person_id(person)
+    person_name = next((p.name for p in summary.people if p.id == pid), None) if pid else None
     return templates.TemplateResponse("locker.html", _lk_ctx(
         request, user, "lk_expiring" if expiring else "lk_home",
         summary=summary, items=items, people=summary.people,
         folders=summary.folders,
         doc_type=type_filter, folder=folder_id, q=q, person=person, expiring=bool(expiring),
-        types=lk.LOCKER_TYPES, active_person_id=person or None,
+        types=lk.LOCKER_TYPES, active_person_id=pid,
+        active_person_name=person_name or "",
     ))
 
 
@@ -3616,6 +3627,7 @@ def locker_explorer(
     place_key = (place or "").strip() or ("folder" if folder_id else "home")
     type_filter = (doc_type or "").strip()
     person_filter = (person or "").strip()
+    person_id = _lk_person_id(person_filter)
     expiring = place_key == "expiring"
     unfiled = place_key == "unfiled"
     summary = lk.locker_summary(db=db, current_user=user)
@@ -3623,7 +3635,7 @@ def locker_explorer(
         doc_type=type_filter or None,
         folder_id=folder_id or None,
         q=q or None,
-        person_id=person_filter or None,
+        person_id=person_id or (person_filter if person_filter == "none" else None),
         expiring=expiring,
         db=db,
         current_user=user,
@@ -3666,7 +3678,7 @@ def locker_explorer(
         doc_type=type_filter, type_label=type_label, person=person_filter,
         person_label=person_label, q=q,
         view=view_mode, expiring=expiring, unfiled=unfiled,
-        active_person_id=person_filter or None,
+        active_person_id=_lk_person_id(person_filter),
     ))
 
 
@@ -3674,6 +3686,7 @@ def locker_explorer(
 async def locker_explorer_upload(
     request: Request,
     folder_id: str = Form(""),
+    person_id: str = Form(""),
     next: str = Form(""),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
@@ -3685,6 +3698,7 @@ async def locker_explorer_upload(
     if denied:
         return denied
     fid = (folder_id or "").strip() or None
+    pid = _lk_person_id(person_id)
     uploads = [f for f in (files or []) if f and f.filename]
     if not uploads:
         dest = (next or "").strip() or "/admin/locker/explorer"
@@ -3696,7 +3710,7 @@ async def locker_explorer_upload(
             doc_type="other",
             custom_type=None,
             folder_id=fid,
-            person_id=None,
+            person_id=pid,
             holder_name=None,
             issuer=None,
             id_number=None,
@@ -3710,7 +3724,12 @@ async def locker_explorer_upload(
         )
     dest = (next or "").strip()
     if not (dest.startswith("/admin/locker") and "://" not in dest):
-        dest = f"/admin/locker/explorer?folder={fid}" if fid else "/admin/locker/explorer"
+        qs = []
+        if fid:
+            qs.append(f"folder={fid}")
+        if pid:
+            qs.append(f"person={pid}")
+        dest = "/admin/locker/explorer" + (("?" + "&".join(qs)) if qs else "")
     return RedirectResponse(dest, status_code=302)
 
 
@@ -3728,11 +3747,14 @@ def locker_add_page(
         return RedirectResponse("/admin/login", status_code=302)
     people = _lk_people(db, user)
     folders = lk._folder_outs(db, user)
+    pid = _lk_person_id(person)
+    person_name = next((p.name for p in people if p.id == pid), None) if pid else None
     return templates.TemplateResponse("locker_add.html", _lk_ctx(
         request, user, "lk_add", types=lk.LOCKER_TYPES, people=people, folders=folders,
         prefill_type=doc_type or "other", prefill_folder=folder or "",
-        prefill_person=person or "",
-        active_person_id=person or None,
+        prefill_person=pid or "",
+        prefill_person_name=person_name or "",
+        active_person_id=pid,
     ))
 
 
@@ -3761,7 +3783,7 @@ async def locker_add(
     item = await lk.create_item(
         title=title, doc_type=doc_type, custom_type=custom_type or None,
         folder_id=folder_id or None,
-        person_id=person_id or None,
+        person_id=_lk_person_id(person_id),
         holder_name=holder_name or None, issuer=issuer or None,
         id_number=id_number or None, issued_on=issued_on or None,
         expiry_date=expiry_date or None, tags=tags or None, notes=notes or None,

@@ -2482,6 +2482,16 @@ body.vdlg-open{ overflow:hidden; }
 .vdlg-body{
   margin:0; color:var(--v-ink-2); font-size:.9375rem; line-height:1.45;
 }
+.vdlg-field{ margin-top:.85rem; }
+.vdlg-field .form-control{
+  background:var(--v-surface); border-color:var(--v-line-2); color:var(--v-ink);
+}
+.vdlg-field .form-control:focus{
+  border-color:var(--v-gold); box-shadow:0 0 0 3px rgba(217,185,120,0.18);
+}
+.vdlg.is-prompt .vdlg-icon{
+  background:var(--v-gold-soft); border-color:var(--v-gold-line); color:var(--v-gold);
+}
 .vdlg-actions{
   display:flex; justify-content:flex-end; gap:.5rem; margin-top:1.25rem;
 }

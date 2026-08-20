@@ -19,19 +19,32 @@
 }
 .locker-file-print-main{ flex:1; min-width:12rem; }
 .locker-file-print-actions{ display:flex; flex-wrap:wrap; gap:.4rem; }
-.print-only{ display:none; }
+.print-only, .locker-print-sheet{ display:none; }
 @media print{
-  body{ background:#fff !important; color:#111 !important; }
-  .public-brand, .public-foot, .no-print, .btn-close, .card-ico{ display:none !important; }
-  .public-wrap, .public-card, .card, .card-body{ box-shadow:none !important; border:none !important; background:#fff !important; }
-  .print-only{ display:block !important; }
-  .print-title{ font-size:1.25rem; font-weight:700; margin-bottom:1rem; color:#111; }
-  .locker-file-print-item{
-    break-inside:avoid; border:1px solid #ccc !important; background:#fff !important;
-    color:#111 !important; border-radius:0; padding:.5rem 0; margin:0; border-left:none !important; border-right:none !important;
+  @page{ margin:8mm; }
+  html, body{ background:#fff !important; color:#111 !important; height:auto !important; }
+  .public-brand, .public-foot, .no-print, .btn-close, .card-ico,
+  .card-header, .locker-file-print-list, .print-title{ display:none !important; }
+  .public-wrap, .public-card, .card, .card-body{
+    box-shadow:none !important; border:none !important; background:#fff !important;
+    padding:0 !important; margin:0 !important; max-width:none !important; width:100% !important;
   }
-  .locker-file-print-item .text-muted, .locker-file-print-item .small{ color:#444 !important; }
-  .locker-file-print-list{ gap:0; }
+  .locker-print-sheet{ display:block !important; }
+  .locker-print-page{
+    break-after:page; page-break-after:always;
+    margin:0; padding:0; text-align:center;
+  }
+  .locker-print-page:last-child{ break-after:auto; page-break-after:auto; }
+  .locker-print-page img{
+    display:block; max-width:100%; max-height:96vh; width:auto; height:auto;
+    margin:0 auto; object-fit:contain;
+  }
+  .locker-print-caption{
+    display:block; margin-top:.4rem; font-size:10pt; color:#333; font-weight:600;
+  }
+  .locker-print-fallback{
+    text-align:left; padding:1rem 0; color:#111; font-size:12pt;
+  }
 }
 </style>
 </head>
@@ -247,16 +260,20 @@
               <div class="d-flex flex-wrap align-items-center gap-2 mb-3 no-print">
                 <div class="me-auto">
                   <div class="fw-semibold">Files</div>
-                  <div class="small text-muted">{{ (locker_files|length) if locker_files is defined else 0 }} file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }} · ready to print</div>
+                  <div class="small text-muted">{{ (locker_files|length) if locker_files is defined else 0 }} file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }} · print opens the actual file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }}</div>
                 </div>
-                <button type="button" class="btn btn-outline-light btn-sm" onclick="window.print()">
+                <button type="button" class="btn btn-outline-light btn-sm" id="locker-print-btn">
                   <i class="bi bi-printer"></i> Print
                 </button>
               </div>
-              <div class="print-only print-title">Shared files</div>
               {% if locker_files is defined and locker_files %}
-              <ul class="locker-file-print-list">
+              <ul class="locker-file-print-list no-print">
                 {% for f in locker_files %}
+                {% set view_qs = 'file_id=' ~ f.id %}
+                {% if pin_value %}{% set view_qs = view_qs ~ '&pin=' ~ (pin_value|urlencode) %}{% endif %}
+                {% set view_href = '/vault/public/' ~ token ~ '/locker/view?' ~ view_qs %}
+                {% set dl_href = '/vault/public/' ~ token ~ '/locker/download?' ~ view_qs %}
+                {% set ft = (f.type or '')|lower %}
                 <li class="locker-file-print-item">
                   <div class="locker-file-print-main">
                     <div class="fw-semibold text-break">{{ f.name }}</div>
@@ -265,20 +282,48 @@
                       {% if f.size %} · {{ (f.size / 1024)|round(0)|int }} KB{% endif %}
                     </div>
                   </div>
-                  <div class="locker-file-print-actions no-print">
-                    <a class="btn btn-primary btn-sm"
-                       href="/vault/public/{{ token }}/locker/view?file_id={{ f.id }}{% if pin_value %}&pin={{ pin_value|urlencode }}{% endif %}"
-                       target="_blank" rel="noopener">
+                  <div class="locker-file-print-actions">
+                    <a class="btn btn-primary btn-sm" href="{{ view_href }}" target="_blank" rel="noopener">
                       <i class="bi bi-eye"></i> Open
                     </a>
-                    <a class="btn btn-outline-light btn-sm"
-                       href="/vault/public/{{ token }}/locker/download?file_id={{ f.id }}{% if pin_value %}&pin={{ pin_value|urlencode }}{% endif %}">
+                    <button type="button" class="btn btn-outline-light btn-sm js-locker-print-one"
+                            data-href="{{ view_href }}"
+                            data-kind="{% if ft.startswith('image/') %}image{% elif 'pdf' in ft %}pdf{% else %}other{% endif %}"
+                            data-name="{{ f.name }}">
+                      <i class="bi bi-printer"></i> Print
+                    </button>
+                    <a class="btn btn-outline-light btn-sm" href="{{ dl_href }}">
                       <i class="bi bi-download"></i> Download
                     </a>
                   </div>
                 </li>
                 {% endfor %}
               </ul>
+              {# Actual file pixels for browser print — not the file-name list #}
+              <div class="locker-print-sheet" id="locker-print-sheet" aria-hidden="true">
+                {% for f in locker_files %}
+                {% set view_qs = 'file_id=' ~ f.id %}
+                {% if pin_value %}{% set view_qs = view_qs ~ '&pin=' ~ (pin_value|urlencode) %}{% endif %}
+                {% set view_href = '/vault/public/' ~ token ~ '/locker/view?' ~ view_qs %}
+                {% set ft = (f.type or '')|lower %}
+                <div class="locker-print-page" data-kind="{% if ft.startswith('image/') %}image{% elif 'pdf' in ft %}pdf{% else %}other{% endif %}">
+                  {% if ft.startswith('image/') %}
+                  <img src="{{ view_href }}" alt="{{ f.name }}" loading="eager">
+                  <span class="locker-print-caption">{{ f.name }}</span>
+                  {% elif 'pdf' in ft %}
+                  <div class="locker-print-fallback">
+                    <strong>{{ f.name }}</strong>
+                    <p>PDF — use Open, then print from the PDF viewer, or tap Print next to this file.</p>
+                  </div>
+                  {% else %}
+                  <div class="locker-print-fallback">
+                    <strong>{{ f.name }}</strong>
+                    <p>This file type can’t be printed from the list. Open or download it first.</p>
+                  </div>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
               {% else %}
               <p class="text-muted mb-0">No files on this share.</p>
               {% endif %}
@@ -427,5 +472,63 @@
 VaultSendVideo.guest({ token: {{ token|tojson }} });
 </script>
 {% endif %}
+<script>
+(function () {
+  function waitForImages(root, done) {
+    var imgs = root ? root.querySelectorAll("img") : [];
+    var left = 0;
+    function tick() {
+      left -= 1;
+      if (left <= 0) done();
+    }
+    imgs.forEach(function (img) {
+      if (img.complete && img.naturalWidth) return;
+      left += 1;
+      img.addEventListener("load", tick, { once: true });
+      img.addEventListener("error", tick, { once: true });
+    });
+    if (left === 0) done();
+  }
+
+  function printSheet() {
+    var sheet = document.getElementById("locker-print-sheet");
+    waitForImages(sheet, function () { window.print(); });
+  }
+
+  function printOne(href, kind, name) {
+    if (kind === "pdf" || kind === "other") {
+      window.open(href, "_blank", "noopener");
+      return;
+    }
+    var w = window.open("", "_blank", "noopener");
+    if (!w) {
+      window.open(href, "_blank", "noopener");
+      return;
+    }
+    var safeName = (name || "file").replace(/[<>&"]/g, "");
+    w.document.write(
+      "<!DOCTYPE html><html><head><title>" + safeName + "</title>" +
+      "<style>@page{margin:8mm}html,body{margin:0;background:#fff;text-align:center}" +
+      "img{max-width:100%;max-height:96vh;object-fit:contain}</style></head><body>" +
+      "<img id=p src=\"" + href.replace(/"/g, "&quot;") + "\" alt=\"" + safeName + "\">" +
+      "<script>var i=document.getElementById('p');function go(){setTimeout(function(){window.print()},50)}" +
+      "if(i.complete)go();else{i.onload=go;i.onerror=go}<\\/script></body></html>"
+    );
+    w.document.close();
+  }
+
+  var allBtn = document.getElementById("locker-print-btn");
+  if (allBtn) allBtn.addEventListener("click", printSheet);
+  document.querySelectorAll(".js-locker-print-one").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      printOne(
+        btn.getAttribute("data-href") || "",
+        btn.getAttribute("data-kind") || "other",
+        btn.getAttribute("data-name") || ""
+      );
+    });
+  });
+})();
+</script>
 </body>
 </html>

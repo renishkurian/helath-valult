@@ -115,8 +115,8 @@ private fun relationLabel(rel: String?): String = when (rel?.lowercase()) {
 fun LockerListScreen(
     repository: HealthVaultRepository,
     onOpenItem: (String) -> Unit,
-    onAdd: (docType: String?, folderId: String?) -> Unit,
-    onScan: (docType: String?, folderId: String?) -> Unit = onAdd,
+    onAdd: (docType: String?, folderId: String?, personId: String?) -> Unit,
+    onScan: (docType: String?, folderId: String?, personId: String?) -> Unit = onAdd,
     onOpenModules: () -> Unit,
     expiringOnly: Boolean = false
 ) {
@@ -388,7 +388,7 @@ fun LockerListScreen(
         ) {
             if (!expiringOnly) {
                 ExtendedFloatingActionButton(
-                    onClick = { onScan(type, folderId) },
+                    onClick = { onScan(type, folderId, personId?.takeIf { it != "none" }) },
                     containerColor = VaultTeal,
                     contentColor = TextDark,
                     icon = { Icon(Icons.Filled.DocumentScanner, contentDescription = null) },
@@ -396,7 +396,7 @@ fun LockerListScreen(
                 )
             }
             FloatingActionButton(
-                onClick = { onAdd(type, folderId) },
+                onClick = { onAdd(type, folderId, personId?.takeIf { it != "none" }) },
                 containerColor = CardSurfaceRaised,
                 contentColor = Ink
             ) {
@@ -411,6 +411,7 @@ fun LockerAddScreen(
     repository: HealthVaultRepository,
     defaultType: String?,
     defaultFolderId: String? = null,
+    defaultPersonId: String? = null,
     startWithScanner: Boolean = false,
     onDone: () -> Unit,
     onBack: () -> Unit
@@ -421,7 +422,7 @@ fun LockerAddScreen(
     var docType by remember { mutableStateOf(defaultType ?: "aadhaar") }
     var customType by remember { mutableStateOf("") }
     var folderId by remember { mutableStateOf(defaultFolderId) }
-    var personId by remember { mutableStateOf<String?>(null) }
+    var personId by remember { mutableStateOf(defaultPersonId) }
     var title by remember { mutableStateOf("") }
     var holder by remember { mutableStateOf("") }
     var issuer by remember { mutableStateOf("") }
@@ -441,6 +442,9 @@ fun LockerAddScreen(
         runCatching {
             folders = repository.listLockerFolders()
             people = repository.listPeople()
+            if (holder.isBlank() && !defaultPersonId.isNullOrBlank()) {
+                people.firstOrNull { it.id == defaultPersonId }?.let { holder = niceName(it.name) }
+            }
         }
     }
 

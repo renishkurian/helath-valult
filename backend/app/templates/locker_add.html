@@ -4,18 +4,31 @@
 {% set rel_label = {'self':'You','spouse':'Spouse','child':'Child','parent':'Parent','other':'Other'} %}
 <div class="page-head">
   <div class="d-flex align-items-start gap-3">
-    <a class="btn btn-ghost btn-icon" href="/admin/locker" aria-label="Back to locker"><i class="bi bi-arrow-left"></i></a>
+    <a class="btn btn-ghost btn-icon" href="/admin/locker{% if prefill_person %}?person={{ prefill_person }}{% endif %}" aria-label="Back to locker"><i class="bi bi-arrow-left"></i></a>
     <div>
       <div class="eyebrow">
-        <a href="/admin/locker">Locker</a>
+        <a href="/admin/locker{% if prefill_person %}?person={{ prefill_person }}{% endif %}">Locker</a>
         <i class="bi bi-chevron-right"></i>
         New entry
       </div>
       <h1 class="page-title">Add document</h1>
-      <p class="page-lead">Scan on Android (edge detect, multi-page, PDF) or upload here. ID numbers and notes are encrypted on disk.</p>
+      <p class="page-lead">
+        {% if prefill_person and prefill_person_name %}
+        Adding for <strong>{{ prefill_person_name | nice }}</strong> — same as Health Vault when a member is selected.
+        {% else %}
+        Scan on Android (edge detect, multi-page, PDF) or upload here. ID numbers and notes are encrypted on disk.
+        {% endif %}
+      </p>
     </div>
   </div>
 </div>
+
+{% if prefill_person and prefill_person_name %}
+<div class="alert alert-info d-flex align-items-center gap-2 mb-3" role="status">
+  <i class="bi bi-person-check"></i>
+  <span>This document will be filed under <strong>{{ prefill_person_name | nice }}</strong>. <a href="/admin/locker/add">Change profile</a></span>
+</div>
+{% endif %}
 
 <div class="row g-3">
   <div class="col-xl-8">
@@ -54,14 +67,20 @@
             </div>
             <div class="col-md-6">
               <label class="form-label" for="lk-person">Family profile</label>
+              {% if prefill_person %}
+              <input type="hidden" name="person_id" value="{{ prefill_person }}">
+              <input class="form-control" id="lk-person" value="{{ prefill_person_name | nice }}" readonly>
+              <div class="form-text">Locked to the profile you selected. <a href="/admin/locker/add">Pick a different profile</a></div>
+              {% else %}
               <select class="form-select" id="lk-person" name="person_id">
                 <option value="">Unassigned</option>
                 {% for p in people %}
                 {% set rel = p.relation.value if p.relation and p.relation.value is defined else (p.relation or '') %}
-                <option value="{{ p.id }}" {% if prefill_person==p.id %}selected{% endif %}>{{ p.name | nice }}{% if rel %} · {{ rel_label.get(rel, rel|title) }}{% endif %}</option>
+                <option value="{{ p.id }}">{{ p.name | nice }}{% if rel %} · {{ rel_label.get(rel, rel|title) }}{% endif %}</option>
                 {% endfor %}
               </select>
-              <div class="form-text">Store this under someone’s profile. <a href="/admin/family">Manage family</a></div>
+              <div class="form-text">Or select a member on the locker home first — add will follow that profile. <a href="/admin/family">Manage family</a></div>
+              {% endif %}
             </div>
             <div class="col-md-6">
               <label class="form-label" for="lk-title">Title <span class="req">*</span></label>
@@ -69,7 +88,7 @@
             </div>
             <div class="col-md-6">
               <label class="form-label" for="lk-holder">Holder</label>
-              <input class="form-control" id="lk-holder" name="holder_name" placeholder="Whose document (defaults to profile)">
+              <input class="form-control" id="lk-holder" name="holder_name" value="{{ prefill_person_name | nice if prefill_person_name else '' }}" placeholder="Whose document (defaults to profile)">
             </div>
             <div class="col-md-6">
               <label class="form-label" for="lk-issuer">Issuer</label>
