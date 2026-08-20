@@ -8,10 +8,16 @@
 } %}
 {% set rel_label = {'self':'You','spouse':'Spouse','child':'Child','parent':'Parent','other':'Family'} %}
 {% set person = person or '' %}
+{% set folder = folder or '' %}
 {% set qs_type = ('&doc_type=' ~ doc_type) if doc_type else '' %}
+{% set qs_folder = ('&folder=' ~ folder) if folder else '' %}
 {% set qs_person = ('&person=' ~ person) if person else '' %}
-{% if person and person != 'none' and doc_type %}
+{% if person and person != 'none' and folder %}
+  {% set add_href = '/admin/locker/add?folder=' ~ folder ~ '&person=' ~ person %}
+{% elif person and person != 'none' and doc_type %}
   {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type ~ '&person=' ~ person %}
+{% elif folder %}
+  {% set add_href = '/admin/locker/add?folder=' ~ folder %}
 {% elif person and person != 'none' %}
   {% set add_href = '/admin/locker/add?person=' ~ person %}
 {% elif doc_type %}
@@ -68,7 +74,7 @@
       <div class="lbl"><i class="bi bi-list-ul"></i> Showing</div>
       <div class="val">{{ items | length }}</div>
       <div class="sub">
-        {% if q %}search across everyone{% elif expiring %}expiring soon{% elif person == 'none' %}unassigned{% elif person %}one profile{% elif doc_type %}one document type{% else %}all documents{% endif %}
+        {% if q %}search across everyone{% elif expiring %}expiring soon{% elif person == 'none' %}unassigned{% elif person %}one profile{% elif folder %}one folder{% elif doc_type %}one document type{% else %}all documents{% endif %}
       </div>
     </div>
   </div>
@@ -76,6 +82,7 @@
 
 <form class="filter-bar" method="get" action="/admin/locker">
   {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
+  {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
   <div class="search-field">
     <i class="bi bi-search"></i>
     <label class="visually-hidden" for="lk-q">Search documents</label>
@@ -89,7 +96,7 @@
     {% endfor %}
   </select>
   <button class="btn btn-outline-light" type="submit"><i class="bi bi-funnel"></i> Filter</button>
-  {% if q or doc_type or expiring or person %}
+  {% if q or doc_type or folder or expiring or person %}
   <a class="btn btn-ghost" href="/admin/locker">Clear</a>
   {% endif %}
 </form>
@@ -99,19 +106,19 @@
   <a class="btn btn-ghost btn-sm" href="/admin/family"><i class="bi bi-people"></i> Manage family</a>
 </div>
 <div class="folder-grid mb-3">
-  <a class="folder {% if not person and not expiring %}on{% endif %}" href="/admin/locker?{{ ('doc_type=' ~ doc_type) if doc_type else '' }}">
+  <a class="folder {% if not person and not expiring %}on{% endif %}" href="/admin/locker?{{ ('doc_type=' ~ doc_type) if doc_type else (('folder=' ~ folder) if folder else '') }}">
     <span class="folder-name"><i class="bi bi-collection"></i> All people</span>
     <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
   </a>
-  <a class="folder {% if person == 'none' %}on{% endif %}" href="/admin/locker?person=none{{ qs_type }}">
+  <a class="folder {% if person == 'none' %}on{% endif %}" href="/admin/locker?person=none{{ qs_type }}{{ qs_folder }}">
     <span class="folder-name"><i class="bi bi-dash-lg"></i> Unassigned</span>
     <span class="fcount">{{ '%02d'|format(summary.unassigned or 0) }}</span>
   </a>
   {% for p in summary.people %}
-  <a class="folder {% if person == p.id %}on{% endif %}" href="/admin/locker?person={{ p.id }}{{ qs_type }}">
+  <a class="folder {% if person == p.id %}on{% endif %}" href="/admin/locker?person={{ p.id }}{{ qs_type }}{{ qs_folder }}">
     <span class="folder-name">
       <span class="folder-dot" style="background:#43D9C4"></span>
-      {{ p.name }}
+      {{ p.name | nice }}
       <span class="small text-faint ms-1">{{ rel_label.get(p.relation, p.relation) }}</span>
     </span>
     <span class="fcount">{{ '%02d'|format(p.count) }}</span>
@@ -140,9 +147,11 @@
   </div>
 </div>
 
-<div class="section-head"><h2>Document types</h2></div>
-<div class="folder-grid mb-4">
-  <a class="folder {% if not doc_type and not expiring %}on{% endif %}" href="/admin/locker?{{ ('person=' ~ person) if person else '' }}">
+<div class="section-head d-flex flex-wrap align-items-center justify-content-between gap-2">
+  <h2>Document types &amp; folders</h2>
+</div>
+<div class="folder-grid mb-3">
+  <a class="folder {% if not doc_type and not folder and not expiring %}on{% endif %}" href="/admin/locker?{{ ('person=' ~ person) if person else '' }}">
     <span class="folder-name"><i class="bi bi-collection"></i> All types</span>
     <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
   </a>
@@ -150,7 +159,7 @@
     <span class="folder-name"><i class="bi bi-clock-history"></i> Expiring</span>
     <span class="fcount">{{ '%02d'|format(summary.expiring) }}</span>
   </a>
-  {% for t in summary.types %}
+  {% for t in summary.types if not t.custom %}
   <a class="folder {% if doc_type==t.id %}on{% endif %}" href="/admin/locker?doc_type={{ t.id }}{{ qs_person }}">
     <span class="folder-name">
       <span class="folder-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
@@ -159,6 +168,27 @@
     <span class="fcount">{{ '%02d'|format(t.count) }}</span>
   </a>
   {% endfor %}
+  {% for f in summary.folders %}
+  <a class="folder {% if folder==f.id %}on{% endif %}" href="/admin/locker?folder={{ f.id }}{{ qs_person }}">
+    <span class="folder-name">
+      <i class="bi bi-folder2" style="color:#F0A94E"></i>
+      {{ f.name }}
+    </span>
+    <span class="fcount">{{ '%02d'|format(f.count) }}</span>
+  </a>
+  {% endfor %}
+</div>
+<div class="card mb-4">
+  <div class="card-body py-3">
+    <form class="d-flex flex-wrap gap-2 align-items-end" method="post" action="/admin/locker/folder">
+      <div class="flex-grow-1" style="min-width:12rem">
+        <label class="form-label small mb-0" for="lk-folder-name">Create custom folder</label>
+        <input class="form-control" id="lk-folder-name" name="name" required placeholder="e.g. Gas book, School papers, Bank">
+      </div>
+      <button class="btn btn-outline-light" type="submit"><i class="bi bi-folder-plus"></i> Create folder</button>
+    </form>
+    <div class="form-text mt-2 mb-0">Custom folders sit beside Aadhaar / PAN. Add documents into a folder from Scan / add.</div>
+  </div>
 </div>
 
 <div class="section-head"><h2>Documents</h2></div>
@@ -189,7 +219,7 @@
           </td>
           <td>
             {% if item.person_name %}
-              <a class="text-reset text-decoration-none" href="/admin/locker?person={{ item.person_id }}">{{ item.person_name }}</a>
+              <a class="text-reset text-decoration-none" href="/admin/locker?person={{ item.person_id }}">{{ item.person_name | nice }}</a>
             {% else %}
               <span class="text-faint">Unassigned</span>
             {% endif %}
@@ -210,11 +240,21 @@
           </td>
           <td class="mono text-muted">{{ item.file_count }}</td>
           <td class="table-actions">
-            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}">
+            <a class="btn btn-primary btn-sm" href="/admin/locker/{{ item.id }}">
               <i class="bi bi-pencil"></i> Edit
             </a>
-            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}/download">
-              <i class="bi bi-box-arrow-up-right"></i> Open
+            {% set ft = (item.file_type or '')|lower %}
+            {% if ft == 'application/pdf' %}
+              {% set open_kind = 'pdf' %}
+            {% elif ft and not ft.startswith('image/') %}
+              {% set open_kind = 'other' %}
+            {% else %}
+              {% set open_kind = 'image' %}
+            {% endif %}
+            <a class="btn btn-outline-light btn-sm js-photo"
+               href="/admin/locker/{{ item.id }}/view"
+               data-kind="{{ open_kind }}">
+              <i class="bi bi-eye"></i> Open
             </a>
           </td>
         </tr>
@@ -223,7 +263,7 @@
           <td colspan="6">
             <div class="empty-state">
               <div class="empty-ico"><i class="bi bi-safe2"></i></div>
-              {% if q or doc_type or expiring or person %}
+              {% if q or doc_type or folder or expiring or person %}
                 <div class="empty-title">Nothing matches this filter</div>
                 <p>Try another search term, or clear the filter to see every document.</p>
                 <a class="btn btn-outline-light" href="/admin/locker"><i class="bi bi-arrow-counterclockwise"></i> Clear filter</a>

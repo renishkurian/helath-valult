@@ -108,6 +108,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "locker_items": [
         ("person_id", "VARCHAR(32)"),
+        ("folder_id", "VARCHAR(32)"),
     ],
 }
 
@@ -150,6 +151,8 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_vault_send_chat_messages_request_id", "vault_send_chat_messages", "request_id"),
     ("ix_vault_send_chat_messages_created_at", "vault_send_chat_messages", "created_at"),
     ("ix_locker_items_person_id", "locker_items", "person_id"),
+    ("ix_locker_items_folder_id", "locker_items", "folder_id"),
+    ("ix_locker_folders_user_id", "locker_folders", "user_id"),
 ]
 
 

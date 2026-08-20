@@ -1374,6 +1374,7 @@ class LockerItemUpdate(BaseModel):
     title: Optional[str] = None
     doc_type: Optional[str] = None
     custom_type: Optional[str] = None
+    folder_id: Optional[str] = None
     person_id: Optional[str] = None
     holder_name: Optional[str] = None
     issuer: Optional[str] = None
@@ -1392,11 +1393,24 @@ class LockerPersonOut(BaseModel):
     count: int = 0
 
 
+class LockerFolderIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class LockerFolderOut(BaseModel):
+    id: str
+    name: str
+    count: int = 0
+    created_at: datetime
+
+
 class LockerItemOut(BaseModel):
     id: str
     doc_type: str
     type_label: str
     custom_type: Optional[str] = None
+    folder_id: Optional[str] = None
+    folder_name: Optional[str] = None
     person_id: Optional[str] = None
     person_name: Optional[str] = None
     title: str
@@ -1418,6 +1432,7 @@ class LockerTypeOut(BaseModel):
     id: str
     label: str
     count: int = 0
+    custom: bool = False
 
 
 class LockerSummaryOut(BaseModel):
@@ -1425,6 +1440,7 @@ class LockerSummaryOut(BaseModel):
     expiring: int = 0
     unassigned: int = 0
     types: List[LockerTypeOut] = []
+    folders: List[LockerFolderOut] = []
     people: List[LockerPersonOut] = []
 
 

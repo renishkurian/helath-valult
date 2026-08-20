@@ -3560,6 +3560,7 @@ def _lk_people(db, user):
 def locker_home(
     request: Request,
     doc_type: str = "",
+    folder: str = "",
     q: str = "",
     person: str = "",
     expiring: str = "",
@@ -3569,15 +3570,23 @@ def locker_home(
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    # Custom folders use folder=; built-in types use doc_type=. Accept folder:id in doc_type too.
+    folder_id = (folder or "").strip()
+    type_filter = (doc_type or "").strip()
+    if type_filter.startswith("folder:"):
+        folder_id = type_filter.split(":", 1)[1].strip()
+        type_filter = ""
     summary = lk.locker_summary(db=db, current_user=user)
     items = lk.list_items(
-        doc_type=doc_type or None, q=q or None, person_id=person or None,
+        doc_type=type_filter or None, folder_id=folder_id or None,
+        q=q or None, person_id=person or None,
         expiring=bool(expiring), db=db, current_user=user,
     )
     return templates.TemplateResponse("locker.html", _lk_ctx(
         request, user, "lk_expiring" if expiring else "lk_home",
         summary=summary, items=items, people=summary.people,
-        doc_type=doc_type, q=q, person=person, expiring=bool(expiring),
+        folders=summary.folders,
+        doc_type=type_filter, folder=folder_id, q=q, person=person, expiring=bool(expiring),
         types=lk.LOCKER_TYPES, active_person_id=person or None,
     ))
 
@@ -3586,6 +3595,7 @@ def locker_home(
 def locker_add_page(
     request: Request,
     doc_type: str = "other",
+    folder: str = "",
     person: str = "",
     db: Session = Depends(get_db),
 ):
@@ -3594,9 +3604,11 @@ def locker_add_page(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     people = _lk_people(db, user)
+    folders = lk._folder_outs(db, user)
     return templates.TemplateResponse("locker_add.html", _lk_ctx(
-        request, user, "lk_add", types=lk.LOCKER_TYPES, people=people,
-        prefill_type=doc_type or "other", prefill_person=person or "",
+        request, user, "lk_add", types=lk.LOCKER_TYPES, people=people, folders=folders,
+        prefill_type=doc_type or "other", prefill_folder=folder or "",
+        prefill_person=person or "",
         active_person_id=person or None,
     ))
 
@@ -3607,6 +3619,7 @@ async def locker_add(
     title: str = Form(...),
     doc_type: str = Form("other"),
     custom_type: str = Form(""),
+    folder_id: str = Form(""),
     person_id: str = Form(""),
     holder_name: str = Form(""),
     issuer: str = Form(""),
@@ -3624,13 +3637,19 @@ async def locker_add(
         return RedirectResponse("/admin/login", status_code=302)
     item = await lk.create_item(
         title=title, doc_type=doc_type, custom_type=custom_type or None,
+        folder_id=folder_id or None,
         person_id=person_id or None,
         holder_name=holder_name or None, issuer=issuer or None,
         id_number=id_number or None, issued_on=issued_on or None,
         expiry_date=expiry_date or None, tags=tags or None, notes=notes or None,
         files=files, db=db, current_user=user,
     )
-    dest = f"/admin/locker?person={item.person_id}" if item.person_id else "/admin/locker"
+    if item.folder_id:
+        dest = f"/admin/locker?folder={item.folder_id}"
+    elif item.person_id:
+        dest = f"/admin/locker?person={item.person_id}"
+    else:
+        dest = "/admin/locker"
     return RedirectResponse(dest, status_code=302)
 
 
@@ -3661,6 +3680,25 @@ def locker_add_person(
     return RedirectResponse(f"/admin/locker?person={person.id}", status_code=302)
 
 
+@router.post("/locker/folder")
+def locker_add_folder(
+    request: Request,
+    name: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Create a custom Document Vault folder (Gas book, School papers, …)."""
+    from app.routers import locker as lk
+    from app import schemas as sc
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    clean = (name or "").strip()
+    if not clean:
+        return RedirectResponse("/admin/locker", status_code=302)
+    folder = lk.create_folder(sc.LockerFolderIn(name=clean), db=db, current_user=user)
+    return RedirectResponse(f"/admin/locker?folder={folder.id}", status_code=302)
+
+
 @router.get("/locker/{item_id}", response_class=HTMLResponse)
 def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
@@ -3670,9 +3708,10 @@ def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_d
     item = lk.get_item(item_id, db=db, current_user=user)
     files = lk.list_files(item_id, db=db, current_user=user)
     people = _lk_people(db, user)
+    folders = lk._folder_outs(db, user)
     return templates.TemplateResponse("locker_item.html", _lk_ctx(
         request, user, "lk_home", item=item, files=files, types=lk.LOCKER_TYPES,
-        people=people, active_person_id=item.person_id,
+        people=people, folders=folders, active_person_id=item.person_id,
     ))
 
 
@@ -3683,6 +3722,7 @@ def locker_item_update(
     title: str = Form(...),
     doc_type: str = Form("other"),
     custom_type: str = Form(""),
+    folder_id: str = Form(""),
     person_id: str = Form(""),
     holder_name: str = Form(""),
     issuer: str = Form(""),
@@ -3700,6 +3740,7 @@ def locker_item_update(
         return RedirectResponse("/admin/login", status_code=302)
     lk.update_item(item_id, sc.LockerItemUpdate(
         title=title, doc_type=doc_type, custom_type=custom_type or None,
+        folder_id=folder_id or None,
         person_id=person_id or None,
         holder_name=holder_name or None, issuer=issuer or None,
         id_number=id_number or None, issued_on=issued_on or None,
@@ -3717,6 +3758,16 @@ def locker_download(item_id: str, request: Request, db: Session = Depends(get_db
     return lk.download_item(item_id, db=db, current_user=user)
 
 
+@router.get("/locker/{item_id}/view")
+def locker_view(item_id: str, request: Request, db: Session = Depends(get_db)):
+    """Inline preview for the photo lightbox (does not force download)."""
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return lk.view_item(item_id, db=db, current_user=user)
+
+
 @router.get("/locker/{item_id}/files/{file_id}/download")
 def locker_file_download(item_id: str, file_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
@@ -3724,6 +3775,45 @@ def locker_file_download(item_id: str, file_id: str, request: Request, db: Sessi
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     return lk.download_file(item_id, file_id, db=db, current_user=user)
+
+
+@router.get("/locker/{item_id}/files/{file_id}/view")
+def locker_file_view(item_id: str, file_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    return lk.view_file(item_id, file_id, db=db, current_user=user)
+
+
+@router.post("/locker/{item_id}/files")
+async def locker_add_files(
+    item_id: str,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    await lk.add_files(item_id, files=files, db=db, current_user=user)
+    return RedirectResponse(f"/admin/locker/{item_id}", status_code=302)
+
+
+@router.post("/locker/{item_id}/files/{file_id}/delete")
+def locker_delete_file(
+    item_id: str,
+    file_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    lk.delete_file(item_id, file_id, db=db, current_user=user)
+    return RedirectResponse(f"/admin/locker/{item_id}", status_code=302)
 
 
 @router.post("/locker/{item_id}/delete")

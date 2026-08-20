@@ -36,9 +36,11 @@ TYPE_IDS = {k for k, _ in LOCKER_TYPES}
 _RELATION_ORDER = ("self", "spouse", "child", "parent", "other")
 
 
-def type_label(doc_type: str, custom_type: Optional[str] = None) -> str:
+def type_label(doc_type: str, custom_type: Optional[str] = None, folder_name: Optional[str] = None) -> str:
     if doc_type == "other" and custom_type:
         return custom_type
+    if doc_type == "other" and folder_name:
+        return folder_name
     return TYPE_LABELS.get(doc_type, custom_type or doc_type.replace("_", " ").title())
 
 
@@ -57,6 +59,16 @@ def _people_for(db: Session, user: models.User) -> list[models.Person]:
     )
 
 
+def _folders_for(db: Session, user: models.User) -> list[models.LockerFolder]:
+    rows = (
+        db.query(models.LockerFolder)
+        .filter(models.LockerFolder.user_id == vault_id(user))
+        .order_by(models.LockerFolder.name)
+        .all()
+    )
+    return rows
+
+
 def _resolve_person(
     db: Session, user: models.User, person_id: Optional[str],
 ) -> Optional[models.Person]:
@@ -70,6 +82,19 @@ def _resolve_person(
     )
 
 
+def _resolve_folder(
+    db: Session, user: models.User, folder_id: Optional[str],
+) -> Optional[models.LockerFolder]:
+    fid = (folder_id or "").strip()
+    if not fid:
+        return None
+    return (
+        db.query(models.LockerFolder)
+        .filter(models.LockerFolder.id == fid, models.LockerFolder.user_id == vault_id(user))
+        .first()
+    )
+
+
 def _to_file_out(f: models.LockerFile) -> schemas.LockerFileOut:
     return schemas.LockerFileOut(
         id=f.id, item_id=f.item_id, original_filename=f.original_filename,
@@ -77,16 +102,25 @@ def _to_file_out(f: models.LockerFile) -> schemas.LockerFileOut:
     )
 
 
-def _to_out(item: models.LockerItem, person_name: Optional[str] = None) -> schemas.LockerItemOut:
+def _to_out(
+    item: models.LockerItem,
+    person_name: Optional[str] = None,
+    folder_name: Optional[str] = None,
+) -> schemas.LockerItemOut:
     first = item.files[0] if item.files else None
     pname = person_name
     if pname is None and getattr(item, "person", None) is not None:
         pname = item.person.name
+    fname = folder_name
+    if fname is None and getattr(item, "folder", None) is not None:
+        fname = item.folder.name
     return schemas.LockerItemOut(
         id=item.id,
         doc_type=item.doc_type,
-        type_label=type_label(item.doc_type, item.custom_type),
+        type_label=type_label(item.doc_type, item.custom_type, fname),
         custom_type=item.custom_type,
+        folder_id=item.folder_id,
+        folder_name=fname,
         person_id=item.person_id,
         person_name=pname,
         title=item.title,
@@ -126,6 +160,21 @@ def _norm_type(doc_type: Optional[str], custom_type: Optional[str]) -> tuple[str
     return raw, None
 
 
+def _folder_outs(db: Session, user: models.User, items: list[models.LockerItem] | None = None) -> list[schemas.LockerFolderOut]:
+    if items is None:
+        items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(user)).all()
+    counts: dict[str, int] = {}
+    for item in items:
+        if item.folder_id:
+            counts[item.folder_id] = counts.get(item.folder_id, 0) + 1
+    return [
+        schemas.LockerFolderOut(
+            id=f.id, name=f.name, count=counts.get(f.id, 0), created_at=f.created_at,
+        )
+        for f in _folders_for(db, user)
+    ]
+
+
 @router.get("/types", response_model=list[schemas.LockerTypeOut])
 def list_types(
     db: Session = Depends(get_db),
@@ -135,7 +184,67 @@ def list_types(
     counts: dict[str, int] = {k: 0 for k, _ in LOCKER_TYPES}
     for item in items:
         counts[item.doc_type] = counts.get(item.doc_type, 0) + 1
-    return [schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES]
+    out = [schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES]
+    for folder in _folder_outs(db, current_user, items):
+        out.append(schemas.LockerTypeOut(
+            id=f"folder:{folder.id}", label=folder.name, count=folder.count, custom=True,
+        ))
+    return out
+
+
+@router.get("/folders", response_model=list[schemas.LockerFolderOut])
+def list_folders(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    return _folder_outs(db, current_user)
+
+
+@router.post("/folders", response_model=schemas.LockerFolderOut, status_code=201)
+def create_folder(
+    body: schemas.LockerFolderIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Folder name is required")
+    existing = (
+        db.query(models.LockerFolder)
+        .filter(
+            models.LockerFolder.user_id == vault_id(current_user),
+            models.LockerFolder.name.ilike(name),
+        )
+        .first()
+    )
+    if existing:
+        return schemas.LockerFolderOut(
+            id=existing.id, name=existing.name, count=0, created_at=existing.created_at,
+        )
+    row = models.LockerFolder(user_id=vault_id(current_user), name=name)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return schemas.LockerFolderOut(id=row.id, name=row.name, count=0, created_at=row.created_at)
+
+
+@router.delete("/folders/{folder_id}", status_code=204)
+def delete_folder(
+    folder_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    folder = _resolve_folder(db, current_user, folder_id)
+    if not folder:
+        raise HTTPException(status_code=404, detail="Folder not found")
+    db.query(models.LockerItem).filter(
+        models.LockerItem.folder_id == folder.id,
+        models.LockerItem.user_id == vault_id(current_user),
+    ).update({models.LockerItem.folder_id: None}, synchronize_session=False)
+    db.delete(folder)
+    db.commit()
 
 
 @router.get("/summary", response_model=schemas.LockerSummaryOut)
@@ -168,11 +277,18 @@ def locker_summary(
         )
         for p in _people_for(db, current_user)
     ]
+    folders = _folder_outs(db, current_user, items)
+    types = [schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES]
+    for folder in folders:
+        types.append(schemas.LockerTypeOut(
+            id=f"folder:{folder.id}", label=folder.name, count=folder.count, custom=True,
+        ))
     return schemas.LockerSummaryOut(
         total=len(items),
         expiring=expiring,
         unassigned=unassigned,
-        types=[schemas.LockerTypeOut(id=k, label=v, count=counts.get(k, 0)) for k, v in LOCKER_TYPES],
+        types=types,
+        folders=folders,
         people=people,
     )
 
@@ -180,6 +296,7 @@ def locker_summary(
 @router.get("", response_model=list[schemas.LockerItemOut])
 def list_items(
     doc_type: Optional[str] = None,
+    folder_id: Optional[str] = None,
     q: Optional[str] = None,
     person_id: Optional[str] = None,
     expiring: bool = False,
@@ -188,8 +305,15 @@ def list_items(
     current_user: models.User = Depends(get_current_user),
 ):
     query = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user))
-    if doc_type:
-        query = query.filter(models.LockerItem.doc_type == doc_type)
+    raw_type = (doc_type or "").strip()
+    fid = (folder_id or "").strip()
+    if raw_type.startswith("folder:"):
+        fid = raw_type.split(":", 1)[1].strip()
+        raw_type = ""
+    if fid:
+        query = query.filter(models.LockerItem.folder_id == fid)
+    elif raw_type:
+        query = query.filter(models.LockerItem.doc_type == raw_type)
     if pinned:
         query = query.filter(models.LockerItem.pinned.is_(True))
     # Search always spans every family profile; person filter applies only when not searching.
@@ -228,7 +352,8 @@ def list_items(
         )
     rows = query.order_by(models.LockerItem.created_at.desc()).all()
     names = {p.id: p.name for p in _people_for(db, current_user)}
-    return [_to_out(i, names.get(i.person_id)) for i in rows]
+    folder_names = {f.id: f.name for f in _folders_for(db, current_user)}
+    return [_to_out(i, names.get(i.person_id), folder_names.get(i.folder_id)) for i in rows]
 
 
 @router.post("", response_model=schemas.LockerItemOut, status_code=201)
@@ -236,6 +361,7 @@ async def create_item(
     title: str = Form(...),
     doc_type: str = Form("other"),
     custom_type: Optional[str] = Form(None),
+    folder_id: Optional[str] = Form(None),
     person_id: Optional[str] = Form(None),
     holder_name: Optional[str] = Form(None),
     issuer: Optional[str] = Form(None),
@@ -251,7 +377,10 @@ async def create_item(
     require_owner(current_user)
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
+    folder = _resolve_folder(db, current_user, folder_id)
     kind, custom = _norm_type(doc_type, custom_type)
+    if folder and kind == "other" and not custom:
+        custom = folder.name
     person = _resolve_person(db, current_user, person_id)
     holder = (holder_name or "").strip() or None
     if person and not holder:
@@ -259,6 +388,7 @@ async def create_item(
     item = models.LockerItem(
         user_id=vault_id(current_user),
         person_id=person.id if person else None,
+        folder_id=folder.id if folder else None,
         doc_type=kind,
         custom_type=custom,
         title=title.strip(),
@@ -275,7 +405,7 @@ async def create_item(
     await _save_files(item, files, current_user, db)
     db.commit()
     db.refresh(item)
-    return _to_out(item, person.name if person else None)
+    return _to_out(item, person.name if person else None, folder.name if folder else None)
 
 
 async def _save_files(
@@ -284,10 +414,10 @@ async def _save_files(
     current_user: models.User,
     db: Session,
 ):
+    from app.models import gen_id
     dest = settings.STORAGE_DIR / vault_id(current_user) / "locker"
     dest.mkdir(parents=True, exist_ok=True)
-    existing = len(item.files or [])
-    for idx, upload in enumerate(files):
+    for upload in files:
         raw = await upload.read()
         if (upload.content_type or "").startswith("image/"):
             raw = enhance_scan(raw, upload.content_type)
@@ -297,17 +427,56 @@ async def _save_files(
                 status_code=413,
                 detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit",
             )
-        n = existing + idx
-        enc_path = dest / f"{item.id}_{n}.enc"
+        token = gen_id()
+        enc_path = dest / f"{item.id}_{token}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
         db.add(models.LockerFile(
             item_id=item.id,
-            original_filename=upload.filename or f"file_{n}",
+            original_filename=upload.filename or f"file_{token[:8]}",
             file_path=str(enc_path.relative_to(settings.STORAGE_DIR)),
             file_type=upload.content_type,
             file_size=len(raw),
             content_hash=file_sha256(raw),
         ))
+
+
+@router.post("/{item_id}/files", response_model=list[schemas.LockerFileOut], status_code=201)
+async def add_files(
+    item_id: str,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned(item_id, db, current_user)
+    uploads = [f for f in (files or []) if f is not None and getattr(f, "filename", None)]
+    if not uploads:
+        raise HTTPException(status_code=422, detail="At least one file is required")
+    await _save_files(item, uploads, current_user, db)
+    item.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    return [_to_file_out(f) for f in item.files]
+
+
+@router.delete("/{item_id}/files/{file_id}", status_code=204)
+def delete_file(
+    item_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned(item_id, db, current_user)
+    doc_file = next((f for f in item.files if f.id == file_id), None)
+    if not doc_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    path = settings.STORAGE_DIR / doc_file.file_path
+    if path.exists():
+        path.unlink()
+    db.delete(doc_file)
+    item.updated_at = datetime.utcnow()
+    db.commit()
 
 
 @router.get("/{item_id}", response_model=schemas.LockerItemOut)
@@ -321,7 +490,11 @@ def get_item(
     if item.person_id:
         person = _resolve_person(db, current_user, item.person_id)
         pname = person.name if person else None
-    return _to_out(item, pname)
+    fname = None
+    if item.folder_id:
+        folder = _resolve_folder(db, current_user, item.folder_id)
+        fname = folder.name if folder else None
+    return _to_out(item, pname, fname)
 
 
 @router.patch("/{item_id}", response_model=schemas.LockerItemOut)
@@ -334,6 +507,13 @@ def update_item(
     require_owner(current_user)
     item = _owned(item_id, db, current_user)
     data = body.model_dump(exclude_unset=True)
+    if "folder_id" in data:
+        folder = _resolve_folder(db, current_user, data.pop("folder_id"))
+        item.folder_id = folder.id if folder else None
+        if folder and "custom_type" not in data and not item.custom_type:
+            item.custom_type = folder.name
+            if item.doc_type not in TYPE_IDS or item.doc_type == "other":
+                item.doc_type = "other"
     if "doc_type" in data or "custom_type" in data:
         kind, custom = _norm_type(
             data.get("doc_type", item.doc_type),
@@ -361,7 +541,11 @@ def update_item(
     if item.person_id:
         person = _resolve_person(db, current_user, item.person_id)
         pname = person.name if person else None
-    return _to_out(item, pname)
+    fname = None
+    if item.folder_id:
+        folder = _resolve_folder(db, current_user, item.folder_id)
+        fname = folder.name if folder else None
+    return _to_out(item, pname, fname)
 
 
 @router.delete("/{item_id}", status_code=204)
@@ -399,7 +583,20 @@ def download_item(
     item = _owned(item_id, db, current_user)
     if not item.files:
         raise HTTPException(status_code=404, detail="No file attached")
-    return _file_response(item.files[0])
+    return _file_response(item.files[0], inline=False)
+
+
+@router.get("/{item_id}/view")
+def view_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Inline preview bytes for the lightbox (images / PDF)."""
+    item = _owned(item_id, db, current_user)
+    if not item.files:
+        raise HTTPException(status_code=404, detail="No file attached")
+    return _file_response(item.files[0], inline=True)
 
 
 @router.get("/{item_id}/files/{file_id}/download")
@@ -413,17 +610,37 @@ def download_file(
     doc_file = next((f for f in item.files if f.id == file_id), None)
     if not doc_file:
         raise HTTPException(status_code=404, detail="File not found")
-    return _file_response(doc_file)
+    return _file_response(doc_file, inline=False)
 
 
-def _file_response(doc_file: models.LockerFile) -> Response:
+@router.get("/{item_id}/files/{file_id}/view")
+def view_file(
+    item_id: str,
+    file_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    item = _owned(item_id, db, current_user)
+    doc_file = next((f for f in item.files if f.id == file_id), None)
+    if not doc_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    return _file_response(doc_file, inline=True)
+
+
+def _file_response(doc_file: models.LockerFile, *, inline: bool = False) -> Response:
     enc_path = settings.STORAGE_DIR / doc_file.file_path
     if not enc_path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
     plain = crypto.decrypt_bytes(enc_path.read_bytes())
     fname = doc_file.original_filename.replace('"', "")
+    disposition = "inline" if inline else "attachment"
+    headers = {
+        "Content-Disposition": f'{disposition}; filename="{fname}"',
+    }
+    if inline:
+        headers["Cache-Control"] = "private, no-store"
     return Response(
         content=plain,
         media_type=doc_file.file_type or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        headers=headers,
     )

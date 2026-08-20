@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ item.title }}{% endblock %}
 {% block content %}
+{% set rel_label = {'self':'You','spouse':'Spouse','child':'Child','parent':'Parent','other':'Other'} %}
 {% set type_colors = {
   'aadhaar':'#7FA6FF','pan':'#F0C36A','passport':'#C0A8FF','driving_license':'#4ADE9B',
   'voter_id':'#22D3EE','certificate':'#FF8095','rc':'#F5A65B','insurance':'#F0C36A',
@@ -19,6 +20,21 @@
     </div>
   </div>
   <div class="page-actions">
+    {% set ft = (files[0].file_type if files else '')|lower %}
+    {% if files %}
+      {% if ft.startswith('image/') %}
+        {% set open_kind = 'image' %}
+      {% elif ft == 'application/pdf' %}
+        {% set open_kind = 'pdf' %}
+      {% else %}
+        {% set open_kind = 'image' if ft else 'other' %}
+      {% endif %}
+      <a class="btn btn-outline-light js-photo"
+         href="/admin/locker/{{ item.id }}/view"
+         data-kind="{{ open_kind }}">
+        <i class="bi bi-eye"></i> Open
+      </a>
+    {% endif %}
     <a class="btn btn-primary" href="/admin/locker/{{ item.id }}/download">
       <i class="bi bi-download"></i> Download
     </a>
@@ -38,7 +54,7 @@
     <div class="facts">
       <div class="fact">
         <div class="lbl">Profile</div>
-        <div class="val">{{ item.person_name or 'Unassigned' }}</div>
+        <div class="val">{{ item.person_name | nice if item.person_name else 'Unassigned' }}</div>
       </div>
       <div class="fact">
         <div class="lbl">Holder</div>
@@ -107,6 +123,15 @@
               </select>
             </div>
             <div class="col-md-6">
+              <label class="form-label" for="lk-folder">Custom folder</label>
+              <select class="form-select" id="lk-folder" name="folder_id">
+                <option value="">None</option>
+                {% for f in folders %}
+                <option value="{{ f.id }}" {% if item.folder_id==f.id %}selected{% endif %}>{{ f.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
               <label class="form-label" for="lk-custom">Custom type</label>
               <input class="form-control" id="lk-custom" name="custom_type" value="{{ item.custom_type or '' }}">
             </div>
@@ -116,7 +141,7 @@
                 <option value="">Unassigned</option>
                 {% for p in people %}
                 {% set rel = p.relation.value if p.relation and p.relation.value is defined else (p.relation or '') %}
-                <option value="{{ p.id }}" {% if item.person_id==p.id %}selected{% endif %}>{{ p.name }}{% if rel %} · {{ rel }}{% endif %}</option>
+                <option value="{{ p.id }}" {% if item.person_id==p.id %}selected{% endif %}>{{ p.name | nice }}{% if rel %} · {{ rel_label.get(rel, rel|title) }}{% endif %}</option>
                 {% endfor %}
               </select>
             </div>
@@ -167,7 +192,7 @@
         <span class="card-ico gold"><i class="bi bi-paperclip"></i></span>
         <div>
           <h2>Files</h2>
-          <div class="card-sub">Decrypted only when you download</div>
+          <div class="card-sub">Open to preview · download when you need a copy</div>
         </div>
         <span class="badge badge-soft ms-auto">{{ files | length }}</span>
       </div>
@@ -180,9 +205,29 @@
             <div class="row-meta">{{ f.file_type or 'file' }}{% if f.file_size %} · {{ (f.file_size / 1024)|round(0)|int }} KB{% endif %}</div>
           </div>
           <div class="row-actions">
-            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}/files/{{ f.id }}/download">
-              <i class="bi bi-download"></i> Download
+            {% set ft = (f.file_type or '')|lower %}
+            {% if ft == 'application/pdf' %}
+              {% set open_kind = 'pdf' %}
+            {% elif ft and not ft.startswith('image/') %}
+              {% set open_kind = 'other' %}
+            {% else %}
+              {% set open_kind = 'image' %}
+            {% endif %}
+            <a class="btn btn-outline-light btn-sm js-photo"
+               href="/admin/locker/{{ item.id }}/files/{{ f.id }}/view"
+               data-kind="{{ open_kind }}"
+               title="Preview">
+              <i class="bi bi-eye"></i>
             </a>
+            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}/files/{{ f.id }}/download" title="Download">
+              <i class="bi bi-download"></i>
+            </a>
+            <form method="post" action="/admin/locker/{{ item.id }}/files/{{ f.id }}/delete"
+                  data-confirm="Remove {{ f.original_filename }} from this document?">
+              <button class="btn btn-outline-danger btn-sm" type="submit" title="Remove file">
+                <i class="bi bi-trash3"></i>
+              </button>
+            </form>
           </div>
         </div>
         {% endfor %}
@@ -191,9 +236,26 @@
       <div class="empty-state">
         <div class="empty-ico"><i class="bi bi-paperclip"></i></div>
         <div class="empty-title">No files attached</div>
-        <p>This entry has no scans on disk — only the details above.</p>
+        <p>Add a scan or PDF below to keep this document complete.</p>
       </div>
       {% endif %}
+      <div class="card-footer">
+        <form method="post" action="/admin/locker/{{ item.id }}/files" enctype="multipart/form-data">
+          <label class="form-label" for="lk-add-files">Add media</label>
+          <div class="d-flex flex-wrap gap-2 mb-2">
+            <label class="btn btn-outline-light btn-sm mb-0" for="lk-add-camera">
+              <i class="bi bi-camera"></i> Take photo
+            </label>
+            <label class="btn btn-outline-light btn-sm mb-0" for="lk-add-files">
+              <i class="bi bi-images"></i> Choose files
+            </label>
+          </div>
+          <input class="visually-hidden" id="lk-add-camera" type="file" accept="image/*" capture="environment">
+          <input class="form-control" id="lk-add-files" type="file" name="files" accept="image/*,.pdf" multiple required>
+          <div class="form-text mb-2">Photos are enhanced before encryption. You can attach more than one page.</div>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-plus-lg"></i> Add files</button>
+        </form>
+      </div>
     </div>
   </div>
 </div>
@@ -209,4 +271,21 @@
     </form>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var cam = document.getElementById("lk-add-camera");
+  var files = document.getElementById("lk-add-files");
+  if (!cam || !files) return;
+  cam.addEventListener("change", function () {
+    if (!cam.files || !cam.files.length) return;
+    var dt = new DataTransfer();
+    for (var i = 0; i < cam.files.length; i++) dt.items.add(cam.files[i]);
+    for (var j = 0; j < (files.files || []).length; j++) dt.items.add(files.files[j]);
+    files.files = dt.files;
+    files.removeAttribute("required");
+  });
+})();
+</script>
 {% endblock %}

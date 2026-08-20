@@ -57,6 +57,26 @@ def test_locker_upload_list_download_delete():
     assert patch.status_code == 200
     assert patch.json()["title"] == "Aadhaar — Renish"
 
+    view = client.get(f"/locker/{item_id}/view", headers=headers)
+    assert view.status_code == 200
+    assert view.content.startswith(b"%PDF-1.4")
+    assert "inline" in (view.headers.get("content-disposition") or "")
+
+    added = client.post(
+        f"/locker/{item_id}/files",
+        headers=headers,
+        files=[("files", ("back.png", b"\x89PNG\r\nfake", "image/png"))],
+    )
+    assert added.status_code == 201, added.text
+    assert len(added.json()) == 2
+    file_id = next(f["id"] for f in added.json() if f["original_filename"] == "back.png")
+
+    removed = client.delete(f"/locker/{item_id}/files/{file_id}", headers=headers)
+    assert removed.status_code == 204
+    left = client.get(f"/locker/{item_id}/files", headers=headers).json()
+    assert len(left) == 1
+    assert left[0]["original_filename"] == "aadhaar.pdf"
+
     gone = client.delete(f"/locker/{item_id}", headers=headers)
     assert gone.status_code == 204
     empty = client.get("/locker", headers=headers).json()
@@ -120,3 +140,50 @@ def test_locker_family_profiles_and_search_all():
     assert summary["total"] == 2
     assert any(p["id"] == child_id and p["count"] == 1 for p in summary["people"])
     assert summary["unassigned"] == 0
+
+
+def test_locker_custom_folders():
+    import uuid
+    email = f"locker-folder-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Folder Locker",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+    folder = client.post("/locker/folders", headers=headers, json={"name": "Gas book"})
+    assert folder.status_code == 201, folder.text
+    folder_id = folder.json()["id"]
+    assert folder.json()["name"] == "Gas book"
+
+    listed = client.get("/locker/folders", headers=headers).json()
+    assert any(f["id"] == folder_id for f in listed)
+
+    r = client.post(
+        "/locker",
+        headers=headers,
+        data={
+            "title": "Indane book",
+            "doc_type": "other",
+            "folder_id": folder_id,
+        },
+        files=[("files", ("gas.pdf", b"%PDF-1.4 g", "application/pdf"))],
+    )
+    assert r.status_code == 201, r.text
+    item = r.json()
+    assert item["folder_id"] == folder_id
+    assert item["folder_name"] == "Gas book"
+    assert item["type_label"] == "Gas book"
+
+    by_folder = client.get("/locker", headers=headers, params={"folder_id": folder_id}).json()
+    assert len(by_folder) == 1
+    assert by_folder[0]["title"] == "Indane book"
+
+    summary = client.get("/locker/summary", headers=headers).json()
+    assert any(f["id"] == folder_id and f["count"] == 1 for f in summary["folders"])
+    assert any(t.get("custom") and t["id"] == f"folder:{folder_id}" for t in summary["types"])
+
+    gone = client.delete(f"/locker/folders/{folder_id}", headers=headers)
+    assert gone.status_code == 204
+    item_after = client.get(f"/locker/{item['id']}", headers=headers).json()
+    assert item_after["folder_id"] is None

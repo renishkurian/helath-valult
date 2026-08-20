@@ -901,12 +901,24 @@ class LockerDocType(str, enum.Enum):
     other = "other"
 
 
+class LockerFolder(Base):
+    """User-created Document Vault folder (Gas book, School papers, …)."""
+    __tablename__ = "locker_folders"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    items = relationship("LockerItem", back_populates="folder")
+
+
 class LockerItem(Base):
     """Encrypted household document (Aadhaar, PAN, RC, warranty, etc.)."""
     __tablename__ = "locker_items"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     person_id = Column(String(32), ForeignKey("people.id"), nullable=True, index=True)
+    folder_id = Column(String(32), ForeignKey("locker_folders.id"), nullable=True, index=True)
     doc_type = Column(String(40), default=LockerDocType.other.value, nullable=False, index=True)
     custom_type = Column(String(120), nullable=True)
     title = Column(String(255), nullable=False, index=True)
@@ -922,6 +934,7 @@ class LockerItem(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     person = relationship("Person")
+    folder = relationship("LockerFolder", back_populates="items")
     files = relationship(
         "LockerFile", back_populates="item", cascade="all, delete-orphan",
         order_by="LockerFile.created_at",

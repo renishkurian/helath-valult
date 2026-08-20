@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Add document{% endblock %}
 {% block content %}
+{% set rel_label = {'self':'You','spouse':'Spouse','child':'Child','parent':'Parent','other':'Other'} %}
 <div class="page-head">
   <div class="d-flex align-items-start gap-3">
     <a class="btn btn-ghost btn-icon" href="/admin/locker" aria-label="Back to locker"><i class="bi bi-arrow-left"></i></a>
@@ -33,12 +34,22 @@
               <label class="form-label" for="doc_type">Type</label>
               <select class="form-select" name="doc_type" id="doc_type">
                 {% for id, label in types %}
-                <option value="{{ id }}" {% if prefill_type==id %}selected{% endif %}>{{ label }}</option>
+                <option value="{{ id }}" {% if prefill_type==id and not prefill_folder %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-6 {% if prefill_type!='other' %}d-none{% endif %}" id="custom-wrap">
-              <label class="form-label" for="lk-custom">Custom type</label>
+            <div class="col-md-6">
+              <label class="form-label" for="lk-folder">Custom folder</label>
+              <select class="form-select" id="lk-folder" name="folder_id">
+                <option value="">None</option>
+                {% for f in folders %}
+                <option value="{{ f.id }}" {% if prefill_folder==f.id %}selected{% endif %}>{{ f.name }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">Optional — group into a folder you created on the locker home.</div>
+            </div>
+            <div class="col-md-6 {% if prefill_type!='other' or prefill_folder %}d-none{% endif %}" id="custom-wrap">
+              <label class="form-label" for="lk-custom">Custom type label</label>
               <input class="form-control" id="lk-custom" name="custom_type" placeholder="School ID, gas book…">
             </div>
             <div class="col-md-6">
@@ -47,7 +58,7 @@
                 <option value="">Unassigned</option>
                 {% for p in people %}
                 {% set rel = p.relation.value if p.relation and p.relation.value is defined else (p.relation or '') %}
-                <option value="{{ p.id }}" {% if prefill_person==p.id %}selected{% endif %}>{{ p.name }}{% if rel %} · {{ rel_label.get(rel, rel) if rel_label is defined else rel }}{% endif %}</option>
+                <option value="{{ p.id }}" {% if prefill_person==p.id %}selected{% endif %}>{{ p.name | nice }}{% if rel %} · {{ rel_label.get(rel, rel|title) }}{% endif %}</option>
                 {% endfor %}
               </select>
               <div class="form-text">Store this under someone’s profile. <a href="/admin/family">Manage family</a></div>
@@ -117,7 +128,12 @@
 {% block scripts %}
 <script>
 document.getElementById("doc_type").addEventListener("change", (e) => {
-  document.getElementById("custom-wrap").classList.toggle("d-none", e.target.value !== "other");
+  const folder = document.getElementById("lk-folder");
+  const hideCustom = e.target.value !== "other" || (folder && folder.value);
+  document.getElementById("custom-wrap").classList.toggle("d-none", hideCustom);
+});
+document.getElementById("lk-folder").addEventListener("change", () => {
+  document.getElementById("doc_type").dispatchEvent(new Event("change"));
 });
 // Phone camera capture should satisfy the required files input
 const cam = document.getElementById("lk-camera");
