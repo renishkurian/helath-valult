@@ -836,6 +836,10 @@ data class LockerItemOut(
     val doc_type: String,
     val type_label: String,
     val custom_type: String? = null,
+    val folder_id: String? = null,
+    val folder_name: String? = null,
+    val person_id: String? = null,
+    val person_name: String? = null,
     val title: String,
     val holder_name: String? = null,
     val issuer: String? = null,
@@ -855,6 +859,8 @@ data class LockerItemUpdate(
     val title: String? = null,
     val doc_type: String? = null,
     val custom_type: String? = null,
+    val folder_id: String? = null,
+    val person_id: String? = null,
     val holder_name: String? = null,
     val issuer: String? = null,
     val id_number: String? = null,
@@ -868,13 +874,35 @@ data class LockerItemUpdate(
 data class LockerTypeOut(
     val id: String,
     val label: String,
+    val count: Int = 0,
+    val custom: Boolean = false
+)
+
+data class LockerFolderIn(
+    val name: String
+)
+
+data class LockerFolderOut(
+    val id: String,
+    val name: String,
+    val count: Int = 0,
+    val created_at: String = ""
+)
+
+data class LockerPersonOut(
+    val id: String,
+    val name: String,
+    val relation: String = "other",
     val count: Int = 0
 )
 
 data class LockerSummaryOut(
     val total: Int = 0,
     val expiring: Int = 0,
-    val types: List<LockerTypeOut> = emptyList()
+    val unassigned: Int = 0,
+    val types: List<LockerTypeOut> = emptyList(),
+    val folders: List<LockerFolderOut> = emptyList(),
+    val people: List<LockerPersonOut> = emptyList()
 )
 
 // ---------- Digital Diary ----------

@@ -44,6 +44,14 @@ def type_label(doc_type: str, custom_type: Optional[str] = None, folder_name: Op
     return TYPE_LABELS.get(doc_type, custom_type or doc_type.replace("_", " ").title())
 
 
+def title_name(value: Optional[str]) -> str:
+    """Title-case a folder / person display name (bank → Bank)."""
+    text = (value or "").strip()
+    if not text:
+        return ""
+    return " ".join(part[:1].upper() + part[1:] if part else part for part in text.split())
+
+
 def _people_for(db: Session, user: models.User) -> list[models.Person]:
     rows = (
         db.query(models.Person)
@@ -167,12 +175,19 @@ def _folder_outs(db: Session, user: models.User, items: list[models.LockerItem] 
     for item in items:
         if item.folder_id:
             counts[item.folder_id] = counts.get(item.folder_id, 0) + 1
-    return [
-        schemas.LockerFolderOut(
+    out: list[schemas.LockerFolderOut] = []
+    dirty = False
+    for f in _folders_for(db, user):
+        titled = title_name(f.name)
+        if titled and f.name != titled:
+            f.name = titled
+            dirty = True
+        out.append(schemas.LockerFolderOut(
             id=f.id, name=f.name, count=counts.get(f.id, 0), created_at=f.created_at,
-        )
-        for f in _folders_for(db, user)
-    ]
+        ))
+    if dirty:
+        db.commit()
+    return out
 
 
 @router.get("/types", response_model=list[schemas.LockerTypeOut])
@@ -207,7 +222,7 @@ def create_folder(
     current_user: models.User = Depends(get_current_user),
 ):
     require_owner(current_user)
-    name = body.name.strip()
+    name = title_name(body.name)
     if not name:
         raise HTTPException(status_code=422, detail="Folder name is required")
     existing = (
@@ -219,6 +234,10 @@ def create_folder(
         .first()
     )
     if existing:
+        if existing.name != name:
+            existing.name = name
+            db.commit()
+            db.refresh(existing)
         return schemas.LockerFolderOut(
             id=existing.id, name=existing.name, count=0, created_at=existing.created_at,
         )

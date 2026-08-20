@@ -255,19 +255,34 @@ class HealthVaultRepository(
         )
     }
     suspend fun listLockerTypes() = api.listLockerTypes()
+    suspend fun listLockerFolders() = api.listLockerFolders()
+    suspend fun createLockerFolder(name: String) = api.createLockerFolder(LockerFolderIn(name = name.trim()))
+    suspend fun deleteLockerFolder(id: String) { api.deleteLockerFolder(id) }
     suspend fun listLockerItems(
         docType: String? = null,
+        folderId: String? = null,
+        personId: String? = null,
         q: String? = null,
         expiring: Boolean = false
-    ) = api.listLockerItems(docType, q, expiring)
+    ) = api.listLockerItems(docType, folderId, personId, q, expiring)
     suspend fun getLockerItem(id: String) = api.getLockerItem(id)
     suspend fun listLockerFiles(id: String) = api.listLockerFiles(id)
     suspend fun updateLockerItem(id: String, body: LockerItemUpdate) = api.updateLockerItem(id, body)
     suspend fun deleteLockerItem(id: String) { api.deleteLockerItem(id) }
+    suspend fun addLockerFiles(itemId: String, files: List<File>, mimeTypes: List<String>): List<LockerFileOut> {
+        val fileParts = files.mapIndexed { idx, file ->
+            val mime = mimeTypes.getOrElse(idx) { "application/octet-stream" }
+            MultipartBody.Part.createFormData("files", file.name, file.asRequestBody(mime.toMediaTypeOrNull()))
+        }
+        return api.addLockerFiles(itemId, fileParts)
+    }
+    suspend fun deleteLockerFile(itemId: String, fileId: String) { api.deleteLockerFile(itemId, fileId) }
     suspend fun createLockerItem(
         title: String,
         docType: String,
         customType: String?,
+        folderId: String? = null,
+        personId: String? = null,
         holderName: String?,
         issuer: String?,
         idNumber: String?,
@@ -287,6 +302,8 @@ class HealthVaultRepository(
             title = text(title),
             docType = text(docType),
             customType = customType?.let { text(it) },
+            folderId = folderId?.let { text(it) },
+            personId = personId?.let { text(it) },
             holderName = holderName?.let { text(it) },
             issuer = issuer?.let { text(it) },
             idNumber = idNumber?.let { text(it) },
@@ -306,6 +323,13 @@ class HealthVaultRepository(
     }
     suspend fun downloadLockerFile(itemId: String, fileId: String, destination: File): File {
         val body = api.downloadLockerFile(itemId, fileId)
+        body.byteStream().use { input ->
+            destination.outputStream().use { output -> input.copyTo(output) }
+        }
+        return destination
+    }
+    suspend fun viewLockerFile(itemId: String, fileId: String, destination: File): File {
+        val body = api.viewLockerFile(itemId, fileId)
         body.byteStream().use { input ->
             destination.outputStream().use { output -> input.copyTo(output) }
         }

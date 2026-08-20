@@ -549,7 +549,7 @@ def create_send(
 ):
     require_owner(current_user)
     payload: dict
-    send_type = body.send_type if body.send_type in ("text", "login") else "text"
+    send_type = body.send_type if body.send_type in ("text", "login", "locker") else "text"
     if send_type == "login":
         if not body.item_id:
             raise HTTPException(status_code=400, detail="item_id is required for a login send")
@@ -565,6 +565,38 @@ def create_send(
         if body.include_totp and out.totp_secret:
             payload["totp_secret"] = out.totp_secret
             payload["require_totp"] = True
+        if body.require_grant:
+            payload["require_grant"] = True
+        if body.require_email_otp:
+            emails = _normalize_allowed_emails(body.allowed_emails)
+            payload["require_email_otp"] = True
+            if emails:
+                payload["allowed_emails"] = emails
+    elif send_type == "locker":
+        if not body.item_id:
+            raise HTTPException(status_code=400, detail="item_id is required for a document send")
+        doc = (
+            db.query(models.LockerItem)
+            .filter(
+                models.LockerItem.id == body.item_id,
+                models.LockerItem.user_id == vault_id(current_user),
+            )
+            .first()
+        )
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        files = list(doc.files or [])
+        payload = {
+            "item_id": doc.id,
+            "locker_item_id": doc.id,
+            "locker_title": doc.title,
+            "locker_type": doc.doc_type,
+            "locker_type_label": (doc.custom_type or doc.doc_type or "Document").replace("_", " ").title(),
+            "locker_holder": doc.holder_name,
+            "locker_file_count": len(files),
+            "locker_file_ids": [f.id for f in files],
+            "name": body.name.strip() or doc.title,
+        }
         if body.require_grant:
             payload["require_grant"] = True
         if body.require_email_otp:
@@ -899,7 +931,7 @@ def public_send_page(
     notes = crypto.decrypt_text(row.notes_enc)
     shown = {k: v for k, v in data.items() if k not in (
         "totp_secret", "require_grant", "require_totp", "require_email_otp",
-        "allowed_emails", "require_vault_user_email",
+        "allowed_emails", "require_vault_user_email", "locker_file_ids",
     )}
     _record_send_view(
         row, request, db,
@@ -919,6 +951,133 @@ def public_send_page(
         "grant_required": False, "payload": shown, "notes": notes,
         "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
     })
+
+
+def _send_unlocked_or_redirect(
+    token: str,
+    request: Request,
+    db: Session,
+    *,
+    pin: Optional[str] = None,
+    totp: Optional[str] = None,
+) -> tuple[models.VaultSend, dict, models.VaultSendRequest | None, str | None] | RedirectResponse:
+    """Return (row, payload, guest_req, email) when content may be shown, else a redirect to the unlock page."""
+    row = _load_valid_send(token, db)
+    data = _payload(row)
+    require_grant = bool(data.get("require_grant"))
+    guest_req = _guest_request(request, row, db) if require_grant else None
+    email_ok, verified_email = _email_otp_unlocked(request, row, data)
+    pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
+    qs = []
+    if pin:
+        qs.append(f"pin={pin}")
+    if totp:
+        qs.append(f"totp={totp}")
+    q = ("?" + "&".join(qs)) if qs else ""
+    page = f"/vault/public/{token}/page{q}"
+    if not pin_ok or (require_grant and not (guest_req and guest_req.status == "granted")) or not email_ok:
+        return RedirectResponse(page, status_code=302)
+    needs_totp, totp_ok = _send_totp_gate(data, totp)
+    if needs_totp and not totp_ok:
+        return RedirectResponse(page, status_code=302)
+    return row, data, guest_req, verified_email
+
+
+@public_router.get("/public/{token}/locker/view")
+def public_locker_view(
+    token: str,
+    request: Request,
+    pin: Optional[str] = None,
+    totp: Optional[str] = None,
+    file_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Inline preview of a shared Document Vault file (after PIN/grant/OTP gates)."""
+    unlocked = _send_unlocked_or_redirect(token, request, db, pin=pin, totp=totp)
+    if isinstance(unlocked, RedirectResponse):
+        return unlocked
+    row, data, guest_req, verified_email = unlocked
+    if row.send_type != "locker":
+        raise HTTPException(status_code=404, detail="Not a document share")
+    return _public_locker_file_response(
+        row, data, request, db,
+        file_id=file_id, inline=True,
+        email=verified_email, guest_req=guest_req,
+    )
+
+
+@public_router.get("/public/{token}/locker/download")
+def public_locker_download(
+    token: str,
+    request: Request,
+    pin: Optional[str] = None,
+    totp: Optional[str] = None,
+    file_id: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """Download a shared Document Vault file (after PIN/grant/OTP gates)."""
+    unlocked = _send_unlocked_or_redirect(token, request, db, pin=pin, totp=totp)
+    if isinstance(unlocked, RedirectResponse):
+        return unlocked
+    row, data, guest_req, verified_email = unlocked
+    if row.send_type != "locker":
+        raise HTTPException(status_code=404, detail="Not a document share")
+    return _public_locker_file_response(
+        row, data, request, db,
+        file_id=file_id, inline=False,
+        email=verified_email, guest_req=guest_req,
+    )
+
+
+def _public_locker_file_response(
+    row: models.VaultSend,
+    data: dict,
+    request: Request,
+    db: Session,
+    *,
+    file_id: Optional[str],
+    inline: bool,
+    email: str | None,
+    guest_req: models.VaultSendRequest | None,
+) -> Response:
+    item_id = (data.get("locker_item_id") or data.get("item_id") or "").strip()
+    if not item_id:
+        raise HTTPException(status_code=404, detail="Document missing")
+    item = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == row.user_id)
+        .first()
+    )
+    if not item or not item.files:
+        raise HTTPException(status_code=404, detail="File not found")
+    allowed = set(data.get("locker_file_ids") or [f.id for f in item.files])
+    doc_file = None
+    if file_id:
+        doc_file = next((f for f in item.files if f.id == file_id and f.id in allowed), None)
+    else:
+        doc_file = next((f for f in item.files if f.id in allowed), item.files[0])
+    if not doc_file:
+        raise HTTPException(status_code=404, detail="File not found")
+    enc_path = settings.STORAGE_DIR / doc_file.file_path
+    if not enc_path.exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+    plain = crypto.decrypt_bytes(enc_path.read_bytes())
+    fname = (doc_file.original_filename or "document").replace('"', "")
+    disposition = "inline" if inline else "attachment"
+    _record_send_view(
+        row, request, db,
+        action="password_viewed" if not inline else "view",
+        email=email,
+        request_id=guest_req.id if guest_req else None,
+    )
+    return Response(
+        content=plain,
+        media_type=doc_file.file_type or "application/octet-stream",
+        headers={
+            "Content-Disposition": f'{disposition}; filename="{fname}"',
+            "Cache-Control": "private, no-store",
+        },
+    )
 
 
 @public_router.get("/public/{token}/qr", response_class=HTMLResponse)

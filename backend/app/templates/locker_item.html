@@ -127,7 +127,7 @@
               <select class="form-select" id="lk-folder" name="folder_id">
                 <option value="">None</option>
                 {% for f in folders %}
-                <option value="{{ f.id }}" {% if item.folder_id==f.id %}selected{% endif %}>{{ f.name }}</option>
+                <option value="{{ f.id }}" {% if item.folder_id==f.id %}selected{% endif %}>{{ f.name | nice }}</option>
                 {% endfor %}
               </select>
             </div>

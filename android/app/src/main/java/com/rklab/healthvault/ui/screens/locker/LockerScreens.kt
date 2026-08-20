@@ -1,10 +1,13 @@
 package com.rklab.healthvault.ui.screens.locker
 
 import android.content.Intent
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -18,24 +21,37 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import coil.compose.AsyncImage
 import com.rklab.healthvault.data.model.LockerFileOut
+import com.rklab.healthvault.data.model.LockerFolderOut
 import com.rklab.healthvault.data.model.LockerItemOut
+import com.rklab.healthvault.data.model.LockerItemUpdate
+import com.rklab.healthvault.data.model.LockerPersonOut
 import com.rklab.healthvault.data.model.LockerTypeOut
+import com.rklab.healthvault.data.model.PersonOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
 import com.rklab.healthvault.ui.theme.*
 import com.rklab.healthvault.util.DocumentScannerHelper
@@ -73,35 +89,106 @@ private fun typeColor(id: String): Color = when (id) {
     else -> TextGray
 }
 
+private fun niceName(value: String?): String {
+    if (value.isNullOrBlank()) return ""
+    return value.trim().split(Regex("\\s+")).joinToString(" ") { part ->
+        part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+    }
+}
+
+private fun relationLabel(rel: String?): String = when (rel?.lowercase()) {
+    "self" -> "You"
+    "spouse" -> "Spouse"
+    "child" -> "Child"
+    "parent" -> "Parent"
+    else -> niceName(rel ?: "Other")
+}
+
 @Composable
 fun LockerListScreen(
     repository: HealthVaultRepository,
     onOpenItem: (String) -> Unit,
-    onAdd: (String?) -> Unit,
-    onScan: (String?) -> Unit = onAdd,
+    onAdd: (docType: String?, folderId: String?) -> Unit,
+    onScan: (docType: String?, folderId: String?) -> Unit = onAdd,
     onOpenModules: () -> Unit,
     expiringOnly: Boolean = false
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf<String?>(null) }
+    var folderId by remember { mutableStateOf<String?>(null) }
+    var personId by remember { mutableStateOf<String?>(null) }
     var items by remember { mutableStateOf<List<LockerItemOut>>(emptyList()) }
     var types by remember { mutableStateOf<List<LockerTypeOut>>(emptyList()) }
+    var folders by remember { mutableStateOf<List<LockerFolderOut>>(emptyList()) }
+    var people by remember { mutableStateOf<List<LockerPersonOut>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    var showNewFolder by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
 
     fun reload() {
         scope.launch {
             loading = true
             error = null
             runCatching {
-                types = repository.listLockerTypes()
-                items = repository.listLockerItems(type, query.ifBlank { null }, expiringOnly)
+                val summary = repository.lockerSummary()
+                types = summary.types.filter { !it.custom }
+                folders = summary.folders
+                people = summary.people
+                items = repository.listLockerItems(
+                    docType = type,
+                    folderId = folderId,
+                    personId = personId,
+                    q = query.ifBlank { null },
+                    expiring = expiringOnly
+                )
             }.onFailure { error = it.message ?: "Could not load locker" }
             loading = false
         }
     }
-    LaunchedEffect(query, type, expiringOnly) { reload() }
+    LaunchedEffect(query, type, folderId, personId, expiringOnly) { reload() }
+
+    if (showNewFolder) {
+        AlertDialog(
+            onDismissRequest = { showNewFolder = false },
+            title = { Text("Create folder") },
+            text = {
+                OutlinedTextField(
+                    value = newFolderName,
+                    onValueChange = { newFolderName = it },
+                    label = { Text("Folder name") },
+                    placeholder = { Text("Gas book, School papers…") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = newFolderName.trim()
+                        if (name.isBlank()) return@TextButton
+                        scope.launch {
+                            runCatching { repository.createLockerFolder(niceName(name)) }
+                                .onSuccess {
+                                    showNewFolder = false
+                                    newFolderName = ""
+                                    folderId = it.id
+                                    type = null
+                                    Toast.makeText(context, "Folder created", Toast.LENGTH_SHORT).show()
+                                    reload()
+                                }
+                                .onFailure {
+                                    Toast.makeText(context, it.message ?: "Could not create folder", Toast.LENGTH_LONG).show()
+                                }
+                        }
+                    }
+                ) { Text("Create") }
+            },
+            dismissButton = { TextButton(onClick = { showNewFolder = false }) { Text("Cancel") } }
+        )
+    }
 
     Box(Modifier.fillMaxSize().background(HubBg)) {
         Column(Modifier.fillMaxSize()) {
@@ -120,14 +207,21 @@ fun LockerListScreen(
                     )
                     if (!expiringOnly) {
                         Text(
-                            "Scan IDs & papers · saved on phone + encrypted vault",
+                            "Scan IDs & papers · folders · family profiles",
                             color = InkSoft,
                             style = MaterialTheme.typography.bodySmall
                         )
                     }
                 }
-                IconButton(onClick = onOpenModules) {
-                    Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
+                Row {
+                    if (!expiringOnly) {
+                        IconButton(onClick = { showNewFolder = true; newFolderName = "" }) {
+                            Icon(Icons.Filled.CreateNewFolder, contentDescription = "New folder", tint = VaultTeal)
+                        }
+                    }
+                    IconButton(onClick = onOpenModules) {
+                        Icon(Icons.Filled.Apps, contentDescription = "Modules", tint = InkSoft)
+                    }
                 }
             }
             OutlinedTextField(
@@ -139,18 +233,81 @@ fun LockerListScreen(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             )
+            if (!expiringOnly && people.isNotEmpty()) {
+                Text(
+                    "Family",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = InkSoft,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = personId == null,
+                            onClick = { personId = null },
+                            label = { Text("Everyone") }
+                        )
+                    }
+                    item {
+                        FilterChip(
+                            selected = personId == "none",
+                            onClick = { personId = if (personId == "none") null else "none" },
+                            label = { Text("Unassigned") }
+                        )
+                    }
+                    items(people) { p ->
+                        FilterChip(
+                            selected = personId == p.id,
+                            onClick = { personId = if (personId == p.id) null else p.id },
+                            label = { Text("${niceName(p.name)} ${p.count}") }
+                        )
+                    }
+                }
+            }
+            Text(
+                "Types & folders",
+                style = MaterialTheme.typography.labelMedium,
+                color = InkSoft,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+            )
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item {
-                    FilterChip(selected = type == null, onClick = { type = null }, label = { Text("All") })
+                    FilterChip(
+                        selected = type == null && folderId == null,
+                        onClick = { type = null; folderId = null },
+                        label = { Text("All") }
+                    )
                 }
                 items(types) { t ->
                     FilterChip(
-                        selected = type == t.id,
-                        onClick = { type = if (type == t.id) null else t.id },
+                        selected = type == t.id && folderId == null,
+                        onClick = {
+                            folderId = null
+                            type = if (type == t.id) null else t.id
+                        },
                         label = { Text("${t.label} ${t.count}") }
+                    )
+                }
+                items(folders) { f ->
+                    FilterChip(
+                        selected = folderId == f.id,
+                        onClick = {
+                            type = null
+                            folderId = if (folderId == f.id) null else f.id
+                        },
+                        label = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.Folder, null, Modifier.size(14.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("${f.name} ${f.count}")
+                            }
+                        }
                     )
                 }
             }
@@ -193,7 +350,13 @@ fun LockerListScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text(item.title, color = Ink, fontWeight = FontWeight.SemiBold)
                                     Text(
-                                        listOfNotNull(item.type_label, item.holder_name, item.expiry_date).joinToString(" · "),
+                                        listOfNotNull(
+                                            item.type_label,
+                                            item.folder_name,
+                                            item.person_name?.let { niceName(it) },
+                                            item.holder_name?.let { niceName(it) },
+                                            item.expiry_date
+                                        ).joinToString(" · "),
                                         color = InkSoft,
                                         style = MaterialTheme.typography.bodySmall
                                     )
@@ -211,7 +374,7 @@ fun LockerListScreen(
         ) {
             if (!expiringOnly) {
                 ExtendedFloatingActionButton(
-                    onClick = { onScan(type) },
+                    onClick = { onScan(type, folderId) },
                     containerColor = VaultTeal,
                     contentColor = TextDark,
                     icon = { Icon(Icons.Filled.DocumentScanner, contentDescription = null) },
@@ -219,7 +382,7 @@ fun LockerListScreen(
                 )
             }
             FloatingActionButton(
-                onClick = { onAdd(type) },
+                onClick = { onAdd(type, folderId) },
                 containerColor = CardSurfaceRaised,
                 contentColor = Ink
             ) {
@@ -233,6 +396,7 @@ fun LockerListScreen(
 fun LockerAddScreen(
     repository: HealthVaultRepository,
     defaultType: String?,
+    defaultFolderId: String? = null,
     startWithScanner: Boolean = false,
     onDone: () -> Unit,
     onBack: () -> Unit
@@ -242,6 +406,8 @@ fun LockerAddScreen(
     val scope = rememberCoroutineScope()
     var docType by remember { mutableStateOf(defaultType ?: "aadhaar") }
     var customType by remember { mutableStateOf("") }
+    var folderId by remember { mutableStateOf(defaultFolderId) }
+    var personId by remember { mutableStateOf<String?>(null) }
     var title by remember { mutableStateOf("") }
     var holder by remember { mutableStateOf("") }
     var issuer by remember { mutableStateOf("") }
@@ -254,6 +420,15 @@ fun LockerAddScreen(
     var saving by remember { mutableStateOf(false) }
     var scannerBusy by remember { mutableStateOf(false) }
     var captureFile by remember { mutableStateOf<File?>(null) }
+    var folders by remember { mutableStateOf<List<LockerFolderOut>>(emptyList()) }
+    var people by remember { mutableStateOf<List<PersonOut>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        runCatching {
+            folders = repository.listLockerFolders()
+            people = repository.listPeople()
+        }
+    }
 
     fun applyFiles(files: List<Pair<File, String>>, pages: Int = files.size) {
         picked = files
@@ -347,12 +522,12 @@ fun LockerAddScreen(
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = VaultTeal, contentColor = TextDark)
             ) {
-                Icon(Icons.Filled.DocumentScanner, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.DocumentScanner, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(if (scannerBusy) "Opening…" else "Scan")
             }
             OutlinedButton(onClick = { launchCamera() }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.CameraAlt, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.CameraAlt, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Camera")
             }
@@ -360,12 +535,12 @@ fun LockerAddScreen(
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = { picker.launch("image/*") }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.PhotoLibrary, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.PhotoLibrary, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("Gallery")
             }
             OutlinedButton(onClick = { picker.launch("application/pdf") }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Filled.PictureAsPdf, null, modifier = Modifier.size(18.dp))
+                Icon(Icons.Filled.PictureAsPdf, null, Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
                 Text("PDF file")
             }
@@ -419,6 +594,45 @@ fun LockerAddScreen(
             Spacer(Modifier.height(8.dp))
             OutlinedTextField(customType, { customType = it }, label = { Text("Custom type") }, modifier = Modifier.fillMaxWidth())
         }
+        if (folders.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Folder", style = MaterialTheme.typography.labelLarge, color = InkSoft)
+            Spacer(Modifier.height(6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    FilterChip(selected = folderId == null, onClick = { folderId = null }, label = { Text("None") })
+                }
+                items(folders) { f ->
+                    FilterChip(
+                        selected = folderId == f.id,
+                        onClick = { folderId = if (folderId == f.id) null else f.id },
+                        label = { Text(f.name) }
+                    )
+                }
+            }
+        }
+        if (people.isNotEmpty()) {
+            Spacer(Modifier.height(12.dp))
+            Text("Family profile", style = MaterialTheme.typography.labelLarge, color = InkSoft)
+            Spacer(Modifier.height(6.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    FilterChip(selected = personId == null, onClick = { personId = null }, label = { Text("Unassigned") })
+                }
+                items(people) { p ->
+                    FilterChip(
+                        selected = personId == p.id,
+                        onClick = {
+                            personId = if (personId == p.id) null else p.id
+                            if (holder.isBlank() && personId == p.id) holder = niceName(p.name)
+                        },
+                        label = {
+                            Text("${niceName(p.name)} · ${relationLabel(p.relation.name.lowercase())}")
+                        }
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(8.dp))
@@ -453,6 +667,8 @@ fun LockerAddScreen(
                             title = title.trim(),
                             docType = docType,
                             customType = customType.ifBlank { null },
+                            folderId = folderId,
+                            personId = personId,
                             holderName = holder.ifBlank { null },
                             issuer = issuer.ifBlank { null },
                             idNumber = idNumber.ifBlank { null },
@@ -493,68 +709,336 @@ fun LockerItemScreen(
     val scope = rememberCoroutineScope()
     var item by remember { mutableStateOf<LockerItemOut?>(null) }
     var files by remember { mutableStateOf<List<LockerFileOut>>(emptyList()) }
+    var folders by remember { mutableStateOf<List<LockerFolderOut>>(emptyList()) }
+    var people by remember { mutableStateOf<List<PersonOut>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var editing by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var previewFile by remember { mutableStateOf<File?>(null) }
+    var previewMime by remember { mutableStateOf<String?>(null) }
+    var previewTitle by remember { mutableStateOf("") }
+    var confirmDeleteFile by remember { mutableStateOf<LockerFileOut?>(null) }
+
+    var title by remember { mutableStateOf("") }
+    var docType by remember { mutableStateOf("other") }
+    var customType by remember { mutableStateOf("") }
+    var folderId by remember { mutableStateOf<String?>(null) }
+    var personId by remember { mutableStateOf<String?>(null) }
+    var holder by remember { mutableStateOf("") }
+    var issuer by remember { mutableStateOf("") }
+    var idNumber by remember { mutableStateOf("") }
+    var issuedOn by remember { mutableStateOf("") }
+    var expiry by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
 
     fun reload() {
         scope.launch {
             runCatching {
-                item = repository.getLockerItem(itemId)
+                val loaded = repository.getLockerItem(itemId)
+                item = loaded
                 files = repository.listLockerFiles(itemId)
+                folders = repository.listLockerFolders()
+                people = repository.listPeople()
+                title = loaded.title
+                docType = loaded.doc_type
+                customType = loaded.custom_type.orEmpty()
+                folderId = loaded.folder_id
+                personId = loaded.person_id
+                holder = loaded.holder_name.orEmpty()
+                issuer = loaded.issuer.orEmpty()
+                idNumber = loaded.id_number.orEmpty()
+                issuedOn = loaded.issued_on.orEmpty()
+                expiry = loaded.expiry_date.orEmpty()
+                notes = loaded.notes.orEmpty()
             }.onFailure { error = it.message }
         }
     }
     LaunchedEffect(itemId) { reload() }
 
-    fun openFile(fileId: String?, name: String, mime: String?) {
+    fun openPreview(file: LockerFileOut) {
         scope.launch {
             try {
-                val dest = File(context.cacheDir.resolve("locker").apply { mkdirs() }, name.ifBlank { "file" })
+                val dest = File(
+                    context.cacheDir.resolve("locker").apply { mkdirs() },
+                    file.original_filename.ifBlank { "preview" }
+                )
                 withContext(Dispatchers.IO) {
-                    if (fileId != null) repository.downloadLockerFile(itemId, fileId, dest)
-                    else repository.downloadLockerItem(itemId, dest)
+                    repository.viewLockerFile(itemId, file.id, dest)
                 }
-                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dest)
-                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, mime ?: "*/*")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                })
+                previewMime = file.file_type
+                previewTitle = file.original_filename
+                previewFile = dest
             } catch (e: Exception) {
                 Toast.makeText(context, e.message ?: "Could not open file", Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    Column(Modifier.fillMaxSize().background(HubBg).padding(20.dp)) {
+    fun downloadExternal(file: LockerFileOut) {
+        scope.launch {
+            try {
+                val dest = File(
+                    context.cacheDir.resolve("locker").apply { mkdirs() },
+                    file.original_filename.ifBlank { "file" }
+                )
+                withContext(Dispatchers.IO) {
+                    repository.downloadLockerFile(itemId, file.id, dest)
+                }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", dest)
+                context.startActivity(Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, file.file_type ?: "*/*")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                })
+            } catch (e: Exception) {
+                Toast.makeText(context, e.message ?: "Could not download", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val addPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                val mapped = uris.mapIndexed { idx, uri ->
+                    FileUtil.copyUriToCacheFile(context, uri, "locker_add_${System.currentTimeMillis()}_$idx") to
+                        FileUtil.mimeTypeOf(context, uri)
+                }
+                repository.addLockerFiles(itemId, mapped.map { it.first }, mapped.map { it.second })
+            }.onSuccess {
+                Toast.makeText(context, "Files added", Toast.LENGTH_SHORT).show()
+                reload()
+            }.onFailure {
+                Toast.makeText(context, it.message ?: "Upload failed", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    if (previewFile != null) {
+        AlertDialog(
+            onDismissRequest = { previewFile = null },
+            title = { Text(previewTitle.ifBlank { "Preview" }, maxLines = 1) },
+            text = {
+                Box(
+                    Modifier.fillMaxWidth().heightIn(min = 220.dp, max = 420.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val mime = previewMime.orEmpty().lowercase()
+                    when {
+                        mime == "application/pdf" -> LockerPdfPreview(previewFile!!)
+                        mime.startsWith("image/") || mime.isBlank() -> AsyncImage(
+                            model = previewFile,
+                            contentDescription = previewTitle,
+                            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                            contentScale = ContentScale.Fit
+                        )
+                        else -> Text("Preview not available for this file type. Use Download.", color = InkSoft)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { previewFile = null }) { Text("Close") }
+            }
+        )
+    }
+
+    confirmDeleteFile?.let { file ->
+        AlertDialog(
+            onDismissRequest = { confirmDeleteFile = null },
+            title = { Text("Remove file?") },
+            text = { Text("Remove ${file.original_filename} from this document?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            runCatching { repository.deleteLockerFile(itemId, file.id) }
+                                .onSuccess {
+                                    confirmDeleteFile = null
+                                    reload()
+                                }
+                                .onFailure {
+                                    Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show()
+                                }
+                        }
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = StampRed)
+                ) { Text("Remove") }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteFile = null }) { Text("Cancel") } }
+        )
+    }
+
+    Column(Modifier.fillMaxSize().background(HubBg).verticalScroll(rememberScrollState()).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← Locker", color = Navy) }
         val current = item
         if (error != null) Text(error!!, color = StampRed)
-        else if (current == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        else if (current == null) Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = Navy)
         } else {
-            Text(current.type_label.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
-            Text(current.title, style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(8.dp))
-            current.holder_name?.let { Text("Holder  $it", color = Ink) }
-            current.issuer?.let { Text("Issuer  $it", color = InkSoft) }
-            current.id_number?.let { Text("ID  $it", color = Ink) }
-            current.expiry_date?.let { Text("Expires  $it", color = InkSoft) }
-            current.notes?.let { Text(it, color = InkSoft, modifier = Modifier.padding(top = 8.dp)) }
-            Spacer(Modifier.height(16.dp))
-            Text("Files", fontWeight = FontWeight.SemiBold, color = Ink)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(current.type_label.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                    Text(current.title, style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+                }
+                IconButton(onClick = { editing = !editing }) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = VaultTeal)
+                }
+            }
+            if (!editing) {
+                Spacer(Modifier.height(8.dp))
+                current.person_name?.let { Text("Profile  ${niceName(it)}", color = Ink) }
+                current.folder_name?.let { Text("Folder  $it", color = InkSoft) }
+                current.holder_name?.let { Text("Holder  ${niceName(it)}", color = Ink) }
+                current.issuer?.let { Text("Issuer  $it", color = InkSoft) }
+                current.id_number?.let { Text("ID  $it", color = Ink) }
+                current.expiry_date?.let { Text("Expires  $it", color = InkSoft) }
+                current.notes?.let { Text(it, color = InkSoft, modifier = Modifier.padding(top = 8.dp)) }
+            } else {
+                Spacer(Modifier.height(12.dp))
+                Text("Edit details", fontWeight = FontWeight.SemiBold, color = Ink)
+                Spacer(Modifier.height(8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(LOCKER_TYPES) { (id, label) ->
+                        FilterChip(selected = docType == id, onClick = { docType = id }, label = { Text(label) })
+                    }
+                }
+                if (docType == "other") {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(customType, { customType = it }, label = { Text("Custom type") }, modifier = Modifier.fillMaxWidth())
+                }
+                if (folders.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Folder", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                        item {
+                            FilterChip(selected = folderId == null, onClick = { folderId = null }, label = { Text("None") })
+                        }
+                        items(folders) { f ->
+                            FilterChip(
+                                selected = folderId == f.id,
+                                onClick = { folderId = if (folderId == f.id) null else f.id },
+                                label = { Text(f.name) }
+                            )
+                        }
+                    }
+                }
+                if (people.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("Family profile", style = MaterialTheme.typography.labelMedium, color = InkSoft)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 6.dp)) {
+                        item {
+                            FilterChip(selected = personId == null, onClick = { personId = null }, label = { Text("Unassigned") })
+                        }
+                        items(people) { p ->
+                            FilterChip(
+                                selected = personId == p.id,
+                                onClick = { personId = if (personId == p.id) null else p.id },
+                                label = { Text("${niceName(p.name)} · ${relationLabel(p.relation.name.lowercase())}") }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(title, { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(holder, { holder = it }, label = { Text("Holder") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(issuer, { issuer = it }, label = { Text("Issuer") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(idNumber, { idNumber = it }, label = { Text("ID / number") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(issuedOn, { issuedOn = it }, label = { Text("Issued on (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(expiry, { expiry = it }, label = { Text("Expiry (YYYY-MM-DD)") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = {
+                        if (title.isBlank()) {
+                            Toast.makeText(context, "Title is required", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        saving = true
+                        scope.launch {
+                            runCatching {
+                                repository.updateLockerItem(
+                                    itemId,
+                                    LockerItemUpdate(
+                                        title = title.trim(),
+                                        doc_type = docType,
+                                        custom_type = customType.ifBlank { null },
+                                        folder_id = folderId ?: "",
+                                        person_id = personId ?: "",
+                                        holder_name = holder.ifBlank { null },
+                                        issuer = issuer.ifBlank { null },
+                                        id_number = idNumber.ifBlank { null },
+                                        issued_on = issuedOn.ifBlank { null },
+                                        expiry_date = expiry.ifBlank { null },
+                                        notes = notes.ifBlank { null }
+                                    )
+                                )
+                            }.onSuccess {
+                                editing = false
+                                Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
+                                reload()
+                            }.onFailure {
+                                Toast.makeText(context, it.message ?: "Save failed", Toast.LENGTH_LONG).show()
+                            }
+                            saving = false
+                        }
+                    },
+                    enabled = !saving,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = VaultTeal, contentColor = TextDark)
+                ) {
+                    Text(if (saving) "Saving…" else "Save changes")
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Files", fontWeight = FontWeight.SemiBold, color = Ink)
+                TextButton(onClick = { addPicker.launch("*/*") }) {
+                    Icon(Icons.Filled.Add, null, Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add media", color = VaultTeal)
+                }
+            }
+            if (files.isEmpty()) {
+                Text("No files yet — add a scan or PDF.", color = InkSoft, modifier = Modifier.padding(top = 8.dp))
+            }
             files.forEach { f ->
                 Surface(
                     shape = RoundedCornerShape(14.dp),
                     color = HubGlass,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp).clickable {
-                        openFile(f.id, f.original_filename, f.file_type)
-                    }
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Icon(Icons.Filled.InsertDriveFile, null, tint = Navy)
                         Spacer(Modifier.width(10.dp))
-                        Column {
+                        Column(Modifier.weight(1f)) {
                             Text(f.original_filename, color = Ink, fontWeight = FontWeight.Medium)
                             Text(f.file_type ?: "file", color = InkSoft, style = MaterialTheme.typography.bodySmall)
+                        }
+                        IconButton(onClick = { openPreview(f) }) {
+                            Icon(Icons.Filled.Visibility, contentDescription = "Open", tint = VaultTeal)
+                        }
+                        IconButton(onClick = { downloadExternal(f) }) {
+                            Icon(Icons.Filled.Download, contentDescription = "Download", tint = InkSoft)
+                        }
+                        IconButton(onClick = { confirmDeleteFile = f }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = StampRed)
                         }
                     }
                 }
@@ -570,6 +1054,43 @@ fun LockerItemScreen(
                 },
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = StampRed)
             ) { Text("Delete document") }
+            Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun LockerPdfPreview(file: File) {
+    var bitmap by remember(file.absolutePath) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(file.absolutePath) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val fd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                val renderer = PdfRenderer(fd)
+                val page = renderer.openPage(0)
+                val bm = android.graphics.Bitmap.createBitmap(
+                    page.width.coerceAtLeast(1),
+                    page.height.coerceAtLeast(1),
+                    android.graphics.Bitmap.Config.ARGB_8888
+                )
+                page.render(bm, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                page.close()
+                renderer.close()
+                fd.close()
+                bm
+            }.onSuccess { bitmap = it }
+                .onFailure { error = it.message }
+        }
+    }
+    when {
+        error != null -> Text(error!!, color = StampRed)
+        bitmap == null -> CircularProgressIndicator(color = Navy)
+        else -> Image(
+            bitmap = bitmap!!.asImageBitmap(),
+            contentDescription = "PDF preview",
+            modifier = Modifier.fillMaxWidth(),
+            contentScale = ContentScale.Fit
+        )
     }
 }

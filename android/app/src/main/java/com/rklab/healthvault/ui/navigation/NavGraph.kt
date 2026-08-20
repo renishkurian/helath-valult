@@ -98,7 +98,7 @@ private object Routes {
     const val FINANCE_EMI = "finance_emi"
     const val LOCKER = "locker"
     const val LOCKER_EXPIRING = "locker_expiring"
-    const val LOCKER_ADD = "locker_add?type={type}&scan={scan}"
+    const val LOCKER_ADD = "locker_add?type={type}&scan={scan}&folder={folder}"
     const val LOCKER_ITEM = "locker_item/{itemId}"
     const val DIARY = "diary"
     const val DIARY_PINNED = "diary_pinned"
@@ -123,8 +123,8 @@ private object Routes {
     const val TRACKER_TRASH = "tracker_trash"
     const val TRACKER_LIST = "tracker_list/{listId}"
 
-    fun lockerAdd(type: String? = null, scan: Boolean = false) =
-        "locker_add?type=${type ?: ""}&scan=${if (scan) "1" else "0"}"
+    fun lockerAdd(type: String? = null, scan: Boolean = false, folder: String? = null) =
+        "locker_add?type=${type ?: ""}&scan=${if (scan) "1" else "0"}&folder=${folder ?: ""}"
     fun lockerItem(itemId: String) = "locker_item/$itemId"
     fun diaryEntry(entryId: String) = "diary_entry/$entryId"
     fun urlsAdd(categoryId: String? = null) = "urls_add?categoryId=${categoryId ?: ""}"
@@ -607,8 +607,8 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 LockerListScreen(
                     repository = repository,
                     onOpenItem = { navController.navigate(Routes.lockerItem(it)) },
-                    onAdd = { navController.navigate(Routes.lockerAdd(it)) },
-                    onScan = { navController.navigate(Routes.lockerAdd(it, scan = true)) },
+                    onAdd = { type, folder -> navController.navigate(Routes.lockerAdd(type, folder = folder)) },
+                    onScan = { type, folder -> navController.navigate(Routes.lockerAdd(type, scan = true, folder = folder)) },
                     onOpenModules = { navController.navigate(Routes.MODULES) }
                 )
             }
@@ -616,8 +616,8 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 LockerListScreen(
                     repository = repository,
                     onOpenItem = { navController.navigate(Routes.lockerItem(it)) },
-                    onAdd = { navController.navigate(Routes.lockerAdd(it)) },
-                    onScan = { navController.navigate(Routes.lockerAdd(it, scan = true)) },
+                    onAdd = { type, folder -> navController.navigate(Routes.lockerAdd(type, folder = folder)) },
+                    onScan = { type, folder -> navController.navigate(Routes.lockerAdd(type, scan = true, folder = folder)) },
                     onOpenModules = { navController.navigate(Routes.MODULES) },
                     expiringOnly = true
                 )
@@ -626,14 +626,17 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 Routes.LOCKER_ADD,
                 arguments = listOf(
                     navArgument("type") { type = NavType.StringType; defaultValue = "" },
-                    navArgument("scan") { type = NavType.StringType; defaultValue = "0" }
+                    navArgument("scan") { type = NavType.StringType; defaultValue = "0" },
+                    navArgument("folder") { type = NavType.StringType; defaultValue = "" }
                 )
             ) { entry ->
                 val type = entry.arguments?.getString("type").orEmpty().ifBlank { null }
                 val startScan = entry.arguments?.getString("scan") == "1"
+                val folder = entry.arguments?.getString("folder").orEmpty().ifBlank { null }
                 LockerAddScreen(
                     repository = repository,
                     defaultType = type,
+                    defaultFolderId = folder,
                     startWithScanner = startScan,
                     onDone = { navController.popBackStack() },
                     onBack = { navController.popBackStack() }

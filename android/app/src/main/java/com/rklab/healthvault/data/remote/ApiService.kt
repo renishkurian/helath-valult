@@ -406,9 +406,20 @@ interface ApiService {
     @GET("locker/types")
     suspend fun listLockerTypes(): List<LockerTypeOut>
 
+    @GET("locker/folders")
+    suspend fun listLockerFolders(): List<LockerFolderOut>
+
+    @POST("locker/folders")
+    suspend fun createLockerFolder(@Body body: LockerFolderIn): LockerFolderOut
+
+    @DELETE("locker/folders/{id}")
+    suspend fun deleteLockerFolder(@Path("id") id: String): Response<Unit>
+
     @GET("locker")
     suspend fun listLockerItems(
         @Query("doc_type") docType: String? = null,
+        @Query("folder_id") folderId: String? = null,
+        @Query("person_id") personId: String? = null,
         @Query("q") q: String? = null,
         @Query("expiring") expiring: Boolean = false
     ): List<LockerItemOut>
@@ -419,6 +430,8 @@ interface ApiService {
         @Part("title") title: RequestBody,
         @Part("doc_type") docType: RequestBody,
         @Part("custom_type") customType: RequestBody?,
+        @Part("folder_id") folderId: RequestBody?,
+        @Part("person_id") personId: RequestBody?,
         @Part("holder_name") holderName: RequestBody?,
         @Part("issuer") issuer: RequestBody?,
         @Part("id_number") idNumber: RequestBody?,
@@ -441,13 +454,37 @@ interface ApiService {
     @GET("locker/{id}/files")
     suspend fun listLockerFiles(@Path("id") id: String): List<LockerFileOut>
 
+    @Multipart
+    @POST("locker/{id}/files")
+    suspend fun addLockerFiles(
+        @Path("id") id: String,
+        @Part files: List<MultipartBody.Part>
+    ): List<LockerFileOut>
+
+    @DELETE("locker/{id}/files/{fileId}")
+    suspend fun deleteLockerFile(
+        @Path("id") id: String,
+        @Path("fileId") fileId: String
+    ): Response<Unit>
+
     @Streaming
     @GET("locker/{id}/download")
     suspend fun downloadLockerItem(@Path("id") id: String): ResponseBody
 
     @Streaming
+    @GET("locker/{id}/view")
+    suspend fun viewLockerItem(@Path("id") id: String): ResponseBody
+
+    @Streaming
     @GET("locker/{id}/files/{fileId}/download")
     suspend fun downloadLockerFile(
+        @Path("id") id: String,
+        @Path("fileId") fileId: String
+    ): ResponseBody
+
+    @Streaming
+    @GET("locker/{id}/files/{fileId}/view")
+    suspend fun viewLockerFile(
         @Path("id") id: String,
         @Path("fileId") fileId: String
     ): ResponseBody

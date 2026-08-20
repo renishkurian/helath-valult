@@ -43,7 +43,7 @@
               <select class="form-select" id="lk-folder" name="folder_id">
                 <option value="">None</option>
                 {% for f in folders %}
-                <option value="{{ f.id }}" {% if prefill_folder==f.id %}selected{% endif %}>{{ f.name }}</option>
+                <option value="{{ f.id }}" {% if prefill_folder==f.id %}selected{% endif %}>{{ f.name | nice }}</option>
                 {% endfor %}
               </select>
               <div class="form-text">Optional — group into a folder you created on the locker home.</div>

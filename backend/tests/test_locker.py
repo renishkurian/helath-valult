@@ -154,7 +154,11 @@ def test_locker_custom_folders():
     folder = client.post("/locker/folders", headers=headers, json={"name": "Gas book"})
     assert folder.status_code == 201, folder.text
     folder_id = folder.json()["id"]
-    assert folder.json()["name"] == "Gas book"
+    assert folder.json()["name"] == "Gas Book"
+
+    lower = client.post("/locker/folders", headers=headers, json={"name": "bank"})
+    assert lower.status_code == 201, lower.text
+    assert lower.json()["name"] == "Bank"
 
     listed = client.get("/locker/folders", headers=headers).json()
     assert any(f["id"] == folder_id for f in listed)
@@ -172,8 +176,8 @@ def test_locker_custom_folders():
     assert r.status_code == 201, r.text
     item = r.json()
     assert item["folder_id"] == folder_id
-    assert item["folder_name"] == "Gas book"
-    assert item["type_label"] == "Gas book"
+    assert item["folder_name"] == "Gas Book"
+    assert item["type_label"] == "Gas Book"
 
     by_folder = client.get("/locker", headers=headers, params={"folder_id": folder_id}).json()
     assert len(by_folder) == 1

@@ -773,9 +773,9 @@ class VaultHealthOut(BaseModel):
 
 class VaultSendCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    send_type: str = "text"  # text | login
+    send_type: str = "text"  # text | login | locker
     text: Optional[str] = None
-    item_id: Optional[str] = None
+    item_id: Optional[str] = None  # vault login id OR locker item id
     notes: Optional[str] = None
     pin: Optional[str] = Field(default=None, min_length=4, max_length=12)
     expires_in_hours: int = Field(default=48, ge=1, le=24 * 30)
@@ -813,6 +813,11 @@ class VaultSendPublicOut(BaseModel):
     uris: List[str] = []
     totp_secret: Optional[str] = None
     notes: Optional[str] = None
+    locker_item_id: Optional[str] = None
+    locker_title: Optional[str] = None
+    locker_type_label: Optional[str] = None
+    locker_file_count: int = 0
+    locker_holder: Optional[str] = None
     expires_at: datetime
     has_pin: bool = False
     pin_required: bool = False

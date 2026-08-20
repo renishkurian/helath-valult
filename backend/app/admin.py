@@ -3699,6 +3699,40 @@ def locker_add_folder(
     return RedirectResponse(f"/admin/locker?folder={folder.id}", status_code=302)
 
 
+@router.post("/locker/{item_id}/folder")
+def locker_set_folder(
+    item_id: str,
+    request: Request,
+    folder_id: str = Form(""),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Move a document into a custom folder (or clear folder). Used by dropdown + drag-drop."""
+    from app.routers import locker as lk
+    from app import schemas as sc
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    lk.update_item(
+        item_id,
+        sc.LockerItemUpdate(folder_id=folder_id or None),
+        db=db,
+        current_user=user,
+    )
+    dest = (next or "").strip()
+    if dest.startswith("http://") or dest.startswith("https://"):
+        from urllib.parse import urlparse
+        parsed = urlparse(dest)
+        dest = parsed.path + (("?" + parsed.query) if parsed.query else "")
+    if not dest.startswith("/admin/locker"):
+        dest = "/admin/locker"
+    # Prefer JSON for drag-drop XHR
+    accept = (request.headers.get("accept") or "").lower()
+    if "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JSONResponse({"ok": True, "folder_id": folder_id or None})
+    return RedirectResponse(dest, status_code=302)
+
+
 @router.get("/locker/{item_id}", response_class=HTMLResponse)
 def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk

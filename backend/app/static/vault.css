@@ -1354,6 +1354,16 @@ body.modules-picker .side-label{
 }
 .folder:hover{ transform:translateY(-2px); border-color:var(--v-line-2); background:var(--v-surface-2); color:inherit; }
 .folder.on{ border-color:var(--v-gold-line); background:var(--v-gold-soft); }
+.folder.drop-target{
+  border-color:var(--v-gold); background:var(--v-gold-soft);
+  box-shadow:0 0 0 2px rgba(240,169,78,0.35);
+  transform:translateY(-2px);
+}
+.folder-grid .folder.js-folder-drop{ cursor:copy; }
+tr.js-locker-doc{ cursor:grab; }
+tr.js-locker-doc.is-dragging{ opacity:0.45; }
+.lk-folder-pick{ margin:0; min-width:7.5rem; }
+.lk-folder-pick .form-select{ min-height:34px; font-size:.8125rem; }
 .folder-name{ display:flex; align-items:center; gap:.5rem; font-size:.8125rem; font-weight:600; letter-spacing:-0.01em; line-height:1.3; }
 .folder-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .folder .fcount{ font-size:1.125rem; font-weight:650; color:var(--v-ink-2); font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }

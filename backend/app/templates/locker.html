@@ -149,9 +149,12 @@
 
 <div class="section-head d-flex flex-wrap align-items-center justify-content-between gap-2">
   <h2>Document types &amp; folders</h2>
+  <span class="small text-faint">Drag a document onto a folder to move it</span>
 </div>
-<div class="folder-grid mb-3">
-  <a class="folder {% if not doc_type and not folder and not expiring %}on{% endif %}" href="/admin/locker?{{ ('person=' ~ person) if person else '' }}">
+<div class="folder-grid mb-3" id="lk-folder-grid">
+  <a class="folder js-folder-drop {% if not doc_type and not folder and not expiring %}on{% endif %}"
+     href="/admin/locker?{{ ('person=' ~ person) if person else '' }}"
+     data-folder-id="">
     <span class="folder-name"><i class="bi bi-collection"></i> All types</span>
     <span class="fcount">{{ '%02d'|format(summary.total) }}</span>
   </a>
@@ -169,10 +172,12 @@
   </a>
   {% endfor %}
   {% for f in summary.folders %}
-  <a class="folder {% if folder==f.id %}on{% endif %}" href="/admin/locker?folder={{ f.id }}{{ qs_person }}">
+  <a class="folder js-folder-drop {% if folder==f.id %}on{% endif %}"
+     href="/admin/locker?folder={{ f.id }}{{ qs_person }}"
+     data-folder-id="{{ f.id }}">
     <span class="folder-name">
       <i class="bi bi-folder2" style="color:#F0A94E"></i>
-      {{ f.name }}
+      {{ f.name | nice }}
     </span>
     <span class="fcount">{{ '%02d'|format(f.count) }}</span>
   </a>
@@ -187,7 +192,7 @@
       </div>
       <button class="btn btn-outline-light" type="submit"><i class="bi bi-folder-plus"></i> Create folder</button>
     </form>
-    <div class="form-text mt-2 mb-0">Custom folders sit beside Aadhaar / PAN. Add documents into a folder from Scan / add.</div>
+    <div class="form-text mt-2 mb-0">Names are title-cased automatically. Drag a document onto a folder tile, or use the Folder column.</div>
   </div>
 </div>
 
@@ -198,6 +203,7 @@
       <thead>
         <tr>
           <th>Document</th>
+          <th>Folder</th>
           <th>Profile</th>
           <th>Holder</th>
           <th>Expiry</th>
@@ -207,7 +213,7 @@
       </thead>
       <tbody>
         {% for item in items %}
-        <tr>
+        <tr class="js-locker-doc" draggable="true" data-item-id="{{ item.id }}">
           <td>
             <a class="d-flex align-items-center gap-2 text-reset text-decoration-none" href="/admin/locker/{{ item.id }}">
               <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
@@ -216,6 +222,18 @@
                 <span class="small text-faint">{{ item.type_label }}{% if item.issuer %} · {{ item.issuer }}{% endif %}</span>
               </span>
             </a>
+          </td>
+          <td>
+            <form method="post" action="/admin/locker/{{ item.id }}/folder" class="lk-folder-pick">
+              <input type="hidden" name="next" value="{{ request.url }}">
+              <label class="visually-hidden" for="lk-fold-{{ item.id }}">Folder</label>
+              <select class="form-select form-select-sm" id="lk-fold-{{ item.id }}" name="folder_id" onchange="this.form.submit()">
+                <option value="">No folder</option>
+                {% for f in summary.folders %}
+                <option value="{{ f.id }}" {% if item.folder_id==f.id %}selected{% endif %}>{{ f.name | nice }}</option>
+                {% endfor %}
+              </select>
+            </form>
           </td>
           <td>
             {% if item.person_name %}
@@ -260,7 +278,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="6">
+          <td colspan="7">
             <div class="empty-state">
               <div class="empty-ico"><i class="bi bi-safe2"></i></div>
               {% if q or doc_type or folder or expiring or person %}
@@ -280,4 +298,60 @@
     </table>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var draggingId = null;
+  document.querySelectorAll(".js-locker-doc").forEach(function (row) {
+    row.addEventListener("dragstart", function (e) {
+      draggingId = row.getAttribute("data-item-id");
+      row.classList.add("is-dragging");
+      if (e.dataTransfer) {
+        e.dataTransfer.setData("text/plain", draggingId || "");
+        e.dataTransfer.effectAllowed = "move";
+      }
+    });
+    row.addEventListener("dragend", function () {
+      row.classList.remove("is-dragging");
+      draggingId = null;
+      document.querySelectorAll(".js-folder-drop").forEach(function (el) {
+        el.classList.remove("drop-target");
+      });
+    });
+  });
+  document.querySelectorAll(".js-folder-drop").forEach(function (tile) {
+    tile.addEventListener("dragover", function (e) {
+      if (!draggingId) return;
+      e.preventDefault();
+      tile.classList.add("drop-target");
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+    });
+    tile.addEventListener("dragleave", function () {
+      tile.classList.remove("drop-target");
+    });
+    tile.addEventListener("drop", function (e) {
+      e.preventDefault();
+      tile.classList.remove("drop-target");
+      var itemId = draggingId || (e.dataTransfer && e.dataTransfer.getData("text/plain"));
+      if (!itemId) return;
+      var folderId = tile.getAttribute("data-folder-id") || "";
+      var body = new FormData();
+      body.append("folder_id", folderId);
+      body.append("next", window.location.pathname + window.location.search);
+      fetch("/admin/locker/" + encodeURIComponent(itemId) + "/folder", {
+        method: "POST",
+        body: body,
+        headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json" },
+        credentials: "same-origin"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("Move failed");
+        window.location.reload();
+      }).catch(function () {
+        alert("Could not move document to folder");
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}
