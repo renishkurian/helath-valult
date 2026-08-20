@@ -785,6 +785,7 @@ class VaultSendCreate(BaseModel):
     require_email_otp: bool = False
     allowed_emails: List[str] = []
     require_vault_user_email: bool = False
+    files_only: bool = False  # locker: share files list only (no document metadata)
 
 
 class VaultSendOut(BaseModel):

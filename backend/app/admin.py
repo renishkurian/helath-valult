@@ -3596,6 +3596,64 @@ def locker_home(
     ))
 
 
+@router.get("/locker/explorer", response_class=HTMLResponse)
+def locker_explorer(
+    request: Request,
+    folder: str = "",
+    place: str = "",
+    doc_type: str = "",
+    person: str = "",
+    q: str = "",
+    view: str = "list",
+    db: Session = Depends(get_db),
+):
+    """Linux/Windows-style Document Explorer over Document Vault folders."""
+    from app.routers import locker as lk
+    user = _lk_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    folder_id = (folder or "").strip()
+    place_key = (place or "").strip() or ("folder" if folder_id else "home")
+    type_filter = (doc_type or "").strip()
+    person_filter = (person or "").strip()
+    expiring = place_key == "expiring"
+    unfiled = place_key == "unfiled"
+    summary = lk.locker_summary(db=db, current_user=user)
+    items = lk.list_items(
+        doc_type=type_filter or None,
+        folder_id=folder_id or None,
+        q=q or None,
+        person_id=person_filter or None,
+        expiring=expiring,
+        db=db,
+        current_user=user,
+    )
+    if unfiled and not folder_id and not q:
+        items = [i for i in items if not i.folder_id]
+    elif place_key == "home" and not folder_id and not type_filter and not expiring and not q and not person_filter:
+        # Root view: folders + documents not in a folder (like a home directory)
+        items = [i for i in items if not i.folder_id]
+    folder_name = None
+    type_label = None
+    if folder_id:
+        for f in summary.folders:
+            if f.id == folder_id:
+                folder_name = f.name
+                break
+    if type_filter:
+        type_label = dict(lk.LOCKER_TYPES).get(type_filter, type_filter.replace("_", " ").title())
+    view_mode = "icons" if view == "icons" else "list"
+    return templates.TemplateResponse("locker_explorer.html", _lk_ctx(
+        request, user, "lk_explorer",
+        summary=summary, items=items, people=summary.people,
+        folders=summary.folders, types=lk.LOCKER_TYPES,
+        folder=folder_id, folder_name=folder_name, place=place_key,
+        doc_type=type_filter, type_label=type_label, person=person_filter, q=q,
+        view=view_mode, expiring=expiring, unfiled=unfiled,
+        active_person_id=person_filter or None,
+    ))
+
+
 @router.get("/locker/add", response_class=HTMLResponse)
 def locker_add_page(
     request: Request,
@@ -3689,6 +3747,7 @@ def locker_add_person(
 def locker_add_folder(
     request: Request,
     name: str = Form(...),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Create a custom Document Vault folder (Gas book, School papers, …)."""
@@ -3699,9 +3758,56 @@ def locker_add_folder(
         return denied
     clean = (name or "").strip()
     if not clean:
-        return RedirectResponse("/admin/locker", status_code=302)
+        return RedirectResponse("/admin/locker/explorer", status_code=302)
     folder = lk.create_folder(sc.LockerFolderIn(name=clean), db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/locker") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse(f"/admin/locker?folder={folder.id}", status_code=302)
+
+
+@router.post("/locker/folder/{folder_id}/rename")
+def locker_rename_folder(
+    folder_id: str,
+    request: Request,
+    name: str = Form(...),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    folder = lk._resolve_folder(db, user, folder_id)
+    if not folder:
+        return RedirectResponse("/admin/locker/explorer", status_code=302)
+    folder.name = lk.title_name(name) or folder.name
+    db.commit()
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = f"/admin/locker/explorer?folder={folder_id}"
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/locker/folder/{folder_id}/delete")
+def locker_delete_folder(
+    folder_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        lk.delete_folder(folder_id, db=db, current_user=user)
+    except Exception:
+        pass
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = "/admin/locker/explorer"
+    return RedirectResponse(dest, status_code=302)
 
 
 @router.post("/locker/{item_id}/folder")

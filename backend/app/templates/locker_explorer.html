@@ -1,0 +1,550 @@
+{% extends "base.html" %}
+{% block title %}Document Explorer{% endblock %}
+{% block content %}
+{% set type_colors = {
+  'aadhaar':'#7FA6FF','pan':'#F0C36A','passport':'#C0A8FF','driving_license':'#4ADE9B',
+  'voter_id':'#22D3EE','certificate':'#FF8095','rc':'#F5A65B','insurance':'#F0C36A',
+  'warranty':'#84CC16','property':'#38BDF8','other':'#8B95A8'
+} %}
+{% set place = place or 'home' %}
+{% set view = view or 'list' %}
+{% set qs_view = ('&view=' ~ view) if view == 'icons' else '' %}
+{% if folder %}
+  {% set add_href = '/admin/locker/add?folder=' ~ folder %}
+  {% set here_label = folder_name or 'Folder' %}
+{% elif place == 'expiring' %}
+  {% set add_href = '/admin/locker/add' %}
+  {% set here_label = 'Expiring' %}
+{% elif place == 'unfiled' %}
+  {% set add_href = '/admin/locker/add' %}
+  {% set here_label = 'Unfiled' %}
+{% elif doc_type %}
+  {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type %}
+  {% set here_label = type_label or (doc_type.replace('_', ' ') | title) %}
+{% else %}
+  {% set add_href = '/admin/locker/add' %}
+  {% set here_label = 'Home' %}
+{% endif %}
+{% if view == 'icons' %}
+  {% if folder %}
+    {% set here_href = '/admin/locker/explorer?folder=' ~ folder ~ '&view=icons' %}
+    {% set list_href = '/admin/locker/explorer?folder=' ~ folder %}
+    {% set icons_href = here_href %}
+  {% elif place == 'expiring' %}
+    {% set here_href = '/admin/locker/explorer?place=expiring&view=icons' %}
+    {% set list_href = '/admin/locker/explorer?place=expiring' %}
+    {% set icons_href = here_href %}
+  {% elif place == 'unfiled' %}
+    {% set here_href = '/admin/locker/explorer?place=unfiled&view=icons' %}
+    {% set list_href = '/admin/locker/explorer?place=unfiled' %}
+    {% set icons_href = here_href %}
+  {% elif doc_type %}
+    {% set here_href = '/admin/locker/explorer?doc_type=' ~ doc_type ~ '&view=icons' %}
+    {% set list_href = '/admin/locker/explorer?doc_type=' ~ doc_type %}
+    {% set icons_href = here_href %}
+  {% else %}
+    {% set here_href = '/admin/locker/explorer?view=icons' %}
+    {% set list_href = '/admin/locker/explorer' %}
+    {% set icons_href = here_href %}
+  {% endif %}
+{% else %}
+  {% if folder %}
+    {% set here_href = '/admin/locker/explorer?folder=' ~ folder %}
+    {% set list_href = here_href %}
+    {% set icons_href = '/admin/locker/explorer?folder=' ~ folder ~ '&view=icons' %}
+  {% elif place == 'expiring' %}
+    {% set here_href = '/admin/locker/explorer?place=expiring' %}
+    {% set list_href = here_href %}
+    {% set icons_href = '/admin/locker/explorer?place=expiring&view=icons' %}
+  {% elif place == 'unfiled' %}
+    {% set here_href = '/admin/locker/explorer?place=unfiled' %}
+    {% set list_href = here_href %}
+    {% set icons_href = '/admin/locker/explorer?place=unfiled&view=icons' %}
+  {% elif doc_type %}
+    {% set here_href = '/admin/locker/explorer?doc_type=' ~ doc_type %}
+    {% set list_href = here_href %}
+    {% set icons_href = '/admin/locker/explorer?doc_type=' ~ doc_type ~ '&view=icons' %}
+  {% else %}
+    {% set here_href = '/admin/locker/explorer' %}
+    {% set list_href = here_href %}
+    {% set icons_href = '/admin/locker/explorer?view=icons' %}
+  {% endif %}
+{% endif %}
+{% set qs_view = ('&view=icons') if view == 'icons' else '' %}
+
+<div class="page-head mb-3">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      <a href="/admin/locker">Document Vault</a>
+      <i class="bi bi-chevron-right"></i>
+      Explorer
+    </div>
+    <h1 class="page-title">Document Explorer</h1>
+    <p class="page-lead mb-0">Browse like a file manager — folders on the left, documents on the right. Right-click for actions.</p>
+  </div>
+</div>
+
+<div class="fx-shell" id="fx-shell"
+     data-here="{{ here_href }}"
+     data-add="{{ add_href }}"
+     data-folder="{{ folder or '' }}"
+     data-place="{{ place }}">
+
+  {# ---- Places / folders tree ---- #}
+  <aside class="fx-tree" aria-label="Places">
+    <div class="fx-tree-head">Places</div>
+    <nav class="fx-tree-nav">
+      <a class="fx-tree-item {% if place == 'home' and not folder and not doc_type %}on{% endif %}"
+         href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-house-door"></i><span>Home</span>
+        <em>{{ '%02d'|format(summary.total) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'expiring' %}on{% endif %}"
+         href="/admin/locker/explorer?place=expiring{{ qs_view }}">
+        <i class="bi bi-clock-history"></i><span>Expiring</span>
+        <em>{{ '%02d'|format(summary.expiring) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'unfiled' %}on{% endif %}"
+         href="/admin/locker/explorer?place=unfiled{{ qs_view }}">
+        <i class="bi bi-file-earmark"></i><span>Unfiled</span>
+      </a>
+    </nav>
+
+    <div class="fx-tree-head">Folders</div>
+    <nav class="fx-tree-nav" id="fx-folder-tree">
+      {% for f in folders %}
+      <a class="fx-tree-item js-fx-folder {% if folder == f.id %}on{% endif %}"
+         href="/admin/locker/explorer?folder={{ f.id }}{{ qs_view }}"
+         data-kind="folder"
+         data-id="{{ f.id }}"
+         data-name="{{ f.name }}"
+         data-count="{{ f.count }}">
+        <i class="bi bi-folder2" style="color:#F0A94E"></i>
+        <span>{{ f.name }}</span>
+        <em>{{ '%02d'|format(f.count) }}</em>
+      </a>
+      {% else %}
+      <div class="fx-tree-empty">No folders yet — right-click to create one.</div>
+      {% endfor %}
+    </nav>
+
+    <div class="fx-tree-head">Types</div>
+    <nav class="fx-tree-nav">
+      {% for t in summary.types if not t.custom %}
+      <a class="fx-tree-item {% if doc_type == t.id %}on{% endif %}"
+         href="/admin/locker/explorer?doc_type={{ t.id }}{{ qs_view }}">
+        <span class="fx-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
+        <span>{{ t.label }}</span>
+        <em>{{ '%02d'|format(t.count) }}</em>
+      </a>
+      {% endfor %}
+    </nav>
+  </aside>
+
+  {# ---- Main pane ---- #}
+  <section class="fx-main">
+    <div class="fx-toolbar">
+      <nav class="fx-crumbs" aria-label="Breadcrumb">
+        <a href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-hdd"></i> Vault</a>
+        {% if folder or place != 'home' or doc_type %}
+        <i class="bi bi-chevron-right"></i>
+        <span>{{ here_label }}</span>
+        {% endif %}
+      </nav>
+      <form class="fx-search" method="get" action="/admin/locker/explorer">
+        {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+        {% if place and place not in ('home', 'folder') and not folder %}<input type="hidden" name="place" value="{{ place }}">{% endif %}
+        {% if doc_type %}<input type="hidden" name="doc_type" value="{{ doc_type }}">{% endif %}
+        {% if view == 'icons' %}<input type="hidden" name="view" value="icons">{% endif %}
+        <i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Search…" aria-label="Search documents">
+      </form>
+      <div class="fx-toolbar-actions">
+        <div class="btn-group" role="group" aria-label="View">
+          <a class="btn btn-sm btn-outline-light {% if view == 'list' %}active{% endif %}"
+             href="{{ list_href }}" title="List view">
+            <i class="bi bi-list-ul"></i>
+          </a>
+          <a class="btn btn-sm btn-outline-light {% if view == 'icons' %}active{% endif %}"
+             href="{{ icons_href }}" title="Icons view">
+            <i class="bi bi-grid"></i>
+          </a>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-light" id="fx-btn-new-folder">
+          <i class="bi bi-folder-plus"></i> New folder
+        </button>
+        <a class="btn btn-sm btn-primary" href="{{ add_href }}">
+          <i class="bi bi-plus-lg"></i> Add
+        </a>
+      </div>
+    </div>
+
+    <div class="fx-pane {% if view == 'icons' %}fx-icons{% else %}fx-list{% endif %}" id="fx-pane" tabindex="0">
+      {% if view == 'list' %}
+      <div class="fx-list-head" aria-hidden="true">
+        <span class="fx-col-name">Name</span>
+        <span class="fx-col-type">Type</span>
+        <span class="fx-col-meta">Details</span>
+        <span class="fx-col-date">Added</span>
+      </div>
+      {% endif %}
+
+      {% if place == 'home' and not folder and not doc_type and not q %}
+        {% for f in folders %}
+        <a class="fx-row js-fx-folder"
+           href="/admin/locker/explorer?folder={{ f.id }}{{ qs_view }}"
+           data-kind="folder"
+           data-id="{{ f.id }}"
+           data-name="{{ f.name }}"
+           data-count="{{ f.count }}">
+          <span class="fx-ico"><i class="bi bi-folder-fill" style="color:#F0A94E"></i></span>
+          <span class="fx-col-name truncate">{{ f.name }}</span>
+          {% if view == 'list' %}
+          <span class="fx-col-type text-faint">Folder</span>
+          <span class="fx-col-meta text-faint">{{ f.count }} item{{ 's' if f.count != 1 else '' }}</span>
+          <span class="fx-col-date text-faint">—</span>
+          {% else %}
+          <span class="fx-icon-meta">{{ f.count }} item{{ 's' if f.count != 1 else '' }}</span>
+          {% endif %}
+        </a>
+        {% endfor %}
+      {% endif %}
+
+      {% for item in items %}
+      {% set ft = (item.file_count and 'file') or 'doc' %}
+      <a class="fx-row js-fx-doc"
+         href="/admin/locker/{{ item.id }}"
+         data-kind="doc"
+         data-id="{{ item.id }}"
+         data-name="{{ item.title }}"
+         data-type="{{ item.type_label }}"
+         data-folder="{{ item.folder_id or '' }}"
+         data-files="{{ item.file_count }}">
+        <span class="fx-ico doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }}">
+          {{ item.type_label[:3]|upper }}
+        </span>
+        <span class="fx-col-name truncate">
+          {{ item.title }}
+          {% if item.pinned %}<i class="bi bi-pin-angle-fill text-warning ms-1" title="Pinned"></i>{% endif %}
+        </span>
+        {% if view == 'list' %}
+        <span class="fx-col-type">{{ item.type_label }}</span>
+        <span class="fx-col-meta text-faint">
+          {% if item.person_name %}{{ item.person_name | nice }} · {% endif %}
+          {{ item.file_count }} file{{ 's' if item.file_count != 1 else '' }}
+        </span>
+        <span class="fx-col-date mono text-faint">{{ item.created_at.strftime('%d %b %Y') }}</span>
+        {% else %}
+        <span class="fx-icon-meta">{{ item.type_label }}</span>
+        {% endif %}
+      </a>
+      {% else %}
+        {% if not (place == 'home' and not folder and not doc_type and not q and folders) %}
+        <div class="fx-empty">
+          <i class="bi bi-inbox"></i>
+          <p>This location is empty.</p>
+          <p class="text-faint small">Right-click for New Folder or Add Document.</p>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+{# Hidden action forms #}
+<form id="fx-form-new-folder" method="post" action="/admin/locker/folder" class="d-none">
+  <input type="hidden" name="name" id="fx-new-folder-name" value="">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-rename-folder" method="post" action="" class="d-none">
+  <input type="hidden" name="name" id="fx-rename-folder-name" value="">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-delete-folder" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}">
+</form>
+<form id="fx-form-delete-doc" method="post" action="" class="d-none"></form>
+<form id="fx-form-move" method="post" action="" class="d-none">
+  <input type="hidden" name="folder_id" id="fx-move-folder-id" value="">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+
+{# Context menu #}
+<div class="fx-menu" id="fx-menu" hidden role="menu">
+  <button type="button" class="fx-menu-item" data-action="open" role="menuitem"><i class="bi bi-box-arrow-up-right"></i> Open</button>
+  <button type="button" class="fx-menu-item" data-action="preview" role="menuitem"><i class="bi bi-eye"></i> Preview</button>
+  <button type="button" class="fx-menu-item" data-action="download" role="menuitem"><i class="bi bi-download"></i> Download</button>
+  <button type="button" class="fx-menu-item" data-action="share" role="menuitem"><i class="bi bi-share"></i> Share…</button>
+  <div class="fx-menu-sep" data-for="doc"></div>
+  <button type="button" class="fx-menu-item" data-action="move" role="menuitem"><i class="bi bi-folder-symlink"></i> Move to folder…</button>
+  <button type="button" class="fx-menu-item" data-action="unfile" role="menuitem"><i class="bi bi-folder-minus"></i> Remove from folder</button>
+  <div class="fx-menu-sep" data-for="folder"></div>
+  <button type="button" class="fx-menu-item" data-action="rename" role="menuitem"><i class="bi bi-pencil"></i> Rename…</button>
+  <button type="button" class="fx-menu-item" data-action="new-here" role="menuitem"><i class="bi bi-file-earmark-plus"></i> Add document here</button>
+  <div class="fx-menu-sep" data-for="empty"></div>
+  <button type="button" class="fx-menu-item" data-action="new-folder" role="menuitem"><i class="bi bi-folder-plus"></i> New folder…</button>
+  <button type="button" class="fx-menu-item" data-action="add" role="menuitem"><i class="bi bi-plus-lg"></i> Add document…</button>
+  <button type="button" class="fx-menu-item" data-action="refresh" role="menuitem"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+  <div class="fx-menu-sep" data-for="danger"></div>
+  <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Delete</button>
+  <button type="button" class="fx-menu-item" data-action="properties" role="menuitem"><i class="bi bi-info-circle"></i> Properties</button>
+</div>
+
+{# Move picker #}
+<div class="modal fade" id="fx-move-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5 mb-0">Move to folder</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body stack">
+        <label class="form-label" for="fx-move-select">Folder</label>
+        <select class="form-select" id="fx-move-select">
+          <option value="">— Unfiled —</option>
+          {% for f in folders %}
+          <option value="{{ f.id }}">{{ f.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="fx-move-confirm">Move</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var shell = document.getElementById("fx-shell");
+  var pane = document.getElementById("fx-pane");
+  var menu = document.getElementById("fx-menu");
+  if (!shell || !pane || !menu) return;
+
+  var target = null; // { kind, el, id, name, ... }
+  var moveDocId = null;
+
+  function hideMenu() {
+    menu.hidden = true;
+    target = null;
+  }
+
+  function showMenu(x, y, kind) {
+    var items = menu.querySelectorAll(".fx-menu-item, .fx-menu-sep");
+    items.forEach(function (el) {
+      var action = el.getAttribute("data-action");
+      var forKind = el.getAttribute("data-for");
+      var show = false;
+      if (kind === "empty") {
+        show = ["new-folder", "add", "refresh"].indexOf(action) >= 0 || forKind === "empty";
+      } else if (kind === "folder") {
+        show = ["open", "rename", "new-here", "delete", "properties", "refresh"].indexOf(action) >= 0
+          || forKind === "folder" || forKind === "danger";
+      } else if (kind === "doc") {
+        show = ["open", "preview", "download", "share", "move", "unfile", "delete", "properties"].indexOf(action) >= 0
+          || forKind === "doc" || forKind === "danger";
+      }
+      if (action === "unfile" && kind === "doc" && target && !target.folder) show = false;
+      if (forKind === "empty" && kind !== "empty") show = false;
+      if (forKind === "folder" && kind !== "folder") show = false;
+      if (forKind === "doc" && kind !== "doc") show = false;
+      if (forKind === "danger" && (kind === "empty")) show = false;
+      el.hidden = !show;
+    });
+    menu.hidden = false;
+    var pad = 8;
+    var mw = menu.offsetWidth || 220;
+    var mh = menu.offsetHeight || 280;
+    var left = Math.min(x, window.innerWidth - mw - pad);
+    var top = Math.min(y, window.innerHeight - mh - pad);
+    menu.style.left = Math.max(pad, left) + "px";
+    menu.style.top = Math.max(pad, top) + "px";
+  }
+
+  function readTarget(el) {
+    if (!el) return null;
+    return {
+      kind: el.getAttribute("data-kind"),
+      el: el,
+      id: el.getAttribute("data-id") || "",
+      name: el.getAttribute("data-name") || "",
+      count: el.getAttribute("data-count") || "0",
+      type: el.getAttribute("data-type") || "",
+      folder: el.getAttribute("data-folder") || "",
+      files: el.getAttribute("data-files") || "0",
+      href: el.getAttribute("href") || ""
+    };
+  }
+
+  pane.addEventListener("contextmenu", function (e) {
+    var row = e.target.closest(".js-fx-doc, .js-fx-folder");
+    e.preventDefault();
+    if (row) {
+      target = readTarget(row);
+      showMenu(e.clientX, e.clientY, target.kind);
+    } else {
+      target = { kind: "empty" };
+      showMenu(e.clientX, e.clientY, "empty");
+    }
+  });
+
+  document.getElementById("fx-folder-tree")?.addEventListener("contextmenu", function (e) {
+    var row = e.target.closest(".js-fx-folder");
+    if (!row) return;
+    e.preventDefault();
+    target = readTarget(row);
+    showMenu(e.clientX, e.clientY, "folder");
+  });
+
+  document.addEventListener("click", function (e) {
+    if (!menu.hidden && !menu.contains(e.target)) hideMenu();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") hideMenu();
+  });
+  window.addEventListener("blur", hideMenu);
+  window.addEventListener("resize", hideMenu);
+
+  document.getElementById("fx-btn-new-folder").addEventListener("click", function () {
+    promptNewFolder();
+  });
+
+  function promptNewFolder() {
+    var name = window.prompt("New folder name", "New Folder");
+    if (!name || !name.trim()) return;
+    document.getElementById("fx-new-folder-name").value = name.trim();
+    document.getElementById("fx-form-new-folder").submit();
+  }
+
+  menu.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-action]");
+    if (!btn) return;
+    var action = btn.getAttribute("data-action");
+    var t = target;
+    hideMenu();
+    if (action === "refresh") {
+      location.reload();
+      return;
+    }
+    if (action === "new-folder" || (action === "new-folder")) {
+      promptNewFolder();
+      return;
+    }
+    if (action === "add") {
+      location.href = shell.getAttribute("data-add");
+      return;
+    }
+    if (!t) return;
+    if (action === "open") {
+      if (t.href) location.href = t.href;
+      return;
+    }
+    if (action === "new-here" && t.kind === "folder") {
+      location.href = "/admin/locker/add?folder=" + encodeURIComponent(t.id);
+      return;
+    }
+    if (action === "preview" && t.kind === "doc") {
+      window.open("/admin/locker/" + t.id + "/view", "_blank");
+      return;
+    }
+    if (action === "download" && t.kind === "doc") {
+      location.href = "/admin/locker/" + t.id + "/download";
+      return;
+    }
+    if (action === "share" && t.kind === "doc") {
+      location.href = "/admin/locker/" + t.id + "#share-locker-modal";
+      return;
+    }
+    if (action === "rename" && t.kind === "folder") {
+      var nn = window.prompt("Rename folder", t.name);
+      if (!nn || !nn.trim() || nn.trim() === t.name) return;
+      var rf = document.getElementById("fx-form-rename-folder");
+      rf.action = "/admin/locker/folder/" + encodeURIComponent(t.id) + "/rename";
+      document.getElementById("fx-rename-folder-name").value = nn.trim();
+      rf.submit();
+      return;
+    }
+    if (action === "delete" && t.kind === "folder") {
+      if (!window.confirm('Delete folder "' + t.name + '"? Documents inside stay and become unfiled.')) return;
+      var df = document.getElementById("fx-form-delete-folder");
+      df.action = "/admin/locker/folder/" + encodeURIComponent(t.id) + "/delete";
+      df.submit();
+      return;
+    }
+    if (action === "delete" && t.kind === "doc") {
+      if (!window.confirm('Delete document "' + t.name + '" and its files? This cannot be undone.')) return;
+      var dd = document.getElementById("fx-form-delete-doc");
+      dd.action = "/admin/locker/" + encodeURIComponent(t.id) + "/delete";
+      dd.submit();
+      return;
+    }
+    if (action === "move" && t.kind === "doc") {
+      moveDocId = t.id;
+      var sel = document.getElementById("fx-move-select");
+      if (sel) sel.value = t.folder || "";
+      var modal = window.bootstrap && bootstrap.Modal.getOrCreateInstance(document.getElementById("fx-move-modal"));
+      if (modal) modal.show();
+      return;
+    }
+    if (action === "unfile" && t.kind === "doc") {
+      var mf = document.getElementById("fx-form-move");
+      mf.action = "/admin/locker/" + encodeURIComponent(t.id) + "/folder";
+      document.getElementById("fx-move-folder-id").value = "";
+      mf.submit();
+      return;
+    }
+    if (action === "properties") {
+      if (t.kind === "folder") {
+        window.alert(t.name + "\nFolder\n" + t.count + " document(s)");
+      } else if (t.kind === "doc") {
+        window.alert(t.name + "\n" + (t.type || "Document") + "\n" + t.files + " file(s)");
+      }
+    }
+  });
+
+  document.getElementById("fx-move-confirm").addEventListener("click", function () {
+    if (!moveDocId) return;
+    var mf = document.getElementById("fx-form-move");
+    mf.action = "/admin/locker/" + encodeURIComponent(moveDocId) + "/folder";
+    document.getElementById("fx-move-folder-id").value = document.getElementById("fx-move-select").value || "";
+    var modalEl = document.getElementById("fx-move-modal");
+    var modal = window.bootstrap && bootstrap.Modal.getInstance(modalEl);
+    if (modal) modal.hide();
+    mf.submit();
+  });
+
+  // Drag document → folder in tree
+  pane.querySelectorAll(".js-fx-doc").forEach(function (row) {
+    row.setAttribute("draggable", "true");
+    row.addEventListener("dragstart", function (e) {
+      e.dataTransfer.setData("text/plain", row.getAttribute("data-id"));
+      e.dataTransfer.effectAllowed = "move";
+      row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", function () { row.classList.remove("dragging"); });
+  });
+  document.querySelectorAll("#fx-folder-tree .js-fx-folder").forEach(function (folder) {
+    folder.addEventListener("dragover", function (e) {
+      e.preventDefault();
+      folder.classList.add("drop-on");
+    });
+    folder.addEventListener("dragleave", function () { folder.classList.remove("drop-on"); });
+    folder.addEventListener("drop", function (e) {
+      e.preventDefault();
+      folder.classList.remove("drop-on");
+      var id = e.dataTransfer.getData("text/plain");
+      if (!id) return;
+      var mf = document.getElementById("fx-form-move");
+      mf.action = "/admin/locker/" + encodeURIComponent(id) + "/folder";
+      document.getElementById("fx-move-folder-id").value = folder.getAttribute("data-id") || "";
+      mf.submit();
+    });
+  });
+})();
+</script>
+{% endblock %}

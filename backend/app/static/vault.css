@@ -3179,3 +3179,149 @@ body{
   body.mod-health .page-title{ font-family:var(--v-display); font-weight:600; }
   body.mod-health .chip-scroll{ padding-bottom:.75rem; }
 }
+
+/* ---------- Document Explorer (file-manager) ---------- */
+.fx-shell{
+  display:grid;
+  grid-template-columns:240px minmax(0,1fr);
+  gap:0;
+  min-height:min(70vh, 720px);
+  border:1px solid var(--v-line);
+  border-radius:16px;
+  overflow:hidden;
+  background:var(--v-surface);
+}
+.fx-tree{
+  background:rgba(0,0,0,.22);
+  border-right:1px solid var(--v-line);
+  overflow:auto;
+  padding:.75rem 0 1rem;
+}
+.fx-tree-head{
+  font-size:.68rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--v-ink-3);
+  padding:.65rem 1rem .35rem;
+  font-weight:600;
+}
+.fx-tree-nav{ display:flex; flex-direction:column; gap:1px; padding:0 .4rem; }
+.fx-tree-item{
+  display:flex; align-items:center; gap:.55rem;
+  padding:.45rem .65rem; border-radius:10px;
+  color:var(--v-ink-2); text-decoration:none; font-size:.875rem;
+}
+.fx-tree-item:hover{ background:var(--v-hover); color:var(--v-ink); }
+.fx-tree-item.on{ background:var(--v-active); color:var(--v-ink); }
+.fx-tree-item i{ width:1.1rem; text-align:center; flex-shrink:0; }
+.fx-tree-item span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fx-tree-item em{
+  font-style:normal; font-size:.7rem; color:var(--v-ink-3);
+  font-variant-numeric:tabular-nums;
+}
+.fx-tree-item.drop-on{ outline:1px dashed var(--v-brass); background:var(--v-brass-soft); }
+.fx-tree-empty{ padding:.5rem .9rem; font-size:.78rem; color:var(--v-ink-3); }
+.fx-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+.fx-main{ display:flex; flex-direction:column; min-width:0; min-height:0; }
+.fx-toolbar{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.65rem;
+  padding:.65rem .85rem; border-bottom:1px solid var(--v-line);
+  background:rgba(255,255,255,.02);
+}
+.fx-crumbs{
+  display:flex; align-items:center; gap:.35rem; flex:1; min-width:10rem;
+  font-size:.875rem; color:var(--v-ink-2);
+}
+.fx-crumbs a{ color:var(--v-ink-2); text-decoration:none; }
+.fx-crumbs a:hover{ color:var(--v-teal); }
+.fx-search{
+  position:relative; display:flex; align-items:center; min-width:10rem; flex:1; max-width:16rem;
+}
+.fx-search i{ position:absolute; left:.65rem; color:var(--v-ink-3); font-size:.85rem; pointer-events:none; }
+.fx-search input{
+  width:100%; background:var(--v-bg); border:1px solid var(--v-line); color:var(--v-ink);
+  border-radius:10px; padding:.4rem .65rem .4rem 2rem; font-size:.875rem;
+}
+.fx-toolbar-actions{ display:flex; flex-wrap:wrap; gap:.4rem; align-items:center; }
+.fx-toolbar-actions .btn.active{ background:var(--v-active); }
+
+.fx-pane{
+  flex:1; overflow:auto; outline:none; padding:.35rem .5rem .75rem;
+  min-height:280px;
+}
+.fx-list-head, .fx-list .fx-row{
+  display:grid;
+  grid-template-columns:minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem;
+  gap:.75rem; align-items:center;
+}
+.fx-list-head{
+  padding:.4rem .65rem .4rem 2.6rem; font-size:.7rem; text-transform:uppercase;
+  letter-spacing:.06em; color:var(--v-ink-3); border-bottom:1px solid var(--v-line);
+  position:sticky; top:0; background:var(--v-surface); z-index:1;
+}
+.fx-row{
+  display:grid;
+  color:inherit; text-decoration:none; border-radius:10px;
+  padding:.45rem .65rem; border:1px solid transparent;
+}
+.fx-list .fx-row{ grid-template-columns:minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem; gap:.75rem; align-items:center; }
+.fx-list .fx-row{ grid-template-columns:2.2rem minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem; }
+.fx-list-head{ grid-template-columns:2.2rem minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem; padding-left:.65rem; }
+.fx-row:hover, .fx-row:focus-visible{ background:var(--v-hover); }
+.fx-row.dragging{ opacity:.45; }
+.fx-ico{
+  width:2rem; height:2rem; display:inline-flex; align-items:center; justify-content:center;
+  font-size:1.25rem; flex-shrink:0;
+}
+.fx-ico.doc-icon{
+  font-size:.62rem; font-weight:700; letter-spacing:.02em; color:#0a0c11;
+  border-radius:7px;
+}
+.fx-col-name{ font-weight:600; font-size:.9rem; min-width:0; }
+.fx-col-type, .fx-col-meta, .fx-col-date{ font-size:.8rem; min-width:0; }
+
+.fx-icons{
+  display:grid;
+  grid-template-columns:repeat(auto-fill, minmax(110px, 1fr));
+  gap:.5rem; align-content:start;
+}
+.fx-icons .fx-list-head{ display:none; }
+.fx-icons .fx-row{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  gap:.35rem; padding:.85rem .5rem; min-height:108px;
+}
+.fx-icons .fx-ico{ width:2.75rem; height:2.75rem; font-size:1.75rem; }
+.fx-icons .fx-ico.doc-icon{ font-size:.75rem; border-radius:10px; }
+.fx-icons .fx-col-name{ font-size:.8rem; font-weight:600; width:100%; }
+.fx-icons .fx-col-type, .fx-icons .fx-col-meta, .fx-icons .fx-col-date{ display:none; }
+.fx-icon-meta{ font-size:.7rem; color:var(--v-ink-3); }
+
+.fx-empty{
+  grid-column:1 / -1; text-align:center; padding:3rem 1rem; color:var(--v-ink-2);
+}
+.fx-empty i{ font-size:2rem; color:var(--v-ink-3); display:block; margin-bottom:.5rem; }
+
+.fx-menu{
+  position:fixed; z-index:1080; min-width:210px;
+  background:#141820; border:1px solid var(--v-line); border-radius:12px;
+  box-shadow:0 16px 40px rgba(0,0,0,.45); padding:.35rem;
+}
+.fx-menu-item{
+  display:flex; align-items:center; gap:.6rem; width:100%;
+  background:transparent; border:0; color:var(--v-ink);
+  text-align:left; padding:.45rem .65rem; border-radius:8px; font-size:.875rem;
+}
+.fx-menu-item:hover, .fx-menu-item:focus{ background:var(--v-hover); outline:none; }
+.fx-menu-item.danger{ color:#ff8f9a; }
+.fx-menu-item i{ width:1rem; text-align:center; opacity:.85; }
+.fx-menu-sep{ height:1px; background:var(--v-line); margin:.3rem .35rem; }
+
+@media (max-width: 991.98px){
+  .fx-shell{ grid-template-columns:1fr; min-height:0; }
+  .fx-tree{ max-height:220px; border-right:none; border-bottom:1px solid var(--v-line); }
+  .fx-list .fx-row, .fx-list-head{
+    grid-template-columns:2.2rem minmax(0,1fr) auto;
+  }
+  .fx-col-type, .fx-col-meta{ display:none; }
+}
