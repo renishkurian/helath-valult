@@ -24,7 +24,7 @@
         <span class="card-ico gold"><i class="bi bi-send"></i></span>
         <div>
           <h2 class="truncate">{{ send.name }}</h2>
-          <div class="card-sub">Password Vault · Send</div>
+          <div class="card-sub">{% if send.send_type == 'locker' %}Document Vault · Share{% else %}Password Vault · Send{% endif %}</div>
         </div>
       </div>
       <div class="card-body">
@@ -49,7 +49,12 @@
 
         {% elif grant_required %}
           <p class="text-muted mb-3">
-            The owner locked this link. Request access below — the password is only shown after they approve you.
+            The owner locked this link. Request access below —
+            {% if send.send_type == 'locker' %}
+            the document is only shown after they approve you.
+            {% else %}
+            the password is only shown after they approve you.
+            {% endif %}
           </p>
           {% if grant_pending %}
           <div class="alert alert-info" role="status">
@@ -66,7 +71,8 @@
           {% if request_ok and grant_pending %}
           <div class="alert alert-success" role="status">
             <i class="bi bi-check2-circle"></i>
-            Request sent. Stay on this page — when the owner grants access, the password appears here.
+            Request sent. Stay on this page — when the owner grants access,
+            {% if send.send_type == 'locker' %}the document appears here.{% else %}the password appears here.{% endif %}
           </div>
           {% elif request_err == 'email' %}
           <div class="alert alert-danger">Please enter a valid email, or leave it blank.</div>
@@ -211,7 +217,34 @@
 
         {% else %}
           <div class="stack">
-            {% if payload.text %}
+            {% if send.send_type == 'locker' or payload.locker_item_id %}
+            <div class="surface surface-quiet" style="padding:1rem;border-radius:12px">
+              <div class="form-label mb-1">Document</div>
+              <div class="fw-semibold">{{ payload.locker_title or send.name }}</div>
+              <div class="small text-muted mt-1">
+                {{ payload.locker_type_label or 'Document' }}
+                {% if payload.locker_holder %} · {{ payload.locker_holder }}{% endif %}
+                {% if payload.locker_file_count %} · {{ payload.locker_file_count }} file{{ 's' if payload.locker_file_count != 1 else '' }}{% endif %}
+              </div>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+              <a class="btn btn-primary"
+                 href="/vault/public/{{ token }}/locker/view{% if pin_value %}?pin={{ pin_value|urlencode }}{% endif %}"
+                 target="_blank" rel="noopener">
+                <i class="bi bi-eye"></i> Open
+              </a>
+              <a class="btn btn-outline-light"
+                 href="/vault/public/{{ token }}/locker/download{% if pin_value %}?pin={{ pin_value|urlencode }}{% endif %}">
+                <i class="bi bi-download"></i> Download
+              </a>
+            </div>
+            {% if notes %}
+            <div>
+              <div class="form-label">Notes</div>
+              <div class="surface surface-quiet text-break">{{ notes }}</div>
+            </div>
+            {% endif %}
+            {% elif payload.text %}
             <div>
               <div class="form-label">Text</div>
               <div class="text-break">{{ payload.text }}</div>
@@ -243,7 +276,7 @@
               <div class="mono text-break">{{ payload.uris|join(', ') }}</div>
             </div>
             {% endif %}
-            {% if notes %}
+            {% if notes and not (send.send_type == 'locker' or payload.locker_item_id) %}
             <div>
               <div class="form-label">Notes</div>
               <div class="surface surface-quiet text-break">{{ notes }}</div>

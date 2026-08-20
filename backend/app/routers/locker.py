@@ -663,3 +663,88 @@ def _file_response(doc_file: models.LockerFile, *, inline: bool = False) -> Resp
         media_type=doc_file.file_type or "application/octet-stream",
         headers=headers,
     )
+
+
+# ---------- Document share (Password Vault Send stack) ----------
+
+@router.post("/{item_id}/sends", response_model=schemas.VaultSendOut, status_code=201)
+def create_locker_send(
+    item_id: str,
+    body: schemas.VaultSendCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Create a share link for a Document Vault item (PIN, grant, email OTP, one-time)."""
+    from app.routers import vault as vv
+    require_owner(current_user)
+    _owned(item_id, db, current_user)
+    return vv.create_send(
+        schemas.VaultSendCreate(
+            name=(body.name or "").strip() or "Document",
+            send_type="locker",
+            item_id=item_id,
+            notes=body.notes,
+            pin=body.pin,
+            expires_in_hours=body.expires_in_hours,
+            max_views=body.max_views,
+            require_grant=body.require_grant,
+            require_email_otp=body.require_email_otp,
+            allowed_emails=body.allowed_emails or [],
+        ),
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.get("/{item_id}/sends", response_model=list[schemas.VaultSendOut])
+def list_locker_item_sends(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.routers import vault as vv
+    require_owner(current_user)
+    _owned(item_id, db, current_user)
+    return vv.list_item_sends(item_id, db=db, current_user=current_user)
+
+
+@router.delete("/sends/{send_id}", status_code=204)
+def revoke_locker_send(
+    send_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.routers import vault as vv
+    require_owner(current_user)
+    row = (
+        db.query(models.VaultSend)
+        .filter(models.VaultSend.id == send_id, models.VaultSend.user_id == vault_id(current_user))
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Share not found")
+    if row.send_type != "locker":
+        raise HTTPException(status_code=400, detail="Not a document share")
+    return vv.revoke_send(send_id, db=db, current_user=current_user)
+
+
+@router.post("/{item_id}/sends/revoke-all", status_code=204)
+def revoke_all_locker_item_sends(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.routers import vault as vv
+    require_owner(current_user)
+    _owned(item_id, db, current_user)
+    rows = (
+        db.query(models.VaultSend)
+        .filter(models.VaultSend.user_id == vault_id(current_user), models.VaultSend.revoked.is_(False))
+        .all()
+    )
+    for row in rows:
+        data = vv._payload(row)
+        if data.get("item_id") == item_id or data.get("locker_item_id") == item_id:
+            row.revoked = True
+    db.commit()
+    return Response(status_code=204)

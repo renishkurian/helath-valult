@@ -191,3 +191,77 @@ def test_locker_custom_folders():
     assert gone.status_code == 204
     item_after = client.get(f"/locker/{item['id']}", headers=headers).json()
     assert item_after["folder_id"] is None
+
+
+def test_locker_document_share():
+    import uuid
+    email = f"locker-share-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Share User",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    created = client.post(
+        "/locker",
+        headers=headers,
+        data={
+            "title": "Passport scan",
+            "doc_type": "passport",
+            "holder_name": "Renish",
+        },
+        files=[("files", ("passport.pdf", b"%PDF-1.4 share-me", "application/pdf"))],
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["id"]
+
+    send = client.post(
+        f"/locker/{item_id}/sends",
+        headers=headers,
+        json={
+            "name": "Passport share",
+            "send_type": "locker",
+            "item_id": item_id,
+            "pin": "4242",
+            "expires_in_hours": 6,
+            "max_views": 2,
+            "require_grant": False,
+        },
+    )
+    assert send.status_code == 201, send.text
+    body = send.json()
+    assert body["send_type"] == "locker"
+    assert body["item_id"] == item_id
+    assert body["has_pin"] is True
+    token = body["token"]
+
+    listed = client.get(f"/locker/{item_id}/sends", headers=headers)
+    assert listed.status_code == 200
+    assert any(s["token"] == token for s in listed.json())
+
+    locked = client.get(f"/vault/public/{token}/page")
+    assert locked.status_code == 200
+    assert b"Access code" in locked.content or b"PIN" in locked.content or b"code" in locked.content.lower()
+
+    unlocked = client.get(f"/vault/public/{token}/page", params={"pin": "4242"})
+    assert unlocked.status_code == 200
+    assert b"Passport" in unlocked.content or b"Document" in unlocked.content
+
+    view = client.get(f"/vault/public/{token}/locker/view", params={"pin": "4242"})
+    assert view.status_code == 200
+    assert view.content.startswith(b"%PDF-1.4")
+    assert "inline" in (view.headers.get("content-disposition") or "")
+
+    dl = client.get(f"/vault/public/{token}/locker/download", params={"pin": "4242"})
+    assert dl.status_code == 200
+    assert dl.content.startswith(b"%PDF-1.4")
+
+    pub = client.get(f"/vault/public/{token}", params={"pin": "4242"})
+    assert pub.status_code == 200
+    data = pub.json()
+    assert data["send_type"] == "locker"
+    assert data.get("locker_title") == "Passport scan" or data.get("name") == "Passport share"
+
+    revoked = client.delete(f"/locker/sends/{body['id']}", headers=headers)
+    assert revoked.status_code == 204
+    gone = client.get(f"/vault/public/{token}/page", params={"pin": "4242"})
+    assert gone.status_code in (404, 410) or b"no longer" in gone.content.lower() or b"unavailable" in gone.content.lower()

@@ -585,13 +585,14 @@ def create_send(
         )
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
+        from app.routers.locker import type_label as locker_type_label
         files = list(doc.files or [])
         payload = {
             "item_id": doc.id,
             "locker_item_id": doc.id,
             "locker_title": doc.title,
             "locker_type": doc.doc_type,
-            "locker_type_label": (doc.custom_type or doc.doc_type or "Document").replace("_", " ").title(),
+            "locker_type_label": locker_type_label(doc.doc_type, doc.custom_type),
             "locker_holder": doc.holder_name,
             "locker_file_count": len(files),
             "locker_file_ids": [f.id for f in files],
@@ -840,9 +841,10 @@ def public_send_json(
         )
     notes = crypto.decrypt_text(row.notes_enc)
     guest_req = _guest_request(request, row, db) if require_grant else None
+    view_action = "document_viewed" if row.send_type == "locker" else "password_viewed"
     _record_send_view(
         row, request, db,
-        action="password_viewed",
+        action=view_action,
         email=verified_email,
         request_id=guest_req.id if guest_req else None,
     )
@@ -854,6 +856,11 @@ def public_send_json(
         password=data.get("password"),
         uris=data.get("uris") or [],
         notes=notes,
+        locker_item_id=(data.get("locker_item_id") or data.get("item_id")) if row.send_type == "locker" else None,
+        locker_title=data.get("locker_title") if row.send_type == "locker" else None,
+        locker_type_label=data.get("locker_type_label") if row.send_type == "locker" else None,
+        locker_file_count=int(data.get("locker_file_count") or 0) if row.send_type == "locker" else 0,
+        locker_holder=data.get("locker_holder") if row.send_type == "locker" else None,
         expires_at=row.expires_at,
         has_pin=bool(row.pin_hash),
         pin_required=False,
@@ -1064,12 +1071,16 @@ def _public_locker_file_response(
     plain = crypto.decrypt_bytes(enc_path.read_bytes())
     fname = (doc_file.original_filename or "document").replace('"', "")
     disposition = "inline" if inline else "attachment"
-    _record_send_view(
-        row, request, db,
-        action="password_viewed" if not inline else "view",
-        email=email,
+    # Page unlock already counted the view; file open only logs access.
+    db.add(models.VaultSendAccess(
+        send_id=row.id,
+        action="download" if not inline else "view",
+        ip=_client_ip(request),
+        user_agent=(request.headers.get("user-agent") or "")[:400] or None,
+        email=(email or None),
         request_id=guest_req.id if guest_req else None,
-    )
+    ))
+    db.commit()
     return Response(
         content=plain,
         media_type=doc_file.file_type or "application/octet-stream",
@@ -1141,6 +1152,7 @@ def _notify_send_request(
 
     # Live update any open web admin tabs (SSE), independent of FCM.
     item_id = None
+    send_row = None
     if req.send_id:
         send_row = db.query(models.VaultSend).filter(models.VaultSend.id == req.send_id).first()
         if send_row:
@@ -1169,7 +1181,8 @@ def _notify_send_request(
     if not tokens or not account:
         return 0
     who = (req.name or req.email or req.ip or "Someone").strip()
-    title = "Send access request"
+    is_doc = bool(send_row and send_row.send_type == "locker")
+    title = "Document access request" if is_doc else "Send access request"
     body = f"{who} asked for access to “{send_name}”"
     sent = 0
     for tok in tokens:

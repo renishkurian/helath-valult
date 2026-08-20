@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
@@ -52,8 +54,13 @@ import com.rklab.healthvault.data.model.LockerItemUpdate
 import com.rklab.healthvault.data.model.LockerPersonOut
 import com.rklab.healthvault.data.model.LockerTypeOut
 import com.rklab.healthvault.data.model.PersonOut
+import com.rklab.healthvault.data.model.VaultSendCreate
+import com.rklab.healthvault.data.model.VaultSendOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.components.vaultFieldColors
+import com.rklab.healthvault.ui.screens.passwords.generateAccessCode
 import com.rklab.healthvault.ui.theme.*
+import com.rklab.healthvault.util.ClipboardUtil
 import com.rklab.healthvault.util.DocumentScannerHelper
 import com.rklab.healthvault.util.FileUtil
 import kotlinx.coroutines.Dispatchers
@@ -718,6 +725,17 @@ fun LockerItemScreen(
     var previewMime by remember { mutableStateOf<String?>(null) }
     var previewTitle by remember { mutableStateOf("") }
     var confirmDeleteFile by remember { mutableStateOf<LockerFileOut?>(null) }
+    var showShare by remember { mutableStateOf(false) }
+    var sharePin by remember { mutableStateOf("") }
+    var shareHours by remember { mutableStateOf("48") }
+    var shareOneTime by remember { mutableStateOf(false) }
+    var shareRequireGrant by remember { mutableStateOf(false) }
+    var shareEmailOtp by remember { mutableStateOf(false) }
+    var shareAllowedEmails by remember { mutableStateOf("") }
+    var shareBusy by remember { mutableStateOf(false) }
+    var shareError by remember { mutableStateOf<String?>(null) }
+    var shareReady by remember { mutableStateOf<String?>(null) }
+    var activeSends by remember { mutableStateOf<List<VaultSendOut>>(emptyList()) }
 
     var title by remember { mutableStateOf("") }
     var docType by remember { mutableStateOf("other") }
@@ -739,6 +757,7 @@ fun LockerItemScreen(
                 files = repository.listLockerFiles(itemId)
                 folders = repository.listLockerFolders()
                 people = repository.listPeople()
+                activeSends = runCatching { repository.listLockerItemSends(itemId) }.getOrDefault(emptyList())
                 title = loaded.title
                 docType = loaded.doc_type
                 customType = loaded.custom_type.orEmpty()
@@ -867,6 +886,134 @@ fun LockerItemScreen(
         )
     }
 
+    if (showShare) {
+        val base = repository.getServerUrl()?.trimEnd('/') ?: ""
+        val fieldColors = vaultFieldColors()
+        AlertDialog(
+            onDismissRequest = { if (!shareBusy) showShare = false },
+            title = { Text("Share this document") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    shareReady?.let { token ->
+                        val url = "$base/v/$token"
+                        Text("Share link ready", color = Ink)
+                        Text(url, color = VaultTeal, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = { ClipboardUtil.copy(context, "Document link", url) }) {
+                            Text("Copy link", color = VaultTeal)
+                        }
+                    } ?: run {
+                        Text(
+                            "Same options as Password Vault Send — PIN, grant, email OTP, one-time link.",
+                            color = InkSoft,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                sharePin,
+                                { sharePin = it },
+                                label = { Text("Access code (optional)") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                colors = fieldColors
+                            )
+                            TextButton(onClick = { sharePin = generateAccessCode() }) {
+                                Text("Generate", color = VaultTeal)
+                            }
+                        }
+                        OutlinedTextField(
+                            shareHours,
+                            { shareHours = it.filter(Char::isDigit) },
+                            label = { Text("Expires in hours") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            colors = fieldColors
+                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareOneTime, onCheckedChange = { shareOneTime = it })
+                            Text("One-time view", color = Ink)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareRequireGrant, onCheckedChange = { shareRequireGrant = it })
+                            Text("Require access request — hide until I grant", color = Ink)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = shareEmailOtp, onCheckedChange = { shareEmailOtp = it })
+                            Text("Require Email OTP to open", color = Ink)
+                        }
+                        if (shareEmailOtp) {
+                            OutlinedTextField(
+                                value = shareAllowedEmails,
+                                onValueChange = { shareAllowedEmails = it },
+                                label = { Text("Allowed emails (optional)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = fieldColors
+                            )
+                        }
+                        shareError?.let { Text(it, color = StampRed, style = MaterialTheme.typography.bodySmall) }
+                    }
+                }
+            },
+            confirmButton = {
+                if (shareReady != null) {
+                    TextButton(onClick = {
+                        val url = "$base/v/${shareReady}"
+                        context.startActivity(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, url)
+                        })
+                        showShare = false
+                        reload()
+                    }) { Text("Share", color = VaultTeal) }
+                } else {
+                    TextButton(
+                        enabled = !shareBusy,
+                        onClick = {
+                            scope.launch {
+                                shareBusy = true
+                                shareError = null
+                                val emails = shareAllowedEmails
+                                    .split(',', ';', '\n')
+                                    .map { it.trim() }
+                                    .filter { it.contains('@') }
+                                runCatching {
+                                    repository.createLockerSend(
+                                        itemId,
+                                        VaultSendCreate(
+                                            name = item?.title ?: "Document",
+                                            send_type = "locker",
+                                            item_id = itemId,
+                                            pin = sharePin.ifBlank { null },
+                                            expires_in_hours = shareHours.toIntOrNull() ?: 48,
+                                            max_views = if (shareOneTime) 1 else null,
+                                            require_grant = shareRequireGrant,
+                                            require_email_otp = shareEmailOtp,
+                                            allowed_emails = emails
+                                        )
+                                    )
+                                }.onSuccess { created ->
+                                    shareReady = created.token
+                                    ClipboardUtil.copy(context, "Document link", "$base/v/${created.token}")
+                                }.onFailure {
+                                    shareError = it.message ?: "Could not create share"
+                                }
+                                shareBusy = false
+                            }
+                        }
+                    ) { Text(if (shareBusy) "Creating…" else "Create share link", color = VaultTeal) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { if (!shareBusy) showShare = false }) {
+                    Text("Close", color = InkSoft)
+                }
+            }
+        )
+    }
+
     Column(Modifier.fillMaxSize().background(HubBg).verticalScroll(rememberScrollState()).padding(20.dp)) {
         TextButton(onClick = onBack) { Text("← Locker", color = Navy) }
         val current = item
@@ -883,8 +1030,23 @@ fun LockerItemScreen(
                     Text(current.type_label.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
                     Text(current.title, style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
                 }
-                IconButton(onClick = { editing = !editing }) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = VaultTeal)
+                Row {
+                    IconButton(onClick = {
+                        sharePin = ""
+                        shareHours = "48"
+                        shareOneTime = false
+                        shareRequireGrant = false
+                        shareEmailOtp = false
+                        shareAllowedEmails = ""
+                        shareError = null
+                        shareReady = null
+                        showShare = true
+                    }) {
+                        Icon(Icons.Filled.Share, contentDescription = "Share", tint = VaultTeal)
+                    }
+                    IconButton(onClick = { editing = !editing }) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = VaultTeal)
+                    }
                 }
             }
             if (!editing) {
@@ -1039,6 +1201,73 @@ fun LockerItemScreen(
                         }
                         IconButton(onClick = { confirmDeleteFile = f }) {
                             Icon(Icons.Filled.Delete, contentDescription = "Remove", tint = StampRed)
+                        }
+                    }
+                }
+            }
+            if (activeSends.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Active shares", fontWeight = FontWeight.SemiBold, color = Ink)
+                    TextButton(onClick = {
+                        scope.launch {
+                            runCatching { repository.revokeAllLockerItemSends(itemId) }
+                                .onSuccess { reload() }
+                                .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+                        }
+                    }) { Text("Revoke all", color = StampRed) }
+                }
+                val base = repository.getServerUrl()?.trimEnd('/') ?: ""
+                activeSends.forEach { send ->
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = HubGlass,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        Row(
+                            Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(send.name, color = Ink, fontWeight = FontWeight.Medium)
+                                Text(
+                                    buildString {
+                                        append("${send.view_count}")
+                                        send.max_views?.let { append("/$it") }
+                                        append(" views")
+                                        if (send.has_pin) append(" · PIN")
+                                        if (send.requires_grant) append(" · Grant")
+                                        if (send.requires_email_otp) append(" · Email OTP")
+                                    },
+                                    color = InkSoft,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    "$base/v/${send.token}",
+                                    color = InkSoft,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 1
+                                )
+                            }
+                            IconButton(onClick = {
+                                ClipboardUtil.copy(context, "Document link", "$base/v/${send.token}")
+                            }) {
+                                Icon(Icons.Filled.Share, contentDescription = "Copy link", tint = VaultTeal)
+                            }
+                            IconButton(onClick = {
+                                scope.launch {
+                                    runCatching { repository.revokeLockerSend(send.id) }
+                                        .onSuccess { reload() }
+                                        .onFailure { Toast.makeText(context, it.message, Toast.LENGTH_SHORT).show() }
+                                }
+                            }) {
+                                Icon(Icons.Filled.Delete, contentDescription = "Revoke", tint = StampRed)
+                            }
                         }
                     }
                 }

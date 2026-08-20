@@ -2324,12 +2324,17 @@ def passwords_send_create(
         if send.requires_totp:
             q += "&totp=1"
         return RedirectResponse(dest + q, status_code=302)
+    if dest.startswith("/admin/locker/") and "://" not in dest:
+        q = f"?send={send.token}"
+        if send.has_pin:
+            q += "&pin=1"
+        return RedirectResponse(dest + q, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
 
 def _safe_admin_next(next: str, fallback: str = "/admin/passwords/sends") -> str:
     dest = (next or "").strip()
-    if dest.startswith("/admin/passwords") and "://" not in dest:
+    if (dest.startswith("/admin/passwords") or dest.startswith("/admin/locker")) and "://" not in dest:
         return dest
     return fallback
 
@@ -2612,7 +2617,7 @@ def passwords_send_revoke(
         return RedirectResponse("/admin/login", status_code=302)
     revoke_send(send_id, db=db, current_user=user)
     dest = (next or "").strip()
-    if dest.startswith("/admin/passwords/") and "://" not in dest:
+    if (dest.startswith("/admin/passwords/") or dest.startswith("/admin/locker/")) and "://" not in dest:
         return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
@@ -3736,6 +3741,7 @@ def locker_set_folder(
 @router.get("/locker/{item_id}", response_class=HTMLResponse)
 def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
+    from app.routers.vault import list_item_sends, list_send_requests
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -3743,10 +3749,83 @@ def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_d
     files = lk.list_files(item_id, db=db, current_user=user)
     people = _lk_people(db, user)
     folders = lk._folder_outs(db, user)
+    sends = list_item_sends(item_id, db=db, current_user=user)
+    all_reqs = list_send_requests(status="all", db=db, current_user=user)
+    send_ids = {s.id for s in sends}
+    send_requests = [r for r in all_reqs if r.send_id in send_ids]
     return templates.TemplateResponse("locker_item.html", _lk_ctx(
         request, user, "lk_home", item=item, files=files, types=lk.LOCKER_TYPES,
         people=people, folders=folders, active_person_id=item.person_id,
+        sends=sends, send_requests=send_requests,
+        public_base=str(request.base_url).rstrip("/"),
+        send_token=request.query_params.get("send") or "",
+        send_has_pin=request.query_params.get("pin") == "1",
     ))
+
+
+@router.post("/locker/{item_id}/sends")
+def locker_item_send_create(
+    item_id: str,
+    request: Request,
+    name: str = Form(""),
+    pin: str = Form(""),
+    expires_in_hours: int = Form(48),
+    max_views: str = Form(""),
+    require_grant: Optional[str] = Form(None),
+    require_email_otp: Optional[str] = Form(None),
+    allowed_emails: str = Form(""),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Create a Document Vault share link (same Send stack as Password Vault)."""
+    from app.routers.vault import create_send
+    from app import schemas as sc
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    views = None
+    raw_views = (max_views or "").strip()
+    if raw_views.isdigit() and int(raw_views) >= 1:
+        views = int(raw_views)
+    emails = [p.strip() for p in (allowed_emails or "").replace(";", ",").replace("\n", ",").split(",") if p.strip()]
+    send = create_send(sc.VaultSendCreate(
+        name=(name or "").strip() or "Document",
+        send_type="locker",
+        item_id=item_id,
+        pin=pin or None,
+        expires_in_hours=expires_in_hours,
+        max_views=views,
+        require_grant=bool(require_grant),
+        require_email_otp=bool(require_email_otp),
+        allowed_emails=emails,
+    ), db=db, current_user=user)
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker/") and "://" not in dest):
+        dest = f"/admin/locker/{item_id}"
+    q = f"?send={send.token}"
+    if send.has_pin:
+        q += "&pin=1"
+    return RedirectResponse(dest + q, status_code=302)
+
+
+@router.post("/locker/{item_id}/sends/revoke-all")
+def locker_item_sends_revoke_all(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import vault as vv
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    user_id = vault_id(user)
+    rows = (
+        db.query(models.VaultSend)
+        .filter(models.VaultSend.user_id == user_id, models.VaultSend.revoked.is_(False))
+        .all()
+    )
+    for row in rows:
+        data = vv._payload(row)
+        if data.get("item_id") == item_id or data.get("locker_item_id") == item_id:
+            row.revoked = True
+    db.commit()
+    return RedirectResponse(f"/admin/locker/{item_id}", status_code=302)
 
 
 @router.post("/locker/{item_id}")

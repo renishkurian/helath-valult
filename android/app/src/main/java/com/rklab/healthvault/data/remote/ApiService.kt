@@ -489,6 +489,18 @@ interface ApiService {
         @Path("fileId") fileId: String
     ): ResponseBody
 
+    @GET("locker/{id}/sends")
+    suspend fun listLockerItemSends(@Path("id") id: String): List<VaultSendOut>
+
+    @POST("locker/{id}/sends")
+    suspend fun createLockerSend(@Path("id") id: String, @Body body: VaultSendCreate): VaultSendOut
+
+    @DELETE("locker/sends/{sendId}")
+    suspend fun revokeLockerSend(@Path("sendId") sendId: String): Response<Unit>
+
+    @POST("locker/{id}/sends/revoke-all")
+    suspend fun revokeAllLockerItemSends(@Path("id") id: String): Response<Unit>
+
     // ---------- Digital Diary ----------
     @GET("diary/summary")
     suspend fun diarySummary(): DiarySummaryOut

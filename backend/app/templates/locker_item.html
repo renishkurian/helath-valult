@@ -35,11 +35,107 @@
         <i class="bi bi-eye"></i> Open
       </a>
     {% endif %}
+    <button class="btn btn-outline-light" type="button" data-bs-toggle="modal" data-bs-target="#share-locker-modal">
+      <i class="bi bi-share"></i> Share
+    </button>
     <a class="btn btn-primary" href="/admin/locker/{{ item.id }}/download">
       <i class="bi bi-download"></i> Download
     </a>
   </div>
 </div>
+
+{% if send_token %}
+<div class="alert alert-success d-flex flex-wrap align-items-center gap-2" role="status">
+  <i class="bi bi-check2-circle"></i>
+  <span class="me-auto">Share link ready{% if send_has_pin %} · access code set — send it separately{% endif %}</span>
+</div>
+<label class="form-label" for="flash-send-link">Document link</label>
+<input class="form-control mono js-copyable mb-3" id="flash-send-link" type="text"
+       value="{{ public_base }}/v/{{ send_token }}" readonly>
+{% endif %}
+
+{% if sends is defined and sends %}
+<div class="card mb-3">
+  <div class="card-header">
+    <span class="card-ico gold"><i class="bi bi-link-45deg"></i></span>
+    <div><h2>Active shares</h2><div class="card-sub">Expiring links for this document</div></div>
+    <form class="ms-auto" method="post" action="/admin/locker/{{ item.id }}/sends/revoke-all"
+          data-confirm="Revoke all {{ sends|length }} share link(s) for this document?">
+      <button class="btn btn-ghost btn-sm" type="submit">Revoke all</button>
+    </form>
+  </div>
+  <div class="list-rows">
+    {% for s in sends %}
+    <div class="list-row">
+      <div class="row-body">
+        <div class="row-title truncate">{{ s.name }}</div>
+        <div class="row-meta">
+          Expires {{ s.expires_at.strftime('%d %b %Y %H:%M') }} UTC
+          {% if s.has_pin %} · PIN{% endif %}
+          {% if s.requires_grant %} · Grant{% endif %}
+          {% if s.requires_email_otp %} · Email OTP{% endif %}
+          · {{ s.view_count }}{% if s.max_views %}/{{ s.max_views }}{% endif %} views
+        </div>
+        <div class="mono small text-faint truncate">{{ public_base }}/v/{{ s.token }}</div>
+      </div>
+      <div class="row-actions">
+        <form method="post" action="/admin/passwords/sends/{{ s.id }}/revoke" data-confirm="Revoke this share link?">
+          <input type="hidden" name="next" value="/admin/locker/{{ item.id }}">
+          <button class="btn btn-outline-danger btn-sm" type="submit">Revoke</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% if send_requests is defined %}
+<div class="card mb-3" id="access-requests-card"{% if not send_requests %} hidden{% endif %}>
+  <div class="card-header">
+    <span class="card-ico plum"><i class="bi bi-person-raised-hand"></i></span>
+    <div><h2>Access requests</h2><div class="card-sub">Guests waiting for approval</div></div>
+  </div>
+  <div class="card-body stack" id="send-requests-list">
+    {% for r in send_requests %}
+    <div class="surface" id="send-req-{{ r.id }}" style="padding:1rem;border-radius:12px;{% if r.status in ('pending', 'seen') %}border-color:rgba(240,169,78,.35);{% endif %}">
+      <div class="d-flex flex-wrap gap-3">
+        {% if r.has_photo %}
+        <a href="/admin/passwords/send-requests/{{ r.id }}/photo" target="_blank" rel="noopener">
+          <img src="/admin/passwords/send-requests/{{ r.id }}/photo" alt="Requester photo"
+               style="width:72px;height:72px;object-fit:cover;border-radius:10px">
+        </a>
+        {% endif %}
+        <div class="flex-grow-1">
+          <div class="fw-semibold">{{ r.name or 'Guest' }}{% if r.email %} · {{ r.email }}{% endif %}</div>
+          <div class="text-muted small">Asked for <strong>{{ r.send_name }}</strong></div>
+          <div class="text-faint small">{{ r.status }} · {{ r.created_at.strftime('%d %b %Y %H:%M') }} UTC</div>
+          {% if r.status in ('pending', 'seen') %}
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <form method="post" action="/admin/passwords/send-requests/{{ r.id }}/grant">
+              <input type="hidden" name="next" value="/admin/locker/{{ item.id }}">
+              <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-check2-circle"></i> Grant</button>
+            </form>
+            <form method="post" action="/admin/passwords/send-requests/{{ r.id }}/dismiss">
+              <input type="hidden" name="next" value="/admin/locker/{{ item.id }}">
+              <button class="btn btn-ghost btn-sm" type="submit">Dismiss</button>
+            </form>
+            <button class="btn btn-outline-light btn-sm js-request-video" type="button"
+                    data-request-id="{{ r.id }}">
+              <i class="bi bi-camera-video"></i> Video
+            </button>
+          </div>
+          <div class="js-send-chat mt-3" data-role="admin" data-request-id="{{ r.id }}"></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <p class="text-faint mb-0">No access requests yet.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
 
 <div class="card mb-3">
   <div class="card-header">
@@ -271,20 +367,126 @@
     </form>
   </div>
 </div>
+
+<div class="modal fade" id="share-locker-modal" tabindex="-1" aria-labelledby="share-locker-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="/admin/locker/{{ item.id }}/sends" id="share-locker-form">
+        <div class="modal-header">
+          <span class="card-ico gold"><i class="bi bi-share"></i></span>
+          <h2 class="modal-title" id="share-locker-title">Share this document</h2>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted mb-3">Same Send features as Password Vault — PIN, grant, email OTP, one-time link. Recipients do not need a Vault account.</p>
+          <input type="hidden" name="name" value="{{ item.title }}">
+          <input type="hidden" name="next" value="/admin/locker/{{ item.id }}">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="lk-share-expires">Expires</label>
+              <select class="form-select" id="lk-share-expires" name="expires_in_hours">
+                <option value="1">In 1 hour</option>
+                <option value="6">In 6 hours</option>
+                <option value="24">In 24 hours</option>
+                <option value="48" selected>In 2 days</option>
+                <option value="168">In 7 days</option>
+                <option value="336">In 14 days</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="lk-share-pin">Access code (OTP)</label>
+              <div class="input-group">
+                <input class="form-control mono" id="lk-share-pin" type="text" name="pin" minlength="4" maxlength="12"
+                       inputmode="numeric" autocomplete="off" placeholder="Optional · 4–12 digits">
+                <button class="btn btn-outline-light" type="button" id="lk-share-pin-gen" title="Generate a one-time code">
+                  <i class="bi bi-shuffle"></i> Generate
+                </button>
+              </div>
+              <div class="form-text">Recipient must enter this code before opening the document. Share it out of band.</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="max_views" value="1" id="lk-share-once">
+                <label class="form-check-label" for="lk-share-once">One-time view — link dies after first open</label>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="require_grant" value="1" id="lk-share-grant">
+                <label class="form-check-label" for="lk-share-grant">Require access request — hide document until I grant</label>
+              </div>
+              <div class="form-text">Recipient requests access (optional photo). Files stay locked until you approve.</div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="require_email_otp" value="1" id="lk-share-email-otp">
+                <label class="form-check-label" for="lk-share-email-otp">Require Email OTP to open</label>
+              </div>
+            </div>
+            <div class="col-12" id="lk-share-emails-wrap" hidden>
+              <label class="form-label" for="lk-share-emails">Allowed emails <span class="text-muted">(optional)</span></label>
+              <textarea class="form-control" id="lk-share-emails" name="allowed_emails" rows="2"
+                        placeholder="alice@example.com, bob@example.com"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-send"></i> Create share link</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
 (function () {
   var cam = document.getElementById("lk-add-camera");
   var files = document.getElementById("lk-add-files");
-  if (!cam || !files) return;
-  cam.addEventListener("change", function () {
-    if (!cam.files || !cam.files.length) return;
-    var dt = new DataTransfer();
-    for (var i = 0; i < cam.files.length; i++) dt.items.add(cam.files[i]);
-    for (var j = 0; j < (files.files || []).length; j++) dt.items.add(files.files[j]);
-    files.files = dt.files;
-    files.removeAttribute("required");
+  if (cam && files) {
+    cam.addEventListener("change", function () {
+      if (!cam.files || !cam.files.length) return;
+      var dt = new DataTransfer();
+      for (var i = 0; i < cam.files.length; i++) dt.items.add(cam.files[i]);
+      for (var j = 0; j < (files.files || []).length; j++) dt.items.add(files.files[j]);
+      files.files = dt.files;
+      files.removeAttribute("required");
+    });
+  }
+  var btn = document.getElementById("lk-share-pin-gen");
+  var pin = document.getElementById("lk-share-pin");
+  if (btn && pin) {
+    btn.addEventListener("click", function () {
+      pin.value = String(Math.floor(100000 + Math.random() * 900000));
+      pin.focus();
+      pin.select();
+    });
+  }
+  var otp = document.getElementById("lk-share-email-otp");
+  var wrap = document.getElementById("lk-share-emails-wrap");
+  function syncOtp() {
+    if (!otp || !wrap) return;
+    wrap.hidden = !otp.checked;
+  }
+  if (otp) {
+    otp.addEventListener("change", syncOtp);
+    syncOtp();
+  }
+})();
+</script>
+<script src="/static/vault-send-chat.js?v=1"></script>
+<script src="/static/vault-send-video.js?v=2"></script>
+<script>
+(function () {
+  document.querySelectorAll(".js-request-video").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      if (!window.VaultSendVideo) return;
+      VaultSendVideo.admin({
+        requestId: btn.getAttribute("data-request-id"),
+        next: location.pathname + location.search
+      });
+    });
   });
 })();
 </script>

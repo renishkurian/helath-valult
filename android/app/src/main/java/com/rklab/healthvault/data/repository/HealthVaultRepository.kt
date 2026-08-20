@@ -335,6 +335,10 @@ class HealthVaultRepository(
         }
         return destination
     }
+    suspend fun listLockerItemSends(itemId: String) = api.listLockerItemSends(itemId)
+    suspend fun createLockerSend(itemId: String, body: VaultSendCreate) = api.createLockerSend(itemId, body)
+    suspend fun revokeLockerSend(sendId: String) { api.revokeLockerSend(sendId) }
+    suspend fun revokeAllLockerItemSends(itemId: String) { api.revokeAllLockerItemSends(itemId) }
 
     suspend fun urlSummary() = api.urlSummary()
     suspend fun listUrlItems(
