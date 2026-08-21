@@ -3891,6 +3891,7 @@ def locker_home(
     )
     pid = _lk_person_id(person)
     person_name = next((p.name for p in summary.people if p.id == pid), None) if pid else None
+    from app import vault_lock as vlock
     return templates.TemplateResponse("locker.html", _lk_ctx(
         request, user, "lk_expiring" if expiring else "lk_home",
         summary=summary, items=items, people=summary.people,
@@ -3898,6 +3899,7 @@ def locker_home(
         doc_type=type_filter, folder=folder_id, q=q, person=person, expiring=bool(expiring),
         types=lk.LOCKER_TYPES, active_person_id=pid,
         active_person_name=person_name or "",
+        can_use_item_locks=vlock.can_use_locks(user, db),
     ))
 
 
@@ -4153,6 +4155,7 @@ def locker_explorer_browse_json(
                 "file_count": i.file_count,
                 "file_size": i.file_size,
                 "pinned": i.pinned,
+                "require_2fa": bool(getattr(i, "require_2fa", False)),
                 "source_created_at": getattr(i, "source_created_at", None),
                 "created_at": i.created_at,
                 "deleted_at": i.deleted_at,

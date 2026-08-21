@@ -283,12 +283,14 @@
          data-type="{{ item.type_label }}"
          data-folder="{{ item.folder_id or '' }}"
          data-files="{{ item.file_count }}"
-         data-size="{{ item.file_size or 0 }}">
+         data-size="{{ item.file_size or 0 }}"
+         data-require-2fa="{{ '1' if item.require_2fa else '0' }}">
         <span class="fx-ico doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }}">
           {{ item.type_label[:3]|upper }}
         </span>
         <span class="fx-col-name truncate">
           {{ item.title }}
+          {% if item.require_2fa %}<i class="bi bi-shield-lock text-warning ms-1" title="Locked with 2FA"></i>{% endif %}
           {% if item.pinned %}<i class="bi bi-pin-angle-fill text-warning ms-1" title="Pinned"></i>{% endif %}
         </span>
         {% if view == 'list' %}
@@ -343,6 +345,10 @@
 </div>
 
 {# Hidden action forms #}
+<form id="fx-form-lock" method="post" action="/admin/locker/x/lock" class="d-none">
+  <input type="hidden" name="next" id="fx-lock-next" value="{{ here_href }}">
+  <input type="hidden" name="enabled" id="fx-lock-enabled" value="1">
+</form>
 <form id="fx-form-new-folder" method="post" action="/admin/locker/folder" class="d-none">
   <input type="hidden" name="name" id="fx-new-folder-name" value="">
   <input type="hidden" name="parent_id" id="fx-new-folder-parent" value="{{ folder or '' }}">
@@ -375,6 +381,8 @@
   <button type="button" class="fx-menu-item" data-action="preview" role="menuitem"><i class="bi bi-eye"></i> Preview</button>
   <button type="button" class="fx-menu-item" data-action="download" role="menuitem"><i class="bi bi-download"></i> Download</button>
   <button type="button" class="fx-menu-item" data-action="share" role="menuitem"><i class="bi bi-share"></i> Share…</button>
+  <button type="button" class="fx-menu-item" data-action="lock" role="menuitem"><i class="bi bi-lock"></i> Lock with 2FA</button>
+  <button type="button" class="fx-menu-item" data-action="unlock" role="menuitem"><i class="bi bi-unlock"></i> Remove 2FA lock</button>
   <div class="fx-menu-sep" data-for="doc"></div>
   <button type="button" class="fx-menu-item" data-action="move" role="menuitem"><i class="bi bi-folder-symlink"></i> Move to folder…</button>
   <button type="button" class="fx-menu-item" data-action="unfile" role="menuitem"><i class="bi bi-folder-minus"></i> Remove from folder</button>
@@ -500,10 +508,15 @@
         show = ["open", "rename", "new-folder", "new-here", "delete", "properties", "refresh"].indexOf(action) >= 0
           || forKind === "folder" || forKind === "danger";
       } else if (kind === "doc") {
-        show = ["open", "preview", "download", "share", "move", "unfile", "delete", "properties"].indexOf(action) >= 0
+        show = ["open", "preview", "download", "share", "lock", "unlock", "move", "unfile", "delete", "properties"].indexOf(action) >= 0
           || forKind === "doc" || forKind === "danger";
       }
       if (action === "unfile" && kind === "doc" && target && !target.folder) show = false;
+      if ((action === "lock" || action === "unlock") && kind === "doc" && target) {
+        var locked = target.require2fa === "1" || target.require2fa === true;
+        if (action === "lock" && locked) show = false;
+        if (action === "unlock" && !locked) show = false;
+      }
       if (forKind === "empty" && kind !== "empty") show = false;
       if (forKind === "folder" && kind !== "folder") show = false;
       if (forKind === "doc" && kind !== "doc") show = false;
@@ -532,7 +545,8 @@
       type: el.getAttribute("data-type") || "",
       folder: el.getAttribute("data-folder") || "",
       files: el.getAttribute("data-files") || "0",
-      href: el.getAttribute("href") || ""
+      href: el.getAttribute("href") || "",
+      require2fa: el.getAttribute("data-require-2fa") || "0"
     };
   }
 
@@ -679,6 +693,15 @@
     }
     if (action === "share" && t.kind === "doc") {
       location.href = "/admin/locker/" + t.id + "#share-locker-modal";
+      return;
+    }
+    if ((action === "lock" || action === "unlock") && t.kind === "doc") {
+      var lf = document.getElementById("fx-form-lock");
+      if (!lf) return;
+      lf.action = "/admin/locker/" + encodeURIComponent(t.id) + "/lock";
+      document.getElementById("fx-lock-enabled").value = action === "lock" ? "1" : "0";
+      document.getElementById("fx-lock-next").value = location.pathname + location.search;
+      lf.submit();
       return;
     }
     if (action === "rename" && t.kind === "folder") {
@@ -1027,10 +1050,12 @@
       html += '<a class="fx-row js-fx-doc" href="/admin/locker/' + encodeURIComponent(item.id) +
         '" data-kind="doc" data-id="' + esc(item.id) + '" data-name="' + esc(item.title) +
         '" data-type="' + esc(label) + '" data-folder="' + esc(item.folder_id || "") +
-        '" data-files="' + (item.file_count || 0) + '" data-size="' + (item.file_size || 0) + '">' +
+        '" data-files="' + (item.file_count || 0) + '" data-size="' + (item.file_size || 0) +
+        '" data-require-2fa="' + (item.require_2fa ? "1" : "0") + '">' +
         '<span class="fx-ico doc-icon" style="background:' + color + '">' +
         esc(String(label).slice(0, 3).toUpperCase()) + "</span>" +
         '<span class="fx-col-name truncate">' + esc(item.title) +
+        (item.require_2fa ? ' <i class="bi bi-shield-lock text-warning ms-1" title="Locked with 2FA"></i>' : "") +
         (item.pinned ? ' <i class="bi bi-pin-angle-fill text-warning ms-1" title="Pinned"></i>' : "") +
         "</span>";
       if (!icons) {

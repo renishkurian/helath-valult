@@ -47,6 +47,16 @@
   </div>
 </div>
 
+{% if not can_use_item_locks %}
+<div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="status">
+  <i class="bi bi-shield-lock mt-1"></i>
+  <div>
+    <strong>Per-document 2FA lock is unavailable</strong> until you enable an authenticator or outbound email OTP in
+    <a href="/admin/security">Security</a>.
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">
     <div class="stat">
@@ -235,6 +245,17 @@
             <a class="btn btn-primary btn-sm" href="/admin/locker/{{ item.id }}">
               <i class="bi bi-pencil"></i> Edit
             </a>
+            <form method="post" action="/admin/locker/{{ item.id }}/lock" class="d-inline">
+              <input type="hidden" name="next" value="{{ request.url }}">
+              <input type="hidden" name="enabled" value="{{ '0' if item.require_2fa else '1' }}">
+              <button class="btn btn-outline-light btn-sm" type="submit"
+                      {% if not item.require_2fa and not can_use_item_locks %}disabled
+                      title="Turn on authenticator or email OTP in Security first"{% else %}
+                      title="{% if item.require_2fa %}Remove 2FA lock{% else %}Lock this document with 2FA{% endif %}"{% endif %}>
+                <i class="bi bi-{% if item.require_2fa %}unlock{% else %}lock{% endif %}"></i>
+                {% if item.require_2fa %}Unlock{% else %}Lock{% endif %}
+              </button>
+            </form>
             <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}#share-locker-modal">
               <i class="bi bi-share"></i> Share
             </a>
