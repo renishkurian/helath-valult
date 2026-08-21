@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Unlock {{ label }}{% endblock %}
+{% block title %}{% if intent == 'remove_lock' %}Remove lock · {{ label }}{% else %}Unlock {{ label }}{% endif %}{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -8,10 +8,15 @@
       <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
       <a href="/admin/security">Security</a>
     </div>
-    <h1 class="page-title">Unlock {{ label }}</h1>
+    <h1 class="page-title">{% if intent == 'remove_lock' %}Remove 2FA lock{% else %}Unlock {{ label }}{% endif %}</h1>
     <p class="page-lead">
-      {% if is_item %}This item is locked with 2FA.{% else %}This vault is locked with 2FA.{% endif %}
-      Enter an authenticator code{% if methods.email %} or email one-time code{% endif %}. Unlock lasts {{ unlock_minutes }} minutes.
+      {% if intent == 'remove_lock' %}
+      Confirm with an authenticator code{% if methods.email %} or email one-time code{% endif %} to turn off the lock on <strong>{{ label }}</strong>.
+      {% elif is_item %}
+      This item is locked with 2FA. Enter a code to Edit, Share, or Open. Unlock lasts {{ unlock_minutes }} minutes.
+      {% else %}
+      This vault is locked with 2FA. Enter an authenticator code{% if methods.email %} or email one-time code{% endif %}. Unlock lasts {{ unlock_minutes }} minutes.
+      {% endif %}
     </p>
   </div>
 </div>
@@ -40,7 +45,7 @@
       <div class="card-header">
         <span class="card-ico gold"><i class="bi bi-shield-lock"></i></span>
         <div>
-          <h2>Verify to continue</h2>
+          <h2>{% if intent == 'remove_lock' %}Verify to remove lock{% else %}Verify to continue{% endif %}</h2>
           <div class="card-sub">{{ label }}</div>
         </div>
       </div>
@@ -54,6 +59,7 @@
           {% endif %}
           <input type="hidden" name="next" value="{{ next }}">
           <input type="hidden" name="method" value="auto">
+          {% if intent %}<input type="hidden" name="intent" value="{{ intent }}">{% endif %}
           <div>
             <label class="form-label" for="unlock-code">6-digit code <span class="req">*</span></label>
             <input class="form-control otp-input" id="unlock-code" type="text" name="code" required
@@ -72,7 +78,11 @@
             </div>
           </div>
           <button class="btn btn-primary" type="submit" {% if not methods.authenticator and not methods.email %}disabled{% endif %}>
+            {% if intent == 'remove_lock' %}
+            <i class="bi bi-unlock"></i> Confirm &amp; remove lock
+            {% else %}
             <i class="bi bi-unlock"></i> Unlock for {{ unlock_minutes }} min
+            {% endif %}
           </button>
         </form>
         {% if methods.email %}
@@ -84,6 +94,7 @@
           <input type="hidden" name="module" value="{{ module }}">
           {% endif %}
           <input type="hidden" name="next" value="{{ next }}">
+          {% if intent %}<input type="hidden" name="intent" value="{{ intent }}">{% endif %}
           <button class="btn btn-outline-light btn-sm" type="submit">
             <i class="bi bi-envelope"></i> Send code to email
           </button>

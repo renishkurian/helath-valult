@@ -444,7 +444,7 @@ def _item_unlock_map(request: Request) -> dict:
 def is_item_unlocked(request: Request, kind: str, item_id: str) -> bool:
     key = normalize_item_kind(kind)
     if not key or not item_id:
-        return True
+        return False
     return item_key(key, item_id) in _item_unlock_map(request)
 
 
@@ -507,12 +507,20 @@ def item_title(item, kind: str) -> str:
     )
 
 
-def unlock_redirect_item(kind: str, item_id: str, next_url: str = "") -> RedirectResponse:
+def unlock_redirect_item(
+    kind: str,
+    item_id: str,
+    next_url: str = "",
+    *,
+    intent: str = "",
+) -> RedirectResponse:
     key = normalize_item_kind(kind) or "locker"
     dest = next_url if (next_url or "").startswith("/admin/") and "://" not in next_url else ""
     q = f"item_kind={quote(key)}&item_id={quote(item_id)}"
     if dest:
         q += f"&next={quote(dest)}"
+    if intent == "remove_lock":
+        q += "&intent=remove_lock"
     return RedirectResponse(f"/admin/security/unlock?{q}", status_code=302)
 
 
@@ -532,7 +540,17 @@ def gate_item_access(
         return None
     if is_item_unlocked(request, key, item.id):
         return None
-    path = next_url or (request.url.path + (("?" + request.url.query) if request.url.query else ""))
+    if next_url and next_url.startswith("/admin/") and "://" not in next_url:
+        path = next_url
+    elif request.method in ("GET", "HEAD"):
+        path = request.url.path + (("?" + request.url.query) if request.url.query else "")
+    else:
+        # After unlock, land on the item page (POST paths are not safe as next).
+        path = {
+            "locker": f"/admin/locker/{item.id}",
+            "vault": f"/admin/passwords/{item.id}",
+            "document": f"/admin/documents/{item.id}/viewer",
+        }.get(key, "/admin/modules")
     return unlock_redirect_item(key, item.id, path)
 
 

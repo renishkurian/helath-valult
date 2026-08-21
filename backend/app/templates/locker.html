@@ -242,18 +242,38 @@
           </td>
           <td class="mono text-muted">{{ item.file_count }}</td>
           <td class="table-actions">
+            {% if item.require_2fa %}
+            <a class="btn btn-primary btn-sm"
+               href="/admin/security/unlock?item_kind=locker&amp;item_id={{ item.id }}&amp;next=/admin/locker/{{ item.id }}">
+              <i class="bi bi-shield-lock"></i> Edit
+            </a>
+            <form method="post" action="/admin/locker/{{ item.id }}/lock" class="d-inline">
+              <input type="hidden" name="next" value="{{ request.url }}">
+              <input type="hidden" name="enabled" value="0">
+              <button class="btn btn-outline-light btn-sm" type="submit" title="Remove 2FA lock">
+                <i class="bi bi-unlock"></i> Unlock
+              </button>
+            </form>
+            <a class="btn btn-outline-light btn-sm"
+               href="/admin/security/unlock?item_kind=locker&amp;item_id={{ item.id }}&amp;next=/admin/locker/{{ item.id }}">
+              <i class="bi bi-share"></i> Share
+            </a>
+            <a class="btn btn-outline-light btn-sm"
+               href="/admin/security/unlock?item_kind=locker&amp;item_id={{ item.id }}&amp;next=/admin/locker/{{ item.id }}/view">
+              <i class="bi bi-eye"></i> Open
+            </a>
+            {% else %}
             <a class="btn btn-primary btn-sm" href="/admin/locker/{{ item.id }}">
               <i class="bi bi-pencil"></i> Edit
             </a>
             <form method="post" action="/admin/locker/{{ item.id }}/lock" class="d-inline">
               <input type="hidden" name="next" value="{{ request.url }}">
-              <input type="hidden" name="enabled" value="{{ '0' if item.require_2fa else '1' }}">
+              <input type="hidden" name="enabled" value="1">
               <button class="btn btn-outline-light btn-sm" type="submit"
-                      {% if not item.require_2fa and not can_use_item_locks %}disabled
+                      {% if not can_use_item_locks %}disabled
                       title="Turn on authenticator or email OTP in Security first"{% else %}
-                      title="{% if item.require_2fa %}Remove 2FA lock{% else %}Lock this document with 2FA{% endif %}"{% endif %}>
-                <i class="bi bi-{% if item.require_2fa %}unlock{% else %}lock{% endif %}"></i>
-                {% if item.require_2fa %}Unlock{% else %}Lock{% endif %}
+                      title="Lock this document with 2FA"{% endif %}>
+                <i class="bi bi-lock"></i> Lock
               </button>
             </form>
             <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}#share-locker-modal">
@@ -272,6 +292,7 @@
                data-kind="{{ open_kind }}">
               <i class="bi bi-eye"></i> Open
             </a>
+            {% endif %}
           </td>
         </tr>
         {% else %}
