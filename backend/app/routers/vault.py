@@ -93,6 +93,7 @@ def _to_out(
     shared_from: dict | None = None,
     my_permission: str | None = None,
     is_owned: bool = True,
+    owner_full_name: str | None = None,
 ) -> schemas.VaultItemOut:
     totp = crypto.decrypt_text(item.totp_secret_enc)
     return schemas.VaultItemOut(
@@ -135,6 +136,7 @@ def _to_out(
         active_send_count=max(0, int(active_send_count or 0)),
         require_2fa=bool(getattr(item, "require_2fa", False)),
         owner_user_id=getattr(item, "owner_user_id", None) or item.user_id,
+        owner_full_name=owner_full_name,
         is_owned=is_owned,
         my_permission=my_permission or ("edit" if is_owned else "view"),
         shared_with=shared_with or [],
@@ -2232,6 +2234,12 @@ def list_items(
             if u:
                 from_users[u.id] = u
 
+    owner_ids = {faccess.item_owner_id(r.owner_user_id, r.user_id) for r in rows}
+    owners = {
+        u.id: u
+        for u in db.query(models.User).filter(models.User.id.in_(owner_ids or ["__none__"])).all()
+    }
+
     out = []
     for r in rows:
         oid = faccess.item_owner_id(r.owner_user_id, r.user_id)
@@ -2248,6 +2256,7 @@ def list_items(
                 "email": fu.email if fu else "",
                 "permission": s.permission,
             }
+        owner = owners.get(oid)
         out.append(_to_out(
             r,
             active_send_count=counts.get(r.id, 0),
@@ -2255,12 +2264,14 @@ def list_items(
             shared_from=shared_from,
             my_permission=my_perm,
             is_owned=is_owned,
+            owner_full_name=(owner.full_name if owner else None),
         ))
     if needle:
         def _match(item: schemas.VaultItemOut) -> bool:
             blob = " ".join(filter(None, [
                 item.name, item.username, item.notes, item.email,
                 " ".join(item.uris), item.first_name, item.last_name, item.cardholder_name,
+                item.owner_full_name,
             ])).lower()
             return needle in blob
         out = [i for i in out if _match(i)]
@@ -2279,9 +2290,20 @@ def create_item(
     folder_id = None
     if faccess.is_family_admin(current_user):
         folder_id = _owned_folder(body.folder_id, db, current_user)
+    owner_id = current_user.id
+    assigned_other = False
+    want_owner = (body.owner_user_id or "").strip() or None
+    if want_owner and want_owner != current_user.id:
+        if not faccess.is_family_admin(current_user):
+            raise HTTPException(status_code=403, detail="Only the family manager can create items for others")
+        target = faccess.same_family(db, current_user, want_owner)
+        if not target:
+            raise HTTPException(status_code=404, detail="Family member not found")
+        owner_id = target.id
+        assigned_other = True
     item = models.VaultItem(
         user_id=vault_id(current_user),
-        owner_user_id=current_user.id,
+        owner_user_id=owner_id,
         folder_id=folder_id,
         item_type=item_type,
         name=body.name.strip(),
@@ -2317,9 +2339,26 @@ def create_item(
         updated_at=now,
     )
     db.add(item)
+    db.flush()
+    if assigned_other:
+        # Keep the manager's access so the item still appears under Everyone.
+        faccess.upsert_share(
+            db,
+            from_user=db.query(models.User).filter(models.User.id == owner_id).first() or current_user,
+            to_user_id=current_user.id,
+            resource_type=models.ShareResourceType.password.value,
+            resource_id=item.id,
+            permission=models.SharePermission.edit.value,
+        )
     db.commit()
     db.refresh(item)
-    return _to_out(item)
+    owner = db.query(models.User).filter(models.User.id == owner_id).first()
+    return _to_out(
+        item,
+        is_owned=(owner_id == current_user.id),
+        my_permission="edit",
+        owner_full_name=(owner.full_name if owner else None),
+    )
 
 
 @router.get("/items/{item_id}", response_model=schemas.VaultItemOut)
@@ -2364,6 +2403,7 @@ def get_item(
                 "email": fu.email if fu else "",
                 "permission": share.permission,
             }
+    owner = db.query(models.User).filter(models.User.id == oid).first()
     return _to_out(
         item,
         active_send_count=counts.get(item.id, 0),
@@ -2371,6 +2411,7 @@ def get_item(
         shared_from=shared_from,
         my_permission=my_perm,
         is_owned=is_owned,
+        owner_full_name=(owner.full_name if owner else None),
     )
 
 

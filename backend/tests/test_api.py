@@ -400,6 +400,53 @@ def test_transfer_password_ownership_to_family_member():
     assert shared[0]["shared_from"]["full_name"] == "Deepthi Member"
 
 
+def test_family_admin_can_create_item_for_member():
+    owner = _register("createfor@example.com", "password123", "Renish Manager")
+    oh = _auth_headers(owner["access_token"])
+    inv = client.post(
+        "/family/invite",
+        json={
+            "email": "create.for.deepthi@example.com",
+            "password": "password123",
+            "full_name": "Deepthi Member",
+            "relation": "spouse",
+        },
+        headers=oh,
+    )
+    assert inv.status_code == 201, inv.text
+    login = client.post("/auth/login", data={"username": "create.for.deepthi@example.com", "password": "password123"})
+    mh = _auth_headers(login.json()["access_token"])
+    deepthi_id = client.get("/auth/me", headers=mh).json()["id"]
+
+    created = client.post(
+        "/vault/items",
+        json={
+            "name": "Saudia for Deepthi",
+            "item_type": "login",
+            "username": "saudia",
+            "password": "secret",
+            "owner_user_id": deepthi_id,
+        },
+        headers=oh,
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["owner_user_id"] == deepthi_id
+    assert body["owner_full_name"] == "Deepthi Member"
+    assert body["is_owned"] is False  # Renish is not the owner
+
+    # Deepthi owns it
+    hers = client.get("/vault/items", headers=mh).json()
+    assert any(i["id"] == body["id"] and i["is_owned"] for i in hers)
+
+    # Renish still sees it (edit share kept) with owner label
+    his = client.get("/vault/items", headers=oh).json()
+    mine = [i for i in his if i["id"] == body["id"]]
+    assert len(mine) == 1
+    assert mine[0]["owner_full_name"] == "Deepthi Member"
+    assert mine[0]["is_owned"] is False
+
+
 def test_share_targets_include_person_linked_member():
     """Members linked via Person show up even if vault_owner_id was cleared."""
     owner = _register("linkowner@example.com", "password123", "Link Owner")

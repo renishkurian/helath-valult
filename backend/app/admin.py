@@ -2718,8 +2718,12 @@ def passwords_page(
             else:
                 items = [
                     i for i in items
-                    if (getattr(i, "shared_from", None) or {}).get("user_id") == lid
-                    or any(s.get("user_id") == lid for s in (getattr(i, "shared_with", None) or []))
+                    if getattr(i, "owner_user_id", None) == lid
+                    or (getattr(i, "shared_from", None) or {}).get("user_id") == lid
+                    or any(
+                        (s.get("user_id") if isinstance(s, dict) else getattr(s, "user_id", None)) == lid
+                        for s in (getattr(i, "shared_with", None) or [])
+                    )
                 ]
         elif active_person and not active_person.linked_user_id:
             # Profile without login — no password ownership to show
@@ -2764,14 +2768,26 @@ def passwords_add(
     last_name: str = Form(""),
     email: str = Form(""),
     phone: str = Form(""),
+    person: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers.vault import create_item
+    from app import family_access as faccess
     from app import schemas as sc
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     uri_list = [u.strip() for u in uris.replace("\n", ",").split(",") if u.strip()]
+    owner_user_id = None
+    person_id = (person or "").strip()
+    if person_id and faccess.is_family_admin(user):
+        prof = (
+            db.query(models.Person)
+            .filter(models.Person.id == person_id, models.Person.user_id == vault_id(user))
+            .first()
+        )
+        if prof and prof.linked_user_id and prof.linked_user_id != user.id:
+            owner_user_id = prof.linked_user_id
     create_item(sc.VaultItemIn(
         name=name, item_type=item_type, username=username or None, password=password or None,
         uris=uri_list, totp_secret=totp_secret or None, notes=notes or None,
@@ -2780,8 +2796,12 @@ def passwords_add(
         card_exp_month=card_exp_month or None, card_exp_year=card_exp_year or None,
         card_cvv=card_cvv or None, first_name=first_name or None, last_name=last_name or None,
         email=email or None, phone=phone or None,
+        owner_user_id=owner_user_id,
     ), db=db, current_user=user)
-    return RedirectResponse("/admin/passwords", status_code=302)
+    dest = "/admin/passwords"
+    if person_id:
+        dest += f"?person={person_id}"
+    return RedirectResponse(dest, status_code=302)
 
 
 @router.get("/passwords/generator", response_class=HTMLResponse)

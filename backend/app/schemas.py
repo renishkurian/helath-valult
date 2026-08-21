@@ -708,6 +708,8 @@ class VaultItemIn(BaseModel):
     ssn: Optional[str] = None
     license_number: Optional[str] = None
     passport_number: Optional[str] = None
+    # Family admin only: create on behalf of another household login
+    owner_user_id: Optional[str] = None
 
 
 class VaultItemUpdate(BaseModel):
@@ -782,6 +784,7 @@ class VaultItemOut(BaseModel):
     active_send_count: int = 0
     require_2fa: bool = False
     owner_user_id: Optional[str] = None
+    owner_full_name: Optional[str] = None
     is_owned: bool = True
     my_permission: str = "edit"  # view | edit
     shared_with: List[dict] = []
