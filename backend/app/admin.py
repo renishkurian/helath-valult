@@ -2733,6 +2733,7 @@ def passwords_page(
         active_person_id=active_person.id if active_person else None,
         active_person=active_person,
         q=q or "", item_type=item_type or "", folder_id=folder_id or "",
+        family_targets=_family_share_targets(db, user),
     ))
 
 
@@ -3375,6 +3376,7 @@ def password_transfer(
     to_user_id: str = Form(...),
     keep_access: Optional[str] = Form(None),
     keep_permission: str = Form("view"),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     """Move ownership of a vault item to another family login (e.g. Renish → Deepthi)."""
@@ -3397,7 +3399,15 @@ def password_transfer(
         db.commit()
     except HTTPException as exc:
         detail = quote(str(exc.detail)) if exc.detail else "transfer"
-        return RedirectResponse(f"/admin/passwords/{item_id}?err={detail}", status_code=302)
+        dest = _safe_admin_next(next, f"/admin/passwords/{item_id}")
+        sep = "&" if "?" in dest else "?"
+        return RedirectResponse(f"{dest}{sep}err={detail}", status_code=302)
+    dest = _safe_admin_next(next, "")
+    if dest.startswith("/admin/passwords") and not dest.startswith(f"/admin/passwords/{item_id}"):
+        return RedirectResponse(
+            f"{dest}{'&' if '?' in dest else '?'}notice=owner&to={quote(new_owner.full_name)}",
+            status_code=302,
+        )
     if keep:
         return RedirectResponse(
             f"/admin/passwords/{item_id}?transferred={quote(new_owner.full_name)}",
