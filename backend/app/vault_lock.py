@@ -584,6 +584,12 @@ def require_api_item_unlock(
     key = normalize_item_kind(kind)
     if not key:
         return
+    # Web admin unlocks into the session; API clients send X-Vault-Unlock.
+    try:
+        if is_item_unlocked(request, key, item.id):
+            return
+    except Exception:
+        pass
     token = request.headers.get("X-Vault-Unlock") or request.headers.get("x-vault-unlock")
     if verify_item_unlock_token(token, user.id, key, item.id):
         return

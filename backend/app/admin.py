@@ -2943,7 +2943,7 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
     gated = vlock.gate_item_access(request, user, "vault", raw)
     if gated is not None:
         return gated
-    item = get_item(item_id, db=db, current_user=user)
+    item = get_item(item_id, request=request, db=db, current_user=user)
     totp = None
     if item.has_totp:
         totp = item_totp(item_id, db=db, current_user=user)
@@ -4450,7 +4450,7 @@ def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_d
     gated = vlock.gate_item_access(request, user, "locker", raw)
     if gated is not None:
         return gated
-    item = lk.get_item(item_id, db=db, current_user=user)
+    item = lk.get_item(item_id, request=request, db=db, current_user=user)
     files = lk.list_files(item_id, db=db, current_user=user)
     people = _lk_people(db, user)
     folders = lk._folder_outs(db, user)
