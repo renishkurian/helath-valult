@@ -39,6 +39,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("abha_id", "VARCHAR(64)"),
         ("ayushman_id", "VARCHAR(64)"),
         ("ice_token", "VARCHAR(64)"),
+        ("linked_user_id", "VARCHAR(32)"),
     ],
     "documents": [
         ("custom_category", "VARCHAR(255)"),
@@ -50,6 +51,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("pinned", "BOOLEAN NOT NULL DEFAULT 0"),
         ("deleted_at", "DATETIME"),
         ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("owner_user_id", "VARCHAR(32)"),
     ],
     "document_files": [
         ("content_hash", "VARCHAR(64)"),
@@ -64,6 +66,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "vault_items": [
         ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("owner_user_id", "VARCHAR(32)"),
     ],
     "finance_accounts": [
         ("credit_limit", "NUMERIC(14,2)"),
@@ -101,6 +104,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("email", "VARCHAR(255)"),
         ("request_id", "VARCHAR(32)"),
     ],
+    "vault_sends": [
+        ("bound_browser_hash", "VARCHAR(255)"),
+    ],
     "expense_analyser_connections": [
         ("enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("hour", "INTEGER NOT NULL DEFAULT 6"),
@@ -120,6 +126,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("deleted_at", "DATETIME"),
         ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
         ("source_created_at", "DATETIME"),
+        ("owner_user_id", "VARCHAR(32)"),
     ],
     "locker_files": [
         ("content_hash", "VARCHAR(64)"),
@@ -172,6 +179,13 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_locker_items_folder_id", "locker_items", "folder_id"),
     ("ix_locker_items_deleted_at", "locker_items", "deleted_at"),
     ("ix_locker_folders_user_id", "locker_folders", "user_id"),
+    ("ix_people_linked_user_id", "people", "linked_user_id"),
+    ("ix_vault_items_owner_user_id", "vault_items", "owner_user_id"),
+    ("ix_locker_items_owner_user_id", "locker_items", "owner_user_id"),
+    ("ix_documents_owner_user_id", "documents", "owner_user_id"),
+    ("ix_family_shares_vault_id", "family_shares", "vault_id"),
+    ("ix_family_shares_resource", "family_shares", "resource_type"),
+    ("ix_family_shares_to_user", "family_shares", "to_user_id"),
 ]
 
 
@@ -205,6 +219,30 @@ def ensure_schema(engine: Engine) -> None:
                 "UPDATE users SET role = 'owner' "
                 "WHERE role IS NULL OR role = ''"
             ))
+
+        # Family Vault: backfill item owners (legacy rows belong to vault scope user_id).
+        if "vault_items" in tables:
+            have = _table_columns(engine, "vault_items")
+            if "owner_user_id" in have:
+                conn.execute(text(
+                    "UPDATE vault_items SET owner_user_id = user_id "
+                    "WHERE owner_user_id IS NULL OR owner_user_id = ''"
+                ))
+        if "locker_items" in tables:
+            have = _table_columns(engine, "locker_items")
+            if "owner_user_id" in have:
+                conn.execute(text(
+                    "UPDATE locker_items SET owner_user_id = user_id "
+                    "WHERE owner_user_id IS NULL OR owner_user_id = ''"
+                ))
+        if "documents" in tables and "people" in tables:
+            have = _table_columns(engine, "documents")
+            if "owner_user_id" in have:
+                conn.execute(text(
+                    "UPDATE documents SET owner_user_id = ("
+                    "  SELECT people.user_id FROM people WHERE people.id = documents.person_id"
+                    ") WHERE owner_user_id IS NULL OR owner_user_id = ''"
+                ))
 
         if dialect == "mysql" and "reminders" in tables:
             try:

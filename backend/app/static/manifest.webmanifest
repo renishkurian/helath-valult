@@ -1,7 +1,7 @@
 {
-  "name": "Vault — private household archive",
-  "short_name": "Vault",
-  "description": "Self-hosted health records, passwords, money, documents, and links.",
+  "name": "Family Vault",
+  "short_name": "Family Vault",
+  "description": "Self-hosted family vault: household members, health, passwords, money, documents, and links.",
   "start_url": "/admin/modules",
   "scope": "/",
   "display": "standalone",
@@ -13,7 +13,7 @@
     { "src": "/static/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Add expense", "url": "/admin/finance/add" },
+    { "name": "Family", "url": "/admin/family" },
     { "name": "Passwords", "url": "/admin/passwords" },
     { "name": "Emergency card", "url": "/admin/care" }
   ]

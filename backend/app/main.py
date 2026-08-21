@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import engine, SessionLocal
 from app.config import settings
 from app.schema import ensure_schema
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker, diary
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker, diary, family, secrets
 from app.scheduler import lifespan
 from app import admin, admin_sa, models
 from app.templating import setup_templates
@@ -19,6 +19,12 @@ from app.templating import setup_templates
 ensure_schema(engine)
 from app.accounts import ensure_superadmin
 ensure_superadmin()
+from app.family_access import convert_viewers_to_members
+_db = SessionLocal()
+try:
+    convert_viewers_to_members(_db)
+finally:
+    _db.close()
 
 
 class ModuleAccessMiddleware(BaseHTTPMiddleware):
@@ -50,9 +56,9 @@ class ModuleAccessMiddleware(BaseHTTPMiddleware):
 
 
 app = FastAPI(
-    title="Vault API",
-    description="Self-hosted vault: Health, Passwords, Money Manager, Expense Analyser, Shopping List, AI, Documents, URLs, and Digital Diary.",
-    version="1.2.0",
+    title="Family Vault API",
+    description="Self-hosted Family Vault: household members, Health, Passwords, Money Manager, Expense Analyser, Shopping List, AI, Documents, URLs, and Digital Diary.",
+    version="1.3.0",
     lifespan=lifespan,
 )
 
@@ -91,6 +97,8 @@ app.include_router(tracker.router)
 app.include_router(urls.public_router)
 app.include_router(urls.router)
 app.include_router(diary.router)
+app.include_router(secrets.router)
+app.include_router(family.router)
 app.include_router(admin.router)
 app.include_router(admin_sa.router)
 
@@ -160,4 +168,4 @@ def pwa_manifest():
     path = _static / "manifest.webmanifest"
     if path.exists():
         return FileResponse(path, media_type="application/manifest+json")
-    return {"name": "Health Vault", "start_url": "/admin", "display": "standalone"}
+    return {"name": "Family Vault", "start_url": "/admin", "display": "standalone"}

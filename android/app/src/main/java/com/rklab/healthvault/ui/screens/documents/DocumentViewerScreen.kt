@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
@@ -29,8 +30,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.rklab.healthvault.data.model.DocumentFileOut
+import com.rklab.healthvault.data.model.DocumentOut
 import com.rklab.healthvault.data.model.DocumentVersionOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.components.FamilyShareDialog
 import com.rklab.healthvault.ui.theme.HubBg
 import com.rklab.healthvault.ui.theme.Ink
 import com.rklab.healthvault.ui.theme.InkSoft
@@ -63,7 +66,11 @@ fun DocumentViewerScreen(
     var activeFileId by remember(fileId) { mutableStateOf(fileId?.takeIf { it.isNotBlank() }) }
     var showVersions by remember { mutableStateOf(false) }
     var replacing by remember { mutableStateOf(false) }
+    var docMeta by remember { mutableStateOf<DocumentOut?>(null) }
+    var showFamilyShare by remember { mutableStateOf(false) }
     val isViewer = repository.isViewer
+    val canEdit = docMeta?.my_permission == "edit" && !isViewer
+    val canFamilyShare = docMeta?.is_owned == true
 
     val resolvedFileId = activeFileId ?: docFiles.firstOrNull()?.id
     val fileIndex = docFiles.indexOfFirst { it.id == resolvedFileId }.takeIf { it >= 0 } ?: 0
@@ -146,12 +153,15 @@ fun DocumentViewerScreen(
             }
             mimeType = if (isPdf) "application/pdf" else "image/*"
 
-            withContext(Dispatchers.IO) {
-                runCatching { repository.getDocument(docId) }.getOrNull()?.extracted_text
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { extractedText = it }
-                runCatching { repository.listDocumentVersions(docId) }.getOrNull()
-                    ?.let { versions = it }
+            val meta = withContext(Dispatchers.IO) {
+                runCatching { repository.getDocument(docId) }.getOrNull()
+            }
+            if (meta != null) {
+                docMeta = meta
+                meta.extracted_text?.takeIf { it.isNotBlank() }?.let { extractedText = it }
+            }
+            versions = withContext(Dispatchers.IO) {
+                runCatching { repository.listDocumentVersions(docId) }.getOrDefault(emptyList())
             }
         } catch (e: Exception) {
             errorMessage = e.message ?: "Failed to download file"
@@ -165,9 +175,14 @@ fun DocumentViewerScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text("Document Viewer", style = MaterialTheme.typography.titleMedium)
-                        if (hasMulti) {
-                            Text(
+                        Text(docMeta?.title ?: "Document Viewer", style = MaterialTheme.typography.titleMedium)
+                        when {
+                            docMeta?.shared_from != null -> Text(
+                                "Shared by ${docMeta?.shared_from?.full_name.orEmpty()}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = InkSoft
+                            )
+                            hasMulti -> Text(
                                 "File ${fileIndex + 1} / ${docFiles.size}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = InkSoft
@@ -193,12 +208,17 @@ fun DocumentViewerScreen(
                             Icon(Icons.Filled.ChevronRight, contentDescription = "Next file", tint = Navy)
                         }
                     }
+                    if (canFamilyShare) {
+                        IconButton(onClick = { showFamilyShare = true }) {
+                            Icon(Icons.Filled.Group, contentDescription = "Share with family", tint = Navy)
+                        }
+                    }
                     if (versions.isNotEmpty()) {
                         IconButton(onClick = { showVersions = true }) {
                             Icon(Icons.Filled.History, contentDescription = "Version history", tint = Navy)
                         }
                     }
-                    if (!isViewer) {
+                    if (canEdit) {
                         IconButton(onClick = { replaceLauncher.launch(arrayOf("*/*")) }, enabled = !replacing) {
                             Icon(Icons.Filled.UploadFile, contentDescription = "Upload new version", tint = Navy)
                         }
@@ -305,6 +325,21 @@ fun DocumentViewerScreen(
             confirmButton = {
                 TextButton(onClick = { showVersions = false }) { Text("Close") }
             }
+        )
+    }
+
+    if (showFamilyShare && canFamilyShare) {
+        FamilyShareDialog(
+            repository = repository,
+            resourceType = "health_document",
+            resourceId = docId,
+            sharedWith = docMeta?.shared_with.orEmpty(),
+            onDismiss = { showFamilyShare = false },
+            onChanged = {
+                scope.launch {
+                    docMeta = runCatching { repository.getDocument(docId) }.getOrNull() ?: docMeta
+                }
+            },
         )
     }
 }

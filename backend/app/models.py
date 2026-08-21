@@ -59,9 +59,21 @@ class AuditAction(str, enum.Enum):
 
 
 class UserRole(str, enum.Enum):
-    owner = "owner"
-    viewer = "viewer"
+    owner = "owner"          # family manager / admin
+    member = "member"        # family member with own private entries
+    viewer = "viewer"        # legacy read-only; migrated to member
     superadmin = "superadmin"
+
+
+class SharePermission(str, enum.Enum):
+    view = "view"
+    edit = "edit"
+
+
+class ShareResourceType(str, enum.Enum):
+    password = "password"
+    health_document = "health_document"
+    locker = "locker"
 
 
 class User(Base):
@@ -70,7 +82,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     full_name = Column(String(255), nullable=False)
-    # owner = full access to this vault; viewer = read-only (e.g. spouse abroad)
+    # owner = family manager; member = family login with private entries; viewer = legacy
     role = Column(String(20), default=UserRole.owner.value, nullable=False)
     # The vault this account belongs to. Owners: vault_owner_id == id.
     vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
@@ -93,7 +105,12 @@ class User(Base):
     lock_health = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")
+    people = relationship(
+        "Person",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        foreign_keys="Person.user_id",
+    )
 
 
 class LoginAttempt(Base):
@@ -132,10 +149,12 @@ class LoginChallenge(Base):
 
 
 class Person(Base):
-    """A profile the account manages: the account holder ('self') or a family member."""
+    """A family profile under the vault. May be linked to a member login."""
     __tablename__ = "people"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    # Login account for this profile (family member). Null = profile-only (no login yet).
+    linked_user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     relation = Column(Enum(Relation), default=Relation.other, nullable=False)
     dob = Column(String(20), nullable=True)  # ISO date string
@@ -150,7 +169,8 @@ class Person(Base):
     ice_token = Column(String(64), unique=True, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    owner = relationship("User", back_populates="people")
+    owner = relationship("User", foreign_keys=[user_id], back_populates="people")
+    linked_user = relationship("User", foreign_keys=[linked_user_id])
     cards = relationship("HospitalCard", back_populates="person", cascade="all, delete-orphan")
     documents = relationship("Document", back_populates="person", cascade="all, delete-orphan")
     reminders = relationship("Reminder", back_populates="person", cascade="all, delete-orphan")
@@ -185,6 +205,8 @@ class Document(Base):
     __tablename__ = "documents"
     id = Column(String(32), primary_key=True, default=gen_id)
     person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+    # Who created/owns this entry. Private to them until shared via FamilyShare.
+    owner_user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
 
     category = Column(Enum(DocCategory), nullable=False, index=True)
     custom_category = Column(String(255), nullable=True, index=True)
@@ -340,11 +362,30 @@ class DeviceToken(Base):
 
 
 class ViewerAccess(Base):
-    """If any rows exist for a viewer, they may only see these people."""
+    """Legacy: if any rows exist for a viewer, they may only see these people."""
     __tablename__ = "viewer_access"
     id = Column(String(32), primary_key=True, default=gen_id)
     viewer_user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     person_id = Column(String(32), ForeignKey("people.id"), nullable=False, index=True)
+
+
+class FamilyShare(Base):
+    """Item-level share inside a family vault (password / health doc / locker)."""
+    __tablename__ = "family_shares"
+    __table_args__ = (
+        UniqueConstraint(
+            "resource_type", "resource_id", "to_user_id",
+            name="uq_family_share_target",
+        ),
+    )
+    id = Column(String(32), primary_key=True, default=gen_id)
+    vault_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    resource_type = Column(String(32), nullable=False, index=True)
+    resource_id = Column(String(32), nullable=False, index=True)
+    from_user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    to_user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    permission = Column(String(10), default=SharePermission.view.value, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Favorite(Base):
@@ -508,7 +549,10 @@ class VaultItem(Base):
     """Encrypted login / note / card / identity. Secrets live in *_enc columns."""
     __tablename__ = "vault_items"
     id = Column(String(32), primary_key=True, default=gen_id)
+    # Family vault scope (vault owner id) — used for quota / backup.
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    # Who owns this item. Private until shared. Defaults to user_id for legacy rows.
+    owner_user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     folder_id = Column(String(32), ForeignKey("vault_folders.id"), nullable=True, index=True)
     item_type = Column(String(20), default=VaultItemType.login.value, nullable=False, index=True)
     name = Column(String(255), nullable=False, index=True)
@@ -571,7 +615,7 @@ class VaultSend(Base):
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     token = Column(String(64), unique=True, index=True, nullable=False)
     name = Column(String(255), nullable=False)
-    send_type = Column(String(20), default="text", nullable=False)  # text | login
+    send_type = Column(String(20), default="text", nullable=False)  # text | login | locker | secret
     payload_enc = Column(Text, nullable=False)
     notes_enc = Column(Text, nullable=True)
     pin_hash = Column(String(255), nullable=True)
@@ -579,6 +623,8 @@ class VaultSend(Base):
     max_views = Column(Integer, nullable=True)
     view_count = Column(Integer, default=0, nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
+    # Hash of first browser cookie when bind_first_browser is enabled (payload flag).
+    bound_browser_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     accesses = relationship("VaultSendAccess", back_populates="send", cascade="all, delete-orphan")
@@ -940,6 +986,7 @@ class LockerItem(Base):
     __tablename__ = "locker_items"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    owner_user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     person_id = Column(String(32), ForeignKey("people.id"), nullable=True, index=True)
     folder_id = Column(String(32), ForeignKey("locker_folders.id"), nullable=True, index=True)
     doc_type = Column(String(40), default=LockerDocType.other.value, nullable=False, index=True)

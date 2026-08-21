@@ -13,6 +13,8 @@
     </div>
     <h1 class="page-title">{{ doc.title | nice }}</h1>
     <p class="page-lead">
+      {% if shared_from %}Shared by {{ shared_from.full_name }} · {{ shared_from.permission }} · {% endif %}
+      {% if is_owned and family_shares %}Shared with {% for s in family_shares %}{{ s.full_name }}{% if not loop.last %}, {% endif %}{% endfor %} · {% endif %}
       {% if doc.hospital_name %}{{ doc.hospital_name | nice }} · {% endif %}
       {% if doc.doc_date %}{{ doc.doc_date }}{% else %}{{ doc.created_at.strftime('%Y-%m-%d') }}{% endif %}
       {% if current_file and current_file.size %} · {{ (current_file.size / 1024) | round(0) | int }} KB
@@ -21,6 +23,11 @@
     </p>
   </div>
   <div class="page-actions">
+    {% if is_owned %}
+    <button class="btn btn-outline-light" type="button" data-bs-toggle="modal" data-bs-target="#family-share-doc">
+      <i class="bi bi-people"></i> Family share
+    </button>
+    {% endif %}
     <a class="btn btn-outline-light" href="/admin/documents/{{ doc.id }}/edit"><i class="bi bi-pencil"></i> Edit</a>
     <a class="btn btn-outline-light" href="{{ download_url }}"><i class="bi bi-download"></i> Download</a>
     {% if active_person %}
@@ -110,4 +117,57 @@
     {% endif %}
   </div>
 </div>
+
+{% if is_owned %}
+<div class="modal fade" id="family-share-doc" tabindex="-1" aria-labelledby="family-share-doc-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="/admin/documents/{{ doc.id }}/family-share">
+        <div class="modal-header">
+          <span class="card-ico gold"><i class="bi bi-people"></i></span>
+          <h2 class="modal-title" id="family-share-doc-title">Share with family</h2>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          {% if family_shares %}
+          <div class="mb-3">
+            {% for s in family_shares %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="flex-grow-1">{{ s.full_name }} <span class="text-muted small">({{ s.permission }})</span></span>
+              <button class="btn btn-ghost btn-sm text-danger" form="revoke-doc-{{ s.user_id }}" type="submit">Revoke</button>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="doc-share-to">Family member</label>
+              <select class="form-select" id="doc-share-to" name="to_user_id" required>
+                <option value="">Choose…</option>
+                {% for t in family_targets or [] %}
+                <option value="{{ t.id }}">{{ t.full_name }} ({{ t.email }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="doc-share-perm">Permission</label>
+              <select class="form-select" id="doc-share-perm" name="permission">
+                <option value="view">View only</option>
+                <option value="edit">View &amp; edit</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Share</button>
+        </div>
+      </form>
+      {% for s in family_shares or [] %}
+      <form id="revoke-doc-{{ s.user_id }}" method="post" action="/admin/documents/{{ doc.id }}/family-share/{{ s.user_id }}/revoke"></form>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

@@ -16,7 +16,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto, security
-from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, require_writer, vault_id
+from app import family_access as faccess
+from sqlalchemy import or_, and_, false as sa_false
 from app.templating import setup_templates
 
 router = APIRouter(prefix="/vault", tags=["vault"], dependencies=[Depends(require_enabled_module("passwords"))])
@@ -83,7 +85,15 @@ def _uris_dump(uris: list[str] | None) -> str | None:
     return json.dumps(cleaned) if cleaned else None
 
 
-def _to_out(item: models.VaultItem, *, active_send_count: int = 0) -> schemas.VaultItemOut:
+def _to_out(
+    item: models.VaultItem,
+    *,
+    active_send_count: int = 0,
+    shared_with: list | None = None,
+    shared_from: dict | None = None,
+    my_permission: str | None = None,
+    is_owned: bool = True,
+) -> schemas.VaultItemOut:
     totp = crypto.decrypt_text(item.totp_secret_enc)
     return schemas.VaultItemOut(
         id=item.id,
@@ -124,6 +134,11 @@ def _to_out(item: models.VaultItem, *, active_send_count: int = 0) -> schemas.Va
         updated_at=item.updated_at,
         active_send_count=max(0, int(active_send_count or 0)),
         require_2fa=bool(getattr(item, "require_2fa", False)),
+        owner_user_id=getattr(item, "owner_user_id", None) or item.user_id,
+        is_owned=is_owned,
+        my_permission=my_permission or ("edit" if is_owned else "view"),
+        shared_with=shared_with or [],
+        shared_from=shared_from,
     )
 
 
@@ -133,6 +148,7 @@ def _owned_item(
     user: models.User,
     *,
     include_deleted: bool = False,
+    need_edit: bool = False,
 ) -> models.VaultItem:
     q = db.query(models.VaultItem).filter(
         models.VaultItem.id == item_id,
@@ -141,7 +157,42 @@ def _owned_item(
     item = q.first()
     if not item or (item.deleted_at and not include_deleted):
         raise HTTPException(status_code=404, detail="Item not found")
+    vid = vault_id(user)
+    if need_edit:
+        if not faccess.can_edit(
+            db, user,
+            resource_type=models.ShareResourceType.password.value,
+            resource_id=item.id,
+            owner_user_id=item.owner_user_id,
+            vault_scope_id=vid,
+        ):
+            raise HTTPException(status_code=403, detail="View-only share — cannot edit")
+    elif not faccess.can_view(
+        db, user,
+        resource_type=models.ShareResourceType.password.value,
+        resource_id=item.id,
+        owner_user_id=item.owner_user_id,
+        vault_scope_id=vid,
+    ):
+        raise HTTPException(status_code=404, detail="Item not found")
     return item
+
+
+def _visible_password_filter(user: models.User, shared_ids: set[str]):
+    vid = vault_id(user)
+    owned = or_(
+        models.VaultItem.owner_user_id == user.id,
+        and_(models.VaultItem.owner_user_id.is_(None), models.VaultItem.user_id == user.id),
+    )
+    if user.id == vid:
+        # Legacy null owner on vault-scoped rows still belong to the manager.
+        owned = or_(
+            models.VaultItem.owner_user_id == user.id,
+            models.VaultItem.owner_user_id.is_(None),
+        )
+    if shared_ids:
+        return or_(owned, models.VaultItem.id.in_(list(shared_ids)))
+    return owned
 
 
 def _owned_folder(folder_id: str | None, db: Session, user: models.User) -> str | None:
@@ -192,7 +243,7 @@ def _is_old(item: models.VaultItem) -> bool:
 # ---------- Folders ----------
 @router.get("/folders", response_model=list[schemas.VaultFolderOut])
 def list_folders(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     vid = vault_id(current_user)
     folders = db.query(models.VaultFolder).filter(models.VaultFolder.user_id == vid).order_by(models.VaultFolder.name).all()
     out = []
@@ -211,7 +262,7 @@ def create_folder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     folder = models.VaultFolder(user_id=vault_id(current_user), name=body.name.strip())
     db.add(folder)
     db.commit()
@@ -226,7 +277,7 @@ def rename_folder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     folder = db.query(models.VaultFolder).filter(
         models.VaultFolder.id == folder_id,
         models.VaultFolder.user_id == vault_id(current_user),
@@ -248,7 +299,7 @@ def delete_folder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     folder = db.query(models.VaultFolder).filter(
         models.VaultFolder.id == folder_id,
         models.VaultFolder.user_id == vault_id(current_user),
@@ -266,7 +317,7 @@ def generate_password(
     body: schemas.VaultGenerateIn,
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     if body.kind == "passphrase":
         words = [secrets.choice(_WORDS) for _ in range(body.word_count)]
         if body.uppercase:
@@ -305,7 +356,7 @@ def generate_password(
 
 @router.get("/health", response_model=schemas.VaultHealthOut)
 def password_health(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     items = (
         db.query(models.VaultItem)
         .filter(
@@ -341,7 +392,7 @@ def password_health(db: Session = Depends(get_db), current_user: models.User = D
 
 @router.get("/trash", response_model=list[schemas.VaultItemOut])
 def list_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     rows = (
         db.query(models.VaultItem)
         .filter(models.VaultItem.user_id == vault_id(current_user), models.VaultItem.deleted_at.isnot(None))
@@ -353,7 +404,7 @@ def list_trash(db: Session = Depends(get_db), current_user: models.User = Depend
 
 @router.post("/trash/empty", status_code=204)
 def empty_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     rows = db.query(models.VaultItem).filter(
         models.VaultItem.user_id == vault_id(current_user),
         models.VaultItem.deleted_at.isnot(None),
@@ -415,6 +466,8 @@ def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
         requires_totp=bool(data.get("require_totp") and data.get("totp_secret")),
         requires_grant=bool(data.get("require_grant")),
         requires_email_otp=bool(data.get("require_email_otp")),
+        bind_first_browser=bool(data.get("bind_first_browser")),
+        browser_bound=bool(row.bound_browser_hash),
         created_at=row.created_at,
     )
 
@@ -494,7 +547,7 @@ def _payload(row: models.VaultSend) -> dict:
 
 @router.get("/sends", response_model=list[schemas.VaultSendOut])
 def list_sends(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     rows = (
         db.query(models.VaultSend)
         .filter(models.VaultSend.user_id == vault_id(current_user))
@@ -526,7 +579,7 @@ def revoke_all_item_sends(
     current_user: models.User = Depends(get_current_user),
 ):
     """Revoke every active share link for this login."""
-    require_owner(current_user)
+    require_writer(current_user)
     _owned_item(item_id, db, current_user)
     rows = db.query(models.VaultSend).filter(
         models.VaultSend.user_id == vault_id(current_user),
@@ -542,15 +595,27 @@ def revoke_all_item_sends(
     return Response(status_code=204)
 
 
+def _apply_common_send_flags(payload: dict, body: schemas.VaultSendCreate) -> None:
+    if body.require_grant:
+        payload["require_grant"] = True
+    if body.require_email_otp:
+        emails = _normalize_allowed_emails(body.allowed_emails)
+        payload["require_email_otp"] = True
+        if emails:
+            payload["allowed_emails"] = emails
+    if body.bind_first_browser:
+        payload["bind_first_browser"] = True
+
+
 @router.post("/sends", response_model=schemas.VaultSendOut, status_code=201)
 def create_send(
     body: schemas.VaultSendCreate,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     payload: dict
-    send_type = body.send_type if body.send_type in ("text", "login", "locker") else "text"
+    send_type = body.send_type if body.send_type in ("text", "login", "locker", "secret") else "text"
     if send_type == "login":
         if not body.item_id:
             raise HTTPException(status_code=400, detail="item_id is required for a login send")
@@ -566,13 +631,7 @@ def create_send(
         if body.include_totp and out.totp_secret:
             payload["totp_secret"] = out.totp_secret
             payload["require_totp"] = True
-        if body.require_grant:
-            payload["require_grant"] = True
-        if body.require_email_otp:
-            emails = _normalize_allowed_emails(body.allowed_emails)
-            payload["require_email_otp"] = True
-            if emails:
-                payload["allowed_emails"] = emails
+        _apply_common_send_flags(payload, body)
     elif send_type == "locker":
         if not body.item_id:
             raise HTTPException(status_code=400, detail="item_id is required for a document send")
@@ -610,24 +669,15 @@ def create_send(
         }
         if body.files_only:
             payload["locker_files_only"] = True
-        if body.require_grant:
-            payload["require_grant"] = True
-        if body.require_email_otp:
-            emails = _normalize_allowed_emails(body.allowed_emails)
-            payload["require_email_otp"] = True
-            if emails:
-                payload["allowed_emails"] = emails
+        _apply_common_send_flags(payload, body)
     else:
         if not (body.text or "").strip():
             raise HTTPException(status_code=400, detail="text is required")
         payload = {"text": body.text.strip()}
-        if body.require_grant:
-            payload["require_grant"] = True
-        if body.require_email_otp:
-            emails = _normalize_allowed_emails(body.allowed_emails)
-            payload["require_email_otp"] = True
-            if emails:
-                payload["allowed_emails"] = emails
+        if body.include_totp:
+            payload["totp_secret"] = security.new_totp_secret()
+            payload["require_totp"] = True
+        _apply_common_send_flags(payload, body)
     pin = (body.pin or "").strip() or None
     if pin and len(pin) < 4:
         raise HTTPException(status_code=400, detail="PIN must be at least 4 characters")
@@ -650,7 +700,7 @@ def create_send(
 
 @router.get("/sends/{send_id}", response_model=schemas.VaultSendOut)
 def get_send(send_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     row = db.query(models.VaultSend).filter(
         models.VaultSend.id == send_id,
         models.VaultSend.user_id == vault_id(current_user),
@@ -662,7 +712,7 @@ def get_send(send_id: str, db: Session = Depends(get_db), current_user: models.U
 
 @router.delete("/sends/{send_id}", status_code=204)
 def revoke_send(send_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     row = db.query(models.VaultSend).filter(
         models.VaultSend.id == send_id,
         models.VaultSend.user_id == vault_id(current_user),
@@ -699,6 +749,7 @@ def _record_send_view(
     action: str = "view",
     email: str | None = None,
     request_id: str | None = None,
+    increment_views: bool = True,
 ) -> None:
     db.add(models.VaultSendAccess(
         send_id=row.id,
@@ -708,14 +759,15 @@ def _record_send_view(
         email=(email or None),
         request_id=request_id,
     ))
-    if action == "password_viewed":
-        row.view_count = (row.view_count or 0) + 1
-        if request_id:
-            req = db.query(models.VaultSendRequest).filter(models.VaultSendRequest.id == request_id).first()
-            if req and req.send_id == row.id and req.viewed_at is None:
-                req.viewed_at = datetime.utcnow()
-    else:
-        row.view_count = (row.view_count or 0) + 1
+    if increment_views:
+        if action == "password_viewed":
+            row.view_count = (row.view_count or 0) + 1
+            if request_id:
+                req = db.query(models.VaultSendRequest).filter(models.VaultSendRequest.id == request_id).first()
+                if req and req.send_id == row.id and req.viewed_at is None:
+                    req.viewed_at = datetime.utcnow()
+        else:
+            row.view_count = (row.view_count or 0) + 1
     db.commit()
 
 
@@ -737,6 +789,105 @@ def _otpauth_for_send(name: str, secret: str) -> tuple[str, str]:
 def _send_req_cookie_name(token: str) -> str:
     # vsrs_ = session-scoped grant cookie (browser close clears access).
     return f"vsrs_{token[:32]}"
+
+
+def _browser_bind_cookie_name(token: str) -> str:
+    # vsbb_ = first-browser lock cookie (lives until send expiry).
+    return f"vsbb_{token[:32]}"
+
+
+def _attach_browser_bind_cookie(
+    resp: Response,
+    request: Request,
+    row: models.VaultSend,
+    cookie_val: str,
+) -> None:
+    max_age = max(60, int((row.expires_at - datetime.utcnow()).total_seconds())) if row.expires_at else 48 * 3600
+    resp.set_cookie(
+        key=_browser_bind_cookie_name(row.token),
+        value=cookie_val,
+        httponly=True,
+        samesite="lax",
+        max_age=max_age,
+        secure=request.url.scheme == "https",
+    )
+
+
+def _log_browser_blocked(row: models.VaultSend, request: Request, db: Session) -> models.VaultSendRequest:
+    """Record a blocked second-browser attempt as its own access-request entry."""
+    ip = _client_ip(request)
+    ua = (request.headers.get("user-agent") or "")[:400] or None
+    existing = (
+        db.query(models.VaultSendRequest)
+        .filter(
+            models.VaultSendRequest.send_id == row.id,
+            models.VaultSendRequest.status == "blocked",
+            models.VaultSendRequest.ip == ip,
+            models.VaultSendRequest.user_agent == ua,
+        )
+        .order_by(models.VaultSendRequest.created_at.desc())
+        .first()
+    )
+    if existing:
+        return existing
+    req = models.VaultSendRequest(
+        send_id=row.id,
+        user_id=row.user_id,
+        ip=ip,
+        user_agent=ua,
+        status="blocked",
+    )
+    db.add(req)
+    _record_send_view(row, request, db, action="browser_blocked", increment_views=False)
+    db.refresh(req)
+    return req
+
+
+def _browser_bind_gate(
+    request: Request,
+    row: models.VaultSend,
+    data: dict,
+    db: Session,
+) -> tuple[str, str | None]:
+    """Enforce optional first-browser lock.
+
+    Returns (status, cookie_to_set):
+      - ("ok", None) when unbound flag is off or this browser already matches
+      - ("ok", secret) when this browser just claimed the bind (set cookie on response)
+      - ("blocked", None) when another browser already owns the link
+    """
+    if not data.get("bind_first_browser"):
+        return "ok", None
+    cookie_name = _browser_bind_cookie_name(row.token)
+    cookie_val = (request.cookies.get(cookie_name) or "").strip()
+    current_hash = (row.bound_browser_hash or "").strip()
+    if current_hash:
+        if cookie_val and security.verify_password(cookie_val, current_hash):
+            return "ok", None
+        _log_browser_blocked(row, request, db)
+        return "blocked", None
+    # First browser claims this send until expiry.
+    secret = secrets.token_urlsafe(32)
+    hashed = security.hash_password(secret)
+    claimed = (
+        db.query(models.VaultSend)
+        .filter(
+            models.VaultSend.id == row.id,
+            models.VaultSend.bound_browser_hash.is_(None),
+        )
+        .update({"bound_browser_hash": hashed}, synchronize_session=False)
+    )
+    db.commit()
+    if claimed:
+        row.bound_browser_hash = hashed
+        return "ok", secret
+    # Lost a race to another browser — re-check.
+    db.refresh(row)
+    current_hash = (row.bound_browser_hash or "").strip()
+    if current_hash and cookie_val and security.verify_password(cookie_val, current_hash):
+        return "ok", None
+    _log_browser_blocked(row, request, db)
+    return "blocked", None
 
 
 def _read_request_cookie(request: Request, token: str) -> str | None:
@@ -810,8 +961,19 @@ def public_send_json(
     row = _load_valid_send(token, db)
     data = _payload(row)
     require_grant = bool(data.get("require_grant"))
+    bind_status, bind_cookie = _browser_bind_gate(request, row, data, db)
+    if bind_status == "blocked":
+        out = schemas.VaultSendPublicOut(
+            name=row.name,
+            send_type=row.send_type,
+            expires_at=row.expires_at,
+            has_pin=bool(row.pin_hash),
+            browser_blocked=True,
+            request_access_enabled=False,
+        )
+        return out
     if row.pin_hash and not (pin and security.verify_password(pin, row.pin_hash)):
-        return schemas.VaultSendPublicOut(
+        out = schemas.VaultSendPublicOut(
             name=row.name,
             send_type=row.send_type,
             expires_at=row.expires_at,
@@ -819,8 +981,13 @@ def public_send_json(
             pin_required=True,
             request_access_enabled=require_grant,
         )
+        if bind_cookie:
+            resp = JSONResponse(out.model_dump(mode="json"))
+            _attach_browser_bind_cookie(resp, request, row, bind_cookie)
+            return resp
+        return out
     if not _grant_unlocked(request, row, data, db):
-        return schemas.VaultSendPublicOut(
+        out = schemas.VaultSendPublicOut(
             name=row.name,
             send_type=row.send_type,
             expires_at=row.expires_at,
@@ -829,9 +996,14 @@ def public_send_json(
             grant_required=True,
             request_access_enabled=True,
         )
+        if bind_cookie:
+            resp = JSONResponse(out.model_dump(mode="json"))
+            _attach_browser_bind_cookie(resp, request, row, bind_cookie)
+            return resp
+        return out
     email_ok, verified_email = _email_otp_unlocked(request, row, data)
     if not email_ok:
-        return schemas.VaultSendPublicOut(
+        out = schemas.VaultSendPublicOut(
             name=row.name,
             send_type=row.send_type,
             expires_at=row.expires_at,
@@ -840,9 +1012,14 @@ def public_send_json(
             email_otp_required=True,
             request_access_enabled=require_grant,
         )
+        if bind_cookie:
+            resp = JSONResponse(out.model_dump(mode="json"))
+            _attach_browser_bind_cookie(resp, request, row, bind_cookie)
+            return resp
+        return out
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
-        return schemas.VaultSendPublicOut(
+        out = schemas.VaultSendPublicOut(
             name=row.name,
             send_type=row.send_type,
             expires_at=row.expires_at,
@@ -851,6 +1028,11 @@ def public_send_json(
             totp_required=True,
             request_access_enabled=require_grant,
         )
+        if bind_cookie:
+            resp = JSONResponse(out.model_dump(mode="json"))
+            _attach_browser_bind_cookie(resp, request, row, bind_cookie)
+            return resp
+        return out
     notes = crypto.decrypt_text(row.notes_enc)
     guest_req = _guest_request(request, row, db) if require_grant else None
     view_action = "document_viewed" if row.send_type == "locker" else "password_viewed"
@@ -860,7 +1042,7 @@ def public_send_json(
         email=verified_email,
         request_id=guest_req.id if guest_req else None,
     )
-    return schemas.VaultSendPublicOut(
+    out = schemas.VaultSendPublicOut(
         name=row.name,
         send_type=row.send_type,
         text=data.get("text"),
@@ -881,6 +1063,11 @@ def public_send_json(
         totp_required=False,
         request_access_enabled=require_grant,
     )
+    if bind_cookie:
+        resp = JSONResponse(out.model_dump(mode="json"))
+        _attach_browser_bind_cookie(resp, request, row, bind_cookie)
+        return resp
+    return out
 
 
 @public_router.get("/public/{token}/page", response_class=HTMLResponse)
@@ -901,6 +1088,23 @@ def public_send_page(
     except HTTPException as exc:
         return _send_gone_page(request, exc)
     data = _payload(row)
+    bind_status, bind_cookie = _browser_bind_gate(request, row, data, db)
+
+    def _finish(resp: Response) -> Response:
+        if bind_cookie:
+            _attach_browser_bind_cookie(resp, request, row, bind_cookie)
+        return resp
+
+    if bind_status == "blocked":
+        return templates.TemplateResponse(request, "vault_send_public.html", {
+            "send": row, "token": token, "pin_required": False, "totp_required": False,
+            "grant_required": False, "email_otp_required": False, "browser_blocked": True,
+            "payload": None, "notes": None, "error": False, "totp_error": False, "pin_value": "",
+            "request_ok": False, "request_err": "", "request_access_enabled": False,
+            "grant_pending": False, "grant_denied": False, "guest_request_id": "",
+            "video_status": "none", "email_otp_enabled": False, "email_hint": "",
+            "otp_sent": False, "otp_error": None, "otp_email": "", "show_request_panel": False,
+        })
     require_grant = bool(data.get("require_grant"))
     guest_req = _guest_request(request, row, db) if require_grant else None
     email_ok, verified_email = _email_otp_unlocked(request, row, data)
@@ -919,40 +1123,42 @@ def public_send_page(
         "otp_error": (otp_err or "").strip() or None,
         "otp_email": (otp_email or verified_email or "").strip(),
         "show_request_panel": False,
+        "browser_blocked": False,
     }
     pin_ok = not row.pin_hash or (pin and security.verify_password(pin, row.pin_hash))
     if not pin_ok:
-        return templates.TemplateResponse(request, "vault_send_public.html", {
+        return _finish(templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": True, "totp_required": False,
             "grant_required": False, "email_otp_required": False, "payload": None, "notes": None,
             "error": bool(pin), "totp_error": False, "pin_value": pin or "", **ctx_extra,
-        })
+        }))
     if require_grant and not (guest_req and guest_req.status == "granted"):
         ctx_extra["show_request_panel"] = True
-        return templates.TemplateResponse(request, "vault_send_public.html", {
+        return _finish(templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": False,
             "grant_required": True, "email_otp_required": False, "payload": None, "notes": None,
             "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
-        })
+        }))
     if not email_ok:
-        return templates.TemplateResponse(request, "vault_send_public.html", {
+        return _finish(templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": False,
             "grant_required": False, "payload": None, "notes": None,
             "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
-        })
+        }))
     needs_totp, totp_ok = _send_totp_gate(data, totp)
     if needs_totp and not totp_ok:
-        return templates.TemplateResponse(request, "vault_send_public.html", {
+        return _finish(templates.TemplateResponse(request, "vault_send_public.html", {
             "send": row, "token": token, "pin_required": False, "totp_required": True,
             "grant_required": False, "email_otp_required": False,
             "payload": {"name": data.get("name") or row.name},
             "notes": None, "error": False, "totp_error": bool(totp),
             "pin_value": pin or "", **ctx_extra,
-        })
+        }))
     notes = crypto.decrypt_text(row.notes_enc)
     shown = {k: v for k, v in data.items() if k not in (
         "totp_secret", "require_grant", "require_totp", "require_email_otp",
         "allowed_emails", "require_vault_user_email", "locker_file_ids",
+        "bind_first_browser",
     )}
     files_only = bool(data.get("locker_files_only")) and row.send_type == "locker"
     locker_files = []
@@ -1000,12 +1206,12 @@ def public_send_page(
     ctx_extra["request_ok"] = False
     ctx_extra["request_err"] = ""
     ctx_extra["show_request_panel"] = False
-    return templates.TemplateResponse(request, "vault_send_public.html", {
+    return _finish(templates.TemplateResponse(request, "vault_send_public.html", {
         "send": row, "token": token, "pin_required": False, "totp_required": False,
         "grant_required": False, "payload": shown, "notes": notes,
         "files_only": files_only, "locker_files": locker_files,
         "error": False, "totp_error": False, "pin_value": pin or "", **ctx_extra,
-    })
+    }))
 
 
 def _send_unlocked_or_redirect(
@@ -1019,6 +1225,7 @@ def _send_unlocked_or_redirect(
     """Return (row, payload, guest_req, email) when content may be shown, else a redirect to the unlock page."""
     row = _load_valid_send(token, db)
     data = _payload(row)
+    bind_status, _bind_cookie = _browser_bind_gate(request, row, data, db)
     require_grant = bool(data.get("require_grant"))
     guest_req = _guest_request(request, row, db) if require_grant else None
     email_ok, verified_email = _email_otp_unlocked(request, row, data)
@@ -1030,6 +1237,8 @@ def _send_unlocked_or_redirect(
         qs.append(f"totp={totp}")
     q = ("?" + "&".join(qs)) if qs else ""
     page = f"/vault/public/{token}/page{q}"
+    if bind_status == "blocked":
+        return RedirectResponse(page, status_code=302)
     if not pin_ok or (require_grant and not (guest_req and guest_req.status == "granted")) or not email_ok:
         return RedirectResponse(page, status_code=302)
     needs_totp, totp_ok = _send_totp_gate(data, totp)
@@ -1308,6 +1517,10 @@ async def public_request_access(
         return _redir("req_err=gone")
 
     data = _payload(send)
+    bind_status, bind_cookie = _browser_bind_gate(request, send, data, db)
+    if bind_status == "blocked":
+        resp = _redir("req_err=browser")
+        return resp
     if not data.get("require_grant"):
         return _redir("req_err=disabled")
 
@@ -1373,6 +1586,8 @@ async def public_request_access(
         # Session cookie: closes with the browser so the next visit must request access again.
         secure=request.url.scheme == "https",
     )
+    if bind_cookie:
+        _attach_browser_bind_cookie(resp, request, send, bind_cookie)
     return resp
 
 
@@ -1669,7 +1884,7 @@ def list_send_requests(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     q = db.query(models.VaultSendRequest).filter(
         models.VaultSendRequest.user_id == vault_id(current_user),
     )
@@ -1690,7 +1905,7 @@ def mark_send_request_seen(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = (
         db.query(models.VaultSendRequest)
         .filter(
@@ -1716,7 +1931,7 @@ def grant_send_request(
     current_user: models.User = Depends(get_current_user),
 ):
     """Allow this guest's browser (cookie) to unlock the send secrets."""
-    require_owner(current_user)
+    require_writer(current_user)
     row = (
         db.query(models.VaultSendRequest)
         .filter(
@@ -1729,6 +1944,8 @@ def grant_send_request(
         raise HTTPException(404, "Request not found")
     if row.status == "dismissed":
         raise HTTPException(400, "Request was dismissed")
+    if row.status == "blocked":
+        raise HTTPException(400, "Blocked browser cannot be granted")
     row.status = "granted"
     row.decided_at = datetime.utcnow()
     row.video_status = "ended"
@@ -1745,7 +1962,7 @@ def dismiss_send_request(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = (
         db.query(models.VaultSendRequest)
         .filter(
@@ -1787,7 +2004,7 @@ def request_send_video(
     current_user: models.User = Depends(get_current_user),
 ):
     """Owner asks the waiting guest to turn on live camera."""
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     if row.status not in ("pending", "seen"):
         raise HTTPException(400, "Can only request video while the access request is pending")
@@ -1807,7 +2024,7 @@ def end_send_video(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     row.video_status = "ended"
     db.commit()
@@ -1824,7 +2041,7 @@ def admin_video_signal(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     if row.video_status not in ("requested", "live"):
         raise HTTPException(400, "Video session is not active")
@@ -1850,7 +2067,7 @@ def admin_video_signals(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     from app.video_signal import video_signal_hub
     return {
@@ -1867,7 +2084,7 @@ def list_send_request_chat(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     messages = _list_chat_messages(row.id, db, after=after)
     return {
@@ -1884,7 +2101,7 @@ def post_send_request_chat(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     msg = _post_chat_message(row, from_role="admin", text=body.text, db=db)
     return {"ok": True, "message": _chat_out(msg).model_dump(mode="json")}
@@ -1896,7 +2113,7 @@ def send_request_photo(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     if not row.photo_path:
         raise HTTPException(404, "Photo not found")
@@ -1915,7 +2132,7 @@ async def capture_send_request_face(
     current_user: models.User = Depends(get_current_user),
 ):
     """Owner captures a still from live video; stored encrypted as verification record."""
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     if row.status not in ("pending", "seen"):
         raise HTTPException(400, "Can only capture a face while the request is pending")
@@ -1950,7 +2167,7 @@ def send_request_face(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     row = _owned_send_request(request_id, db, current_user)
     if not row.face_path:
         raise HTTPException(404, "Face capture not found")
@@ -1971,10 +2188,17 @@ def list_items(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
+    vid = vault_id(current_user)
+    _, shared_ids = faccess.visible_resource_ids(
+        db, current_user,
+        resource_type=models.ShareResourceType.password.value,
+        vault_scope_id=vid,
+    )
     query = db.query(models.VaultItem).filter(
-        models.VaultItem.user_id == vault_id(current_user),
+        models.VaultItem.user_id == vid,
         models.VaultItem.deleted_at.is_(None),
+        _visible_password_filter(current_user, shared_ids),
     )
     if item_type:
         query = query.filter(models.VaultItem.item_type == item_type)
@@ -1986,8 +2210,52 @@ def list_items(
         query = query.filter(models.VaultItem.favorite.is_(True))
     rows = query.order_by(models.VaultItem.favorite.desc(), models.VaultItem.name).all()
     needle = (q or "").strip().lower()
-    counts = _active_send_counts(vault_id(current_user), db)
-    out = [_to_out(r, active_send_count=counts.get(r.id, 0)) for r in rows]
+    counts = _active_send_counts(vid, db)
+    share_map = faccess.share_summaries(
+        db,
+        resource_type=models.ShareResourceType.password.value,
+        resource_ids=[r.id for r in rows],
+    )
+    # Who shared to me
+    shared_to_me = {
+        s.resource_id: s
+        for s in db.query(models.FamilyShare).filter(
+            models.FamilyShare.resource_type == models.ShareResourceType.password.value,
+            models.FamilyShare.to_user_id == current_user.id,
+            models.FamilyShare.resource_id.in_([r.id for r in rows] or ["__none__"]),
+        ).all()
+    }
+    from_users = {}
+    for s in shared_to_me.values():
+        if s.from_user_id not in from_users:
+            u = db.query(models.User).filter(models.User.id == s.from_user_id).first()
+            if u:
+                from_users[u.id] = u
+
+    out = []
+    for r in rows:
+        oid = faccess.item_owner_id(r.owner_user_id, r.user_id)
+        is_owned = oid == current_user.id
+        shared_from = None
+        my_perm = "edit" if is_owned else "view"
+        if not is_owned and r.id in shared_to_me:
+            s = shared_to_me[r.id]
+            my_perm = s.permission
+            fu = from_users.get(s.from_user_id)
+            shared_from = {
+                "user_id": s.from_user_id,
+                "full_name": fu.full_name if fu else "",
+                "email": fu.email if fu else "",
+                "permission": s.permission,
+            }
+        out.append(_to_out(
+            r,
+            active_send_count=counts.get(r.id, 0),
+            shared_with=share_map.get(r.id, []) if is_owned else [],
+            shared_from=shared_from,
+            my_permission=my_perm,
+            is_owned=is_owned,
+        ))
     if needle:
         def _match(item: schemas.VaultItemOut) -> bool:
             blob = " ".join(filter(None, [
@@ -2005,12 +2273,16 @@ def create_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     item_type = body.item_type if body.item_type in _ALLOWED_TYPES else models.VaultItemType.login.value
     now = datetime.utcnow()
+    folder_id = None
+    if faccess.is_family_admin(current_user):
+        folder_id = _owned_folder(body.folder_id, db, current_user)
     item = models.VaultItem(
         user_id=vault_id(current_user),
-        folder_id=_owned_folder(body.folder_id, db, current_user),
+        owner_user_id=current_user.id,
+        folder_id=folder_id,
         item_type=item_type,
         name=body.name.strip(),
         favorite=body.favorite,
@@ -2058,11 +2330,48 @@ def get_item(
     current_user: models.User = Depends(get_current_user),
 ):
     from app import vault_lock as vlock
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned_item(item_id, db, current_user, include_deleted=True)
     vlock.require_api_item_unlock(request, current_user, "vault", item, db)
     counts = _active_send_counts(vault_id(current_user), db)
-    return _to_out(item, active_send_count=counts.get(item.id, 0))
+    oid = faccess.item_owner_id(item.owner_user_id, item.user_id)
+    is_owned = oid == current_user.id
+    shared_with = []
+    shared_from = None
+    my_perm = "edit" if is_owned else "view"
+    if is_owned:
+        shared_with = faccess.share_summaries(
+            db,
+            resource_type=models.ShareResourceType.password.value,
+            resource_ids=[item.id],
+        ).get(item.id, [])
+    else:
+        share = (
+            db.query(models.FamilyShare)
+            .filter(
+                models.FamilyShare.resource_type == models.ShareResourceType.password.value,
+                models.FamilyShare.resource_id == item.id,
+                models.FamilyShare.to_user_id == current_user.id,
+            )
+            .first()
+        )
+        if share:
+            my_perm = share.permission
+            fu = db.query(models.User).filter(models.User.id == share.from_user_id).first()
+            shared_from = {
+                "user_id": share.from_user_id,
+                "full_name": fu.full_name if fu else "",
+                "email": fu.email if fu else "",
+                "permission": share.permission,
+            }
+    return _to_out(
+        item,
+        active_send_count=counts.get(item.id, 0),
+        shared_with=shared_with,
+        shared_from=shared_from,
+        my_permission=my_perm,
+        is_owned=is_owned,
+    )
 
 
 @router.patch("/items/{item_id}", response_model=schemas.VaultItemOut)
@@ -2072,8 +2381,8 @@ def update_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
-    item = _owned_item(item_id, db, current_user)
+    require_writer(current_user)
+    item = _owned_item(item_id, db, current_user, need_edit=True)
     data = body.dict(exclude_unset=True)
     if "folder_id" in data:
         item.folder_id = _owned_folder(data.pop("folder_id"), db, current_user)
@@ -2111,15 +2420,15 @@ def update_item(
 
 @router.delete("/items/{item_id}", status_code=204)
 def trash_item(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
-    item = _owned_item(item_id, db, current_user)
+    require_writer(current_user)
+    item = _owned_item(item_id, db, current_user, need_edit=True)
     item.deleted_at = datetime.utcnow()
     db.commit()
 
 
 @router.post("/items/{item_id}/restore", response_model=schemas.VaultItemOut)
 def restore_item(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned_item(item_id, db, current_user, include_deleted=True)
     item.deleted_at = None
     db.commit()
@@ -2129,16 +2438,16 @@ def restore_item(item_id: str, db: Session = Depends(get_db), current_user: mode
 
 @router.delete("/items/{item_id}/permanent", status_code=204)
 def delete_item_forever(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
-    item = _owned_item(item_id, db, current_user, include_deleted=True)
+    require_writer(current_user)
+    item = _owned_item(item_id, db, current_user, include_deleted=True, need_edit=True)
     db.delete(item)
     db.commit()
 
 
 @router.post("/items/{item_id}/favorite", response_model=schemas.VaultItemOut)
 def favorite_item(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
-    item = _owned_item(item_id, db, current_user)
+    require_writer(current_user)
+    item = _owned_item(item_id, db, current_user, need_edit=True)
     item.favorite = True
     db.commit()
     db.refresh(item)
@@ -2147,8 +2456,8 @@ def favorite_item(item_id: str, db: Session = Depends(get_db), current_user: mod
 
 @router.delete("/items/{item_id}/favorite", response_model=schemas.VaultItemOut)
 def unfavorite_item(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
-    item = _owned_item(item_id, db, current_user)
+    require_writer(current_user)
+    item = _owned_item(item_id, db, current_user, need_edit=True)
     item.favorite = False
     db.commit()
     db.refresh(item)
@@ -2157,7 +2466,7 @@ def unfavorite_item(item_id: str, db: Session = Depends(get_db), current_user: m
 
 @router.get("/items/{item_id}/totp", response_model=schemas.VaultTotpOut)
 def item_totp(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned_item(item_id, db, current_user)
     secret = crypto.decrypt_text(item.totp_secret_enc)
     if not secret:
@@ -2169,7 +2478,7 @@ def item_totp(item_id: str, db: Session = Depends(get_db), current_user: models.
 
 @router.get("/items/{item_id}/history", response_model=list[schemas.VaultHistoryOut])
 def item_history(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned_item(item_id, db, current_user, include_deleted=True)
     rows = (
         db.query(models.VaultPasswordHistory)

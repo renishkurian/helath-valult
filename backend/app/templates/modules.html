@@ -3,19 +3,21 @@
 {% block body_class %}modules-picker{% endblock %}
 {% block content %}
 {% set blurb = {
-  'health': 'Hospital cards, documents, care notes, reminders, and family profiles.',
-  'passwords': 'Logins, notes, cards, identities, generator, authenticator, and Send.',
+  'family': 'Add household members, set relationships, invite logins, and manage who can view or edit shared entries.',
+  'health': 'Hospital cards, documents, care notes, and reminders — switch profiles across the family.',
+  'passwords': 'Logins, notes, cards, identities, generator, authenticator, Send, and family shares.',
   'finance': 'Accounts, daily ledger, stats, budgets, and SMS auto-tagging.',
   'expense': 'Gmail bank alerts, credit-card bills, and bank PDF import — match, fill gaps, post to Money Manager.',
   'ai': 'Ask about reports, card statements, and spend — plus the shared keys every module uses.',
-  'locker': 'Aadhaar, PAN, passport, RC — scan on Android or upload; encrypted on the Pi.',
+  'locker': 'Aadhaar, PAN, passport, RC — scan on Android or upload; share with family when you choose.',
   'tracker': 'Shared lists, quick add, and check-off across everyone in the house.',
   'urls': 'Saved links, tags, and quick search across everything you\'ve kept.',
   'diary': 'Freeform entries with photos, timestamps, and private search.',
   'superadmin': 'Users, module limits, online presence, failed logins, and new account signup.'
 } %}
 {% set sizes = {
-  'health': 'big',
+  'family': 'big',
+  'health': '',
   'passwords': '',
   'finance': 'tall',
   'expense': '',
@@ -28,9 +30,9 @@
 } %}
 
 <div class="modules-hero">
-  <div class="modules-eyebrow">Vault · {{ modules|length }} module{% if modules|length != 1 %}s{% endif %}</div>
+  <div class="modules-eyebrow">Family Vault · {{ modules|length }} module{% if modules|length != 1 %}s{% endif %}</div>
   <h1 class="modules-title">Your vaults</h1>
-  <p class="modules-tagline">One key opens the house. Every room stays shut until you turn its dial.</p>
+  <p class="modules-tagline">One family. Private rooms. Share only what you choose.</p>
 </div>
 
 <div class="bento">

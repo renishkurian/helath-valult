@@ -26,6 +26,35 @@ interface ApiService {
     @POST("auth/invite")
     suspend fun inviteViewer(@Body body: InviteViewerRequest): UserOut
 
+    @POST("family/invite")
+    suspend fun inviteFamilyMember(@Body body: InviteMemberRequest): FamilyMemberOut
+
+    @GET("family/members")
+    suspend fun listFamilyMembers(): List<FamilyMemberOut>
+
+    @GET("family/share-targets")
+    suspend fun listFamilyShareTargets(): List<FamilyShareTargetOut>
+
+    @GET("family/shares/{resourceType}/{resourceId}")
+    suspend fun listFamilyShares(
+        @Path("resourceType") resourceType: String,
+        @Path("resourceId") resourceId: String
+    ): List<FamilyShareOut>
+
+    @POST("family/shares/{resourceType}/{resourceId}")
+    suspend fun upsertFamilyShare(
+        @Path("resourceType") resourceType: String,
+        @Path("resourceId") resourceId: String,
+        @Body body: FamilyShareIn
+    ): FamilyShareOut
+
+    @DELETE("family/shares/{resourceType}/{resourceId}/{toUserId}")
+    suspend fun revokeFamilyShare(
+        @Path("resourceType") resourceType: String,
+        @Path("resourceId") resourceId: String,
+        @Path("toUserId") toUserId: String
+    ): Response<Unit>
+
     @GET("auth/members")
     suspend fun listVaultMembers(): List<UserOut>
 

@@ -173,6 +173,7 @@ class PersonOut(BaseModel):
     abha_id: Optional[str] = None
     ayushman_id: Optional[str] = None
     ice_token: Optional[str] = None
+    linked_user_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -265,6 +266,11 @@ class DocumentOut(BaseModel):
     require_2fa: bool = False
     deleted_at: Optional[datetime] = None
     created_at: datetime
+    owner_user_id: Optional[str] = None
+    is_owned: bool = True
+    my_permission: str = "edit"
+    shared_with: List[dict] = []
+    shared_from: Optional[dict] = None
 
     class Config:
         from_attributes = True
@@ -775,6 +781,18 @@ class VaultItemOut(BaseModel):
     updated_at: Optional[datetime] = None
     active_send_count: int = 0
     require_2fa: bool = False
+    owner_user_id: Optional[str] = None
+    is_owned: bool = True
+    my_permission: str = "edit"  # view | edit
+    shared_with: List[dict] = []
+    shared_from: Optional[dict] = None
+
+
+class VaultItemShareParty(BaseModel):
+    user_id: str
+    full_name: str
+    email: Optional[str] = None
+    permission: str = "view"
 
 
 class VaultTotpOut(BaseModel):
@@ -824,7 +842,7 @@ class VaultHealthOut(BaseModel):
 
 class VaultSendCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    send_type: str = "text"  # text | login | locker
+    send_type: str = "text"  # text | login | locker | secret
     text: Optional[str] = None
     item_id: Optional[str] = None  # vault login id OR locker item id
     notes: Optional[str] = None
@@ -837,6 +855,7 @@ class VaultSendCreate(BaseModel):
     allowed_emails: List[str] = []
     require_vault_user_email: bool = False
     files_only: bool = False  # locker: share files list only (no document metadata)
+    bind_first_browser: bool = False  # lock reveal to the first browser that opens the link
 
 
 class VaultSendOut(BaseModel):
@@ -853,6 +872,8 @@ class VaultSendOut(BaseModel):
     requires_totp: bool = False
     requires_grant: bool = False
     requires_email_otp: bool = False
+    bind_first_browser: bool = False
+    browser_bound: bool = False
     created_at: datetime
 
 
@@ -878,6 +899,7 @@ class VaultSendPublicOut(BaseModel):
     totp_required: bool = False
     grant_required: bool = False
     email_otp_required: bool = False
+    browser_blocked: bool = False
     request_access_enabled: bool = False
 
 
@@ -1503,6 +1525,11 @@ class LockerItemOut(BaseModel):
     source_created_at: Optional[datetime] = None  # original file date when known
     deleted_at: Optional[datetime] = None
     created_at: datetime
+    owner_user_id: Optional[str] = None
+    is_owned: bool = True
+    my_permission: str = "edit"
+    shared_with: List[dict] = []
+    shared_from: Optional[dict] = None
 
 
 class LockerTypeOut(BaseModel):

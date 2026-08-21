@@ -32,6 +32,7 @@ def create_vault_user(
         models.UserRole.owner.value,
         models.UserRole.superadmin.value,
         models.UserRole.viewer.value,
+        models.UserRole.member.value,
     ):
         raise ValueError("Unknown role")
     if db.query(models.User).filter(models.User.email == email_norm).first():

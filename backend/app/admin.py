@@ -1090,9 +1090,22 @@ def family_page(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    from app import family_access as faccess
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    logins = (
+        db.query(models.User)
+        .filter(models.User.vault_owner_id == vault_id(user), models.User.id != vault_id(user))
+        .order_by(models.User.created_at.asc())
+        .all()
+    )
     return templates.TemplateResponse("family.html", {
-        "request": request, "session_user": user, "active_nav": "family", "people": people,
+        "request": request,
+        "session_user": user,
+        "active_nav": "family",
+        "active_module": "family",
+        "people": people,
+        "logins": logins,
+        "is_manager": faccess.is_family_admin(user),
         "active_person_id": None,
     })
 
@@ -1106,6 +1119,9 @@ def family_add(
     user, denied = require_mutator(request, db)
     if denied:
         return denied
+    from app import family_access as faccess
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/family?err=manager_only", status_code=302)
     initials = "".join([p[0].upper() for p in name.split()[:2]]) or "FM"
     person = models.Person(
         user_id=vault_id(user), name=name, relation=models.Relation(relation),
@@ -1116,11 +1132,103 @@ def family_add(
     return RedirectResponse("/admin/family", status_code=302)
 
 
+@router.post("/family/invite")
+def family_invite(
+    request: Request,
+    full_name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    relation: str = Form("other"),
+    person_id: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    from app import family_access as faccess
+    from app import security as sec
+    import secrets as _secrets
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/family?err=manager_only", status_code=302)
+    email_n = (email or "").strip().lower()
+    if db.query(models.User).filter(models.User.email == email_n).first():
+        return RedirectResponse("/admin/family?err=email_exists", status_code=302)
+    if len(password or "") < 8:
+        return RedirectResponse("/admin/family?err=password", status_code=302)
+    try:
+        rel = models.Relation(relation)
+    except ValueError:
+        rel = models.Relation.other
+    member = models.User(
+        email=email_n,
+        hashed_password=sec.hash_password(password),
+        full_name=(full_name or "").strip(),
+        role=models.UserRole.member.value,
+        vault_owner_id=vault_id(user),
+    )
+    db.add(member)
+    db.flush()
+    person = None
+    if person_id:
+        person = (
+            db.query(models.Person)
+            .filter(models.Person.id == person_id, models.Person.user_id == vault_id(user))
+            .first()
+        )
+    if person and not person.linked_user_id:
+        person.linked_user_id = member.id
+        person.name = member.full_name or person.name
+        person.relation = rel
+    else:
+        initials = "".join([p[0].upper() for p in member.full_name.split()[:2]]) or "FM"
+        db.add(models.Person(
+            user_id=vault_id(user),
+            linked_user_id=member.id,
+            name=member.full_name,
+            relation=rel,
+            avatar_initials=initials,
+            ice_token=_secrets.token_urlsafe(18),
+        ))
+    db.commit()
+    return RedirectResponse("/admin/family", status_code=302)
+
+
+@router.post("/family/members/{member_id}/remove")
+def family_remove_member(request: Request, member_id: str, db: Session = Depends(get_db)):
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    from app import family_access as faccess
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/family?err=manager_only", status_code=302)
+    if member_id == user.id:
+        return RedirectResponse("/admin/family", status_code=302)
+    member = (
+        db.query(models.User)
+        .filter(models.User.id == member_id, models.User.vault_owner_id == vault_id(user))
+        .first()
+    )
+    if member:
+        db.query(models.DeviceToken).filter(models.DeviceToken.user_id == member.id).delete()
+        db.query(models.ViewerAccess).filter(models.ViewerAccess.viewer_user_id == member.id).delete()
+        db.query(models.FamilyShare).filter(
+            (models.FamilyShare.from_user_id == member.id) | (models.FamilyShare.to_user_id == member.id)
+        ).delete(synchronize_session=False)
+        for p in db.query(models.Person).filter(models.Person.linked_user_id == member.id).all():
+            p.linked_user_id = None
+        db.delete(member)
+        db.commit()
+    return RedirectResponse("/admin/family", status_code=302)
+
+
 @router.post("/people/{person_id}/delete")
 def people_delete(request: Request, person_id: str, db: Session = Depends(get_db)):
     user, denied = require_mutator(request, db)
     if denied:
         return denied
+    from app import family_access as faccess
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/family?err=manager_only", status_code=302)
     p = vault_person(db, user, person_id)
     if p and p.relation != models.Relation.self_:
         db.delete(p)
@@ -1619,6 +1727,44 @@ def documents_viewer_page(
     file_q = f"?file={current_id}" if current_id else ""
     view_url = f"/admin/documents/{document_id}/view{file_q}"
 
+    from app import family_access as faccess
+    vid = vault_id(user)
+    if not faccess.can_view(
+        db, user,
+        resource_type=models.ShareResourceType.health_document.value,
+        resource_id=doc.id,
+        owner_user_id=doc.owner_user_id,
+        vault_scope_id=vid,
+    ):
+        raise HTTPException(404, "Document not found")
+    oid = faccess.item_owner_id(doc.owner_user_id, vid)
+    is_owned = oid == user.id
+    family_shares = []
+    shared_from = None
+    if is_owned:
+        family_shares = faccess.share_summaries(
+            db,
+            resource_type=models.ShareResourceType.health_document.value,
+            resource_ids=[doc.id],
+        ).get(doc.id, [])
+    else:
+        share = (
+            db.query(models.FamilyShare)
+            .filter(
+                models.FamilyShare.resource_type == models.ShareResourceType.health_document.value,
+                models.FamilyShare.resource_id == doc.id,
+                models.FamilyShare.to_user_id == user.id,
+            )
+            .first()
+        )
+        if share:
+            fu = db.query(models.User).filter(models.User.id == share.from_user_id).first()
+            shared_from = {
+                "user_id": share.from_user_id,
+                "full_name": fu.full_name if fu else "",
+                "permission": share.permission,
+            }
+
     return templates.TemplateResponse("document_viewer.html", {
         "request": request,
         "session_user": user,
@@ -1638,7 +1784,77 @@ def documents_viewer_page(
         "cache_bust": int(datetime.utcnow().timestamp()),
         "saved": request.query_params.get("ok") == "1",
         "rotated": request.query_params.get("rotated") == "1",
+        "family_shares": family_shares,
+        "family_targets": _family_share_targets(db, user),
+        "shared_from": shared_from,
+        "is_owned": is_owned,
     })
+
+
+@router.post("/documents/{document_id}/family-share")
+def document_family_share(
+    document_id: str,
+    request: Request,
+    to_user_id: str = Form(...),
+    permission: str = Form("view"),
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user))
+        .first()
+    )
+    if not doc:
+        return RedirectResponse("/admin", status_code=302)
+    if not faccess.can_edit(
+        db, user,
+        resource_type=models.ShareResourceType.health_document.value,
+        resource_id=doc.id,
+        owner_user_id=doc.owner_user_id,
+        vault_scope_id=vault_id(user),
+    ):
+        return RedirectResponse(f"/admin/documents/{document_id}/viewer?err=share", status_code=302)
+    faccess.upsert_share(
+        db, from_user=user, to_user_id=to_user_id,
+        resource_type=models.ShareResourceType.health_document.value,
+        resource_id=doc.id, permission=permission,
+    )
+    db.commit()
+    return RedirectResponse(f"/admin/documents/{document_id}/viewer", status_code=302)
+
+
+@router.post("/documents/{document_id}/family-share/{to_user_id}/revoke")
+def document_family_share_revoke(
+    document_id: str,
+    to_user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user))
+        .first()
+    )
+    if not doc:
+        return RedirectResponse("/admin", status_code=302)
+    oid = faccess.item_owner_id(doc.owner_user_id, vault_id(user))
+    if user.id != oid and user.id != to_user_id:
+        return RedirectResponse(f"/admin/documents/{document_id}/viewer?err=share", status_code=302)
+    faccess.revoke_share(
+        db, actor=user,
+        resource_type=models.ShareResourceType.health_document.value,
+        resource_id=document_id, to_user_id=to_user_id,
+    )
+    db.commit()
+    return RedirectResponse(f"/admin/documents/{document_id}/viewer", status_code=302)
 
 
 @router.get("/documents/{document_id}/edit", response_class=HTMLResponse)
@@ -2477,6 +2693,7 @@ def passwords_page(
     q: Optional[str] = None,
     item_type: Optional[str] = None,
     folder_id: Optional[str] = None,
+    person: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     from app.routers.vault import list_folders, list_items
@@ -2485,8 +2702,32 @@ def passwords_page(
         return RedirectResponse("/admin/login", status_code=302)
     folders = list_folders(db=db, current_user=user)
     items = list_items(q=q, item_type=item_type, folder_id=folder_id, favorite=False, db=db, current_user=user)
+    people = (
+        db.query(models.Person)
+        .filter(models.Person.user_id == vault_id(user))
+        .order_by(models.Person.created_at.asc())
+        .all()
+    )
+    active_person = None
+    if person:
+        active_person = next((p for p in people if p.id == person), None)
+        if active_person and active_person.linked_user_id:
+            lid = active_person.linked_user_id
+            if lid == user.id:
+                items = [i for i in items if getattr(i, "is_owned", True)]
+            else:
+                items = [
+                    i for i in items
+                    if (getattr(i, "shared_from", None) or {}).get("user_id") == lid
+                    or any(s.get("user_id") == lid for s in (getattr(i, "shared_with", None) or []))
+                ]
+        elif active_person and not active_person.linked_user_id:
+            # Profile without login — no password ownership to show
+            items = []
     return templates.TemplateResponse("passwords.html", _pw_ctx(
-        request, user, "pw_vault", folders=folders, items=items,
+        request, user, "pw_vault", folders=folders, items=items, people=people,
+        active_person_id=active_person.id if active_person else None,
+        active_person=active_person,
         q=q or "", item_type=item_type or "", folder_id=folder_id or "",
     ))
 
@@ -2592,9 +2833,14 @@ def passwords_sends_page(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    sends = list_sends(db=db, current_user=user)
+    all_sends = list_sends(db=db, current_user=user)
+    secret_tokens = {s.token for s in all_sends if s.send_type == "secret"}
+    sends = [s for s in all_sends if s.send_type != "secret"]
     items = list_items(q=None, item_type="login", folder_id=None, favorite=False, db=db, current_user=user)
-    requests = list_send_requests(status="all", db=db, current_user=user)
+    requests = [
+        r for r in list_send_requests(status="all", db=db, current_user=user)
+        if r.send_token not in secret_tokens
+    ]
     return templates.TemplateResponse("password_sends.html", _pw_ctx(
         request, user, "pw_sends", sends=sends, items=items, requests=requests,
         public_base=str(request.base_url).rstrip("/"),
@@ -2615,6 +2861,7 @@ def passwords_send_create(
     require_grant: Optional[str] = Form(None),
     require_email_otp: Optional[str] = Form(None),
     allowed_emails: str = Form(""),
+    bind_first_browser: Optional[str] = Form(None),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -2635,6 +2882,7 @@ def passwords_send_create(
         require_grant=bool(require_grant),
         require_email_otp=bool(require_email_otp),
         allowed_emails=emails,
+        bind_first_browser=bool(bind_first_browser),
     ), db=db, current_user=user)
     dest = (next or "").strip()
     if dest.startswith("/admin/passwords/") and "://" not in dest:
@@ -2654,7 +2902,11 @@ def passwords_send_create(
 
 def _safe_admin_next(next: str, fallback: str = "/admin/passwords/sends") -> str:
     dest = (next or "").strip()
-    if (dest.startswith("/admin/passwords") or dest.startswith("/admin/locker")) and "://" not in dest:
+    if (
+        dest.startswith("/admin/passwords")
+        or dest.startswith("/admin/locker")
+        or dest.startswith("/admin/secrets")
+    ) and "://" not in dest:
         return dest
     return fallback
 
@@ -2937,7 +3189,7 @@ def passwords_send_revoke(
         return RedirectResponse("/admin/login", status_code=302)
     revoke_send(send_id, db=db, current_user=user)
     dest = (next or "").strip()
-    if (dest.startswith("/admin/passwords/") or dest.startswith("/admin/locker/")) and "://" not in dest:
+    if (dest.startswith("/admin/passwords/") or dest.startswith("/admin/locker/") or dest.startswith("/admin/secrets")) and "://" not in dest:
         return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/passwords/sends", status_code=302)
 
@@ -3013,7 +3265,94 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
         public_base=str(request.base_url).rstrip("/"),
         can_use_item_locks=vlock.can_use_locks(user, db),
         totp_on=bool(user.totp_enabled),
+        family_shares=getattr(item, "shared_with", None) or [],
+        family_targets=_family_share_targets(db, user),
+        shared_from=getattr(item, "shared_from", None),
+        is_owned=bool(getattr(item, "is_owned", True)),
+        my_permission=getattr(item, "my_permission", "edit"),
     ))
+
+
+def _family_share_targets(db, user):
+    from app import family_access as faccess
+    vid = vault_id(user)
+    rows = (
+        db.query(models.User)
+        .filter(models.User.id != user.id)
+        .order_by(models.User.full_name.asc())
+        .all()
+    )
+    return [u for u in rows if vault_id(u) == vid]
+
+
+@router.post("/passwords/{item_id}/family-share")
+def password_family_share(
+    item_id: str,
+    request: Request,
+    to_user_id: str = Form(...),
+    permission: str = Form("view"),
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    item = (
+        db.query(models.VaultItem)
+        .filter(models.VaultItem.id == item_id, models.VaultItem.user_id == vault_id(user))
+        .first()
+    )
+    if not item:
+        return RedirectResponse("/admin/passwords", status_code=302)
+    if not faccess.can_edit(
+        db, user,
+        resource_type=models.ShareResourceType.password.value,
+        resource_id=item.id,
+        owner_user_id=item.owner_user_id,
+        vault_scope_id=vault_id(user),
+    ):
+        return RedirectResponse(f"/admin/passwords/{item_id}?err=share", status_code=302)
+    faccess.upsert_share(
+        db,
+        from_user=user,
+        to_user_id=to_user_id,
+        resource_type=models.ShareResourceType.password.value,
+        resource_id=item.id,
+        permission=permission,
+    )
+    db.commit()
+    return RedirectResponse(f"/admin/passwords/{item_id}", status_code=302)
+
+
+@router.post("/passwords/{item_id}/family-share/{to_user_id}/revoke")
+def password_family_share_revoke(
+    item_id: str,
+    to_user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    item = (
+        db.query(models.VaultItem)
+        .filter(models.VaultItem.id == item_id, models.VaultItem.user_id == vault_id(user))
+        .first()
+    )
+    if not item:
+        return RedirectResponse("/admin/passwords", status_code=302)
+    oid = faccess.item_owner_id(item.owner_user_id, item.user_id)
+    if user.id != oid and user.id != to_user_id:
+        return RedirectResponse(f"/admin/passwords/{item_id}?err=share", status_code=302)
+    faccess.revoke_share(
+        db, actor=user,
+        resource_type=models.ShareResourceType.password.value,
+        resource_id=item_id,
+        to_user_id=to_user_id,
+    )
+    db.commit()
+    return RedirectResponse(f"/admin/passwords/{item_id}", status_code=302)
 
 
 @router.post("/passwords/{item_id}/lock")
@@ -4524,7 +4863,78 @@ def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_d
         send_has_pin=request.query_params.get("pin") == "1",
         can_use_item_locks=vlock.can_use_locks(user, db),
         totp_on=bool(user.totp_enabled),
+        family_shares=getattr(item, "shared_with", None) or [],
+        family_targets=_family_share_targets(db, user),
+        shared_from=getattr(item, "shared_from", None),
+        is_owned=bool(getattr(item, "is_owned", True)),
+        my_permission=getattr(item, "my_permission", "edit"),
     ))
+
+
+@router.post("/locker/{item_id}/family-share")
+def locker_family_share(
+    item_id: str,
+    request: Request,
+    to_user_id: str = Form(...),
+    permission: str = Form("view"),
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    item = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == vault_id(user))
+        .first()
+    )
+    if not item:
+        return RedirectResponse("/admin/locker", status_code=302)
+    if not faccess.can_edit(
+        db, user,
+        resource_type=models.ShareResourceType.locker.value,
+        resource_id=item.id,
+        owner_user_id=item.owner_user_id,
+        vault_scope_id=vault_id(user),
+    ):
+        return RedirectResponse(f"/admin/locker/{item_id}?err=share", status_code=302)
+    faccess.upsert_share(
+        db, from_user=user, to_user_id=to_user_id,
+        resource_type=models.ShareResourceType.locker.value,
+        resource_id=item.id, permission=permission,
+    )
+    db.commit()
+    return RedirectResponse(f"/admin/locker/{item_id}", status_code=302)
+
+
+@router.post("/locker/{item_id}/family-share/{to_user_id}/revoke")
+def locker_family_share_revoke(
+    item_id: str,
+    to_user_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    item = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == vault_id(user))
+        .first()
+    )
+    if not item:
+        return RedirectResponse("/admin/locker", status_code=302)
+    oid = faccess.item_owner_id(item.owner_user_id, item.user_id)
+    if user.id != oid and user.id != to_user_id:
+        return RedirectResponse(f"/admin/locker/{item_id}?err=share", status_code=302)
+    faccess.revoke_share(
+        db, actor=user,
+        resource_type=models.ShareResourceType.locker.value,
+        resource_id=item_id, to_user_id=to_user_id,
+    )
+    db.commit()
+    return RedirectResponse(f"/admin/locker/{item_id}", status_code=302)
 
 
 @router.post("/locker/{item_id}/lock")
@@ -4554,6 +4964,7 @@ def locker_item_send_create(
     require_email_otp: Optional[str] = Form(None),
     files_only: Optional[str] = Form(None),
     allowed_emails: str = Form(""),
+    bind_first_browser: Optional[str] = Form(None),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -4583,6 +4994,7 @@ def locker_item_send_create(
         require_email_otp=bool(require_email_otp),
         files_only=bool(files_only),
         allowed_emails=emails,
+        bind_first_browser=bool(bind_first_browser),
     ), db=db, current_user=user)
     dest = (next or "").strip()
     if not (dest.startswith("/admin/locker/") and "://" not in dest):
@@ -6805,3 +7217,81 @@ def diary_delete(entry_id: str, request: Request, db: Session = Depends(get_db))
         return RedirectResponse("/admin/login", status_code=302)
     dy.delete_entry(entry_id, db=db, current_user=user)
     return RedirectResponse("/admin/diary", status_code=302)
+
+
+# ---------- Secret Share ----------
+def _secrets_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "secrets", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/secrets", response_class=HTMLResponse)
+def secrets_home(request: Request, db: Session = Depends(get_db)):
+    from app.routers import secrets as sec
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    sends = sec.list_secret_sends(db=db, current_user=user)
+    requests = sec.list_secret_send_requests(status="all", db=db, current_user=user)
+    return templates.TemplateResponse("secrets.html", _secrets_ctx(
+        request, user, "sec_home", sends=sends, requests=requests,
+        public_base=str(request.base_url).rstrip("/"),
+    ))
+
+
+@router.post("/secrets")
+def secrets_create(
+    request: Request,
+    name: str = Form(...),
+    text: str = Form(...),
+    pin: str = Form(""),
+    expires_in_hours: int = Form(48),
+    max_views: Optional[str] = Form(None),
+    include_totp: Optional[str] = Form(None),
+    require_grant: Optional[str] = Form(None),
+    require_email_otp: Optional[str] = Form(None),
+    allowed_emails: str = Form(""),
+    bind_first_browser: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    from app.routers import secrets as sec
+    from app import schemas as sc
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    views = None
+    raw_views = (max_views or "").strip()
+    if raw_views.isdigit() and int(raw_views) >= 1:
+        views = int(raw_views)
+    emails = [p.strip() for p in (allowed_emails or "").replace(";", ",").replace("\n", ",").split(",") if p.strip()]
+    sec.create_secret_send(sc.VaultSendCreate(
+        name=name,
+        send_type="secret",
+        text=text,
+        pin=pin or None,
+        expires_in_hours=expires_in_hours,
+        max_views=views,
+        include_totp=bool(include_totp),
+        require_grant=bool(require_grant),
+        require_email_otp=bool(require_email_otp),
+        allowed_emails=emails,
+        bind_first_browser=bool(bind_first_browser),
+    ), db=db, current_user=user)
+    return RedirectResponse("/admin/secrets", status_code=302)
+
+
+@router.post("/secrets/{send_id}/revoke")
+def secrets_revoke(send_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import secrets as sec
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        sec.revoke_secret_send(send_id, db=db, current_user=user)
+    except HTTPException:
+        pass
+    return RedirectResponse("/admin/secrets", status_code=302)

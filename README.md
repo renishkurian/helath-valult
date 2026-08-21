@@ -1,9 +1,10 @@
-# Vault Hub (Health Vault)
+# Family Vault
 
-Self-hosted vault for your household — hospital records, passwords, money,
-shopping, IDs, bookmarks, and a diary — on your own server (e.g. a Raspberry
-Pi). Browser admin UI and Android app talk to the same backend. Secrets and
-files are encrypted at rest; nothing requires a third-party cloud.
+Self-hosted vault for your household — family members with private entries and
+selective sharing, hospital records, passwords, money, shopping, IDs, bookmarks,
+and a diary — on your own server (e.g. a Raspberry Pi). Browser admin UI and
+Android app talk to the same backend. Secrets and files are encrypted at rest;
+nothing requires a third-party cloud.
 
 ```
 HealthVault/

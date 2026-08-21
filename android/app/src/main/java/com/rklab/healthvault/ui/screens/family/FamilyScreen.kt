@@ -29,19 +29,19 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
     val state by viewModel.state.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showInviteDialog by remember { mutableStateOf(false) }
-    val isViewer = repository.isViewer
+    val isManager = repository.isFamilyAdmin
 
     LaunchedEffect(Unit) { viewModel.load() }
 
     Box(modifier = Modifier.fillMaxSize().background(HubBg)) {
         Column(modifier = Modifier.fillMaxSize().padding(20.dp)) {
-            Text("FAMILY", style = MaterialTheme.typography.labelMedium, color = VaultGold)
+            Text("FAMILY VAULT", style = MaterialTheme.typography.labelMedium, color = VaultGold)
             Spacer(Modifier.height(4.dp))
-            Text("Who you're managing", style = MaterialTheme.typography.headlineMedium, color = Ink)
-            if (!isViewer) {
+            Text("Household", style = MaterialTheme.typography.headlineMedium, color = Ink)
+            if (isManager) {
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = { showInviteDialog = true }) {
-                    Text("Invite viewer (spouse login)", color = Navy)
+                    Text("Invite family login", color = Navy)
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -56,7 +56,7 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
                         PersonRow(
                             person = person,
                             onClick = { onOpenPerson(person) },
-                            onDelete = if (!isViewer && person.relation != Relation.SELF) {
+                            onDelete = if (isManager && person.relation != Relation.SELF) {
                                 { viewModel.removeMember(person.id) }
                             } else null
                         )
@@ -65,7 +65,7 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
             }
         }
 
-        if (!isViewer) {
+        if (isManager) {
         FloatingActionButton(
             onClick = { showAddDialog = true },
             containerColor = Navy,
@@ -83,7 +83,7 @@ fun FamilyScreen(repository: HealthVaultRepository, onOpenPerson: (PersonOut) ->
             error = state.error,
             onDismiss = { showInviteDialog = false },
             onConfirm = { email, password, name ->
-                viewModel.inviteViewer(email, password, name) { showInviteDialog = false }
+                viewModel.inviteMember(email, password, name) { showInviteDialog = false }
             }
         )
     }
@@ -210,10 +210,10 @@ private fun InviteViewerDialog(
     var password by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Invite viewer") },
+        title = { Text("Invite family login") },
         text = {
             Column {
-                Text("Creates a view-only login — they can see the vault but not change it.", style = MaterialTheme.typography.bodySmall, color = InkSoft)
+                Text("They get their own account. Entries stay private until shared (view or edit).", style = MaterialTheme.typography.bodySmall, color = InkSoft)
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))

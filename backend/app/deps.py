@@ -10,11 +10,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
 
 def vault_id(user: models.User) -> str:
-    """The account whose people/docs this login may see. Viewers share the owner's vault."""
+    """The family vault this login belongs to. Members share the manager's vault id."""
     return user.vault_owner_id or user.id
 
 
 def is_viewer(user: models.User) -> bool:
+    """Legacy read-only accounts (pre–Family Vault). Prefer member role going forward."""
     return (user.role or models.UserRole.owner.value) == models.UserRole.viewer.value
 
 
@@ -23,9 +24,15 @@ def is_superadmin(user: models.User) -> bool:
 
 
 def require_owner(user: models.User) -> models.User:
-    if is_viewer(user):
-        raise HTTPException(status_code=403, detail="This account is view-only")
-    return user
+    """Family manager only (not members / legacy viewers)."""
+    from app.family_access import require_family_admin
+    return require_family_admin(user)
+
+
+def require_writer(user: models.User) -> models.User:
+    """Owner or family member may mutate their own (or edit-shared) entries."""
+    from app.family_access import require_family_writer
+    return require_family_writer(user)
 
 
 def require_enabled_module(module_key: str):

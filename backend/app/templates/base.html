@@ -4,8 +4,10 @@
   side_panel() macro into both the desktop sidebar and the mobile offcanvas.
 #}
 {% set modules = [
+  {'key':'family','name':'Family Vault','kicker':'Household','href':'/admin/family','icon':'bi-people','accent':'#E8A87C'},
   {'key':'health','name':'Health Vault','kicker':'Medical records','href':'/admin','icon':'bi-heart-pulse','accent':'#43D9C4'},
   {'key':'passwords','name':'Password Vault','kicker':'Secrets','href':'/admin/passwords','icon':'bi-shield-lock','accent':'#4C8DFF'},
+  {'key':'secrets','name':'Secret Share','kicker':'One-time links','href':'/admin/secrets','icon':'bi-key','accent':'#E8C547'},
   {'key':'finance','name':'Money Manager','kicker':'Money','href':'/admin/finance','icon':'bi-wallet2','accent':'#2ED3A0'},
   {'key':'expense','name':'Expense Analyser','kicker':'Spend from mail','href':'/admin/expense-analyser','icon':'bi-envelope-open','accent':'#22C1B8'},
   {'key':'ai','name':'AI','kicker':'Ask & keys','href':'/admin/ai','icon':'bi-robot','accent':'#A78BFA'},
@@ -92,6 +94,11 @@
     {'key':'dy_pinned','label':'Pinned','short':'Pin','href':'/admin/diary?pinned=1','icon':'bi-pin-angle'},
     {'key':'dy_manage','label':'Folders','short':'Folders','href':'/admin/diary/manage','icon':'bi-folder'}
   ] %}
+{% elif active_module == 'secrets' %}
+  {% set mod_key = 'secrets' %}
+  {% set nav_items = [
+    {'key':'sec_home','label':'Share secrets','short':'Share','href':'/admin/secrets','icon':'bi-key'}
+  ] %}
 {% elif active_module == 'superadmin' %}
   {% set mod_key = 'superadmin' %}
   {% set nav_items = [
@@ -105,11 +112,16 @@
 {% elif active_module == 'picker' %}
   {% set mod_key = 'picker' %}
   {% set nav_items = [] %}
+{% elif active_module == 'family' %}
+  {% set mod_key = 'family' %}
+  {% set nav_items = [
+    {'key':'family','label':'Household','short':'Home','href':'/admin/family','icon':'bi-people'},
+    {'key':'family_members','label':'Logins','short':'Logins','href':'/admin/family#logins','icon':'bi-person-badge'}
+  ] %}
 {% else %}
   {% set mod_key = 'health' %}
   {% set nav_items = [
     {'key':'dashboard','label':'Overview','short':'Home','href':'/admin' ~ person_q,'icon':'bi-grid-1x2'},
-    {'key':'family','label':'Family','short':'Family','href':'/admin/family','icon':'bi-people'},
     {'key':'reminders','label':'Reminders','short':'Alerts','href':'/admin/reminders' ~ person_q,'icon':'bi-bell'},
     {'key':'care','label':'Care & emergency','short':'Care','href':'/admin/care' ~ person_q,'icon':'bi-heart-pulse'},
     {'key':'doctors','label':'Doctors','short':'Doctors','href':'/admin/doctors','icon':'bi-telephone'},
@@ -128,8 +140,8 @@
   <a class="brand" href="/admin/modules">
     <span class="brand-mark">V</span>
     <span>
-      <span class="brand-name d-block">Vault</span>
-      <span class="brand-sub">Private archive</span>
+      <span class="brand-name d-block">Family Vault</span>
+      <span class="brand-sub">Private household</span>
     </span>
   </a>
 
@@ -216,13 +228,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>{% block title %}Vault{% endblock %}</title>
+<title>{% block title %}Family Vault{% endblock %}</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0B0D10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Vault">
+<meta name="apple-mobile-web-app-title" content="Family Vault">
 <meta name="color-scheme" content="dark">
 <link rel="apple-touch-icon" href="/static/icon.svg">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
@@ -244,7 +256,7 @@
     <span class="brand-mark">V</span>
     <span>
       <span class="brand-name d-block">{{ current_mod.name if current_mod else 'Vault' }}</span>
-      <span class="brand-sub">{{ current_mod.kicker if current_mod else 'Private archive' }}</span>
+      <span class="brand-sub">{{ current_mod.kicker if current_mod else 'Private household' }}</span>
     </span>
   </a>
   <div class="ms-auto d-flex align-items-center gap-1">

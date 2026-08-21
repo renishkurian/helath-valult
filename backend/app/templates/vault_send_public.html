@@ -74,11 +74,21 @@
         <span class="card-ico gold"><i class="bi bi-send"></i></span>
         <div>
           <h2 class="truncate">{{ send.name }}</h2>
-          <div class="card-sub">{% if send.send_type == 'locker' %}{% if (files_only|default(false)) or (payload and payload.locker_files_only) %}Document Vault · Files only{% else %}Document Vault · Share{% endif %}{% else %}Password Vault · Send{% endif %}</div>
+          <div class="card-sub">{% if send.send_type == 'locker' %}{% if (files_only|default(false)) or (payload and payload.locker_files_only) %}Document Vault · Files only{% else %}Document Vault · Share{% endif %}{% elif send.send_type == 'secret' %}Secret Share{% else %}Password Vault · Send{% endif %}</div>
         </div>
       </div>
       <div class="card-body">
-        {% if pin_required %}
+        {% if browser_blocked|default(false) %}
+          <div class="alert alert-danger" role="alert">
+            <i class="bi bi-browser-x"></i>
+            <span>This link is locked to another browser</span>
+          </div>
+          <p class="text-muted">
+            The owner limited this share to the first browser that opened it.
+            This browser was recorded as a separate attempt and cannot view the secret until the link expires.
+          </p>
+
+        {% elif pin_required %}
           {% if error %}
           <div class="alert alert-danger" role="alert">
             <i class="bi bi-exclamation-triangle"></i>
@@ -122,7 +132,7 @@
           <div class="alert alert-success" role="status">
             <i class="bi bi-check2-circle"></i>
             Request sent. Stay on this page — when the owner grants access,
-            {% if send.send_type == 'locker' %}the document appears here.{% else %}the password appears here.{% endif %}
+            {% if send.send_type == 'locker' %}the document appears here.{% elif send.send_type == 'secret' %}the secret appears here.{% else %}the password appears here.{% endif %}
           </div>
           {% elif request_err == 'email' %}
           <div class="alert alert-danger">Please enter a valid email, or leave it blank.</div>

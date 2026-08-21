@@ -110,6 +110,28 @@ class HealthVaultRepository(
     suspend fun inviteViewer(email: String, password: String, fullName: String, personIds: List<String> = emptyList()) =
         api.inviteViewer(InviteViewerRequest(email, password, fullName, personIds))
 
+    suspend fun inviteFamilyMember(
+        email: String,
+        password: String,
+        fullName: String,
+        relation: String = "other",
+        personId: String? = null,
+    ) = api.inviteFamilyMember(InviteMemberRequest(email, password, fullName, relation, personId))
+
+    suspend fun listFamilyMembers() = api.listFamilyMembers()
+
+    suspend fun listFamilyShareTargets() = api.listFamilyShareTargets()
+
+    suspend fun listFamilyShares(resourceType: String, resourceId: String) =
+        api.listFamilyShares(resourceType, resourceId)
+
+    suspend fun upsertFamilyShare(resourceType: String, resourceId: String, toUserId: String, permission: String) =
+        api.upsertFamilyShare(resourceType, resourceId, FamilyShareIn(toUserId, permission))
+
+    suspend fun revokeFamilyShare(resourceType: String, resourceId: String, toUserId: String) {
+        api.revokeFamilyShare(resourceType, resourceId, toUserId)
+    }
+
     suspend fun totpSetup() = api.totpSetup()
     suspend fun totpEnable(code: String) = api.totpEnable(TotpVerifyIn(code = code))
     suspend fun totpDisable(code: String) = api.totpDisable(TotpVerifyIn(code = code))
@@ -432,6 +454,11 @@ class HealthVaultRepository(
     suspend fun removeVaultMember(id: String) = api.removeVaultMember(id)
 
     val isViewer: Boolean get() = tokenManager.getRole() == "viewer"
+    val isFamilyAdmin: Boolean
+        get() {
+            val role = tokenManager.getRole()
+            return role == "owner" || role == "superadmin"
+        }
 
     // ---------- People ----------
 

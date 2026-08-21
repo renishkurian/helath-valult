@@ -188,7 +188,7 @@ def test_admin_ui_login_and_dashboard():
 
     r = web.get("/admin", follow_redirects=False)
     assert r.status_code == 200  # already logged in this session
-    assert "Hi, Admin" in r.text
+    assert "Admin" in r.text  # greeting uses first name from full_name
 
 
 def test_admin_ui_signup():
@@ -282,6 +282,7 @@ def test_health_endpoint():
 
 
 def test_viewer_role_is_read_only():
+    """Legacy invite path now creates family members; they cannot add household profiles."""
     owner = _register("owner@example.com", "password123", "Vault Owner")
     headers = _auth_headers(owner["access_token"])
     person_id = client.get("/people", headers=headers).json()[0]["id"]
@@ -292,7 +293,7 @@ def test_viewer_role_is_read_only():
         headers=headers,
     )
     assert r.status_code == 201
-    assert r.json()["role"] == "viewer"
+    assert r.json()["role"] == "member"
 
     login = client.post("/auth/login", data={"username": "spouse@example.com", "password": "password123"})
     vheaders = _auth_headers(login.json()["access_token"])
@@ -302,6 +303,48 @@ def test_viewer_role_is_read_only():
 
     r = client.post("/people", json={"name": "Should Fail", "relation": "child"}, headers=vheaders)
     assert r.status_code == 403
+
+
+def test_member_password_private_until_shared():
+    owner = _register("famowner@example.com", "password123", "Family Owner")
+    oh = _auth_headers(owner["access_token"])
+    r = client.post(
+        "/family/invite",
+        json={
+            "email": "kid@example.com",
+            "password": "password123",
+            "full_name": "Kid Member",
+            "relation": "child",
+        },
+        headers=oh,
+    )
+    assert r.status_code == 201, r.text
+    login = client.post("/auth/login", data={"username": "kid@example.com", "password": "password123"})
+    mh = _auth_headers(login.json()["access_token"])
+
+    created = client.post(
+        "/vault/items",
+        json={"name": "Kid Secret", "item_type": "login", "password": "secret"},
+        headers=mh,
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["id"]
+
+    owner_list = client.get("/vault/items", headers=oh).json()
+    assert all(i["id"] != item_id for i in owner_list)
+
+    share = client.post(
+        f"/family/shares/password/{item_id}",
+        json={"to_user_id": client.get("/auth/me", headers=oh).json()["id"], "permission": "view"},
+        headers=mh,
+    )
+    assert share.status_code == 200, share.text
+    owner_list = client.get("/vault/items", headers=oh).json()
+    shared = [i for i in owner_list if i["id"] == item_id]
+    assert len(shared) == 1
+    assert shared[0]["is_owned"] is False
+    assert shared[0]["my_permission"] == "view"
+    assert shared[0]["shared_from"]["full_name"] == "Kid Member"
 
 
 def test_ocr_text_is_searchable_and_labs_parse():

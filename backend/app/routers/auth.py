@@ -102,20 +102,22 @@ def invite_viewer(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Create a view-only login that can see this vault (e.g. spouse in another city)."""
+    """Invite a family member login (formerly view-only). Prefer POST /family/invite."""
     require_owner(current_user)
     existing = db.query(models.User).filter(models.User.email == body.email).first()
     if existing:
         raise HTTPException(status_code=409, detail="An account with this email already exists")
-    viewer = models.User(
+    import secrets as _secrets
+    member = models.User(
         email=body.email,
         hashed_password=security.hash_password(body.password),
         full_name=body.full_name,
-        role=models.UserRole.viewer.value,
+        role=models.UserRole.member.value,
         vault_owner_id=vault_id(current_user),
     )
-    db.add(viewer)
+    db.add(member)
     db.flush()
+    linked_any = False
     for pid in body.person_ids or []:
         person = (
             db.query(models.Person)
@@ -123,10 +125,23 @@ def invite_viewer(
             .first()
         )
         if person:
-            db.add(models.ViewerAccess(viewer_user_id=viewer.id, person_id=person.id))
+            db.add(models.ViewerAccess(viewer_user_id=member.id, person_id=person.id))
+            if not person.linked_user_id:
+                person.linked_user_id = member.id
+                linked_any = True
+    if not linked_any:
+        initials = "".join([p[0].upper() for p in (body.full_name or "FM").split()[:2]]) or "FM"
+        db.add(models.Person(
+            user_id=vault_id(current_user),
+            linked_user_id=member.id,
+            name=body.full_name,
+            relation=models.Relation.other,
+            avatar_initials=initials,
+            ice_token=_secrets.token_urlsafe(18),
+        ))
     db.commit()
-    db.refresh(viewer)
-    return viewer
+    db.refresh(member)
+    return member
 
 
 @router.get("/members", response_model=list[schemas.UserOut])

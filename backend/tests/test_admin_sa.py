@@ -224,7 +224,7 @@ def test_app_can_approve_web_login():
     assert body["status"] == "approved"
     modules = web.get("/admin/modules")
     assert modules.status_code == 200
-    assert "Your five vaults" in modules.text
+    assert "Your vaults" in modules.text
 
 
 def test_app_can_deny_web_login():
@@ -374,7 +374,7 @@ def test_app_approve_without_totp_gates_web_login():
     assert status.json()["status"] == "approved"
     modules = web.get("/admin/modules")
     assert modules.status_code == 200
-    assert "Your five vaults" in modules.text
+    assert "Your vaults" in modules.text
 
 
 def test_superadmin_can_clear_app_approve():
@@ -472,7 +472,7 @@ def test_qr_login_app_grant_redirects_home():
     assert body["redirect"] == "/admin/modules"
     home = web.get("/admin/modules")
     assert home.status_code == 200
-    assert "Your five vaults" in home.text
+    assert "Your vaults" in home.text
 
 
 def test_qr_login_wrong_account_cannot_grant():

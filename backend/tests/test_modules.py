@@ -31,3 +31,10 @@ def test_admin_module_for_path():
 def test_diary_in_defaults():
     assert "diary" in modules.DEFAULT_MODULE_KEYS
     assert modules.MODULE_LABELS["diary"] == "Digital Diary"
+
+
+def test_secrets_in_defaults():
+    assert "secrets" in modules.DEFAULT_MODULE_KEYS
+    assert modules.MODULE_LABELS["secrets"] == "Secret Share"
+    assert modules.admin_module_for_path("/admin/secrets") == "secrets"
+    assert modules.api_module_for_path("/secrets/sends") == "secrets"

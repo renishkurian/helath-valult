@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto
-from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
+from app.deps import require_enabled_module, get_current_user, require_owner, require_writer, vault_id
 from app.extract import enhance_scan, file_sha256
 
 router = APIRouter(prefix="/locker", tags=["locker"], dependencies=[Depends(require_enabled_module("locker"))])
@@ -116,6 +116,11 @@ def _to_out(
     item: models.LockerItem,
     person_name: Optional[str] = None,
     folder_name: Optional[str] = None,
+    *,
+    shared_with: list | None = None,
+    shared_from: dict | None = None,
+    my_permission: str | None = None,
+    is_owned: bool = True,
 ) -> schemas.LockerItemOut:
     first = item.files[0] if item.files else None
     sizes = [f.file_size for f in (item.files or []) if f.file_size]
@@ -151,10 +156,90 @@ def _to_out(
         created_at=item.created_at,
         require_2fa=bool(getattr(item, "require_2fa", False)),
         source_created_at=getattr(item, "source_created_at", None),
+        owner_user_id=getattr(item, "owner_user_id", None),
+        is_owned=is_owned,
+        my_permission=my_permission or ("edit" if is_owned else "view"),
+        shared_with=shared_with or [],
+        shared_from=shared_from,
     )
 
 
-def _owned(item_id: str, db: Session, user: models.User, *, include_deleted: bool = False) -> models.LockerItem:
+def _enrich_locker_items(db: Session, user: models.User, rows: list[models.LockerItem]) -> list[schemas.LockerItemOut]:
+    from app import family_access as faccess
+    names = {p.id: p.name for p in _people_for(db, user)}
+    folder_names = {f.id: f.name for f in _folders_for(db, user)}
+    share_map = faccess.share_summaries(
+        db,
+        resource_type=models.ShareResourceType.locker.value,
+        resource_ids=[r.id for r in rows],
+    )
+    shared_to_me = {
+        s.resource_id: s
+        for s in db.query(models.FamilyShare).filter(
+            models.FamilyShare.resource_type == models.ShareResourceType.locker.value,
+            models.FamilyShare.to_user_id == user.id,
+            models.FamilyShare.resource_id.in_([r.id for r in rows] or ["__none__"]),
+        ).all()
+    }
+    from_users = {}
+    for s in shared_to_me.values():
+        if s.from_user_id not in from_users:
+            u = db.query(models.User).filter(models.User.id == s.from_user_id).first()
+            if u:
+                from_users[u.id] = u
+    out = []
+    for i in rows:
+        oid = faccess.item_owner_id(i.owner_user_id, i.user_id)
+        is_owned = oid == user.id
+        shared_from = None
+        my_perm = "edit" if is_owned else "view"
+        if not is_owned and i.id in shared_to_me:
+            s = shared_to_me[i.id]
+            my_perm = s.permission
+            fu = from_users.get(s.from_user_id)
+            shared_from = {
+                "user_id": s.from_user_id,
+                "full_name": fu.full_name if fu else "",
+                "email": fu.email if fu else "",
+                "permission": s.permission,
+            }
+        out.append(_to_out(
+            i,
+            names.get(i.person_id),
+            folder_names.get(i.folder_id),
+            shared_with=share_map.get(i.id, []) if is_owned else [],
+            shared_from=shared_from,
+            my_permission=my_perm,
+            is_owned=is_owned,
+        ))
+    return out
+
+
+def _active_item_query(db: Session, user: models.User):
+    from app import family_access as faccess
+    from sqlalchemy import or_, and_
+
+    vid = vault_id(user)
+    _, shared_ids = faccess.visible_resource_ids(
+        db, user,
+        resource_type=models.ShareResourceType.locker.value,
+        vault_scope_id=vid,
+    )
+    owned = or_(
+        models.LockerItem.owner_user_id == user.id,
+        and_(models.LockerItem.owner_user_id.is_(None), user.id == vid),
+    )
+    vis = or_(owned, models.LockerItem.id.in_(list(shared_ids))) if shared_ids else owned
+    return db.query(models.LockerItem).filter(
+        models.LockerItem.user_id == vid,
+        models.LockerItem.deleted_at.is_(None),
+        vis,
+    )
+
+
+def _owned(item_id: str, db: Session, user: models.User, *, include_deleted: bool = False, need_edit: bool = False) -> models.LockerItem:
+    from app import family_access as faccess
+
     item = (
         db.query(models.LockerItem)
         .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == vault_id(user))
@@ -164,14 +249,25 @@ def _owned(item_id: str, db: Session, user: models.User, *, include_deleted: boo
         raise HTTPException(status_code=404, detail="Document not found")
     if item.deleted_at and not include_deleted:
         raise HTTPException(status_code=404, detail="Document not found")
+    vid = vault_id(user)
+    if need_edit:
+        if not faccess.can_edit(
+            db, user,
+            resource_type=models.ShareResourceType.locker.value,
+            resource_id=item.id,
+            owner_user_id=item.owner_user_id,
+            vault_scope_id=vid,
+        ):
+            raise HTTPException(status_code=403, detail="View-only share — cannot edit")
+    elif not faccess.can_view(
+        db, user,
+        resource_type=models.ShareResourceType.locker.value,
+        resource_id=item.id,
+        owner_user_id=item.owner_user_id,
+        vault_scope_id=vid,
+    ):
+        raise HTTPException(status_code=404, detail="Document not found")
     return item
-
-
-def _active_item_query(db: Session, user: models.User):
-    return db.query(models.LockerItem).filter(
-        models.LockerItem.user_id == vault_id(user),
-        models.LockerItem.deleted_at.is_(None),
-    )
 
 
 def _norm_type(doc_type: Optional[str], custom_type: Optional[str]) -> tuple[str, Optional[str]]:
@@ -318,7 +414,7 @@ def create_folder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     name = title_name(body.name)
     if not name:
         raise HTTPException(status_code=422, detail="Folder name is required")
@@ -369,7 +465,7 @@ def delete_folder(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     folder = _resolve_folder(db, current_user, folder_id)
     if not folder:
         raise HTTPException(status_code=404, detail="Folder not found")
@@ -454,7 +550,7 @@ def list_trash(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     rows = (
         db.query(models.LockerItem)
         .filter(
@@ -474,7 +570,7 @@ def empty_trash(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     rows = (
         db.query(models.LockerItem)
         .filter(
@@ -547,9 +643,7 @@ def list_items(
             models.LockerItem.expiry_date <= soon,
         )
     rows = query.order_by(models.LockerItem.created_at.desc()).all()
-    names = {p.id: p.name for p in _people_for(db, current_user)}
-    folder_names = {f.id: f.name for f in _folders_for(db, current_user)}
-    return [_to_out(i, names.get(i.person_id), folder_names.get(i.folder_id)) for i in rows]
+    return _enrich_locker_items(db, current_user, rows)
 
 
 @router.post("", response_model=schemas.LockerItemOut, status_code=201)
@@ -571,7 +665,7 @@ async def create_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
     folder = _resolve_folder(db, current_user, folder_id)
@@ -584,6 +678,7 @@ async def create_item(
         holder = person.name
     item = models.LockerItem(
         user_id=vault_id(current_user),
+        owner_user_id=current_user.id,
         person_id=person.id if person else None,
         folder_id=folder.id if folder else None,
         doc_type=kind,
@@ -694,7 +789,7 @@ async def add_files(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned(item_id, db, current_user)
     uploads = [f for f in (files or []) if f is not None and getattr(f, "filename", None)]
     if not uploads:
@@ -713,7 +808,7 @@ def delete_file(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned(item_id, db, current_user)
     doc_file = next((f for f in item.files if f.id == file_id), None)
     if not doc_file:
@@ -736,15 +831,7 @@ def get_item(
     from app import vault_lock as vlock
     item = _owned(item_id, db, current_user)
     vlock.require_api_item_unlock(request, current_user, "locker", item, db)
-    pname = None
-    if item.person_id:
-        person = _resolve_person(db, current_user, item.person_id)
-        pname = person.name if person else None
-    fname = None
-    if item.folder_id:
-        folder = _resolve_folder(db, current_user, item.folder_id)
-        fname = folder.name if folder else None
-    return _to_out(item, pname, fname)
+    return _enrich_locker_items(db, current_user, [item])[0]
 
 
 @router.patch("/{item_id}", response_model=schemas.LockerItemOut)
@@ -754,8 +841,8 @@ def update_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
-    item = _owned(item_id, db, current_user)
+    require_writer(current_user)
+    item = _owned(item_id, db, current_user, need_edit=True)
     data = body.model_dump(exclude_unset=True)
     if "folder_id" in data:
         folder = _resolve_folder(db, current_user, data.pop("folder_id"))
@@ -805,7 +892,7 @@ def delete_item(
     current_user: models.User = Depends(get_current_user),
 ):
     """Move a document to trash (soft delete)."""
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned(item_id, db, current_user)
     item.deleted_at = datetime.utcnow()
     db.commit()
@@ -817,7 +904,7 @@ def restore_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned(item_id, db, current_user, include_deleted=True)
     if not item.deleted_at:
         raise HTTPException(status_code=400, detail="Document is not in trash")
@@ -835,7 +922,7 @@ def permanent_delete_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     item = _owned(item_id, db, current_user, include_deleted=True)
     if not item.deleted_at:
         raise HTTPException(status_code=400, detail="Move the document to trash first")
@@ -937,7 +1024,7 @@ def create_locker_send(
 ):
     """Create a share link for a Document Vault item (PIN, grant, email OTP, one-time)."""
     from app.routers import vault as vv
-    require_owner(current_user)
+    require_writer(current_user)
     _owned(item_id, db, current_user)
     return vv.create_send(
         schemas.VaultSendCreate(
@@ -965,7 +1052,7 @@ def list_locker_item_sends(
     current_user: models.User = Depends(get_current_user),
 ):
     from app.routers import vault as vv
-    require_owner(current_user)
+    require_writer(current_user)
     _owned(item_id, db, current_user)
     return vv.list_item_sends(item_id, db=db, current_user=current_user)
 
@@ -977,7 +1064,7 @@ def revoke_locker_send(
     current_user: models.User = Depends(get_current_user),
 ):
     from app.routers import vault as vv
-    require_owner(current_user)
+    require_writer(current_user)
     row = (
         db.query(models.VaultSend)
         .filter(models.VaultSend.id == send_id, models.VaultSend.user_id == vault_id(current_user))
@@ -997,7 +1084,7 @@ def revoke_all_locker_item_sends(
     current_user: models.User = Depends(get_current_user),
 ):
     from app.routers import vault as vv
-    require_owner(current_user)
+    require_writer(current_user)
     _owned(item_id, db, current_user)
     rows = (
         db.query(models.VaultSend)

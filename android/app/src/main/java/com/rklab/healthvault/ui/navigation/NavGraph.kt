@@ -500,6 +500,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
             composable(Routes.MODULES) {
                 ModulePickerScreen(
                     repository = repository,
+                    onFamily = {
+                        navController.navigate(Routes.FAMILY) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onHealth = {
                         navController.navigate(Routes.HOME) {
                             popUpTo(Routes.MODULES) { inclusive = false; saveState = true }

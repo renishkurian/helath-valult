@@ -16,6 +16,7 @@ from app import models
 
 # Keys used in web sidebar, module picker, Android hub, and API guards.
 DEFAULT_MODULE_KEYS: tuple[str, ...] = (
+    "family",
     "health",
     "passwords",
     "finance",
@@ -25,9 +26,11 @@ DEFAULT_MODULE_KEYS: tuple[str, ...] = (
     "tracker",
     "urls",
     "diary",
+    "secrets",
 )
 
 MODULE_LABELS: dict[str, str] = {
+    "family": "Family Vault",
     "health": "Health Vault",
     "passwords": "Password Vault",
     "finance": "Money Manager",
@@ -37,6 +40,7 @@ MODULE_LABELS: dict[str, str] = {
     "tracker": "Shopping List",
     "urls": "URL Vault",
     "diary": "Digital Diary",
+    "secrets": "Secret Share",
 }
 
 # Admin HTML path prefix → module key (longest prefixes first).
@@ -48,7 +52,9 @@ ADMIN_PREFIX_MODULES: tuple[tuple[str, str], ...] = (
     ("/admin/tracker", "tracker"),
     ("/admin/urls", "urls"),
     ("/admin/diary", "diary"),
+    ("/admin/secrets", "secrets"),
     ("/admin/ai", "ai"),
+    ("/admin/family", "family"),
     ("/admin/sa", "superadmin"),
 )
 
@@ -60,8 +66,10 @@ API_PREFIX_MODULES: tuple[tuple[str, str], ...] = (
     ("/tracker", "tracker"),
     ("/urls", "urls"),
     ("/diary", "diary"),
+    ("/secrets", "secrets"),
     ("/vault", "passwords"),
     ("/ai", "ai"),
+    ("/family", "family"),
     # Health module surfaces (people, documents, …) share "health"
     ("/people", "health"),
     ("/cards", "health"),

@@ -23,6 +23,8 @@ data class UserOut(
     val enabled_modules: List<String>? = null
 ) {
     val isViewer: Boolean get() = role == "viewer"
+    val isFamilyAdmin: Boolean get() = role == "owner" || role == "superadmin"
+    val isMember: Boolean get() = role == "member"
     fun moduleEnabled(key: String): Boolean =
         enabled_modules == null || enabled_modules.contains(key)
 }
@@ -30,6 +32,56 @@ data class UserOut(
 data class AppApproveIn(val enabled: Boolean)
 
 data class AskAiFabIn(val enabled: Boolean)
+
+data class InviteMemberRequest(
+    val email: String,
+    val password: String,
+    val full_name: String,
+    val relation: String = "other",
+    val person_id: String? = null
+)
+
+data class FamilyMemberOut(
+    val user_id: String? = null,
+    val email: String? = null,
+    val full_name: String,
+    val role: String,
+    val person_id: String,
+    val relation: String,
+    val blood_group: String? = null,
+    val linked: Boolean = false
+)
+
+data class FamilyShareTargetOut(
+    val user_id: String,
+    val full_name: String,
+    val email: String,
+    val role: String = "member"
+)
+
+data class FamilyShareIn(
+    val to_user_id: String,
+    val permission: String = "view"
+)
+
+data class FamilyShareOut(
+    val id: String,
+    val resource_type: String,
+    val resource_id: String,
+    val from_user_id: String,
+    val to_user_id: String,
+    val to_full_name: String = "",
+    val to_email: String = "",
+    val permission: String = "view"
+)
+
+data class FamilyShareParty(
+    val user_id: String,
+    val full_name: String = "",
+    val email: String? = null,
+    val permission: String = "view",
+    val share_id: String? = null
+)
 
 data class InviteViewerRequest(
     val email: String,
@@ -145,7 +197,12 @@ data class DocumentOut(
     val amount: String? = null,
     val pinned: Boolean = false,
     val favorite: Boolean = false,
-    val created_at: String
+    val created_at: String,
+    val owner_user_id: String? = null,
+    val is_owned: Boolean = true,
+    val my_permission: String = "edit",
+    val shared_with: List<FamilyShareParty> = emptyList(),
+    val shared_from: FamilyShareParty? = null
 )
 
 data class DocumentUpdate(
@@ -512,7 +569,13 @@ data class VaultItemOut(
     val deleted_at: String? = null,
     val created_at: String,
     val updated_at: String? = null,
-    val active_send_count: Int = 0
+    val active_send_count: Int = 0,
+    val require_2fa: Boolean = false,
+    val owner_user_id: String? = null,
+    val is_owned: Boolean = true,
+    val my_permission: String = "edit",
+    val shared_with: List<FamilyShareParty> = emptyList(),
+    val shared_from: FamilyShareParty? = null
 )
 data class VaultTotpOut(val code: String, val period: Int = 30, val remaining: Int)
 data class VaultHistoryOut(val id: String, val password: String, val created_at: String)
@@ -853,7 +916,13 @@ data class LockerItemOut(
     val file_type: String? = null,
     val file_size: Long? = null,
     val file_count: Int = 0,
-    val created_at: String = ""
+    val created_at: String = "",
+    val require_2fa: Boolean = false,
+    val owner_user_id: String? = null,
+    val is_owned: Boolean = true,
+    val my_permission: String = "edit",
+    val shared_with: List<FamilyShareParty> = emptyList(),
+    val shared_from: FamilyShareParty? = null
 )
 
 data class LockerItemUpdate(

@@ -45,6 +45,8 @@ import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultTotpOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.components.FamilyShareBadge
+import com.rklab.healthvault.ui.components.FamilyShareDialog
 import com.rklab.healthvault.ui.components.VaultBackLink
 import com.rklab.healthvault.ui.components.VaultGlassCard
 import com.rklab.healthvault.ui.components.VaultOutlinedButton
@@ -78,6 +80,7 @@ fun VaultItemScreen(
     var history by remember { mutableStateOf<List<VaultHistoryOut>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var showShare by remember { mutableStateOf(false) }
+    var showFamilyShare by remember { mutableStateOf(false) }
     var sharePin by remember { mutableStateOf("") }
     var shareHours by remember { mutableStateOf("48") }
     var shareOneTime by remember { mutableStateOf(false) }
@@ -125,6 +128,7 @@ fun VaultItemScreen(
             Column(Modifier.weight(1f)) {
                 Text(current.item_type.uppercase(), style = MaterialTheme.typography.labelMedium, color = VaultGold)
                 Text(current.name, style = MaterialTheme.typography.headlineMedium, color = HubText)
+                FamilyShareBadge(current.shared_from, current.shared_with, current.is_owned)
             }
             IconButton(onClick = {
                 scope.launch {
@@ -175,10 +179,16 @@ fun VaultItemScreen(
             CopyRow("Passport", current.passport_number, secret = true)
         }
         Spacer(Modifier.height(16.dp))
-        VaultPrimaryButton("Edit", onEdit)
-        Spacer(Modifier.height(8.dp))
-        if (current.item_type == "login") {
-            VaultOutlinedButton("Share", {
+        if (current.my_permission == "edit") {
+            VaultPrimaryButton("Edit", onEdit)
+            Spacer(Modifier.height(8.dp))
+        }
+        if (current.is_owned) {
+            VaultOutlinedButton("Share with family", { showFamilyShare = true })
+            Spacer(Modifier.height(8.dp))
+        }
+        if (current.item_type == "login" && current.is_owned) {
+            VaultOutlinedButton("Share link", {
                 sharePin = ""
                 shareHours = "48"
                 shareOneTime = false
@@ -192,14 +202,16 @@ fun VaultItemScreen(
             })
             Spacer(Modifier.height(8.dp))
         }
-        VaultOutlinedButton("Send a copy", onSend)
-        Spacer(Modifier.height(8.dp))
-        VaultOutlinedButton("Move to trash", {
-            scope.launch {
-                runCatching { repository.trashVaultItem(itemId) }
-                onBack()
-            }
-        }, color = StampRed)
+        if (current.is_owned) {
+            VaultOutlinedButton("Send a copy", onSend)
+            Spacer(Modifier.height(8.dp))
+            VaultOutlinedButton("Move to trash", {
+                scope.launch {
+                    runCatching { repository.trashVaultItem(itemId) }
+                    onBack()
+                }
+            }, color = StampRed)
+        }
         Spacer(Modifier.height(24.dp))
         Text("ITEM HISTORY", style = MaterialTheme.typography.labelMedium, color = VaultGold)
         Spacer(Modifier.height(8.dp))
@@ -219,6 +231,17 @@ fun VaultItemScreen(
             }
         }
         Spacer(Modifier.height(24.dp))
+    }
+
+    if (showFamilyShare && item?.is_owned == true) {
+        FamilyShareDialog(
+            repository = repository,
+            resourceType = "password",
+            resourceId = itemId,
+            sharedWith = item?.shared_with.orEmpty(),
+            onDismiss = { showFamilyShare = false },
+            onChanged = { load() },
+        )
     }
 
     if (showShare && item?.item_type == "login") {

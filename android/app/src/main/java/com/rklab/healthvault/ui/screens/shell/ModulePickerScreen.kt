@@ -108,6 +108,7 @@ private val ChipShape = RoundedCornerShape(20.dp)
 @Composable
 fun ModulePickerScreen(
     repository: HealthVaultRepository,
+    onFamily: () -> Unit = {},
     onHealth: () -> Unit,
     onPasswords: () -> Unit,
     onFinance: () -> Unit,
@@ -168,6 +169,46 @@ fun ModulePickerScreen(
                 letterSpacing = 1.2.sp,
                 modifier = Modifier.padding(start = 2.dp, bottom = 10.dp)
             )
+            if (state.moduleOn("family")) HubTile(
+                glow = HubAmber,
+                onClick = onFamily,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                contentDescription = "Open Family Vault"
+            ) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    TileIcon(Icons.Outlined.Person, HubAmber)
+                    Text(
+                        "Household",
+                        color = HubAmber,
+                        fontFamily = MonoFont,
+                        fontSize = 9.sp,
+                        modifier = Modifier
+                            .clip(ChipShape)
+                            .background(HubAmber.copy(alpha = 0.12f))
+                            .border(1.dp, HubAmber.copy(alpha = 0.25f), ChipShape)
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+                Column {
+                    Text("Family Vault", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        "Members, relationships, and private shares",
+                        color = HubTextDim,
+                        fontSize = 11.5.sp,
+                        lineHeight = 16.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (state.moduleOn("family") && state.moduleOn("health")) Spacer(Modifier.height(12.dp))
             if (state.moduleOn("health")) HubTile(
                 glow = HubTeal,
                 onClick = onHealth,

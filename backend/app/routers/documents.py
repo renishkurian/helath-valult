@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas, crypto
 from app.config import settings
-from app.deps import get_current_user, get_owned_person, require_owner, vault_id, apply_person_visibility, require_vault_unlock_if_needed
+from app.deps import get_current_user, get_owned_person, require_owner, require_writer, vault_id, apply_person_visibility, require_vault_unlock_if_needed
+from app import family_access as faccess
 from app.extract import extract_text, parse_lab_readings, enhance_scan, file_sha256
+from sqlalchemy import or_, and_
 
 router = APIRouter(
     prefix="/documents",
@@ -47,10 +49,22 @@ def _to_file_out(f: models.DocumentFile) -> schemas.DocumentFileOut:
     )
 
 
-def _to_out(doc: models.Document, include_text: bool = False, favorite: bool = False) -> schemas.DocumentOut:
+def _to_out(
+    doc: models.Document,
+    include_text: bool = False,
+    favorite: bool = False,
+    *,
+    shared_with: list | None = None,
+    shared_from: dict | None = None,
+    my_permission: str | None = None,
+    is_owned: bool = True,
+    current_user_id: str | None = None,
+) -> schemas.DocumentOut:
     # Determine effective file_type / file_size:
     # Prefer the first DocumentFile row; fall back to legacy columns.
     first_file = doc.files[0] if doc.files else None
+    oid = getattr(doc, "owner_user_id", None)
+    owned = is_owned if current_user_id is None else (oid == current_user_id or (oid is None and is_owned))
     return schemas.DocumentOut(
         id=doc.id,
         person_id=doc.person_id,
@@ -73,7 +87,61 @@ def _to_out(doc: models.Document, include_text: bool = False, favorite: bool = F
         require_2fa=bool(getattr(doc, "require_2fa", False)),
         deleted_at=doc.deleted_at,
         created_at=doc.created_at,
+        owner_user_id=oid,
+        is_owned=owned,
+        my_permission=my_permission or ("edit" if owned else "view"),
+        shared_with=shared_with or [],
+        shared_from=shared_from,
     )
+
+
+def _enrich_docs(db: Session, current_user: models.User, docs: list[models.Document], *, favorites: set[str] | None = None) -> list[schemas.DocumentOut]:
+    favs = favorites or set()
+    share_map = faccess.share_summaries(
+        db,
+        resource_type=models.ShareResourceType.health_document.value,
+        resource_ids=[d.id for d in docs],
+    )
+    shared_to_me = {
+        s.resource_id: s
+        for s in db.query(models.FamilyShare).filter(
+            models.FamilyShare.resource_type == models.ShareResourceType.health_document.value,
+            models.FamilyShare.to_user_id == current_user.id,
+            models.FamilyShare.resource_id.in_([d.id for d in docs] or ["__none__"]),
+        ).all()
+    }
+    from_users = {}
+    for s in shared_to_me.values():
+        if s.from_user_id not in from_users:
+            u = db.query(models.User).filter(models.User.id == s.from_user_id).first()
+            if u:
+                from_users[u.id] = u
+    out = []
+    for d in docs:
+        oid = faccess.item_owner_id(d.owner_user_id, vault_id(current_user))
+        is_owned = oid == current_user.id
+        shared_from = None
+        my_perm = "edit" if is_owned else "view"
+        if not is_owned and d.id in shared_to_me:
+            s = shared_to_me[d.id]
+            my_perm = s.permission
+            fu = from_users.get(s.from_user_id)
+            shared_from = {
+                "user_id": s.from_user_id,
+                "full_name": fu.full_name if fu else "",
+                "email": fu.email if fu else "",
+                "permission": s.permission,
+            }
+        out.append(_to_out(
+            d,
+            favorite=d.id in favs,
+            shared_with=share_map.get(d.id, []) if is_owned else [],
+            shared_from=shared_from,
+            my_permission=my_perm,
+            is_owned=is_owned,
+            current_user_id=current_user.id,
+        ))
+    return out
 
 
 @router.get("", response_model=list[schemas.DocumentOut])
@@ -92,6 +160,20 @@ def list_documents(
     q = db.query(models.Document).join(models.Person).filter(models.Person.user_id == vault_id(current_user))
     q = apply_person_visibility(q, db, current_user)
     q = q.filter(models.Document.deleted_at.is_(None))
+    vid = vault_id(current_user)
+    _, shared_ids = faccess.visible_resource_ids(
+        db, current_user,
+        resource_type=models.ShareResourceType.health_document.value,
+        vault_scope_id=vid,
+    )
+    owned = or_(
+        models.Document.owner_user_id == current_user.id,
+        and_(models.Document.owner_user_id.is_(None), current_user.id == vid),
+    )
+    if shared_ids:
+        q = q.filter(or_(owned, models.Document.id.in_(list(shared_ids))))
+    else:
+        q = q.filter(owned)
     if person_id:
         q = q.filter(models.Document.person_id == person_id)
     if category:
@@ -113,7 +195,8 @@ def list_documents(
     }
     if favorite:
         q = q.filter(models.Document.id.in_(fav_ids or ["__none__"]))
-    return [_to_out(d, favorite=d.id in fav_ids) for d in q.order_by(models.Document.created_at.desc()).all()]
+    rows = q.order_by(models.Document.created_at.desc()).all()
+    return _enrich_docs(db, current_user, rows, favorites=fav_ids)
 
 
 def attach_document_files(
@@ -203,7 +286,7 @@ async def upload_document(
     current_user: models.User = Depends(get_current_user),
 ):
     """Upload a document entry with one or more files (pages, scans, PDFs)."""
-    require_owner(current_user)
+    require_writer(current_user)
     get_owned_person(person_id, db, current_user)
 
     if not files:
@@ -222,6 +305,7 @@ async def upload_document(
 
     doc = models.Document(
         person_id=person_id,
+        owner_user_id=current_user.id,
         category=actual_category,
         custom_category=custom_category,
         title=title,
@@ -289,6 +373,7 @@ def _get_owned_document(
     current_user: models.User,
     *,
     include_deleted: bool = False,
+    need_edit: bool = False,
 ) -> models.Document:
     doc = (
         db.query(models.Document)
@@ -297,6 +382,24 @@ def _get_owned_document(
         .first()
     )
     if not doc or (doc.deleted_at and not include_deleted):
+        raise HTTPException(status_code=404, detail="Document not found")
+    vid = vault_id(current_user)
+    if need_edit:
+        if not faccess.can_edit(
+            db, current_user,
+            resource_type=models.ShareResourceType.health_document.value,
+            resource_id=doc.id,
+            owner_user_id=doc.owner_user_id,
+            vault_scope_id=vid,
+        ):
+            raise HTTPException(status_code=403, detail="View-only share — cannot edit")
+    elif not faccess.can_view(
+        db, current_user,
+        resource_type=models.ShareResourceType.health_document.value,
+        resource_id=doc.id,
+        owner_user_id=doc.owner_user_id,
+        vault_scope_id=vid,
+    ):
         raise HTTPException(status_code=404, detail="Document not found")
     return doc
 
@@ -317,7 +420,7 @@ def list_trash(db: Session = Depends(get_db), current_user: models.User = Depend
 
 @router.post("/trash/empty", status_code=204)
 def empty_trash(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     rows = (
         db.query(models.Document)
         .join(models.Person)
@@ -382,7 +485,7 @@ def recent_documents(db: Session = Depends(get_db), current_user: models.User = 
 
 @router.post("/bulk/delete", status_code=204)
 def bulk_delete(body: schemas.BulkIds, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     for doc_id in body.ids:
         try:
             delete_document(doc_id, db, current_user)
@@ -392,7 +495,7 @@ def bulk_delete(body: schemas.BulkIds, db: Session = Depends(get_db), current_us
 
 @router.post("/bulk/tag", response_model=list[schemas.DocumentOut])
 def bulk_tag(body: schemas.BulkIds, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    require_owner(current_user)
+    require_writer(current_user)
     tagged = []
     extra = (body.tags or "").strip()
     for doc_id in body.ids:
@@ -437,7 +540,10 @@ def get_document(
     db.add(models.RecentOpen(user_id=current_user.id, document_id=doc.id))
     db.commit()
     fav = db.query(models.Favorite).filter(models.Favorite.user_id == current_user.id, models.Favorite.document_id == doc.id).first()
-    return _to_out(doc, include_text=True, favorite=bool(fav))
+    enriched = _enrich_docs(db, current_user, [doc], favorites={doc.id} if fav else set())[0]
+    # Re-attach OCR text for detail views (list omits it).
+    enriched.extracted_text = doc.extracted_text
+    return enriched
 
 
 @router.put("/{document_id}", response_model=schemas.DocumentOut)
@@ -447,8 +553,8 @@ def update_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
-    doc = _get_owned_document(document_id, db, current_user)
+    require_writer(current_user)
+    doc = _get_owned_document(document_id, db, current_user, need_edit=True)
 
     if update_data.title is not None:
         doc.title = update_data.title
@@ -567,7 +673,7 @@ async def replace_document_version(
     """Re-upload a document: archives the current files as a version snapshot, then
     replaces them with the new ones. Old versions stay retrievable via
     GET /{document_id}/versions and /versions/{version_id}/download."""
-    require_owner(current_user)
+    require_writer(current_user)
     doc = _get_owned_document(document_id, db, current_user)
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
@@ -735,7 +841,7 @@ def delete_document(
     current_user: models.User = Depends(get_current_user),
 ):
     """Move a document to trash (soft delete). Files stay until permanent delete."""
-    require_owner(current_user)
+    require_writer(current_user)
     doc = _get_owned_document(document_id, db, current_user)
     doc.deleted_at = datetime.utcnow()
     _log(db, current_user, doc.id, models.AuditAction.delete, detail="trash")
@@ -748,7 +854,7 @@ def restore_document(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     doc = _get_owned_document(document_id, db, current_user, include_deleted=True)
     if not doc.deleted_at:
         raise HTTPException(400, "Document is not in trash")
@@ -764,7 +870,7 @@ def delete_document_forever(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    require_owner(current_user)
+    require_writer(current_user)
     doc = _get_owned_document(document_id, db, current_user, include_deleted=True)
     if not doc.deleted_at:
         raise HTTPException(400, "Move the document to trash first")

@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -57,6 +58,8 @@ import com.rklab.healthvault.data.model.PersonOut
 import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultSendOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
+import com.rklab.healthvault.ui.components.FamilyShareBadge
+import com.rklab.healthvault.ui.components.FamilyShareDialog
 import com.rklab.healthvault.ui.components.vaultFieldColors
 import com.rklab.healthvault.ui.screens.passwords.generateAccessCode
 import com.rklab.healthvault.ui.theme.*
@@ -369,7 +372,12 @@ fun LockerListScreen(
                                             item.folder_name,
                                             item.person_name?.let { niceName(it) },
                                             item.holder_name?.let { niceName(it) },
-                                            item.expiry_date
+                                            item.expiry_date,
+                                            when {
+                                                item.shared_from != null -> "Shared"
+                                                item.shared_with.isNotEmpty() -> "Shared with family"
+                                                else -> null
+                                            }
                                         ).joinToString(" · "),
                                         color = InkSoft,
                                         style = MaterialTheme.typography.bodySmall
@@ -737,6 +745,7 @@ fun LockerItemScreen(
     var previewTitle by remember { mutableStateOf("") }
     var confirmDeleteFile by remember { mutableStateOf<LockerFileOut?>(null) }
     var showShare by remember { mutableStateOf(false) }
+    var showFamilyShare by remember { mutableStateOf(false) }
     var sharePin by remember { mutableStateOf("") }
     var shareHours by remember { mutableStateOf("48") }
     var shareOneTime by remember { mutableStateOf(false) }
@@ -898,6 +907,17 @@ fun LockerItemScreen(
         )
     }
 
+    if (showFamilyShare && item?.is_owned == true) {
+        FamilyShareDialog(
+            repository = repository,
+            resourceType = "locker",
+            resourceId = itemId,
+            sharedWith = item?.shared_with.orEmpty(),
+            onDismiss = { showFamilyShare = false },
+            onChanged = { reload() },
+        )
+    }
+
     if (showShare) {
         val base = repository.getServerUrl()?.trimEnd('/') ?: ""
         val fieldColors = vaultFieldColors()
@@ -1051,24 +1071,32 @@ fun LockerItemScreen(
                 Column(Modifier.weight(1f)) {
                     Text(current.type_label.uppercase(), style = MaterialTheme.typography.labelMedium, color = InkSoft)
                     Text(current.title, style = MaterialTheme.typography.headlineMedium, color = Ink, fontWeight = FontWeight.Bold)
+                    FamilyShareBadge(current.shared_from, current.shared_with, current.is_owned)
                 }
                 Row {
-                    IconButton(onClick = {
-                        sharePin = ""
-                        shareHours = "48"
-                        shareOneTime = false
-                        shareRequireGrant = false
-                        shareEmailOtp = false
-                        shareFilesOnly = false
-                        shareAllowedEmails = ""
-                        shareError = null
-                        shareReady = null
-                        showShare = true
-                    }) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share", tint = VaultTeal)
+                    if (current.is_owned) {
+                        IconButton(onClick = { showFamilyShare = true }) {
+                            Icon(Icons.Filled.Group, contentDescription = "Share with family", tint = VaultTeal)
+                        }
+                        IconButton(onClick = {
+                            sharePin = ""
+                            shareHours = "48"
+                            shareOneTime = false
+                            shareRequireGrant = false
+                            shareEmailOtp = false
+                            shareFilesOnly = false
+                            shareAllowedEmails = ""
+                            shareError = null
+                            shareReady = null
+                            showShare = true
+                        }) {
+                            Icon(Icons.Filled.Share, contentDescription = "Share link", tint = VaultTeal)
+                        }
                     }
-                    IconButton(onClick = { editing = !editing }) {
-                        Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = VaultTeal)
+                    if (current.my_permission == "edit") {
+                        IconButton(onClick = { editing = !editing }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Edit", tint = VaultTeal)
+                        }
                     }
                 }
             }

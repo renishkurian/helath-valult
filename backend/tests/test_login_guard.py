@@ -113,7 +113,7 @@ def test_successful_html_login_is_logged():
         follow_redirects=True,
     )
     assert r.status_code == 200
-    assert "Your five vaults" in r.text
+    assert "Your vaults" in r.text
     db = SessionLocal()
     try:
         row = db.query(models.LoginAttempt).filter(

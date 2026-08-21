@@ -1,23 +1,28 @@
 {% extends "base.html" %}
-{% block title %}Family{% endblock %}
+{% block title %}Family Vault{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <div class="eyebrow">
       <a href="/admin/modules">All modules</a>
       <i class="bi bi-chevron-right"></i>
-      Health Vault
+      Family Vault
     </div>
     <h1 class="page-title">Household</h1>
-    <p class="page-lead">Everyone you keep records for. Open a person to see their cards, files, and care.</p>
+    <p class="page-lead">Add family members, set relationships, and invite logins. Each member keeps their own private entries until they share with you (view or edit).</p>
   </div>
   <div class="page-actions">
     <span class="badge badge-soft" aria-label="{{ people|length }} people">
       <i class="bi bi-people"></i> {{ '%02d'|format(people|length) }}
     </span>
+    {% if is_manager %}
+    <button class="btn btn-ghost" type="button" data-bs-toggle="modal" data-bs-target="#invite-member">
+      <i class="bi bi-person-badge"></i> Invite login
+    </button>
     <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#add-person">
       <i class="bi bi-person-plus"></i> Add someone
     </button>
+    {% endif %}
   </div>
 </div>
 
@@ -29,12 +34,15 @@
       <a class="stretched-link text-body text-decoration-none" href="/admin?person={{ p.id }}">{{ p.name | nice }}</a>
     </h2>
     <p>{{ p.relation | relabel }}</p>
+    {% if p.linked_user_id %}
+    <div class="mt-1"><span class="badge badge-soft"><i class="bi bi-key"></i> Has login</span></div>
+    {% endif %}
     {% if p.blood_group %}
     <div class="mt-2"><span class="badge badge-bad"><i class="bi bi-droplet"></i> {{ p.blood_group }}</span></div>
     {% endif %}
     <div class="portrait-go d-flex align-items-center gap-2 w-100">
-      <span><i class="bi bi-folder2-open"></i> Open file</span>
-      {% if p.relation | enum_value != 'self' %}
+      <span><i class="bi bi-folder2-open"></i> Open health</span>
+      {% if is_manager and p.relation | enum_value != 'self' %}
       <form class="ms-auto position-relative z-2" method="post" action="/admin/people/{{ p.id }}/delete" data-confirm="Remove {{ p.name | nice }}?">
         <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Remove {{ p.name | nice }}" title="Remove {{ p.name | nice }}">
           <i class="bi bi-trash3"></i>
@@ -45,13 +53,41 @@
   </article>
   {% endfor %}
 
+  {% if is_manager %}
   <button class="portrait portrait-add" type="button" data-bs-toggle="modal" data-bs-target="#add-person">
     <span class="plus"><i class="bi bi-plus-lg"></i></span>
     <span>Add someone</span>
     <span class="text-faint">Spouse, child, parent, or other</span>
   </button>
+  {% endif %}
 </div>
 
+{% if is_manager and logins %}
+<section class="mt-5" id="logins">
+  <h2 class="h5 mb-3">Family logins</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+      <tbody>
+        {% for m in logins %}
+        <tr>
+          <td>{{ m.full_name }}</td>
+          <td>{{ m.email }}</td>
+          <td><span class="badge badge-soft">{{ m.role }}</span></td>
+          <td class="text-end">
+            <form method="post" action="/admin/family/members/{{ m.id }}/remove" data-confirm="Remove login for {{ m.full_name }}?">
+              <button class="btn btn-ghost btn-sm text-danger" type="submit">Remove</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+{% if is_manager %}
 <div class="modal fade" id="add-person" tabindex="-1" aria-labelledby="add-person-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -78,16 +114,72 @@
             </div>
             <div class="col-sm-5">
               <label class="form-label" for="fam-blood">Blood group</label>
-              <input class="form-control" id="fam-blood" type="text" name="blood_group" placeholder="Optional">
+              <input class="form-control" id="fam-blood" type="text" name="blood_group" placeholder="O+">
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
-          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save person</button>
+          <button class="btn btn-primary" type="submit">Save</button>
         </div>
       </form>
     </div>
   </div>
 </div>
+
+<div class="modal fade" id="invite-member" tabindex="-1" aria-labelledby="invite-member-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="/admin/family/invite">
+        <div class="modal-header">
+          <span class="card-ico gold"><i class="bi bi-person-badge"></i></span>
+          <h2 class="modal-title" id="invite-member-title">Invite family login</h2>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-faint small mb-3">They sign in with their own account, keep private entries, and only see what you share (or what they share back).</p>
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="inv-name">Full name <span class="req">*</span></label>
+              <input class="form-control" id="inv-name" type="text" name="full_name" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="inv-email">Email <span class="req">*</span></label>
+              <input class="form-control" id="inv-email" type="email" name="email" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="inv-pass">Password <span class="req">*</span></label>
+              <input class="form-control" id="inv-pass" type="password" name="password" minlength="8" required>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="inv-relation">Relation</label>
+              <select class="form-select" id="inv-relation" name="relation">
+                <option value="spouse">Spouse</option>
+                <option value="child">Child</option>
+                <option value="parent">Parent</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="inv-person">Link existing profile</label>
+              <select class="form-select" id="inv-person" name="person_id">
+                <option value="">Create new profile</option>
+                {% for p in people %}
+                {% if p.relation | enum_value != 'self' and not p.linked_user_id %}
+                <option value="{{ p.id }}">{{ p.name | nice }} ({{ p.relation | relabel }})</option>
+                {% endif %}
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Invite</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

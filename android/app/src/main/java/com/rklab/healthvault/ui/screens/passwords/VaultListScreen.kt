@@ -172,9 +172,17 @@ fun VaultListScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(items, key = { it.id }) { item ->
+                        val shareHint = when {
+                            item.shared_from != null -> "Shared · ${item.shared_from.permission}"
+                            item.shared_with.isNotEmpty() -> "Shared with family"
+                            else -> null
+                        }
                         VaultListRow(
                             title = item.name,
-                            subtitle = item.username ?: item.email ?: item.uris.firstOrNull() ?: item.item_type,
+                            subtitle = listOfNotNull(
+                                item.username ?: item.email ?: item.uris.firstOrNull() ?: item.item_type,
+                                shareHint
+                            ).joinToString(" · "),
                             meta = item.item_type,
                             badge = if (item.active_send_count > 0) {
                                 "${item.active_send_count} share${if (item.active_send_count == 1) "" else "s"}"
