@@ -2711,23 +2711,32 @@ def passwords_page(
     active_person = None
     if person:
         active_person = next((p for p in people if p.id == person), None)
-        if active_person and active_person.linked_user_id:
+        if active_person:
+            pid = active_person.id
             lid = active_person.linked_user_id
-            if lid == user.id:
-                items = [i for i in items if getattr(i, "is_owned", True)]
-            else:
+            if lid and lid == user.id:
+                # Self profile: owned items tagged to me, or owned with no profile tag yet
                 items = [
                     i for i in items
-                    if getattr(i, "owner_user_id", None) == lid
+                    if getattr(i, "is_owned", True) and (
+                        getattr(i, "person_id", None) == pid
+                        or not getattr(i, "person_id", None)
+                    )
+                ]
+            elif lid:
+                items = [
+                    i for i in items
+                    if getattr(i, "person_id", None) == pid
+                    or getattr(i, "owner_user_id", None) == lid
                     or (getattr(i, "shared_from", None) or {}).get("user_id") == lid
                     or any(
                         (s.get("user_id") if isinstance(s, dict) else getattr(s, "user_id", None)) == lid
                         for s in (getattr(i, "shared_with", None) or [])
                     )
                 ]
-        elif active_person and not active_person.linked_user_id:
-            # Profile without login — no password ownership to show
-            items = []
+            else:
+                # Profile without login — tag by person_id only (health-vault style)
+                items = [i for i in items if getattr(i, "person_id", None) == pid]
     return templates.TemplateResponse("passwords.html", _pw_ctx(
         request, user, "pw_vault", folders=folders, items=items, people=people,
         active_person_id=active_person.id if active_person else None,
@@ -2780,15 +2789,19 @@ def passwords_add(
         return RedirectResponse("/admin/login", status_code=302)
     uri_list = [u.strip() for u in uris.replace("\n", ",").split(",") if u.strip()]
     owner_user_id = None
-    person_id = (person or "").strip()
+    person_id = (person or "").strip() or None
     if person_id and faccess.is_family_admin(user):
         prof = (
             db.query(models.Person)
             .filter(models.Person.id == person_id, models.Person.user_id == vault_id(user))
             .first()
         )
-        if prof and prof.linked_user_id and prof.linked_user_id != user.id:
+        if not prof:
+            person_id = None
+        elif prof.linked_user_id and prof.linked_user_id != user.id:
             owner_user_id = prof.linked_user_id
+    elif person_id:
+        person_id = None
     create_item(sc.VaultItemIn(
         name=name, item_type=item_type, username=username or None, password=password or None,
         uris=uri_list, totp_secret=totp_secret or None, notes=notes or None,
@@ -2798,6 +2811,7 @@ def passwords_add(
         card_cvv=card_cvv or None, first_name=first_name or None, last_name=last_name or None,
         email=email or None, phone=phone or None,
         owner_user_id=owner_user_id,
+        person_id=person_id,
     ), db=db, current_user=user)
     dest = "/admin/passwords"
     if person_id:
@@ -3367,6 +3381,71 @@ def password_family_share_revoke(
     )
     db.commit()
     return RedirectResponse(f"/admin/passwords/{item_id}", status_code=302)
+
+
+@router.post("/passwords/{item_id}/person")
+def password_assign_person(
+    item_id: str,
+    request: Request,
+    person_id: str = Form(""),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Tag a vault item to a family profile (works without a linked login)."""
+    from urllib.parse import quote
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/passwords", status_code=302)
+    item = (
+        db.query(models.VaultItem)
+        .filter(models.VaultItem.id == item_id, models.VaultItem.user_id == vault_id(user))
+        .first()
+    )
+    if not item:
+        return RedirectResponse("/admin/passwords", status_code=302)
+    if not faccess.can_edit(
+        db, user,
+        resource_type=models.ShareResourceType.password.value,
+        resource_id=item.id,
+        owner_user_id=item.owner_user_id,
+        vault_scope_id=vault_id(user),
+    ):
+        dest = _safe_admin_next(next, f"/admin/passwords/{item_id}")
+        sep = "&" if "?" in dest else "?"
+        return RedirectResponse(f"{dest}{sep}err=profile", status_code=302)
+    want = (person_id or "").strip()
+    label = "Everyone"
+    if want:
+        prof = vault_person(db, user, want)
+        if not prof:
+            dest = _safe_admin_next(next, f"/admin/passwords/{item_id}")
+            sep = "&" if "?" in dest else "?"
+            return RedirectResponse(f"{dest}{sep}err=profile", status_code=302)
+        item.person_id = prof.id
+        label = prof.name
+        # If profile has a login, also move login ownership to them (keep manager access).
+        if prof.linked_user_id and prof.linked_user_id != faccess.item_owner_id(item.owner_user_id, item.user_id):
+            try:
+                faccess.transfer_ownership(
+                    db,
+                    actor=user,
+                    resource_type=models.ShareResourceType.password.value,
+                    resource_id=item.id,
+                    to_user_id=prof.linked_user_id,
+                    keep_access=True,
+                    keep_permission=models.SharePermission.edit.value,
+                )
+            except HTTPException:
+                pass
+    else:
+        item.person_id = None
+    db.commit()
+    dest = _safe_admin_next(next, "/admin/passwords")
+    sep = "&" if "?" in dest else "?"
+    return RedirectResponse(f"{dest}{sep}notice=profile&to={quote(label)}", status_code=302)
 
 
 @router.post("/passwords/{item_id}/transfer")

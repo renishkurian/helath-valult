@@ -371,6 +371,16 @@ def transfer_ownership(
 
     item.owner_user_id = target.id
 
+    # Password vault: also tag the matching family profile when one exists.
+    if resource_type == models.ShareResourceType.password.value and hasattr(item, "person_id"):
+        prof = (
+            db.query(models.Person)
+            .filter(models.Person.user_id == vid, models.Person.linked_user_id == target.id)
+            .first()
+        )
+        if prof:
+            item.person_id = prof.id
+
     shares = (
         db.query(models.FamilyShare)
         .filter(

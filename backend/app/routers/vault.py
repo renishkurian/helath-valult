@@ -137,6 +137,7 @@ def _to_out(
         require_2fa=bool(getattr(item, "require_2fa", False)),
         owner_user_id=getattr(item, "owner_user_id", None) or item.user_id,
         owner_full_name=owner_full_name,
+        person_id=getattr(item, "person_id", None),
         is_owned=is_owned,
         my_permission=my_permission or ("edit" if is_owned else "view"),
         shared_with=shared_with or [],
@@ -2239,6 +2240,11 @@ def list_items(
         u.id: u
         for u in db.query(models.User).filter(models.User.id.in_(owner_ids or ["__none__"])).all()
     }
+    person_ids = {getattr(r, "person_id", None) for r in rows if getattr(r, "person_id", None)}
+    people = {
+        p.id: p
+        for p in db.query(models.Person).filter(models.Person.id.in_(person_ids or ["__none__"])).all()
+    }
 
     out = []
     for r in rows:
@@ -2257,6 +2263,8 @@ def list_items(
                 "permission": s.permission,
             }
         owner = owners.get(oid)
+        person = people.get(getattr(r, "person_id", None))
+        label = (person.name if person and person.name else None) or (owner.full_name if owner else None)
         out.append(_to_out(
             r,
             active_send_count=counts.get(r.id, 0),
@@ -2264,7 +2272,7 @@ def list_items(
             shared_from=shared_from,
             my_permission=my_perm,
             is_owned=is_owned,
-            owner_full_name=(owner.full_name if owner else None),
+            owner_full_name=label,
         ))
     if needle:
         def _match(item: schemas.VaultItemOut) -> bool:
@@ -2301,9 +2309,29 @@ def create_item(
             raise HTTPException(status_code=404, detail="Family member not found")
         owner_id = target.id
         assigned_other = True
+    person_id = None
+    want_person = (body.person_id or "").strip() or None
+    if want_person:
+        if not faccess.is_family_admin(current_user):
+            raise HTTPException(status_code=403, detail="Only the family manager can tag a profile")
+        prof = (
+            db.query(models.Person)
+            .filter(models.Person.id == want_person, models.Person.user_id == vault_id(current_user))
+            .first()
+        )
+        if not prof:
+            raise HTTPException(status_code=404, detail="Profile not found")
+        person_id = prof.id
+        # If profile has a login and admin didn't pick owner explicitly, create under that login.
+        if not want_owner and prof.linked_user_id and prof.linked_user_id != current_user.id:
+            target = faccess.same_family(db, current_user, prof.linked_user_id)
+            if target:
+                owner_id = target.id
+                assigned_other = True
     item = models.VaultItem(
         user_id=vault_id(current_user),
         owner_user_id=owner_id,
+        person_id=person_id,
         folder_id=folder_id,
         item_type=item_type,
         name=body.name.strip(),
@@ -2353,11 +2381,13 @@ def create_item(
     db.commit()
     db.refresh(item)
     owner = db.query(models.User).filter(models.User.id == owner_id).first()
+    person = db.query(models.Person).filter(models.Person.id == person_id).first() if person_id else None
+    label = (person.name if person and person.name else None) or (owner.full_name if owner else None)
     return _to_out(
         item,
         is_owned=(owner_id == current_user.id),
         my_permission="edit",
-        owner_full_name=(owner.full_name if owner else None),
+        owner_full_name=label,
     )
 
 
@@ -2404,6 +2434,10 @@ def get_item(
                 "permission": share.permission,
             }
     owner = db.query(models.User).filter(models.User.id == oid).first()
+    person = None
+    if getattr(item, "person_id", None):
+        person = db.query(models.Person).filter(models.Person.id == item.person_id).first()
+    label = (person.name if person and person.name else None) or (owner.full_name if owner else None)
     return _to_out(
         item,
         active_send_count=counts.get(item.id, 0),
@@ -2411,7 +2445,7 @@ def get_item(
         shared_from=shared_from,
         my_permission=my_perm,
         is_owned=is_owned,
-        owner_full_name=(owner.full_name if owner else None),
+        owner_full_name=label,
     )
 
 

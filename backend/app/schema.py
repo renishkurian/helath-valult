@@ -67,6 +67,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "vault_items": [
         ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
         ("owner_user_id", "VARCHAR(32)"),
+        ("person_id", "VARCHAR(32)"),
     ],
     "finance_accounts": [
         ("credit_limit", "NUMERIC(14,2)"),
@@ -181,6 +182,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_locker_folders_user_id", "locker_folders", "user_id"),
     ("ix_people_linked_user_id", "people", "linked_user_id"),
     ("ix_vault_items_owner_user_id", "vault_items", "owner_user_id"),
+    ("ix_vault_items_person_id", "vault_items", "person_id"),
     ("ix_locker_items_owner_user_id", "locker_items", "owner_user_id"),
     ("ix_documents_owner_user_id", "documents", "owner_user_id"),
     ("ix_family_shares_vault_id", "family_shares", "vault_id"),

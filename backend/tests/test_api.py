@@ -447,6 +447,43 @@ def test_family_admin_can_create_item_for_member():
     assert mine[0]["is_owned"] is False
 
 
+def test_create_vault_item_tagged_to_profile_without_login():
+    """Family profiles work like health vault — no login required to tag an item."""
+    owner = _register("profiletag@example.com", "password123", "Renish Manager")
+    oh = _auth_headers(owner["access_token"])
+    deepthi = client.post(
+        "/people",
+        json={"name": "Deepthi Profile", "relation": "spouse"},
+        headers=oh,
+    )
+    assert deepthi.status_code == 201, deepthi.text
+    person_id = deepthi.json()["id"]
+    assert not deepthi.json().get("linked_user_id")
+
+    created = client.post(
+        "/vault/items",
+        json={
+            "name": "Saudia under Deepthi",
+            "item_type": "login",
+            "username": "saudia",
+            "password": "secret",
+            "person_id": person_id,
+        },
+        headers=oh,
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["person_id"] == person_id
+    assert body["owner_full_name"] == "Deepthi Profile"
+    # Still owned by the manager until a login exists
+    assert body["is_owned"] is True
+
+    listed = client.get("/vault/items", headers=oh).json()
+    hit = next(i for i in listed if i["id"] == body["id"])
+    assert hit["person_id"] == person_id
+    assert hit["owner_full_name"] == "Deepthi Profile"
+
+
 def test_share_targets_include_person_linked_member():
     """Members linked via Person show up even if vault_owner_id was cleared."""
     owner = _register("linkowner@example.com", "password123", "Link Owner")

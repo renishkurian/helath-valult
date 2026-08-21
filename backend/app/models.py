@@ -553,6 +553,8 @@ class VaultItem(Base):
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     # Who owns this item. Private until shared. Defaults to user_id for legacy rows.
     owner_user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
+    # Family profile tag (works even before that person has a login), same idea as locker/docs.
+    person_id = Column(String(32), ForeignKey("people.id"), nullable=True, index=True)
     folder_id = Column(String(32), ForeignKey("vault_folders.id"), nullable=True, index=True)
     item_type = Column(String(20), default=VaultItemType.login.value, nullable=False, index=True)
     name = Column(String(255), nullable=False, index=True)
