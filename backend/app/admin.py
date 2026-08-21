@@ -3404,7 +3404,7 @@ def password_transfer(
             status_code=302,
         )
     return RedirectResponse(
-        f"/admin/passwords?notice=transferred&to={quote(new_owner.full_name)}",
+        f"/admin/passwords?notice=owner&to={quote(new_owner.full_name)}",
         status_code=302,
     )
 
