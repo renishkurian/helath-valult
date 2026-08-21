@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 import math
 import secrets
 import string
@@ -455,6 +457,7 @@ def _active_send_counts(user_id: str, db: Session) -> dict[str, int]:
 def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
     data = _payload(row)
     item_id = data.get("item_id") if isinstance(data.get("item_id"), str) else None
+    bind = bool(getattr(row, "bind_first_browser", False) or data.get("bind_first_browser"))
     return schemas.VaultSendOut(
         id=row.id,
         token=row.token,
@@ -469,7 +472,7 @@ def _send_out(row: models.VaultSend) -> schemas.VaultSendOut:
         requires_totp=bool(data.get("require_totp") and data.get("totp_secret")),
         requires_grant=bool(data.get("require_grant")),
         requires_email_otp=bool(data.get("require_email_otp")),
-        bind_first_browser=bool(data.get("bind_first_browser")),
+        bind_first_browser=bind,
         browser_bound=bool(row.bound_browser_hash),
         created_at=row.created_at,
     )
@@ -694,6 +697,7 @@ def create_send(
         pin_hash=security.hash_password(pin) if pin else None,
         expires_at=datetime.utcnow() + timedelta(hours=body.expires_in_hours),
         max_views=body.max_views,
+        bind_first_browser=bool(body.bind_first_browser),
     )
     db.add(row)
     db.commit()
@@ -796,7 +800,9 @@ def _send_req_cookie_name(token: str) -> str:
 
 def _browser_bind_cookie_name(token: str) -> str:
     # vsbb_ = first-browser lock cookie (lives until send expiry).
-    return f"vsbb_{token[:32]}"
+    # Cookie names must be ASCII token-safe; strip urlsafe junk just in case.
+    safe = "".join(ch for ch in (token or "")[:32] if ch.isalnum() or ch in "-_")
+    return f"vsbb_{safe or 'x'}"
 
 
 def _attach_browser_bind_cookie(
@@ -806,13 +812,18 @@ def _attach_browser_bind_cookie(
     cookie_val: str,
 ) -> None:
     max_age = max(60, int((row.expires_at - datetime.utcnow()).total_seconds())) if row.expires_at else 48 * 3600
+    # Explicit path=/ so the cookie survives /v/ → /vault/public/... navigations.
+    secure = request.url.scheme == "https" or (
+        (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower() == "https"
+    )
     resp.set_cookie(
         key=_browser_bind_cookie_name(row.token),
         value=cookie_val,
         httponly=True,
         samesite="lax",
         max_age=max_age,
-        secure=request.url.scheme == "https",
+        path="/",
+        secure=secure,
     )
 
 
@@ -846,6 +857,31 @@ def _log_browser_blocked(row: models.VaultSend, request: Request, db: Session) -
     return req
 
 
+def _browser_bind_enabled(row: models.VaultSend, data: dict) -> bool:
+    return bool(getattr(row, "bind_first_browser", False) or data.get("bind_first_browser"))
+
+
+def _ua_bind_fingerprint(request: Request) -> str:
+    """Stable-enough browser fingerprint for re-issuing a lost bind cookie."""
+    ua = (request.headers.get("user-agent") or "").strip().lower()
+    ip = (_client_ip(request) or "").strip()
+    return hashlib.sha256(f"{ua}|{ip}".encode("utf-8", errors="ignore")).hexdigest()[:32]
+
+
+def _browser_cookie_hmac(secret: str) -> str:
+    key = (settings.JWT_SECRET or settings.MASTER_KEY or "vault").encode("utf-8")
+    return hmac.new(key, secret.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _parse_bound_browser(raw: str) -> tuple[str | None, str | None]:
+    """Return (cookie_hmac, ua_hash) for v2 bindings; (None, None) for legacy."""
+    text = (raw or "").strip()
+    if text.startswith("v2.") and text.count(".") >= 2:
+        _prefix, cookie_h, ua_h = text.split(".", 2)
+        return cookie_h or None, ua_h or None
+    return None, None
+
+
 def _browser_bind_gate(
     request: Request,
     row: models.VaultSend,
@@ -859,19 +895,39 @@ def _browser_bind_gate(
       - ("ok", secret) when this browser just claimed the bind (set cookie on response)
       - ("blocked", None) when another browser already owns the link
     """
-    if not data.get("bind_first_browser"):
+    if not _browser_bind_enabled(row, data):
         return "ok", None
     cookie_name = _browser_bind_cookie_name(row.token)
     cookie_val = (request.cookies.get(cookie_name) or "").strip()
+    ua_fp = _ua_bind_fingerprint(request)
     current_hash = (row.bound_browser_hash or "").strip()
     if current_hash:
-        if cookie_val and security.verify_password(cookie_val, current_hash):
+        cookie_hmac, ua_hash = _parse_bound_browser(current_hash)
+        cookie_ok = False
+        ua_ok = False
+        if cookie_hmac is not None:
+            if cookie_val and hmac.compare_digest(_browser_cookie_hmac(cookie_val), cookie_hmac):
+                cookie_ok = True
+            if ua_hash and hmac.compare_digest(ua_fp, ua_hash):
+                ua_ok = True
+        else:
+            # Legacy bcrypt-of-cookie binding
+            if cookie_val and security.verify_password(cookie_val, current_hash):
+                cookie_ok = True
+        if cookie_ok:
             return "ok", None
+        if ua_ok:
+            # Same browser lost its cookie (ITP / private mode) — re-issue.
+            secret = secrets.token_urlsafe(32)
+            row.bound_browser_hash = f"v2.{_browser_cookie_hmac(secret)}.{ua_fp}"
+            db.add(row)
+            db.commit()
+            return "ok", secret
         _log_browser_blocked(row, request, db)
         return "blocked", None
     # First browser claims this send until expiry.
     secret = secrets.token_urlsafe(32)
-    hashed = security.hash_password(secret)
+    hashed = f"v2.{_browser_cookie_hmac(secret)}.{ua_fp}"
     claimed = (
         db.query(models.VaultSend)
         .filter(
@@ -887,7 +943,10 @@ def _browser_bind_gate(
     # Lost a race to another browser — re-check.
     db.refresh(row)
     current_hash = (row.bound_browser_hash or "").strip()
-    if current_hash and cookie_val and security.verify_password(cookie_val, current_hash):
+    cookie_hmac, ua_hash = _parse_bound_browser(current_hash)
+    if cookie_hmac and cookie_val and hmac.compare_digest(_browser_cookie_hmac(cookie_val), cookie_hmac):
+        return "ok", None
+    if ua_hash and hmac.compare_digest(ua_fp, ua_hash):
         return "ok", None
     _log_browser_blocked(row, request, db)
     return "blocked", None

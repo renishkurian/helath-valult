@@ -131,8 +131,36 @@ def short_pack(token: str):
 
 
 @app.get("/v/{token}")
-def short_vault_send(token: str):
-    return RedirectResponse(f"/vault/public/{token}/page", status_code=302)
+def short_vault_send(
+    token: str,
+    request: Request,
+    pin: str | None = None,
+    totp: str | None = None,
+    req_ok: str | None = None,
+    req_err: str | None = None,
+    otp_sent: str | None = None,
+    otp_err: str | None = None,
+    otp_email: str | None = None,
+):
+    # Serve the public page directly (no redirect) so the first-browser bind
+    # cookie is set on the URL recipients actually open.
+    from app.database import get_db
+    db = SessionLocal()
+    try:
+        return vault.public_send_page(
+            token,
+            request,
+            pin=pin,
+            totp=totp,
+            req_ok=req_ok,
+            req_err=req_err,
+            otp_sent=otp_sent,
+            otp_err=otp_err,
+            otp_email=otp_email,
+            db=db,
+        )
+    finally:
+        db.close()
 
 
 @app.get("/v/{token}/qr")

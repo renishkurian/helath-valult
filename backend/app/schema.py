@@ -107,6 +107,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "vault_sends": [
         ("bound_browser_hash", "VARCHAR(255)"),
+        ("bind_first_browser", "BOOLEAN NOT NULL DEFAULT 0"),
     ],
     "expense_analyser_connections": [
         ("enabled", "BOOLEAN NOT NULL DEFAULT 0"),

@@ -625,7 +625,9 @@ class VaultSend(Base):
     max_views = Column(Integer, nullable=True)
     view_count = Column(Integer, default=0, nullable=False)
     revoked = Column(Boolean, default=False, nullable=False)
-    # Hash of first browser cookie when bind_first_browser is enabled (payload flag).
+    # Denormalized: also stored in payload_enc for older rows.
+    bind_first_browser = Column(Boolean, default=False, nullable=False)
+    # v2.{cookie_hmac}.{ua_hash} or legacy bcrypt of cookie secret.
     bound_browser_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
