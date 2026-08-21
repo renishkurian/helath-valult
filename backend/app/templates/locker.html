@@ -242,43 +242,9 @@
           </td>
           <td class="mono text-muted">{{ item.file_count }}</td>
           <td class="table-actions">
-            {% if item.require_2fa %}
-            <a class="btn btn-primary btn-sm"
-               href="/admin/security/unlock?item_kind=locker&amp;item_id={{ item.id }}&amp;next=/admin/locker/{{ item.id }}">
-              <i class="bi bi-shield-lock"></i> Edit
-            </a>
-            <form method="post" action="/admin/locker/{{ item.id }}/lock" class="d-inline">
-              <input type="hidden" name="next" value="{{ request.url }}">
-              <input type="hidden" name="enabled" value="0">
-              <button class="btn btn-outline-light btn-sm" type="submit" title="Remove 2FA lock">
-                <i class="bi bi-unlock"></i> Unlock
-              </button>
-            </form>
-            <a class="btn btn-outline-light btn-sm"
-               href="/admin/security/unlock?item_kind=locker&amp;item_id={{ item.id }}&amp;next=/admin/locker/{{ item.id }}">
-              <i class="bi bi-share"></i> Share
-            </a>
-            <a class="btn btn-outline-light btn-sm"
-               href="/admin/security/unlock?item_kind=locker&amp;item_id={{ item.id }}&amp;next=/admin/locker/{{ item.id }}/view">
-              <i class="bi bi-eye"></i> Open
-            </a>
-            {% else %}
-            <a class="btn btn-primary btn-sm" href="/admin/locker/{{ item.id }}">
-              <i class="bi bi-pencil"></i> Edit
-            </a>
-            <form method="post" action="/admin/locker/{{ item.id }}/lock" class="d-inline">
-              <input type="hidden" name="next" value="{{ request.url }}">
-              <input type="hidden" name="enabled" value="1">
-              <button class="btn btn-outline-light btn-sm" type="submit"
-                      {% if not can_use_item_locks %}disabled
-                      title="Turn on authenticator or email OTP in Security first"{% else %}
-                      title="Lock this document with 2FA"{% endif %}>
-                <i class="bi bi-lock"></i> Lock
-              </button>
-            </form>
-            <a class="btn btn-outline-light btn-sm" href="/admin/locker/{{ item.id }}#share-locker-modal">
-              <i class="bi bi-share"></i> Share
-            </a>
+            {% set edit_href = '/admin/security/unlock?item_kind=locker&item_id=' ~ item.id ~ '&next=/admin/locker/' ~ item.id if item.require_2fa else '/admin/locker/' ~ item.id %}
+            {% set share_href = '/admin/security/unlock?item_kind=locker&item_id=' ~ item.id ~ '&next=/admin/locker/' ~ item.id if item.require_2fa else '/admin/locker/' ~ item.id ~ '#share-locker-modal' %}
+            {% set open_href = '/admin/security/unlock?item_kind=locker&item_id=' ~ item.id ~ '&next=/admin/locker/' ~ item.id ~ '/view' if item.require_2fa else '/admin/locker/' ~ item.id ~ '/view' %}
             {% set ft = (item.file_type or '')|lower %}
             {% if ft == 'application/pdf' %}
               {% set open_kind = 'pdf' %}
@@ -287,12 +253,36 @@
             {% else %}
               {% set open_kind = 'image' %}
             {% endif %}
-            <a class="btn btn-outline-light btn-sm js-photo"
-               href="/admin/locker/{{ item.id }}/view"
-               data-kind="{{ open_kind }}">
-              <i class="bi bi-eye"></i> Open
-            </a>
-            {% endif %}
+            <div class="hv-actions lk-row-actions">
+              <a class="hv-icon-btn{% if item.require_2fa %} locked{% endif %}" href="{{ edit_href }}"
+                 title="{% if item.require_2fa %}Unlock to edit{% else %}Edit{% endif %}" aria-label="Edit">
+                <i class="bi bi-{% if item.require_2fa %}shield-lock{% else %}pencil{% endif %}"></i>
+              </a>
+              <form method="post" action="/admin/locker/{{ item.id }}/lock">
+                <input type="hidden" name="next" value="{{ request.url }}">
+                <input type="hidden" name="enabled" value="{{ '0' if item.require_2fa else '1' }}">
+                <button class="hv-icon-btn" type="submit"
+                        {% if not item.require_2fa and not can_use_item_locks %}disabled
+                        title="Turn on authenticator or email OTP in Security first"{% else %}
+                        title="{% if item.require_2fa %}Remove 2FA lock{% else %}Lock with 2FA{% endif %}"{% endif %}
+                        aria-label="{% if item.require_2fa %}Remove 2FA lock{% else %}Lock with 2FA{% endif %}">
+                  <i class="bi bi-{% if item.require_2fa %}unlock{% else %}lock{% endif %}"></i>
+                </button>
+              </form>
+              <a class="hv-icon-btn" href="{{ share_href }}" title="Share" aria-label="Share">
+                <i class="bi bi-share"></i>
+              </a>
+              {% if item.require_2fa %}
+              <a class="hv-icon-btn" href="{{ open_href }}" title="Open" aria-label="Open">
+                <i class="bi bi-eye"></i>
+              </a>
+              {% else %}
+              <a class="hv-icon-btn js-photo" href="{{ open_href }}" data-kind="{{ open_kind }}"
+                 title="Open" aria-label="Open">
+                <i class="bi bi-eye"></i>
+              </a>
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% else %}
