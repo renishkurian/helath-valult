@@ -347,6 +347,96 @@ def test_member_password_private_until_shared():
     assert shared[0]["shared_from"]["full_name"] == "Kid Member"
 
 
+def test_transfer_password_ownership_to_family_member():
+    owner = _register("xferowner@example.com", "password123", "Renish Owner")
+    oh = _auth_headers(owner["access_token"])
+    inv = client.post(
+        "/family/invite",
+        json={
+            "email": "deepthi.xfer@example.com",
+            "password": "password123",
+            "full_name": "Deepthi Member",
+            "relation": "spouse",
+        },
+        headers=oh,
+    )
+    assert inv.status_code == 201, inv.text
+    login = client.post("/auth/login", data={"username": "deepthi.xfer@example.com", "password": "password123"})
+    assert login.status_code == 200
+    mh = _auth_headers(login.json()["access_token"])
+    deepthi_id = client.get("/auth/me", headers=mh).json()["id"]
+
+    created = client.post(
+        "/vault/items",
+        json={"name": "Saudia", "item_type": "login", "username": "saudia", "password": "secret"},
+        headers=oh,
+    )
+    assert created.status_code == 201, created.text
+    item_id = created.json()["id"]
+    assert created.json()["is_owned"] is True
+
+    # Deepthi cannot see it yet
+    assert all(i["id"] != item_id for i in client.get("/vault/items", headers=mh).json())
+
+    xfer = client.post(
+        f"/family/transfer/password/{item_id}",
+        json={"to_user_id": deepthi_id, "keep_access": True, "keep_permission": "view"},
+        headers=oh,
+    )
+    assert xfer.status_code == 200, xfer.text
+    assert xfer.json()["owner_user_id"] == deepthi_id
+
+    deepthi_items = client.get("/vault/items", headers=mh).json()
+    owned = [i for i in deepthi_items if i["id"] == item_id]
+    assert len(owned) == 1
+    assert owned[0]["is_owned"] is True
+    assert owned[0]["name"] == "Saudia"
+
+    renish_items = client.get("/vault/items", headers=oh).json()
+    shared = [i for i in renish_items if i["id"] == item_id]
+    assert len(shared) == 1
+    assert shared[0]["is_owned"] is False
+    assert shared[0]["my_permission"] == "view"
+    assert shared[0]["shared_from"]["full_name"] == "Deepthi Member"
+
+
+def test_share_targets_include_person_linked_member():
+    """Members linked via Person show up even if vault_owner_id was cleared."""
+    owner = _register("linkowner@example.com", "password123", "Link Owner")
+    oh = _auth_headers(owner["access_token"])
+    inv = client.post(
+        "/family/invite",
+        json={
+            "email": "linked.member@example.com",
+            "password": "password123",
+            "full_name": "Linked Member",
+            "relation": "spouse",
+        },
+        headers=oh,
+    )
+    assert inv.status_code == 201, inv.text
+    login = client.post("/auth/login", data={"username": "linked.member@example.com", "password": "password123"})
+    mh = _auth_headers(login.json()["access_token"])
+    member_id = client.get("/auth/me", headers=mh).json()["id"]
+
+    # Simulate bad data: clear vault_owner_id on the member.
+    from app.database import SessionLocal
+    from app import models
+    db = SessionLocal()
+    try:
+        row = db.query(models.User).filter(models.User.id == member_id).first()
+        assert row is not None
+        row.vault_owner_id = None
+        db.commit()
+    finally:
+        db.close()
+
+    targets = client.get("/family/share-targets", headers=oh)
+    assert targets.status_code == 200, targets.text
+    ids = [t["user_id"] for t in targets.json()]
+    assert member_id in ids
+
+
 def test_ocr_text_is_searchable_and_labs_parse():
     data = _register("ocr@example.com", "password123", "Ocr User")
     headers = _auth_headers(data["access_token"])

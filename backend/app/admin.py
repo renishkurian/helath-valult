@@ -3275,14 +3275,7 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
 
 def _family_share_targets(db, user):
     from app import family_access as faccess
-    vid = vault_id(user)
-    rows = (
-        db.query(models.User)
-        .filter(models.User.id != user.id)
-        .order_by(models.User.full_name.asc())
-        .all()
-    )
-    return [u for u in rows if vault_id(u) == vid]
+    return faccess.share_target_users(db, user)
 
 
 @router.post("/passwords/{item_id}/family-share")
@@ -3353,6 +3346,47 @@ def password_family_share_revoke(
     )
     db.commit()
     return RedirectResponse(f"/admin/passwords/{item_id}", status_code=302)
+
+
+@router.post("/passwords/{item_id}/transfer")
+def password_transfer(
+    item_id: str,
+    request: Request,
+    to_user_id: str = Form(...),
+    keep_access: Optional[str] = Form(None),
+    keep_permission: str = Form("view"),
+    db: Session = Depends(get_db),
+):
+    """Move ownership of a vault item to another family login (e.g. Renish → Deepthi)."""
+    from urllib.parse import quote
+    from app import family_access as faccess
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    keep = keep_access is not None
+    try:
+        new_owner = faccess.transfer_ownership(
+            db,
+            actor=user,
+            resource_type=models.ShareResourceType.password.value,
+            resource_id=item_id,
+            to_user_id=to_user_id,
+            keep_access=keep,
+            keep_permission=keep_permission or "view",
+        )
+        db.commit()
+    except HTTPException as exc:
+        detail = quote(str(exc.detail)) if exc.detail else "transfer"
+        return RedirectResponse(f"/admin/passwords/{item_id}?err={detail}", status_code=302)
+    if keep:
+        return RedirectResponse(
+            f"/admin/passwords/{item_id}?transferred={quote(new_owner.full_name)}",
+            status_code=302,
+        )
+    return RedirectResponse(
+        f"/admin/passwords?notice=transferred&to={quote(new_owner.full_name)}",
+        status_code=302,
+    )
 
 
 @router.post("/passwords/{item_id}/lock")

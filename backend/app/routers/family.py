@@ -44,6 +44,12 @@ class ShareIn(BaseModel):
     permission: str = "view"  # view | edit
 
 
+class TransferIn(BaseModel):
+    to_user_id: str
+    keep_access: bool = True
+    keep_permission: str = "view"  # view | edit when keep_access
+
+
 class ShareOut(BaseModel):
     id: str
     resource_type: str
@@ -106,24 +112,10 @@ def share_targets(
     current_user: models.User = Depends(get_current_user),
 ):
     """Other logins in this family you can share an entry with."""
-    vid = vault_id(current_user)
-    rows = (
-        db.query(models.User)
-        .filter(
-            models.User.id != current_user.id,
-            # same vault: owner id matches, or they are the vault owner
-            (
-                (models.User.vault_owner_id == vid)
-                | (models.User.id == vid)
-            ),
-        )
-        .order_by(models.User.full_name.asc())
-        .all()
-    )
+    rows = faccess.share_target_users(db, current_user)
     return [
         ShareTargetOut(user_id=u.id, full_name=u.full_name, email=u.email, role=u.role)
         for u in rows
-        if vault_id(u) == vid
     ]
 
 
@@ -304,6 +296,36 @@ def delete_share(
         to_user_id=to_user_id,
     )
     db.commit()
+
+
+@router.post("/transfer/{resource_type}/{resource_id}")
+def transfer_resource(
+    resource_type: str,
+    resource_id: str,
+    body: TransferIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Transfer ownership of a password / locker / health document to another family login."""
+    faccess.require_family_writer(current_user)
+    new_owner = faccess.transfer_ownership(
+        db,
+        actor=current_user,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        to_user_id=body.to_user_id,
+        keep_access=body.keep_access,
+        keep_permission=body.keep_permission,
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "resource_type": resource_type,
+        "resource_id": resource_id,
+        "owner_user_id": new_owner.id,
+        "owner_full_name": new_owner.full_name,
+        "kept_access": body.keep_access,
+    }
 
 
 def _resolve_resource_owner(
