@@ -45,6 +45,9 @@ class UserOut(BaseModel):
     totp_enabled: bool = False
     app_approve: bool = False
     show_ask_ai_fab: bool = True
+    lock_passwords: bool = False
+    lock_locker: bool = False
+    lock_health: bool = False
     enabled_modules: Optional[List[str]] = None
 
     class Config:
@@ -62,6 +65,36 @@ class AppApproveIn(BaseModel):
 
 class AskAiFabIn(BaseModel):
     enabled: bool
+
+
+class VaultLockIn(BaseModel):
+    module: str  # passwords | locker | health
+    enabled: bool
+    code: Optional[str] = None
+
+
+class VaultUnlockIn(BaseModel):
+    module: str
+    code: str
+    method: str = "auto"  # auto | totp | email
+
+
+class VaultUnlockEmailIn(BaseModel):
+    module: str
+
+
+class VaultUnlockOut(BaseModel):
+    module: str
+    unlock_token: str
+    expires_in_seconds: int
+
+
+class VaultLockStatusOut(BaseModel):
+    passwords: bool = False
+    locker: bool = False
+    health: bool = False
+    methods: dict = {}
+    unlock_minutes: int = 15
 
 
 class RefreshIn(BaseModel):

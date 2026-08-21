@@ -22,27 +22,30 @@ ensure_superadmin()
 
 
 class ModuleAccessMiddleware(BaseHTTPMiddleware):
-    """Block /admin module pages when Super Admin disabled them for this vault.
-
-    Must sit inside SessionMiddleware so ``request.session`` is available.
+    """Block /admin module pages when Super Admin disabled them for this vault,
+    and require vault 2FA unlock for Password / Document / Health areas.
     """
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path.startswith("/admin"):
             from app import modules as mod
+            from app import vault_lock as vlock
 
-            key = mod.admin_module_for_path(path)
-            if key:
-                user_id = request.session.get("user_id")
-                if user_id:
-                    db = SessionLocal()
-                    try:
-                        user = db.query(models.User).filter(models.User.id == user_id).first()
-                        if user and not mod.is_enabled(db, user, key):
+            user_id = request.session.get("user_id")
+            if user_id:
+                db = SessionLocal()
+                try:
+                    user = db.query(models.User).filter(models.User.id == user_id).first()
+                    if user:
+                        key = mod.admin_module_for_path(path)
+                        if key and not mod.is_enabled(db, user, key):
                             return RedirectResponse("/admin/modules", status_code=302)
-                    finally:
-                        db.close()
+                        locked = vlock.gate_admin_request(request, user)
+                        if locked is not None:
+                            return locked
+                finally:
+                    db.close()
         return await call_next(request)
 
 

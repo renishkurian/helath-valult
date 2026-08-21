@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
@@ -32,13 +32,18 @@ def require_enabled_module(module_key: str):
     """FastAPI dependency factory: 403 when Super Admin disabled this module for the vault."""
 
     def _dep(
+        request: Request,
         current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db),
     ) -> models.User:
         from app import modules as mod
+        from app import vault_lock as vlock
 
         if not mod.is_enabled(db, current_user, module_key):
             raise HTTPException(status_code=403, detail="This module is disabled for your account")
+        locked_mod = vlock.module_for_api_path(request.url.path)
+        if locked_mod:
+            vlock.require_api_unlock(request, current_user, locked_mod, db)
         return current_user
 
     return _dep
@@ -71,6 +76,20 @@ def get_current_user(
         raise HTTPException(status_code=403, detail="This account is blocked")
     touch_last_seen(user)
     return user
+
+
+def require_vault_unlock_if_needed(
+    request: Request,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> models.User:
+    """For routers that do not use require_enabled_module (e.g. /documents)."""
+    from app import vault_lock as vlock
+
+    locked_mod = vlock.module_for_api_path(request.url.path)
+    if locked_mod:
+        vlock.require_api_unlock(request, current_user, locked_mod, db)
+    return current_user
 
 
 def visible_person_ids(db: Session, user: models.User):

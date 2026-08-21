@@ -6,10 +6,14 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app import models, schemas, crypto
-from app.deps import get_current_user, get_owned_person, require_owner, vault_id
+from app.deps import get_current_user, get_owned_person, require_owner, vault_id, require_vault_unlock_if_needed
 from app.templating import nice_name
 
-router = APIRouter(prefix="/cards", tags=["cards"])
+router = APIRouter(
+    prefix="/cards",
+    tags=["cards"],
+    dependencies=[Depends(require_vault_unlock_if_needed)],
+)
 
 _IMAGE_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"}
 

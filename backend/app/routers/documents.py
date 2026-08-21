@@ -9,10 +9,14 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas, crypto
 from app.config import settings
-from app.deps import get_current_user, get_owned_person, require_owner, vault_id, apply_person_visibility
+from app.deps import get_current_user, get_owned_person, require_owner, vault_id, apply_person_visibility, require_vault_unlock_if_needed
 from app.extract import extract_text, parse_lab_readings, enhance_scan, file_sha256
 
-router = APIRouter(prefix="/documents", tags=["documents"])
+router = APIRouter(
+    prefix="/documents",
+    tags=["documents"],
+    dependencies=[Depends(require_vault_unlock_if_needed)],
+)
 
 
 def _log(db: Session, current_user: models.User, doc_id: Optional[str], action: models.AuditAction, detail: Optional[str] = None):

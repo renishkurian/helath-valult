@@ -27,6 +27,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("card_image_as_background", "BOOLEAN NOT NULL DEFAULT 0"),
         ("show_ask_ai_fab", "BOOLEAN NOT NULL DEFAULT 1"),
         ("storage_quota_bytes", "INTEGER NOT NULL DEFAULT 104857600"),
+        ("lock_passwords", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("lock_locker", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("lock_health", "BOOLEAN NOT NULL DEFAULT 0"),
     ],
     "people": [
         ("allergies", "TEXT"),

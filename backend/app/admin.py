@@ -534,6 +534,8 @@ def login_qr_cancel(request: Request):
 def _security_ctx(request: Request, user: models.User, **extra):
     from app import totp as totp_util
     from app import crypto
+    from app import vault_lock as vlock
+    from app import mailer
     ctx = {
         "request": request, "session_user": user,
         "active_nav": "security", "active_module": "picker",
@@ -541,6 +543,13 @@ def _security_ctx(request: Request, user: models.User, **extra):
         "totp_on": totp_util.is_enabled(user),
         "app_approve": totp_util.app_approve_on(user),
         "setup_secret": None, "setup_url": None, "setup_qr": None,
+        "lock_passwords": vlock.is_locked(user, "passwords"),
+        "lock_locker": vlock.is_locked(user, "locker"),
+        "lock_health": vlock.is_locked(user, "health"),
+        "lock_labels": vlock.LOCK_LABELS,
+        "can_use_locks": vlock.can_use_locks(user, None),  # db filled below
+        "mail_ready": False,
+        "unlock_minutes": vlock.UNLOCK_MINUTES,
     }
     if (not ctx["totp_on"]) and user.totp_secret_enc:
         secret = crypto.decrypt_text(user.totp_secret_enc)
@@ -554,11 +563,16 @@ def _security_ctx(request: Request, user: models.User, **extra):
 
 @router.get("/security", response_class=HTMLResponse)
 def security_page(request: Request, db: Session = Depends(get_db), saved: str = "", error: str = ""):
+    from app import vault_lock as vlock
+    from app import mailer
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     return templates.TemplateResponse("security.html", _security_ctx(
-        request, user, saved=saved or None, error=error or None,
+        request, user,
+        saved=saved or None, error=error or None,
+        mail_ready=mailer.mail_ready(db),
+        can_use_locks=vlock.can_use_locks(user, db),
     ))
 
 
@@ -642,6 +656,138 @@ async def security_ask_ai_fab(request: Request, db: Session = Depends(get_db)):
         "/admin/security?saved=ask-ai-on" if user.show_ask_ai_fab else "/admin/security?saved=ask-ai-off",
         status_code=302,
     )
+
+
+@router.post("/security/vault-lock", response_class=HTMLResponse)
+async def security_vault_lock(request: Request, db: Session = Depends(get_db)):
+    """Enable or disable a per-module vault lock (requires current authenticator if on)."""
+    from app import totp as totp_util
+    from app import vault_lock as vlock
+    from app import mailer
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    module = vlock.normalize_module(str(form.get("module") or ""))
+    enabled = str(form.get("enabled") or "") in ("1", "on", "true", "yes")
+    code = str(form.get("code") or "").strip()
+    if not module:
+        return RedirectResponse("/admin/security?error=module", status_code=302)
+    if enabled and not vlock.can_use_locks(user, db):
+        return templates.TemplateResponse("security.html", _security_ctx(
+            request, user,
+            error="Turn on authenticator first, or ask a super admin to configure outbound email, before locking a vault.",
+            mail_ready=mailer.mail_ready(db),
+            can_use_locks=False,
+        ), status_code=400)
+    # Changing a lock requires proof when authenticator is on (or when turning a lock off).
+    if totp_util.is_enabled(user):
+        if not totp_util.verify_code(user, code):
+            return templates.TemplateResponse("security.html", _security_ctx(
+                request, user,
+                error="Enter a current authenticator code to change vault locks.",
+                mail_ready=mailer.mail_ready(db),
+                can_use_locks=vlock.can_use_locks(user, db),
+            ), status_code=400)
+    vlock.set_lock(user, module, enabled)
+    if not enabled:
+        vlock.clear_unlock(request, module)
+    db.commit()
+    return RedirectResponse(
+        f"/admin/security?saved={'lock-on' if enabled else 'lock-off'}&who={module}",
+        status_code=302,
+    )
+
+
+@router.get("/security/unlock", response_class=HTMLResponse)
+def security_unlock_page(
+    request: Request,
+    module: str = "passwords",
+    next: str = "",
+    err: str = "",
+    sent: str = "",
+    db: Session = Depends(get_db),
+):
+    from app import vault_lock as vlock
+    from app import mailer
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    key = vlock.normalize_module(module) or "passwords"
+    if not vlock.is_locked(user, key):
+        dest = next if next.startswith("/admin/") and "://" not in next else "/admin/modules"
+        return RedirectResponse(dest, status_code=302)
+    if vlock.is_unlocked(request, key):
+        dest = next if next.startswith("/admin/") and "://" not in next else {
+            "passwords": "/admin/passwords",
+            "locker": "/admin/locker",
+            "health": "/admin/documents",
+        }.get(key, "/admin/modules")
+        return RedirectResponse(dest, status_code=302)
+    methods = vlock.unlock_methods(user, db)
+    return templates.TemplateResponse("vault_unlock.html", {
+        "request": request, "session_user": user,
+        "active_nav": "security", "active_module": "picker",
+        "people": [], "active_person_id": None,
+        "module": key,
+        "label": vlock.LOCK_LABELS[key],
+        "next": next if next.startswith("/admin/") and "://" not in next else "",
+        "methods": methods,
+        "mail_ready": mailer.mail_ready(db),
+        "err": err or None,
+        "sent": bool(sent),
+        "unlock_minutes": vlock.UNLOCK_MINUTES,
+    })
+
+
+@router.post("/security/unlock", response_class=HTMLResponse)
+async def security_unlock_submit(request: Request, db: Session = Depends(get_db)):
+    from app import vault_lock as vlock
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    key = vlock.normalize_module(str(form.get("module") or "")) or "passwords"
+    next_url = str(form.get("next") or "")
+    code = str(form.get("code") or "")
+    method = str(form.get("method") or "auto")
+    if not vlock.is_locked(user, key):
+        return RedirectResponse(next_url or "/admin/modules", status_code=302)
+    if not vlock.verify_unlock_code(request, user, key, code, db=db, method=method):
+        q = f"module={key}&err=bad"
+        if next_url.startswith("/admin/") and "://" not in next_url:
+            from urllib.parse import quote
+            q += f"&next={quote(next_url)}"
+        return RedirectResponse(f"/admin/security/unlock?{q}", status_code=302)
+    vlock.mark_unlocked(request, key)
+    dest = next_url if next_url.startswith("/admin/") and "://" not in next_url else {
+        "passwords": "/admin/passwords",
+        "locker": "/admin/locker",
+        "health": "/admin/documents",
+    }.get(key, "/admin/modules")
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/security/unlock/email", response_class=HTMLResponse)
+async def security_unlock_email(request: Request, db: Session = Depends(get_db)):
+    from app import vault_lock as vlock
+    from urllib.parse import quote
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    key = vlock.normalize_module(str(form.get("module") or "")) or "passwords"
+    next_url = str(form.get("next") or "")
+    q = f"module={key}"
+    if next_url.startswith("/admin/") and "://" not in next_url:
+        q += f"&next={quote(next_url)}"
+    if not vlock.issue_email_otp(request, user, key, db):
+        return RedirectResponse(f"/admin/security/unlock?{q}&err=mail", status_code=302)
+    return RedirectResponse(f"/admin/security/unlock?{q}&sent=1", status_code=302)
 
 
 @router.get("/logout")

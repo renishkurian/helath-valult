@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Unlock {{ label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      <a href="/admin/security">Security</a>
+    </div>
+    <h1 class="page-title">Unlock {{ label }}</h1>
+    <p class="page-lead">This vault is locked with 2FA. Enter an authenticator code{% if methods.email %} or email one-time code{% endif %}. Unlock lasts {{ unlock_minutes }} minutes.</p>
+  </div>
+</div>
+
+{% if err == 'bad' %}
+<div class="alert alert-danger" role="alert">
+  <i class="bi bi-exclamation-triangle"></i>
+  <span>That code is not valid. Wait for a new one and try again.</span>
+</div>
+{% elif err == 'mail' %}
+<div class="alert alert-danger" role="alert">
+  <i class="bi bi-exclamation-triangle"></i>
+  <span>Could not send email. Check Server settings mail, or use your authenticator.</span>
+</div>
+{% endif %}
+{% if sent %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-envelope-check"></i>
+  <span>Code sent to <strong>{{ session_user.email }}</strong>. It expires in a few minutes.</span>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6 col-xl-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-shield-lock"></i></span>
+        <div>
+          <h2>Verify to continue</h2>
+          <div class="card-sub">{{ label }}</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/security/unlock" class="stack">
+          <input type="hidden" name="module" value="{{ module }}">
+          <input type="hidden" name="next" value="{{ next }}">
+          <input type="hidden" name="method" value="auto">
+          <div>
+            <label class="form-label" for="unlock-code">6-digit code <span class="req">*</span></label>
+            <input class="form-control otp-input" id="unlock-code" type="text" name="code" required
+                   inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"
+                   autofocus placeholder="000000">
+            <div class="form-text">
+              {% if methods.authenticator and methods.email %}
+              Authenticator app or the email code we just sent.
+              {% elif methods.authenticator %}
+              From your authenticator app.
+              {% elif methods.email %}
+              From the email we send to {{ session_user.email }}.
+              {% else %}
+              No unlock method is available — set up authenticator or ask a super admin to configure mail.
+              {% endif %}
+            </div>
+          </div>
+          <button class="btn btn-primary" type="submit" {% if not methods.authenticator and not methods.email %}disabled{% endif %}>
+            <i class="bi bi-unlock"></i> Unlock for {{ unlock_minutes }} min
+          </button>
+        </form>
+        {% if methods.email %}
+        <form method="post" action="/admin/security/unlock/email" class="mt-3">
+          <input type="hidden" name="module" value="{{ module }}">
+          <input type="hidden" name="next" value="{{ next }}">
+          <button class="btn btn-outline-light btn-sm" type="submit">
+            <i class="bi bi-envelope"></i> Send code to email
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

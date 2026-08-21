@@ -87,6 +87,10 @@ class User(Base):
     show_ask_ai_fab = Column(Boolean, default=True, nullable=False)
     # Total encrypted storage allowance for this vault (bytes). Default 100 MiB.
     storage_quota_bytes = Column(Integer, default=100 * 1024 * 1024, nullable=False)
+    # Extra 2FA gate after login for sensitive modules (individually toggleable).
+    lock_passwords = Column(Boolean, default=False, nullable=False)
+    lock_locker = Column(Boolean, default=False, nullable=False)
+    lock_health = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")
@@ -640,6 +644,17 @@ class VaultSendEmailOtp(Base):
     send_id = Column(String(32), ForeignKey("vault_sends.id"), nullable=False, index=True)
     email = Column(String(255), nullable=False, index=True)
     code_hash = Column(String(255), nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VaultLockEmailOtp(Base):
+    """Email OTP to unlock a per-module vault lock (API / shared with web session path)."""
+    __tablename__ = "vault_lock_email_otps"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    module = Column(String(32), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)
     expires_at = Column(DateTime, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

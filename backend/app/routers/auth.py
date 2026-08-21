@@ -236,6 +236,84 @@ def set_ask_ai_fab(
     return current_user
 
 
+@router.get("/vault-lock", response_model=schemas.VaultLockStatusOut)
+def vault_lock_status(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import vault_lock as vlock
+    return schemas.VaultLockStatusOut(
+        passwords=vlock.is_locked(current_user, "passwords"),
+        locker=vlock.is_locked(current_user, "locker"),
+        health=vlock.is_locked(current_user, "health"),
+        methods=vlock.unlock_methods(current_user, db),
+        unlock_minutes=vlock.UNLOCK_MINUTES,
+    )
+
+
+@router.post("/vault-lock", response_model=schemas.UserOut)
+def set_vault_lock(
+    body: schemas.VaultLockIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import vault_lock as vlock
+    require_owner(current_user)
+    module = vlock.normalize_module(body.module)
+    if not module:
+        raise HTTPException(status_code=400, detail="Unknown module")
+    if body.enabled and not vlock.can_use_locks(current_user, db):
+        raise HTTPException(
+            status_code=400,
+            detail="Enable authenticator or configure outbound email before locking a vault",
+        )
+    if totp_util.is_enabled(current_user):
+        if not totp_util.verify_code(current_user, body.code or ""):
+            raise HTTPException(status_code=400, detail="Invalid authenticator code")
+    vlock.set_lock(current_user, module, body.enabled)
+    db.commit()
+    db.refresh(current_user)
+    return current_user
+
+
+@router.post("/vault-lock/email", status_code=204)
+def vault_lock_email(
+    body: schemas.VaultUnlockEmailIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import vault_lock as vlock
+    module = vlock.normalize_module(body.module)
+    if not module:
+        raise HTTPException(status_code=400, detail="Unknown module")
+    if not vlock.is_locked(current_user, module):
+        raise HTTPException(status_code=400, detail="This vault is not locked")
+    if not vlock.issue_api_email_otp(db, current_user, module):
+        raise HTTPException(status_code=400, detail="Could not send email OTP")
+
+
+@router.post("/vault-lock/unlock", response_model=schemas.VaultUnlockOut)
+def vault_lock_unlock(
+    body: schemas.VaultUnlockIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import vault_lock as vlock
+    module = vlock.normalize_module(body.module)
+    if not module:
+        raise HTTPException(status_code=400, detail="Unknown module")
+    if not vlock.is_locked(current_user, module):
+        raise HTTPException(status_code=400, detail="This vault is not locked")
+    if not vlock.verify_api_unlock_code(db, current_user, module, body.code, method=body.method):
+        raise HTTPException(status_code=401, detail="Invalid unlock code")
+    token = vlock.create_unlock_token(current_user.id, module)
+    return schemas.VaultUnlockOut(
+        module=module,
+        unlock_token=token,
+        expires_in_seconds=vlock.UNLOCK_MINUTES * 60,
+    )
+
+
 @router.post("/totp/verify", response_model=schemas.LoginResponse)
 def totp_verify(body: schemas.TotpVerifyIn, request: Request, db: Session = Depends(get_db)):
     if not body.totp_token:

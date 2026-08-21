@@ -5,9 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas
-from app.deps import get_current_user, get_owned_person
+from app.deps import get_current_user, get_owned_person, require_vault_unlock_if_needed
 
-router = APIRouter(prefix="/labs", tags=["labs"])
+router = APIRouter(
+    prefix="/labs",
+    tags=["labs"],
+    dependencies=[Depends(require_vault_unlock_if_needed)],
+)
 
 
 @router.get("/trends", response_model=list[schemas.LabTrend])
