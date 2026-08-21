@@ -271,6 +271,36 @@ def test_password_lookup_is_local_view_link_not_secret():
         db.close()
 
 
+def test_locker_lookup_finds_land_tax_typo_locally():
+    from app.ai_chat import ask, wants_locker_lookup
+
+    assert wants_locker_lookup("any land taxx file u have") is True
+    assert wants_locker_lookup("lab report file") is False
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        folder = models.LockerFolder(user_id=uid, name="Govt")
+        db.add(folder)
+        db.flush()
+        item = models.LockerItem(
+            user_id=uid, folder_id=folder.id, title="land tax",
+            doc_type="govt", holder_name="Renish", id_number_enc="TAX-SECRET",
+        )
+        db.add(item)
+        db.commit()
+        db.refresh(item)
+        assert wants_locker_lookup("any land taxx file u have", db, user) is True
+        out = ask(db, user, "any land taxx file u have")
+        assert "/admin/locker/" + item.id in out["reply"]
+        assert "land tax" in out["reply"].lower()
+        assert "TAX-SECRET" not in out["reply"]
+        assert "Document Vault" in out["reply"]
+    finally:
+        db.close()
+
+
 def test_manglish_query_hints():
     from app.ai_chat import _manglish_query_hints
     hits = _manglish_query_hints("list il ulli sharkara enna atta podi vekkanam")

@@ -694,15 +694,18 @@ _HEALTH_ASK_RE = re.compile(
 )
 _LOCKER_ASK_RE = re.compile(
     r"\b(aadhaar|aadhar|pan|passport|license|licence|id\s*card|locker|"
-    r"document vault|driving)\b",
+    r"document\s*vault|driving|voter|rc|insurance|warranty|certificate|"
+    r"property|land\s*tax|tax|taxes|govt|government|papers?|files?|"
+    r"document|documents)\b",
     re.I,
 )
 _NEEDLE_STOP_RE = re.compile(
     r"\b(what|whats|what's|which|where|is|are|my|the|a|an|for|of|to|please|"
     r"show|tell|give|me|find|open|view|see|stored|saved|vault|"
     r"password|passwd|pwd|passcode|login|logins|credential|credentials|"
-    r"username|medical|health|hospital|lab|report|reports|prescription|document|"
-    r"documents|card|number|id|any)\b",
+    r"username|medical|health|hospital|lab|report|reports|prescription|"
+    r"documents?|card|number|id|any|file|files|paper|papers|u|you|"
+    r"do|does|did|have|has|got|there|listed)\b",
     re.I,
 )
 
@@ -713,8 +716,26 @@ def _search_needle(question: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _fuzzy_token_in(hay: str, token: str) -> bool:
+    """Match typos like taxx→tax and short prefixes."""
+    t = (token or "").lower()
+    h = (hay or "").lower()
+    if not t or len(t) < 3:
+        return False
+    if t in h:
+        return True
+    collapsed = re.sub(r"(.)\1+", r"\1", t)
+    if collapsed != t and len(collapsed) >= 3 and collapsed in h:
+        return True
+    for w in re.findall(r"[a-z0-9\u0d00-\u0d7f]{3,}", h, flags=re.I):
+        w = w.lower()
+        if w.startswith(t) or t.startswith(w):
+            return True
+    return False
+
+
 def _tokens_match(hay: str, needle: str) -> bool:
-    hay = (hay or "").lower()
+    hay_l = (hay or "").lower()
     fillers = {"have", "has", "had", "with", "from", "about", "this", "that", "does", "did", "any"}
     tokens = [
         t for t in (needle or "").lower().split()
@@ -722,9 +743,9 @@ def _tokens_match(hay: str, needle: str) -> bool:
     ]
     if not tokens:
         return False
-    if all(t in hay for t in tokens):
+    if all(_fuzzy_token_in(hay_l, t) for t in tokens):
         return True
-    return any(len(t) >= 4 and t in hay for t in tokens)
+    return any(len(t) >= 4 and _fuzzy_token_in(hay_l, t) for t in tokens)
 
 
 def wants_password_lookup(question: str) -> bool:
@@ -743,13 +764,81 @@ def wants_health_lookup(question: str) -> bool:
     return bool(_HEALTH_ASK_RE.search(q))
 
 
-def wants_locker_lookup(question: str) -> bool:
+def _locker_item_hay(it: models.LockerItem, folder_name: str | None = None) -> str:
+    folder = folder_name or ""
+    if not folder and getattr(it, "folder", None) is not None:
+        folder = it.folder.name or ""
+    return " ".join(
+        [
+            it.title or "",
+            it.doc_type or "",
+            (it.doc_type or "").replace("_", " "),
+            it.custom_type or "",
+            it.holder_name or "",
+            it.tags or "",
+            it.issuer or "",
+            folder,
+        ]
+    )
+
+
+def _locker_active_items(db: Session, user: models.User) -> list[models.LockerItem]:
+    uid = _uid(user)
+    return (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.user_id == uid, models.LockerItem.deleted_at.is_(None))
+        .order_by(models.LockerItem.title)
+        .all()
+    )
+
+
+def _locker_search_hits(db: Session, user: models.User, question: str) -> list[models.LockerItem]:
+    items = _locker_active_items(db, user)
+    needle = _search_needle(question)
+    if not needle:
+        return []
+    hits = []
+    for it in items:
+        hay = _locker_item_hay(it)
+        if _tokens_match(hay, needle) or needle.lower() in hay.lower():
+            hits.append(it)
+            continue
+        for t in needle.lower().split():
+            if len(t) >= 4 and _fuzzy_token_in(hay, t):
+                hits.append(it)
+                break
+    return hits
+
+
+_LOCKER_STRONG_RE = re.compile(
+    r"\b(aadhaar|aadhar|pan|passport|license|licence|locker|document\s*vault|"
+    r"land\s*tax|tax|taxes|govt|government|voter|rc|insurance|warranty|"
+    r"certificate|property)\b",
+    re.I,
+)
+_HEALTH_STEAL_RE = re.compile(
+    r"\b(medical|health|hospital|lab|labs|blood|prescription|vaccine|"
+    r"vaccination|allergy|allergies|x-?ray|scan|doctor|gynae|gyne|"
+    r"paediat|pedia)\b",
+    re.I,
+)
+
+
+def wants_locker_lookup(question: str, db: Session | None = None, user: models.User | None = None) -> bool:
     q = (question or "").strip()
     if not q:
         return False
     if wants_password_lookup(q) or _SPEND_RE.search(q):
         return False
-    return bool(_LOCKER_ASK_RE.search(q))
+    if _LOCKER_ASK_RE.search(q):
+        # "medical document" / "lab report file" stay on Health Vault unless
+        # the question clearly names an ID/paper topic.
+        if _HEALTH_STEAL_RE.search(q) and not _LOCKER_STRONG_RE.search(q):
+            return False
+        return True
+    if db is not None and user is not None:
+        return bool(_locker_search_hits(db, user, q))
+    return False
 
 
 def format_password_lookup_reply(db: Session, user: models.User, question: str) -> str:
@@ -882,19 +971,9 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
 
 def format_locker_lookup_reply(db: Session, user: models.User, question: str) -> str:
     """Local Document Vault (locker) links — ID numbers stay on this server."""
-    uid = _uid(user)
-    items = (
-        db.query(models.LockerItem)
-        .filter(models.LockerItem.user_id == uid)
-        .order_by(models.LockerItem.title)
-        .all()
-    )
+    items = _locker_active_items(db, user)
     needle = _search_needle(question)
-    hits = []
-    for it in items:
-        hay = " ".join([it.title or "", it.doc_type or "", it.custom_type or "", it.holder_name or ""])
-        if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
-            hits.append(it)
+    hits = _locker_search_hits(db, user, question) if needle else list(items)
     shown = hits[:12] if needle else items[:8]
     lines = [
         "**Document Vault**",
@@ -910,12 +989,22 @@ def format_locker_lookup_reply(db: Session, user: models.User, question: str) ->
         lines.append(f"No document matched **{needle}**.")
         lines.append("[Open Document Vault](/admin/locker)")
         return "\n".join(lines)
+    from app.routers.locker import type_label as locker_type_label
+
     for it in shown:
+        kind = locker_type_label(it.doc_type, it.custom_type)
+        folder = getattr(getattr(it, "folder", None), "name", None) or ""
+        bits = [kind] if kind else []
+        if folder:
+            bits.append(f"folder {folder}")
+        if it.expiry_date:
+            bits.append(f"expiry {it.expiry_date}")
         lines.append(
-            f"- [{it.title}](/admin/locker/{it.id}) · "
-            f"{(it.doc_type or '').replace('_', ' ')}"
-            + (f" · expiry {it.expiry_date}" if it.expiry_date else "")
+            f"- [{it.title}](/admin/locker/{it.id})"
+            + (f" · {' · '.join(bits)}" if bits else "")
         )
+    if needle and len(hits) > 12:
+        lines.append(f"- …and {len(hits) - 12} more in [Document Vault](/admin/locker)")
     return "\n".join(lines)
 
 
@@ -1524,7 +1613,11 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
         lines.extend(_diary_snapshot_lines(db, uid, q))
 
     # ---- Locker (counts only — IDs never leave this server) ----
-    locker_n = db.query(models.LockerItem).filter(models.LockerItem.user_id == uid).count()
+    locker_n = (
+        db.query(models.LockerItem)
+        .filter(models.LockerItem.user_id == uid, models.LockerItem.deleted_at.is_(None))
+        .count()
+    )
     lines.append("")
     lines.append(
         f"## Document Vault: {locker_n} ID/paper items. Titles and ID numbers stay on this "
@@ -2453,7 +2546,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     if wants_password_lookup(text):
         reply = format_password_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_locker_lookup(text):
+    if wants_locker_lookup(text, db, user):
         reply = format_locker_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
     if wants_health_lookup(text):
