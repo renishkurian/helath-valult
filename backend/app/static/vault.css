@@ -3224,14 +3224,17 @@ body{
 .fx-tree-item:hover{ background:var(--v-hover); color:var(--v-ink); }
 .fx-tree-item.on{ background:var(--v-active); color:var(--v-ink); }
 .fx-tree-item i{ width:1.1rem; text-align:center; flex-shrink:0; }
-.fx-tree-item span{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fx-tree-item > span:not(.fx-dot):not(.avatar){ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .fx-tree-item em{
   font-style:normal; font-size:.7rem; color:var(--v-ink-3);
   font-variant-numeric:tabular-nums;
 }
 .fx-tree-item.drop-on{ outline:1px dashed var(--v-brass); background:var(--v-brass-soft); }
 .fx-tree-empty{ padding:.5rem .9rem; font-size:.78rem; color:var(--v-ink-3); }
-.fx-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.fx-dot{
+  display:inline-block; width:8px; height:8px; min-width:8px; min-height:8px;
+  border-radius:50%; flex:0 0 8px; align-self:center;
+}
 
 .fx-main{ display:flex; flex-direction:column; min-width:0; min-height:0; }
 .fx-toolbar{
