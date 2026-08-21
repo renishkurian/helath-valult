@@ -3266,7 +3266,7 @@ body{
 .fx-pane.fx-loading{ opacity:.55; pointer-events:none; transition:opacity .15s ease; }
 .fx-list-head, .fx-list .fx-row{
   display:grid;
-  grid-template-columns:minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem;
+  grid-template-columns:minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 5rem 6.5rem;
   gap:.75rem; align-items:center;
 }
 .fx-list-head{
@@ -3279,9 +3279,8 @@ body{
   color:inherit; text-decoration:none; border-radius:10px;
   padding:.45rem .65rem; border:1px solid transparent;
 }
-.fx-list .fx-row{ grid-template-columns:minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem; gap:.75rem; align-items:center; }
-.fx-list .fx-row{ grid-template-columns:2.2rem minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem; }
-.fx-list-head{ grid-template-columns:2.2rem minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem; padding-left:.65rem; }
+.fx-list .fx-row{ grid-template-columns:2.2rem minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 5rem 6.5rem; gap:.75rem; align-items:center; }
+.fx-list-head{ grid-template-columns:2.2rem minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 5rem 6.5rem; padding-left:.65rem; }
 .fx-row:hover, .fx-row:focus-visible{ background:var(--v-hover); }
 .fx-row.dragging{ opacity:.45; }
 .fx-ico{
@@ -3293,7 +3292,8 @@ body{
   border-radius:7px;
 }
 .fx-col-name{ font-weight:600; font-size:.9rem; min-width:0; }
-.fx-col-type, .fx-col-meta, .fx-col-date{ font-size:.8rem; min-width:0; }
+.fx-col-type, .fx-col-meta, .fx-col-size, .fx-col-date{ font-size:.8rem; min-width:0; }
+.fx-col-size{ text-align:right; white-space:nowrap; }
 
 .fx-icons{
   display:grid;
@@ -3308,7 +3308,7 @@ body{
 .fx-icons .fx-ico{ width:2.75rem; height:2.75rem; font-size:1.75rem; }
 .fx-icons .fx-ico.doc-icon{ font-size:.75rem; border-radius:10px; }
 .fx-icons .fx-col-name{ font-size:.8rem; font-weight:600; width:100%; }
-.fx-icons .fx-col-type, .fx-icons .fx-col-meta, .fx-icons .fx-col-date{ display:none; }
+.fx-icons .fx-col-type, .fx-icons .fx-col-meta, .fx-icons .fx-col-size, .fx-icons .fx-col-date{ display:none; }
 .fx-icon-meta{ font-size:.7rem; color:var(--v-ink-3); }
 
 .fx-empty{
@@ -3335,7 +3335,7 @@ body{
   .fx-shell{ grid-template-columns:1fr; min-height:0; }
   .fx-tree{ max-height:220px; border-right:none; border-bottom:1px solid var(--v-line); }
   .fx-list .fx-row, .fx-list-head{
-    grid-template-columns:2.2rem minmax(0,1fr) auto;
+    grid-template-columns:2.2rem minmax(0,1fr) 4.5rem 5.5rem;
   }
   .fx-col-type, .fx-col-meta{ display:none; }
 }

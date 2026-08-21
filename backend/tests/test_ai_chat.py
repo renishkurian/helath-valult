@@ -913,3 +913,39 @@ def test_household_brain_learns_from_chat_without_provider():
     mem_id = added.json()["id"]
     gone = client.delete(f"/ai/brain/{mem_id}", headers=headers)
     assert gone.status_code == 200
+
+
+def test_household_brain_persists_model_vault_memory_block():
+    """Model-emitted ```vault-memory``` must be saved (not only explicit remember…)."""
+    headers, email = _headers()
+    create_r = client.post("/ai/providers", headers=headers, json={
+        "name": "Brain Mock", "kind": "openrouter", "api_key": "sk-test",
+        "is_default": True, "model": "openai/gpt-4o-mini",
+    })
+    assert create_r.status_code == 200, create_r.text
+
+    fake = (
+        "Got it — I'll use Home for petrol.\n\n"
+        "```vault-memory\n"
+        '{"memories":[{"kind":"habit","slug":"petrol-account",'
+        '"content":"When logging petrol, use account Home"}]}\n'
+        "```"
+    )
+    with patch("app.ai_chat.complete_chat", return_value={
+        "content": fake,
+        "kind": "openrouter", "model": "openai/gpt-4o-mini",
+        "prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30,
+    }):
+        r = client.post("/ai/chat", headers=headers, json={
+            "message": "Which account should petrol go to? Use Home cash going forward.",
+        })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "vault-memory" not in (body.get("reply") or "")
+    assert body.get("learned")
+    assert any("petrol" in (m.get("content") or "").lower() for m in body["learned"])
+
+    listed = client.get("/ai/brain", headers=headers)
+    assert listed.status_code == 200
+    rows = listed.json()
+    assert any("petrol" in (m.get("content") or "").lower() for m in rows)

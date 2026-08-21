@@ -748,6 +748,8 @@ def save_receipt(
         raise HTTPException(413, f"File exceeds {settings.MAX_UPLOAD_MB} MB")
     if len(list(lst.receipts or [])) >= 20:
         raise HTTPException(400, "This list already has 20 bill copies")
+    from app import quota
+    quota.assert_can_store(db, user, len(raw))
     uid = _uid(user)
     dest_dir = settings.STORAGE_DIR / uid / "shop"
     dest_dir.mkdir(parents=True, exist_ok=True)

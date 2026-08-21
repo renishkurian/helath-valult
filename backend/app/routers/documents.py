@@ -117,6 +117,7 @@ def attach_document_files(
     doc: models.Document,
     file_parts: list[tuple[bytes, str, str | None]],
     person_dir: Path,
+    user: models.User | None = None,
 ) -> tuple[list[str], str | None, int]:
     """Store encrypted DocumentFile rows. ``file_parts`` is (raw, filename, content_type).
 
@@ -125,9 +126,9 @@ def attach_document_files(
     if not file_parts:
         raise HTTPException(status_code=422, detail="At least one file is required")
 
-    ocr_chunks: list[str] = []
-    first_mime: str | None = None
-    first_size = 0
+    from app import quota
+
+    prepared: list[tuple[bytes, str, str]] = []
     for idx, (raw, filename, content_type) in enumerate(file_parts):
         stored_mime = (content_type or "application/octet-stream").split(";")[0].strip()
         name = filename or f"file_{idx}"
@@ -147,7 +148,15 @@ def attach_document_files(
             )
         if not raw:
             raise HTTPException(400, f"Empty file '{name}'")
+        prepared.append((raw, name, stored_mime))
 
+    if user is not None:
+        quota.assert_can_store(db, user, sum(len(r) for r, _, _ in prepared))
+
+    ocr_chunks: list[str] = []
+    first_mime: str | None = None
+    first_size = 0
+    for idx, (raw, name, stored_mime) in enumerate(prepared):
         enc_path = person_dir / f"{doc.id}_{idx}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
         ocr_chunks.append(extract_text(raw, stored_mime, name))
@@ -232,7 +241,7 @@ async def upload_document(
 
     try:
         ocr_chunks, first_mime, first_size = attach_document_files(
-            db, doc=doc, file_parts=parts, person_dir=person_dir
+            db, doc=doc, file_parts=parts, person_dir=person_dir, user=current_user,
         )
     except HTTPException:
         db.rollback()
@@ -591,9 +600,9 @@ async def replace_document_version(
     person_dir: Path = settings.STORAGE_DIR / vault_id(current_user) / doc.person_id
     person_dir.mkdir(parents=True, exist_ok=True)
 
-    ocr_chunks: list[str] = []
-    first_mime: str | None = None
-    first_size = 0
+    from app import quota
+
+    prepared: list[tuple[bytes, str, str]] = []
     for idx, upload in enumerate(files):
         raw = await upload.read()
         stored_mime = (upload.content_type or "application/octet-stream").split(";")[0].strip()
@@ -612,7 +621,18 @@ async def replace_document_version(
         if not raw:
             db.rollback()
             raise HTTPException(400, f"Empty file '{name}'")
+        prepared.append((raw, name, stored_mime))
 
+    try:
+        quota.assert_can_store(db, current_user, sum(len(r) for r, _, _ in prepared))
+    except HTTPException:
+        db.rollback()
+        raise
+
+    ocr_chunks: list[str] = []
+    first_mime: str | None = None
+    first_size = 0
+    for idx, (raw, name, stored_mime) in enumerate(prepared):
         enc_path = person_dir / f"{doc.id}_v{doc.version}_{idx}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
         ocr_chunks.append(extract_text(raw, stored_mime, name))

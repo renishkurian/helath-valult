@@ -584,6 +584,18 @@ def save_txn_image(
         raise HTTPException(413, f"Photo exceeds {settings.MAX_UPLOAD_MB} MB")
     if not raw:
         raise HTTPException(400, "Empty photo")
+    from app import quota
+    old_size = 0
+    if row.image_path:
+        old = settings.STORAGE_DIR / row.image_path
+        if old.is_file():
+            try:
+                old_size = old.stat().st_size
+            except OSError:
+                old_size = 0
+    delta = len(raw) - old_size
+    if delta > 0:
+        quota.assert_can_store(db, user, delta)
     uid = _owned(db, user)
     dest_dir = settings.STORAGE_DIR / uid / "finance"
     dest_dir.mkdir(parents=True, exist_ok=True)

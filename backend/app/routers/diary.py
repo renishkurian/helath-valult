@@ -120,9 +120,12 @@ async def _save_images(
     current_user: models.User,
     db: Session,
 ):
+    from app import quota
+
     dest = settings.STORAGE_DIR / vault_id(current_user) / "diary"
     dest.mkdir(parents=True, exist_ok=True)
     existing = len(entry.images or [])
+    payloads: list[tuple[bytes, UploadFile, int]] = []
     for idx, upload in enumerate(files):
         if not upload.filename and not (upload.content_type or "").startswith("image/"):
             continue
@@ -137,7 +140,9 @@ async def _save_images(
                 status_code=413,
                 detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit",
             )
-        n = existing + idx
+        payloads.append((raw, upload, existing + idx))
+    quota.assert_can_store(db, current_user, sum(len(r) for r, _, _ in payloads))
+    for raw, upload, n in payloads:
         enc_path = dest / f"{entry.id}_{n}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
         db.add(models.DiaryImage(

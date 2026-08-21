@@ -149,14 +149,59 @@ def test_locker_family_profiles_and_search_all():
     titles = {row["title"] for row in search.json()}
     assert "PAN card" in titles
 
+    folder = client.post("/locker/folders", headers=headers, json={"name": "Land Tax"})
+    assert folder.status_code == 201, folder.text
+    folder_id = folder.json()["id"]
+    for title, pid in (("landtax-self", self_id), ("landtax-child", child_id), ("landtax-free", "")):
+        data = {"title": title, "doc_type": "other", "folder_id": folder_id}
+        if pid:
+            data["person_id"] = pid
+        up = client.post(
+            "/locker", headers=headers, data=data,
+            files=[("files", (f"{title}.pdf", b"%PDF-1.4 x", "application/pdf"))],
+        )
+        assert up.status_code == 201, up.text
+
+    both = client.get("/locker", headers=headers, params={"folder_id": folder_id}).json()
+    assert len(both) == 3
+    only_self = client.get(
+        "/locker", headers=headers, params={"folder_id": folder_id, "person_id": self_id},
+    ).json()
+    assert len(only_self) == 1
+    assert only_self[0]["title"] == "landtax-self"
+    only_child_folder = client.get(
+        "/locker", headers=headers, params={"folder_id": folder_id, "person_id": child_id},
+    ).json()
+    assert len(only_child_folder) == 1
+    assert only_child_folder[0]["title"] == "landtax-child"
+
+    # Session explorer browse keeps person + folder together.
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+    browse = session.get(
+        f"/admin/locker/explorer/browse.json?folder={folder_id}&person={self_id}",
+    )
+    assert browse.status_code == 200, browse.text
+    body = browse.json()
+    assert body["person"] == self_id
+    assert body["folder"] == folder_id
+    assert "person=" in body["here_href"] and "folder=" in body["here_href"]
+    assert len(body["items"]) == 1
+    assert body["items"][0]["title"] == "landtax-self"
+
     by_name = client.get("/locker", headers=headers, params={"q": "Appu"})
     assert by_name.status_code == 200
     assert any(row["title"] == "School ID" for row in by_name.json())
 
     summary = client.get("/locker/summary", headers=headers).json()
-    assert summary["total"] == 2
-    assert any(p["id"] == child_id and p["count"] == 1 for p in summary["people"])
-    assert summary["unassigned"] == 0
+    assert summary["total"] == 5  # pan + school + 3 landtax
+    assert any(p["id"] == child_id and p["count"] == 2 for p in summary["people"])
+    assert summary["unassigned"] == 1  # landtax-free
 
 
 def test_locker_custom_folders():

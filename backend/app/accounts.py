@@ -37,11 +37,14 @@ def create_vault_user(
     if db.query(models.User).filter(models.User.email == email_norm).first():
         raise AccountExists(email_norm)
 
+    from app.quota import DEFAULT_QUOTA_BYTES
+
     user = models.User(
         email=email_norm,
         hashed_password=security.hash_password(password),
         full_name=name,
         role=role,
+        storage_quota_bytes=DEFAULT_QUOTA_BYTES,
     )
     db.add(user)
     db.flush()

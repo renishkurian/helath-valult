@@ -17,18 +17,18 @@ router = APIRouter(prefix="/storage", tags=["storage"])
 
 
 @router.get("/stats", response_model=schemas.StorageStats)
-def storage_stats(current_user: models.User = Depends(get_current_user)):
-    root = settings.STORAGE_DIR / vault_id(current_user)
-    total = 0
-    count = 0
-    if root.exists():
-        for p in root.rglob("*"):
-            if p.is_file():
-                total += p.stat().st_size
-                count += 1
+def storage_stats(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import quota as q
+
+    snap = q.quota_snapshot(db, current_user)
     return schemas.StorageStats(
-        bytes_used=total,
-        file_count=count,
+        bytes_used=snap["bytes_used"],
+        file_count=snap["file_count"],
+        quota_bytes=snap["quota_bytes"],
+        remaining_bytes=snap["remaining_bytes"],
         backup_dir=str(settings.BACKUP_DIR) if settings.BACKUP_DIR else None,
     )
 

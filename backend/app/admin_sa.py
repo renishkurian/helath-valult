@@ -87,6 +87,8 @@ def sa_home(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/users", response_class=HTMLResponse)
 def sa_users(request: Request, q: str = "", role: str = "", cleared: str = "", notice: str = "", who: str = "", db: Session = Depends(get_db)):
+    from app import quota as qmod
+
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
@@ -97,10 +99,43 @@ def sa_users(request: Request, q: str = "", role: str = "", cleared: str = "", n
     if role in (models.UserRole.owner.value, models.UserRole.viewer.value, models.UserRole.superadmin.value):
         query = query.filter(models.User.role == role)
     rows = query.order_by(models.User.created_at.desc()).limit(500).all()
+    usage = {}
+    for row in rows:
+        # Quota is per vault owner — show owner usage for viewers too.
+        owner = qmod.vault_owner(db, row)
+        if owner.id not in usage:
+            usage[owner.id] = qmod.quota_snapshot(db, owner)
+        usage[row.id] = usage[owner.id]
     return templates.TemplateResponse("sa_users.html", _sa_ctx(
         request, user, "sa_users", users=rows, q=q, role=role, stats=_stats(db),
         cleared=cleared or None, notice=notice or None, who=who or None,
+        usage=usage,
     ))
+
+
+@router.post("/users/{user_id}/quota")
+async def sa_user_quota(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import quota as qmod
+    from urllib.parse import quote
+
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    owner = qmod.vault_owner(db, target)
+    form = await request.form()
+    mb_raw = form.get("quota_mb")
+    try:
+        mb = float(str(mb_raw or "").strip())
+    except (TypeError, ValueError):
+        mb = qmod.bytes_to_mb(qmod.DEFAULT_QUOTA_BYTES)
+    qmod.set_quota_bytes(db, owner, qmod.mb_to_bytes(mb))
+    return RedirectResponse(
+        f"/admin/sa/users?notice=quota&who={quote(owner.email)}",
+        status_code=302,
+    )
 
 
 @router.get("/users/{user_id}/modules", response_class=HTMLResponse)

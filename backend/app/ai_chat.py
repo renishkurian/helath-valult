@@ -2620,6 +2620,13 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         reply = "The provider returned an empty reply. Try again, or test the key on the Providers page."
 
     display_reply, action = extract_vault_action(reply)
+    display_reply, mem_items = ai_brain.extract_vault_memory(display_reply)
+    learned = ai_brain.remember_from_model(db, user, mem_items)
+    # Inline “remember…” inside a longer chat turn (not a brain-only message).
+    for row in ai_brain.remember_from_user_text(db, user, text):
+        if row["id"] not in {m["id"] for m in learned}:
+            learned.append(row)
+
     # Persist display text + action fence so the UI can re-offer Approve after reload.
     store_reply = display_reply
     if action:
@@ -2652,6 +2659,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         "title": thread.title,
         "reply": display_reply,
         "action": action,
+        "learned": learned,
         "messages": detail["messages"] if detail else [],
     }
 

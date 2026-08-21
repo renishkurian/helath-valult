@@ -45,6 +45,11 @@
   <i class="bi bi-check2-circle"></i>
   <span>Updated enabled modules for <strong>{{ who }}</strong>.</span>
 </div>
+{% elif notice == 'quota' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-hdd"></i>
+  <span>Updated storage quota for <strong>{{ who }}</strong>.</span>
+</div>
 {% elif notice == 'self' %}
 <div class="alert alert-danger" role="alert">
   <i class="bi bi-exclamation-triangle"></i>
@@ -73,6 +78,7 @@
         <tr>
           <th>Person</th>
           <th>Role</th>
+          <th>Storage quota</th>
           <th>2FA / app</th>
           <th>Access</th>
           <th>Last seen</th>
@@ -80,6 +86,7 @@
       </thead>
       <tbody>
         {% for u in users %}
+        {% set snap = (usage or {}).get(u.id) %}
         <tr>
           <td>
             <div class="d-flex align-items-center gap-2">
@@ -94,6 +101,22 @@
             <span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span>
             {% if is_online(u) %}<span class="badge badge-good ms-1">online</span>{% endif %}
             {% if u.blocked %}<span class="badge badge-bad ms-1">blocked</span>{% endif %}
+          </td>
+          <td style="min-width:11rem;">
+            {% if snap %}
+            <div class="text-faint small mb-1">{{ '%.1f'|format(snap.used_mb) }} / {{ '%.0f'|format(snap.quota_mb) }} MB used</div>
+            {% endif %}
+            {% if u.role != 'viewer' %}
+            <form method="post" action="/admin/sa/users/{{ u.id }}/quota" class="d-flex gap-1 align-items-center">
+              <input class="form-control form-control-sm mono" type="number" name="quota_mb" min="1" max="1048576" step="1"
+                     value="{{ '%.0f'|format(snap.quota_mb) if snap else 100 }}" style="width:5.5rem;"
+                     title="Total vault storage limit in MB (any number of files)">
+              <span class="text-faint small">MB</span>
+              <button class="btn btn-outline-light btn-sm" type="submit">Set</button>
+            </form>
+            {% else %}
+            <span class="text-faint small">Shares vault owner limit</span>
+            {% endif %}
           </td>
           <td>
             <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -138,7 +161,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             <div class="empty-state">
               <div class="empty-ico"><i class="bi bi-people"></i></div>
               <div class="empty-title">No matching users</div>

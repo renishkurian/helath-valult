@@ -882,6 +882,8 @@ async def cards_add(
                     raw=raw,
                     content_type=card_image.content_type,
                     owner_id=vault_id(user),
+                    db=db,
+                    user=user,
                 )
         db.commit()
     return RedirectResponse(f"/admin?person={person_id}", status_code=302)
@@ -968,7 +970,10 @@ async def cards_edit_save(
     if card_image is not None and getattr(card_image, "filename", None):
         raw = await card_image.read()
         if raw:
-            save_card_image(card, raw=raw, content_type=card_image.content_type, owner_id=vault_id(user))
+            save_card_image(
+                card, raw=raw, content_type=card_image.content_type, owner_id=vault_id(user),
+                db=db, user=user,
+            )
     db.commit()
     return RedirectResponse(f"/admin/cards/{card_id}/edit?ok=1", status_code=302)
 
@@ -996,7 +1001,10 @@ def cards_image_rotate(
         return RedirectResponse(f"/admin/cards/{card_id}/edit", status_code=302)
     try:
         rotated, mime = rotate_image_bytes(crypto.decrypt_bytes(path.read_bytes()), degrees, card.image_mime)
-        save_card_image(card, raw=rotated, content_type=mime, owner_id=vault_id(user))
+        save_card_image(
+            card, raw=rotated, content_type=mime, owner_id=vault_id(user),
+            db=db, user=user,
+        )
         db.commit()
     except HTTPException:
         pass
@@ -1992,21 +2000,18 @@ def storage_page(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
-    root = settings.STORAGE_DIR / vault_id(user)
-    total = count = 0
-    if root.exists():
-        for p in root.rglob("*"):
-            if p.is_file():
-                total += p.stat().st_size
-                count += 1
+    from app import quota as q
     from app.drive_backup import get_or_create, status_dict
+    snap = q.quota_snapshot(db, user)
     drive = status_dict(get_or_create(db, user), db)
     redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
     return templates.TemplateResponse("storage.html", {
         "request": request, "session_user": user, "active_nav": "storage",
         "people": people, "active_person": people[0] if people else None,
         "active_person_id": people[0].id if people else None,
-        "bytes_used": total, "file_count": count,
+        "bytes_used": snap["bytes_used"], "file_count": snap["file_count"],
+        "quota_bytes": snap["quota_bytes"], "remaining_bytes": snap["remaining_bytes"],
+        "quota_mb": snap["quota_mb"], "used_mb": snap["used_mb"], "quota_pct": snap["pct"],
         "backup_dir": str(settings.BACKUP_DIR) if settings.BACKUP_DIR else None,
         "drive": drive, "redirect_uri": redirect_uri,
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
@@ -3631,6 +3636,7 @@ def _lk_explorer_browse(
     unfiled = place_key == "unfiled"
     in_trash = place_key == "trash"
     summary = lk.locker_summary(db=db, current_user=user)
+    person_scope = person_id or (person_filter if person_filter == "none" else None)
     if in_trash:
         items = lk.list_trash(db=db, current_user=user)
     else:
@@ -3638,14 +3644,19 @@ def _lk_explorer_browse(
             doc_type=type_filter or None,
             folder_id=folder_id or None,
             q=q or None,
-            person_id=person_id or (person_filter if person_filter == "none" else None),
+            person_id=person_scope,
             expiring=expiring,
             db=db,
             current_user=user,
         )
+        # Home (and person home): folders live in the tree; pane shows unfiled docs only.
         if unfiled and not folder_id and not q:
             items = [i for i in items if not i.folder_id]
-        elif place_key == "home" and not folder_id and not type_filter and not expiring and not q and not person_filter:
+        elif (
+            not folder_id and not type_filter and not expiring and not q
+            and (place_key == "home" or bool(person_filter))
+            and not unfiled
+        ):
             items = [i for i in items if not i.folder_id]
     folder_name = None
     type_label = None
@@ -3661,29 +3672,43 @@ def _lk_explorer_browse(
             if p.id == person_filter:
                 person_label = p.name
                 break
+    # Keep folder browsing available while a family profile is selected.
     show_children = bool(
-        not in_trash and not type_filter and not expiring and not unfiled and not person_filter and not q
+        not in_trash and not type_filter and not expiring and not unfiled and not q
     )
+    # Sidebar / child folder counts follow the active profile when set.
+    scoped_for_folders = None
+    if person_scope and not in_trash:
+        scoped_for_folders = (
+            lk._active_item_query(db, user)
+            .filter(
+                models.LockerItem.person_id.is_(None)
+                if person_scope == "none"
+                else models.LockerItem.person_id == person_scope
+            )
+            .all()
+        )
     child_folders = (
-        lk._child_folder_outs(db, user, folder_id or None)
+        lk._child_folder_outs(db, user, folder_id or None, scoped_for_folders)
         if show_children else []
     )
-    folder_tree = lk._folder_tree(db, user)
+    folder_tree = lk._folder_tree(db, user, scoped_for_folders)
     view_mode = "icons" if view == "icons" else "list"
 
     qs = {}
     if in_trash:
         qs["place"] = "trash"
-    elif folder_id:
-        qs["folder"] = folder_id
-    elif place_key == "expiring":
-        qs["place"] = "expiring"
-    elif place_key == "unfiled":
-        qs["place"] = "unfiled"
-    elif type_filter:
-        qs["doc_type"] = type_filter
-    elif person_filter:
-        qs["person"] = person_filter
+    else:
+        if folder_id:
+            qs["folder"] = folder_id
+        elif place_key == "expiring":
+            qs["place"] = "expiring"
+        elif place_key == "unfiled":
+            qs["place"] = "unfiled"
+        elif type_filter:
+            qs["doc_type"] = type_filter
+        if person_filter:
+            qs["person"] = person_filter
     if view_mode == "icons":
         qs["view"] = "icons"
     if q and not in_trash:
@@ -3792,6 +3817,7 @@ def locker_explorer_browse_json(
         "folder_name": state["folder_name"],
         "folder_crumbs": state["folder_crumbs"],
         "child_folders": state["child_folders"],
+        "folder_tree": state["folder_tree"],
         "items": [
             {
                 "id": i.id,
@@ -3801,6 +3827,7 @@ def locker_explorer_browse_json(
                 "person_name": i.person_name,
                 "folder_id": i.folder_id,
                 "file_count": i.file_count,
+                "file_size": i.file_size,
                 "pinned": i.pinned,
                 "created_at": i.created_at,
                 "deleted_at": i.deleted_at,

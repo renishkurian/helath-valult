@@ -555,6 +555,8 @@ class SharePackOut(BaseModel):
 class StorageStats(BaseModel):
     bytes_used: int
     file_count: int
+    quota_bytes: int = 104857600
+    remaining_bytes: int = 0
     backup_dir: Optional[str] = None
 
 
@@ -1445,7 +1447,7 @@ class LockerItemOut(BaseModel):
     notes: Optional[str] = None
     pinned: bool = False
     file_type: Optional[str] = None
-    file_size: Optional[int] = None
+    file_size: Optional[int] = None  # total attached file bytes
     file_count: int = 0
     deleted_at: Optional[datetime] = None
     created_at: datetime

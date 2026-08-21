@@ -91,6 +91,27 @@ def phone_digits(value) -> str:
     return "".join(ch for ch in str(value) if ch.isdigit())
 
 
+def format_bytes(value) -> str:
+    """Human file size for explorer / listings (1024-based)."""
+    try:
+        n = int(value or 0)
+    except (TypeError, ValueError):
+        return "—"
+    if n <= 0:
+        return "—"
+    units = ("B", "KB", "MB", "GB", "TB")
+    size = float(n)
+    for i, unit in enumerate(units):
+        if size < 1024 or i == len(units) - 1:
+            if unit == "B":
+                return f"{int(size)} B"
+            if size >= 100 or unit == "KB":
+                return f"{size:.0f} {unit}"
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{int(n)} B"
+
+
 def setup_templates() -> Jinja2Templates:
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["nice"] = nice_name
@@ -98,4 +119,5 @@ def setup_templates() -> Jinja2Templates:
     templates.env.filters["relabel"] = relation_label
     templates.env.filters["enum_value"] = enum_value
     templates.env.filters["phone_digits"] = phone_digits
+    templates.env.filters["bytes"] = format_bytes
     return templates

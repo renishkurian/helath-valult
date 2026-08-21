@@ -36,6 +36,8 @@ def save_card_image(
     raw: bytes,
     content_type: str | None,
     owner_id: str,
+    db: Session | None = None,
+    user: models.User | None = None,
 ) -> None:
     """Encrypt and store a patient-card scan next to the hospital card row."""
     mime = (content_type or "image/jpeg").split(";")[0].strip().lower()
@@ -56,6 +58,21 @@ def save_card_image(
     size_mb = len(raw) / (1024 * 1024)
     if size_mb > settings.MAX_UPLOAD_MB:
         raise HTTPException(413, f"Image exceeds {settings.MAX_UPLOAD_MB} MB limit")
+
+    old_size = 0
+    if card.image_path:
+        old = settings.STORAGE_DIR / card.image_path
+        if old.is_file():
+            try:
+                old_size = old.stat().st_size
+            except OSError:
+                old_size = 0
+
+    if db is not None and user is not None:
+        from app import quota
+        delta = len(raw) - old_size
+        if delta > 0:
+            quota.assert_can_store(db, user, delta)
 
     # Remove previous file if replacing.
     if card.image_path:
@@ -181,7 +198,10 @@ async def upload_card_image(
     require_owner(current_user)
     card = _get_owned_card(card_id, db, current_user)
     raw = await photo.read()
-    save_card_image(card, raw=raw, content_type=photo.content_type, owner_id=vault_id(current_user))
+    save_card_image(
+        card, raw=raw, content_type=photo.content_type, owner_id=vault_id(current_user),
+        db=db, user=current_user,
+    )
     db.commit()
     db.refresh(card)
     return _to_out(card)

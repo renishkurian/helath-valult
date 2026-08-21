@@ -15,15 +15,15 @@
 {% if folder %}
   {% set add_href = '/admin/locker/add?folder=' ~ folder ~ qs_person %}
   {% set here_label = folder_name or 'Folder' %}
-  {% set here_base = '/admin/locker/explorer?folder=' ~ folder %}
+  {% set here_base = '/admin/locker/explorer?folder=' ~ folder ~ qs_person %}
 {% elif place == 'expiring' %}
   {% set add_href = '/admin/locker/add' ~ (('?' ~ person_param) if person_param else '') %}
   {% set here_label = 'Expiring' %}
-  {% set here_base = '/admin/locker/explorer?place=expiring' %}
+  {% set here_base = '/admin/locker/explorer?place=expiring' ~ qs_person %}
 {% elif place == 'unfiled' %}
   {% set add_href = '/admin/locker/add' ~ (('?' ~ person_param) if person_param else '') %}
   {% set here_label = 'Unfiled' %}
-  {% set here_base = '/admin/locker/explorer?place=unfiled' %}
+  {% set here_base = '/admin/locker/explorer?place=unfiled' ~ qs_person %}
 {% elif place == 'trash' %}
   {% set add_href = '/admin/locker/add' %}
   {% set here_label = 'Trash' %}
@@ -31,7 +31,7 @@
 {% elif doc_type %}
   {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type ~ qs_person %}
   {% set here_label = type_label or (doc_type.replace('_', ' ') | title) %}
-  {% set here_base = '/admin/locker/explorer?doc_type=' ~ doc_type %}
+  {% set here_base = '/admin/locker/explorer?doc_type=' ~ doc_type ~ qs_person %}
 {% elif pid %}
   {% set add_href = '/admin/locker/add?person=' ~ pid %}
   {% set here_label = (person_label | nice) if person_label else 'Profile' %}
@@ -86,12 +86,12 @@
         <em>{{ '%02d'|format(summary.total) }}</em>
       </a>
       <a class="fx-tree-item {% if place == 'expiring' %}on{% endif %}"
-         href="/admin/locker/explorer?place=expiring{{ qs_view }}">
+         href="/admin/locker/explorer?place=expiring{{ qs_person }}{{ qs_view }}">
         <i class="bi bi-clock-history"></i><span>Expiring</span>
         <em>{{ '%02d'|format(summary.expiring) }}</em>
       </a>
       <a class="fx-tree-item {% if place == 'unfiled' %}on{% endif %}"
-         href="/admin/locker/explorer?place=unfiled{{ qs_view }}">
+         href="/admin/locker/explorer?place=unfiled{{ qs_person }}{{ qs_view }}">
         <i class="bi bi-file-earmark"></i><span>Unfiled</span>
       </a>
       <a class="fx-tree-item {% if place == 'trash' %}on{% endif %}"
@@ -105,7 +105,7 @@
     <nav class="fx-tree-nav">
       {% for p in summary.people %}
       <a class="fx-tree-item {% if person == p.id %}on{% endif %}"
-         href="/admin/locker/explorer?person={{ p.id }}{{ qs_view }}">
+         href="/admin/locker/explorer?person={{ p.id }}{% if folder %}&folder={{ folder }}{% endif %}{{ qs_view }}">
         <span class="avatar" style="width:1.25rem;height:1.25rem;font-size:.6rem">{{ p.avatar_initials or (p.name[:1]|upper) }}</span>
         <span>{{ p.name | nice }}</span>
         <em>{{ '%02d'|format(p.count) }}</em>
@@ -120,7 +120,7 @@
     <nav class="fx-tree-nav" id="fx-folder-tree">
       {% for f in folder_tree %}
       <a class="fx-tree-item js-fx-folder {% if folder == f.id %}on{% endif %}"
-         href="/admin/locker/explorer?folder={{ f.id }}{{ qs_view }}"
+         href="/admin/locker/explorer?folder={{ f.id }}{{ qs_person }}{{ qs_view }}"
          style="padding-left: calc(.65rem + {{ (f.depth * 0.9)|round(2) }}rem)"
          data-kind="folder"
          data-id="{{ f.id }}"
@@ -141,7 +141,7 @@
       <nav class="fx-tree-nav">
         {% for t in summary.types if not t.custom %}
         <a class="fx-tree-item {% if doc_type == t.id %}on{% endif %}"
-           href="/admin/locker/explorer?doc_type={{ t.id }}{{ qs_view }}">
+           href="/admin/locker/explorer?doc_type={{ t.id }}{{ qs_person }}{{ qs_view }}">
           <span class="fx-dot" style="background:{{ type_colors.get(t.id, '#8B95A8') }}"></span>
           <span>{{ t.label }}</span>
           <em>{{ '%02d'|format(t.count) }}</em>
@@ -156,16 +156,24 @@
     <div class="fx-toolbar">
       <nav class="fx-crumbs" id="fx-crumbs" aria-label="Breadcrumb">
         <a href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-hdd"></i> Home</a>
+        {% if person_label %}
+          <i class="bi bi-chevron-right"></i>
+          {% if folder_crumbs %}
+          <a href="/admin/locker/explorer?person={{ pid }}{{ qs_view }}">{{ person_label | nice }}</a>
+          {% else %}
+          <span>{{ person_label | nice }}</span>
+          {% endif %}
+        {% endif %}
         {% if folder_crumbs %}
           {% for c in folder_crumbs %}
           <i class="bi bi-chevron-right"></i>
           {% if not loop.last %}
-          <a href="/admin/locker/explorer?folder={{ c.id }}{{ qs_view }}">{{ c.name }}</a>
+          <a href="/admin/locker/explorer?folder={{ c.id }}{{ qs_person }}{{ qs_view }}">{{ c.name }}</a>
           {% else %}
           <span>{{ c.name }}</span>
           {% endif %}
           {% endfor %}
-        {% elif place == 'expiring' or place == 'unfiled' or place == 'trash' or doc_type or person %}
+        {% elif place == 'expiring' or place == 'unfiled' or place == 'trash' or doc_type %}
         <i class="bi bi-chevron-right"></i>
         <span>{{ here_label }}</span>
         {% endif %}
@@ -232,6 +240,7 @@
         <span class="fx-col-name">Name</span>
         <span class="fx-col-type">Type</span>
         <span class="fx-col-meta">Details</span>
+        <span class="fx-col-size">Size</span>
         <span class="fx-col-date">Added</span>
       </div>
       {% endif %}
@@ -240,7 +249,7 @@
       {% if child_folders %}
         {% for f in child_folders %}
         <a class="fx-row js-fx-folder"
-           href="/admin/locker/explorer?folder={{ f.id }}{{ qs_view }}"
+           href="/admin/locker/explorer?folder={{ f.id }}{{ qs_person }}{{ qs_view }}"
            data-kind="folder"
            data-id="{{ f.id }}"
            data-name="{{ f.name }}"
@@ -250,6 +259,7 @@
           {% if view == 'list' %}
           <span class="fx-col-type text-faint">Folder</span>
           <span class="fx-col-meta text-faint">{{ f.child_count }} folder{{ 's' if f.child_count != 1 else '' }} · {{ f.count }} file{{ 's' if f.count != 1 else '' }}</span>
+          <span class="fx-col-size mono text-faint">—</span>
           <span class="fx-col-date text-faint">—</span>
           {% else %}
           <span class="fx-icon-meta">{{ f.count + f.child_count }} items</span>
@@ -266,7 +276,8 @@
          data-name="{{ item.title }}"
          data-type="{{ item.type_label }}"
          data-folder="{{ item.folder_id or '' }}"
-         data-files="{{ item.file_count }}">
+         data-files="{{ item.file_count }}"
+         data-size="{{ item.file_size or 0 }}">
         <span class="fx-ico doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }}">
           {{ item.type_label[:3]|upper }}
         </span>
@@ -280,9 +291,10 @@
           {% if item.person_name %}{{ item.person_name | nice }} · {% endif %}
           {{ item.file_count }} file{{ 's' if item.file_count != 1 else '' }}
         </span>
+        <span class="fx-col-size mono text-faint">{{ item.file_size | bytes }}</span>
         <span class="fx-col-date mono text-faint">{{ item.created_at.strftime('%d %b %Y') }}</span>
         {% else %}
-        <span class="fx-icon-meta">{{ item.type_label }}</span>
+        <span class="fx-icon-meta">{{ item.type_label }} · {{ item.file_size | bytes }}</span>
         {% endif %}
       </a>
       {% endfor %}
@@ -297,8 +309,16 @@
         {% else %}
         <div class="fx-empty fx-dropzone" id="fx-dropzone">
           <i class="bi bi-cloud-arrow-up"></i>
+          {% if person_label and folder %}
+          <p class="mb-1">No documents for {{ person_label | nice }} in this folder</p>
+          <p class="text-faint small mb-3">Upload here to assign files to {{ person_label | nice }}. Open the folder without a profile to see unassigned files.</p>
+          {% elif person_label %}
+          <p class="mb-1">Nothing unfiled for {{ person_label | nice }}</p>
+          <p class="text-faint small mb-3">Open a folder on the left — only {{ person_label | nice }}’s documents will show. Upload assigns to this profile.</p>
+          {% else %}
           <p class="mb-1">This folder is empty</p>
           <p class="text-faint small mb-3">Drop files here, or use Upload / New folder — like a Linux file manager.</p>
+          {% endif %}
           <div class="d-flex flex-wrap gap-2 justify-content-center no-print">
             <button type="button" class="btn btn-outline-light btn-sm" id="fx-empty-new-folder">
               <i class="bi bi-folder-plus"></i> New folder
@@ -813,6 +833,22 @@
     return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
   }
 
+  function fmtSize(n) {
+    n = Number(n || 0);
+    if (!n || n < 0) return "—";
+    var units = ["B", "KB", "MB", "GB", "TB"];
+    var size = n;
+    for (var i = 0; i < units.length; i++) {
+      if (size < 1024 || i === units.length - 1) {
+        if (units[i] === "B") return Math.round(size) + " B";
+        if (size >= 100 || units[i] === "KB") return Math.round(size) + " " + units[i];
+        return size.toFixed(1) + " " + units[i];
+      }
+      size /= 1024;
+    }
+    return Math.round(n) + " B";
+  }
+
   function parseExplorerUrl(href) {
     var u = new URL(href, location.origin);
     return {
@@ -828,10 +864,12 @@
   function qsFromState(st) {
     var p = new URLSearchParams();
     if (st.place === "trash") p.set("place", "trash");
-    else if (st.folder) p.set("folder", st.folder);
-    else if (st.place === "expiring" || st.place === "unfiled") p.set("place", st.place);
-    else if (st.doc_type) p.set("doc_type", st.doc_type);
-    else if (st.person) p.set("person", st.person);
+    else {
+      if (st.folder) p.set("folder", st.folder);
+      else if (st.place === "expiring" || st.place === "unfiled") p.set("place", st.place);
+      else if (st.doc_type) p.set("doc_type", st.doc_type);
+      if (st.person) p.set("person", st.person);
+    }
     if (st.view === "icons") p.set("view", "icons");
     if (st.q && st.place !== "trash") p.set("q", st.q);
     var s = p.toString();
@@ -853,21 +891,31 @@
   function renderCrumbs(data) {
     var nav = document.getElementById("fx-crumbs");
     if (!nav) return;
-    var viewQ = data.view === "icons" ? "?view=icons" : "";
-    var html = '<a href="/admin/locker/explorer' + viewQ + '"><i class="bi bi-hdd"></i> Home</a>';
+    var personQ = data.person ? "&person=" + encodeURIComponent(data.person) : "";
+    var viewQ = data.view === "icons" ? "&view=icons" : "";
+    var html = '<a href="/admin/locker/explorer' + (data.view === "icons" ? "?view=icons" : "") + '"><i class="bi bi-hdd"></i> Home</a>';
+    if (data.person_label) {
+      html += ' <i class="bi bi-chevron-right"></i> ';
+      if ((data.folder_crumbs || []).length) {
+        html += '<a href="/admin/locker/explorer?person=' + encodeURIComponent(data.person) +
+          (data.view === "icons" ? "&view=icons" : "") + '">' + esc(data.person_label) + "</a>";
+      } else {
+        html += "<span>" + esc(data.person_label) + "</span>";
+      }
+    }
     var crumbs = data.folder_crumbs || [];
     if (crumbs.length) {
       crumbs.forEach(function (c, i) {
         html += ' <i class="bi bi-chevron-right"></i> ';
         if (i < crumbs.length - 1) {
           html += '<a href="/admin/locker/explorer?folder=' + encodeURIComponent(c.id) +
-            (data.view === "icons" ? "&view=icons" : "") + '">' + esc(c.name) + "</a>";
+            personQ + viewQ + '">' + esc(c.name) + "</a>";
         } else {
           html += "<span>" + esc(c.name) + "</span>";
         }
       });
     } else if (data.place === "expiring" || data.place === "unfiled" || data.place === "trash" ||
-               data.doc_type || data.person) {
+               data.doc_type) {
       html += ' <i class="bi bi-chevron-right"></i> <span>' + esc(data.here_label || "") + "</span>";
     }
     nav.innerHTML = html;
@@ -924,10 +972,12 @@
     if (!icons) {
       html += '<div class="fx-list-head" aria-hidden="true">' +
         '<span class="fx-col-name">Name</span><span class="fx-col-type">Type</span>' +
-        '<span class="fx-col-meta">Details</span><span class="fx-col-date">Added</span></div>';
+        '<span class="fx-col-meta">Details</span><span class="fx-col-size">Size</span>' +
+        '<span class="fx-col-date">Added</span></div>';
     }
     (data.child_folders || []).forEach(function (f) {
       var href = "/admin/locker/explorer?folder=" + encodeURIComponent(f.id) +
+        (data.person ? "&person=" + encodeURIComponent(data.person) : "") +
         (icons ? "&view=icons" : "");
       html += '<a class="fx-row js-fx-folder" href="' + href + '" data-kind="folder" data-id="' + esc(f.id) +
         '" data-name="' + esc(f.name) + '" data-count="' + (f.count || 0) + '">' +
@@ -938,6 +988,7 @@
           '<span class="fx-col-meta text-faint">' + (f.child_count || 0) + " folder" +
           ((f.child_count || 0) !== 1 ? "s" : "") + " · " + (f.count || 0) + " file" +
           ((f.count || 0) !== 1 ? "s" : "") + "</span>" +
+          '<span class="fx-col-size mono text-faint">—</span>' +
           '<span class="fx-col-date text-faint">—</span>';
       } else {
         html += '<span class="fx-icon-meta">' + ((f.count || 0) + (f.child_count || 0)) + " items</span>";
@@ -950,7 +1001,7 @@
       html += '<a class="fx-row js-fx-doc" href="/admin/locker/' + encodeURIComponent(item.id) +
         '" data-kind="doc" data-id="' + esc(item.id) + '" data-name="' + esc(item.title) +
         '" data-type="' + esc(label) + '" data-folder="' + esc(item.folder_id || "") +
-        '" data-files="' + (item.file_count || 0) + '">' +
+        '" data-files="' + (item.file_count || 0) + '" data-size="' + (item.file_size || 0) + '">' +
         '<span class="fx-ico doc-icon" style="background:' + color + '">' +
         esc(String(label).slice(0, 3).toUpperCase()) + "</span>" +
         '<span class="fx-col-name truncate">' + esc(item.title) +
@@ -962,9 +1013,10 @@
           (item.person_name ? esc(item.person_name) + " · " : "") +
           (item.file_count || 0) + " file" + ((item.file_count || 0) !== 1 ? "s" : "") +
           "</span>" +
+          '<span class="fx-col-size mono text-faint">' + esc(fmtSize(item.file_size)) + "</span>" +
           '<span class="fx-col-date mono text-faint">' + esc(fmtDate(item.created_at)) + "</span>";
       } else {
-        html += '<span class="fx-icon-meta">' + esc(label) + "</span>";
+        html += '<span class="fx-icon-meta">' + esc(label) + " · " + esc(fmtSize(item.file_size)) + "</span>";
       }
       html += "</a>";
     });
@@ -974,9 +1026,20 @@
         html += '<div class="fx-empty"><i class="bi bi-trash3"></i><p class="mb-1">Trash is empty</p>' +
           '<p class="text-faint small mb-0">Deleted documents wait here until you restore them or empty trash.</p></div>';
       } else {
+        var emptyTitle = "This folder is empty";
+        var emptyHint = "Drop files here, or use Upload / New folder — like a Linux file manager.";
+        if (data.person_label && data.folder) {
+          emptyTitle = "No documents for " + data.person_label + " in this folder";
+          emptyHint = "Upload here to assign files to " + data.person_label +
+            ". Open the folder without a profile to see unassigned files.";
+        } else if (data.person_label) {
+          emptyTitle = "Nothing unfiled for " + data.person_label;
+          emptyHint = "Open a folder on the left — only " + data.person_label +
+            "’s documents will show. Upload assigns to this profile.";
+        }
         html += '<div class="fx-empty fx-dropzone" id="fx-dropzone"><i class="bi bi-cloud-arrow-up"></i>' +
-          '<p class="mb-1">This folder is empty</p>' +
-          '<p class="text-faint small mb-3">Drop files here, or use Upload / New folder — like a Linux file manager.</p>' +
+          '<p class="mb-1">' + esc(emptyTitle) + "</p>" +
+          '<p class="text-faint small mb-3">' + esc(emptyHint) + "</p>" +
           '<div class="d-flex flex-wrap gap-2 justify-content-center no-print">' +
           '<button type="button" class="btn btn-outline-light btn-sm" id="fx-empty-new-folder"><i class="bi bi-folder-plus"></i> New folder</button>' +
           '<label class="btn btn-primary btn-sm mb-0" for="fx-upload-input"><i class="bi bi-upload"></i> Upload files</label>' +
@@ -993,32 +1056,74 @@
     document.querySelectorAll(".fx-tree-item").forEach(function (el) {
       el.classList.remove("on");
     });
-    var sel = null;
+    var personQ = data.person ? "&person=" + encodeURIComponent(data.person) : "";
+    var viewQ = data.view === "icons" ? "&view=icons" : "";
+    // Keep folder links scoped to the active family profile.
+    document.querySelectorAll("#fx-folder-tree .js-fx-folder").forEach(function (a) {
+      var id = a.getAttribute("data-id");
+      if (!id) return;
+      a.setAttribute("href", "/admin/locker/explorer?folder=" + encodeURIComponent(id) + personQ + viewQ);
+    });
+    document.querySelectorAll(".fx-tree-nav a.fx-tree-item").forEach(function (a) {
+      var href = a.getAttribute("href") || "";
+      if (href.indexOf("person=") >= 0 && href.indexOf("/admin/family") < 0) {
+        try {
+          var u = new URL(href, location.origin);
+          var pid = u.searchParams.get("person");
+          if (!pid) return;
+          u.searchParams.delete("folder");
+          if (data.folder) u.searchParams.set("folder", data.folder);
+          if (data.view === "icons") u.searchParams.set("view", "icons");
+          else u.searchParams.delete("view");
+          a.setAttribute("href", u.pathname + "?" + u.searchParams.toString());
+        } catch (e) {}
+      }
+    });
+    if (data.folder_tree && data.folder_tree.length) {
+      data.folder_tree.forEach(function (f) {
+        var row = document.querySelector('#fx-folder-tree .js-fx-folder[data-id="' + f.id + '"]');
+        if (!row) return;
+        var em = row.querySelector("em");
+        if (em) em.textContent = String((f.count || 0) + (f.child_count || 0)).padStart(2, "0");
+        row.setAttribute("data-count", String(f.count || 0));
+      });
+    }
     if (data.folder) {
       var fid = data.folder.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      sel = document.querySelector('#fx-folder-tree .js-fx-folder[data-id="' + fid + '"]');
+      var folderSel = document.querySelector('#fx-folder-tree .js-fx-folder[data-id="' + fid + '"]');
+      if (folderSel) folderSel.classList.add("on");
     } else if (data.place === "expiring") {
-      sel = document.querySelector('.fx-tree-item[href*="place=expiring"]');
+      var ex = document.querySelector('.fx-tree-item[href*="place=expiring"]');
+      if (ex) ex.classList.add("on");
     } else if (data.place === "unfiled") {
-      sel = document.querySelector('.fx-tree-item[href*="place=unfiled"]');
+      var uf = document.querySelector('.fx-tree-item[href*="place=unfiled"]');
+      if (uf) uf.classList.add("on");
     } else if (data.place === "trash") {
-      sel = document.querySelector('.fx-tree-item[href*="place=trash"]');
-    } else if (data.person) {
-      sel = document.querySelector('.fx-tree-item[href*="person=' + encodeURIComponent(data.person) + '"]');
+      var tr = document.querySelector('.fx-tree-item[href*="place=trash"]');
+      if (tr) tr.classList.add("on");
     } else if (data.doc_type) {
-      sel = document.querySelector('.fx-tree-item[href*="doc_type=' + encodeURIComponent(data.doc_type) + '"]');
-    } else {
-      sel = document.querySelector('.fx-tree-item[href="/admin/locker/explorer"], .fx-tree-item[href="/admin/locker/explorer?view=icons"]');
-      if (!sel) {
+      var ty = document.querySelector('.fx-tree-item[href*="doc_type=' + encodeURIComponent(data.doc_type) + '"]');
+      if (ty) ty.classList.add("on");
+    } else if (!data.person) {
+      var home = document.querySelector('.fx-tree-item[href="/admin/locker/explorer"], .fx-tree-item[href="/admin/locker/explorer?view=icons"]');
+      if (!home) {
         document.querySelectorAll(".fx-tree-nav a.fx-tree-item").forEach(function (a) {
           var h = a.getAttribute("href") || "";
-          if (h === "/admin/locker/explorer" || h.indexOf("/admin/locker/explorer?") === 0 && h.indexOf("folder=") < 0 && h.indexOf("place=") < 0 && h.indexOf("person=") < 0 && h.indexOf("doc_type=") < 0) {
-            if (!sel) sel = a;
+          if (h === "/admin/locker/explorer" || (h.indexOf("/admin/locker/explorer?") === 0 && h.indexOf("folder=") < 0 && h.indexOf("place=") < 0 && h.indexOf("person=") < 0 && h.indexOf("doc_type=") < 0)) {
+            if (!home) home = a;
           }
         });
       }
+      if (home) home.classList.add("on");
     }
-    if (sel) sel.classList.add("on");
+    if (data.person) {
+      document.querySelectorAll(".fx-tree-nav a.fx-tree-item").forEach(function (a) {
+        var href = a.getAttribute("href") || "";
+        if (href.indexOf("person=" + data.person) >= 0 || href.indexOf("person=" + encodeURIComponent(data.person)) >= 0) {
+          a.classList.add("on");
+        }
+      });
+    }
     var trashEm = document.querySelector('.fx-tree-item[href*="place=trash"] em');
     if (trashEm && data.summary) {
       trashEm.textContent = String(data.summary.trash || 0).padStart(2, "0");
@@ -1030,11 +1135,14 @@
     shell.setAttribute("data-add", data.add_href || "");
     shell.setAttribute("data-folder", data.folder || "");
     shell.setAttribute("data-place", data.place || "home");
+    shell.setAttribute("data-person", data.person || "");
     var uf = document.getElementById("fx-upload-form");
     if (uf) {
       var fid = uf.querySelector('input[name="folder_id"]');
+      var pid = uf.querySelector('input[name="person_id"]');
       var nxt = uf.querySelector('input[name="next"]');
       if (fid) fid.value = data.folder || "";
+      if (pid) pid.value = data.person || "";
       if (nxt) nxt.value = data.here_href || "";
     }
     ["fx-form-new-folder", "fx-form-rename-folder", "fx-form-delete-doc", "fx-form-restore-doc", "fx-form-permanent-doc", "fx-form-move"].forEach(function (id) {

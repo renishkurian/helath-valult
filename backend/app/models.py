@@ -85,6 +85,8 @@ class User(Base):
     card_image_as_background = Column(Boolean, default=False, nullable=False)
     # Floating Ask AI button on every module (web + app).
     show_ask_ai_fab = Column(Boolean, default=True, nullable=False)
+    # Total encrypted storage allowance for this vault (bytes). Default 100 MiB.
+    storage_quota_bytes = Column(Integer, default=100 * 1024 * 1024, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     people = relationship("Person", back_populates="owner", cascade="all, delete-orphan")

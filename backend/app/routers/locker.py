@@ -116,6 +116,8 @@ def _to_out(
     folder_name: Optional[str] = None,
 ) -> schemas.LockerItemOut:
     first = item.files[0] if item.files else None
+    sizes = [f.file_size for f in (item.files or []) if f.file_size]
+    total_size = sum(sizes) if sizes else None
     pname = person_name
     if pname is None and getattr(item, "person", None) is not None:
         pname = item.person.name
@@ -141,7 +143,7 @@ def _to_out(
         notes=crypto.decrypt_text(item.notes_enc),
         pinned=bool(item.pinned),
         file_type=first.file_type if first else None,
-        file_size=first.file_size if first else None,
+        file_size=total_size,
         file_count=len(item.files) if item.files else 0,
         deleted_at=getattr(item, "deleted_at", None),
         created_at=item.created_at,
@@ -210,9 +212,11 @@ def _folder_outs(db: Session, user: models.User, items: list[models.LockerItem] 
     return out
 
 
-def _folder_tree(db: Session, user: models.User) -> list[schemas.LockerFolderTreeOut]:
+def _folder_tree(
+    db: Session, user: models.User, items: list[models.LockerItem] | None = None,
+) -> list[schemas.LockerFolderTreeOut]:
     """Depth-first flat tree for sidebar (Linux Places-style nested folders)."""
-    folders = _folder_outs(db, user)
+    folders = _folder_outs(db, user, items)
     by_parent: dict[str | None, list[schemas.LockerFolderOut]] = {}
     for f in folders:
         by_parent.setdefault(f.parent_id, []).append(f)
@@ -603,8 +607,11 @@ async def _save_files(
     db: Session,
 ):
     from app.models import gen_id
+    from app import quota
+
     dest = settings.STORAGE_DIR / vault_id(current_user) / "locker"
     dest.mkdir(parents=True, exist_ok=True)
+    payloads: list[tuple[bytes, UploadFile]] = []
     for upload in files:
         raw = await upload.read()
         if (upload.content_type or "").startswith("image/"):
@@ -615,6 +622,9 @@ async def _save_files(
                 status_code=413,
                 detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit",
             )
+        payloads.append((raw, upload))
+    quota.assert_can_store(db, current_user, sum(len(r) for r, _ in payloads))
+    for raw, upload in payloads:
         token = gen_id()
         enc_path = dest / f"{item.id}_{token}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))

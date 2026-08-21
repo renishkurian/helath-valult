@@ -22,10 +22,10 @@
     </div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="stat">
+    <div class="stat {% if quota_pct >= 90 %}danger{% elif quota_pct >= 75 %}accent{% endif %}">
       <div class="lbl"><i class="bi bi-hdd"></i> Space used</div>
-      <div class="val">{{ '%.1f'|format(bytes_used / 1048576) if bytes_used else '0' }} MB</div>
-      <div class="sub">{{ bytes_used }} bytes</div>
+      <div class="val">{{ '%.1f'|format(used_mb) }} / {{ '%.0f'|format(quota_mb) }} MB</div>
+      <div class="sub">{{ quota_pct }}% of your vault quota · {{ remaining_bytes }} bytes free</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
