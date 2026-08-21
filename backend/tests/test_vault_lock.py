@@ -1,4 +1,4 @@
-"""Per-module vault 2FA locks (Password / Document / Health)."""
+"""Per-module vault locks (Password / Document / Health) and per-item 2FA locks."""
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -26,7 +26,6 @@ def _headers(token: str, unlock: str | None = None) -> dict:
 
 
 def _enable_totp(user_id: str) -> str:
-    """Return current TOTP code for the user after enabling authenticator."""
     db = SessionLocal()
     try:
         user = db.query(models.User).filter(models.User.id == user_id).first()
@@ -67,7 +66,6 @@ def test_vault_lock_blocks_locker_until_unlocked():
     assert detail["code"] == "vault_locked"
     assert detail["module"] == "locker"
 
-    # Fresh code after enable may still be in same 30s window
     db = SessionLocal()
     try:
         user = db.query(models.User).filter(models.User.id == uid).first()
@@ -105,6 +103,27 @@ def test_vault_lock_health_blocks_documents():
     blocked = client.get("/documents", headers=h)
     assert blocked.status_code == 423
 
-    # People listing is not behind the health document lock
     people = client.get("/people", headers=h)
     assert people.status_code == 200
+
+
+def test_item_require_2fa_flag_on_locker():
+    data = _register("itemlock_locker@example.com")
+    token = data["access_token"]
+    uid = _user_id_from_token(token)
+    _enable_totp(uid)
+    h = _headers(token)
+
+    db = SessionLocal()
+    try:
+        item = models.LockerItem(user_id=uid, title="PAN Card", doc_type="pan", require_2fa=True)
+        db.add(item)
+        db.commit()
+        item_id = item.id
+    finally:
+        db.close()
+
+    listed = client.get("/locker", headers=h)
+    assert listed.status_code == 200, listed.text
+    row = next(x for x in listed.json() if x["id"] == item_id)
+    assert row["require_2fa"] is True

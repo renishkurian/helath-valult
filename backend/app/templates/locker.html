@@ -192,7 +192,7 @@
             <a class="d-flex align-items-center gap-2 text-reset text-decoration-none" href="/admin/locker/{{ item.id }}">
               <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
               <span>
-                <span class="fw-semibold d-block truncate">{{ item.title }}</span>
+                <span class="fw-semibold d-block truncate">{{ item.title }}{% if item.require_2fa %} <i class="bi bi-shield-lock text-warning" title="Locked with 2FA"></i>{% endif %}</span>
                 <span class="small text-faint">{{ item.type_label }}{% if item.issuer %} · {{ item.issuer }}{% endif %}</span>
               </span>
             </a>

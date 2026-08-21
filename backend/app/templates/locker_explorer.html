@@ -74,7 +74,9 @@
      data-here="{{ here_href }}"
      data-add="{{ add_href }}"
      data-folder="{{ folder or '' }}"
-     data-place="{{ place }}">
+     data-place="{{ place }}"
+     data-sort="{{ sort|default('created') }}"
+     data-dir="{{ dir|default('desc') }}">
 
   {# ---- Places / folders tree ---- #}
   <aside class="fx-tree" aria-label="Places">
@@ -231,17 +233,21 @@
       <input type="hidden" name="folder_id" value="{{ folder or '' }}">
       <input type="hidden" name="person_id" value="{{ pid }}">
       <input type="hidden" name="next" value="{{ here_href }}">
+      <input type="hidden" name="file_mtimes" id="fx-upload-mtimes" value="">
       <input type="file" name="files" id="fx-upload-input" multiple>
     </form>
 
     <div class="fx-pane {% if view == 'icons' %}fx-icons{% else %}fx-list{% endif %}" id="fx-pane" tabindex="0">
       {% if view == 'list' %}
-      <div class="fx-list-head" aria-hidden="true">
-        <span class="fx-col-name">Name</span>
-        <span class="fx-col-type">Type</span>
+      {% set sort = sort|default('created') %}
+      {% set dir = dir|default('desc') %}
+      <div class="fx-list-head" role="row">
+        <span class="fx-sort-spacer" aria-hidden="true"></span>
+        <button type="button" class="fx-col-name fx-sort{% if sort=='name' %} on{% endif %}" data-sort="name">Name{% if sort=='name' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
+        <button type="button" class="fx-col-type fx-sort{% if sort=='type' %} on{% endif %}" data-sort="type">Type{% if sort=='type' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
         <span class="fx-col-meta">Details</span>
-        <span class="fx-col-size">Size</span>
-        <span class="fx-col-date">Added</span>
+        <button type="button" class="fx-col-size fx-sort{% if sort=='size' %} on{% endif %}" data-sort="size">Size{% if sort=='size' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
+        <button type="button" class="fx-col-date fx-sort{% if sort=='created' %} on{% endif %}" data-sort="created" title="Original file date from metadata when available">Created{% if sort=='created' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
       </div>
       {% endif %}
 
@@ -292,7 +298,7 @@
           {{ item.file_count }} file{{ 's' if item.file_count != 1 else '' }}
         </span>
         <span class="fx-col-size mono text-faint">{{ item.file_size | bytes }}</span>
-        <span class="fx-col-date mono text-faint">{{ item.created_at.strftime('%d %b %Y') }}</span>
+        <span class="fx-col-date mono text-faint" title="{% if item.source_created_at %}Original file date{% else %}Uploaded {{ item.created_at.strftime('%d %b %Y') }} (no file metadata){% endif %}">{% if item.source_created_at %}{{ item.source_created_at.strftime('%d %b %Y') }}{% else %}{{ item.created_at.strftime('%d %b %Y') }}{% endif %}</span>
         {% else %}
         <span class="fx-icon-meta">{{ item.type_label }} · {{ item.file_size | bytes }}</span>
         {% endif %}
@@ -619,6 +625,12 @@
     var dt = new DataTransfer();
     for (var i = 0; i < files.length; i++) dt.items.add(files[i]);
     uploadInput.files = dt.files;
+    var hid = document.getElementById("fx-upload-mtimes");
+    if (hid) {
+      var out = [];
+      for (var j = 0; j < dt.files.length; j++) out.push(dt.files[j].lastModified || 0);
+      hid.value = JSON.stringify(out);
+    }
     uploadForm.submit();
   });
 
@@ -872,6 +884,10 @@
     }
     if (st.view === "icons") p.set("view", "icons");
     if (st.q && st.place !== "trash") p.set("q", st.q);
+    if (st.sort && (st.sort !== "created" || st.dir !== "desc")) {
+      p.set("sort", st.sort);
+      p.set("dir", st.dir || "desc");
+    }
     var s = p.toString();
     return "/admin/locker/explorer" + (s ? "?" + s : "");
   }
@@ -970,10 +986,20 @@
     pane.className = "fx-pane " + (icons ? "fx-icons" : "fx-list");
     var html = "";
     if (!icons) {
-      html += '<div class="fx-list-head" aria-hidden="true">' +
-        '<span class="fx-col-name">Name</span><span class="fx-col-type">Type</span>' +
-        '<span class="fx-col-meta">Details</span><span class="fx-col-size">Size</span>' +
-        '<span class="fx-col-date">Added</span></div>';
+      var sk = data.sort || "created";
+      var sd = data.dir || "desc";
+      function sortBtn(key, label, cls) {
+        var on = sk === key ? " on" : "";
+        var caret = sk === key ? ' <i class="bi bi-caret-' + (sd === "asc" ? "up" : "down") + '"></i>' : "";
+        return '<button type="button" class="' + cls + ' fx-sort' + on + '" data-sort="' + key + '">' + label + caret + "</button>";
+      }
+      html += '<div class="fx-list-head" role="row"><span class="fx-sort-spacer" aria-hidden="true"></span>' +
+        sortBtn("name", "Name", "fx-col-name") +
+        sortBtn("type", "Type", "fx-col-type") +
+        '<span class="fx-col-meta">Details</span>' +
+        sortBtn("size", "Size", "fx-col-size") +
+        sortBtn("created", "Created", "fx-col-date") +
+        "</div>";
     }
     (data.child_folders || []).forEach(function (f) {
       var href = "/admin/locker/explorer?folder=" + encodeURIComponent(f.id) +
@@ -1014,7 +1040,7 @@
           (item.file_count || 0) + " file" + ((item.file_count || 0) !== 1 ? "s" : "") +
           "</span>" +
           '<span class="fx-col-size mono text-faint">' + esc(fmtSize(item.file_size)) + "</span>" +
-          '<span class="fx-col-date mono text-faint">' + esc(fmtDate(item.created_at)) + "</span>";
+          '<span class="fx-col-date mono text-faint">' + esc(fmtDate(item.source_created_at || item.created_at)) + "</span>";
       } else {
         html += '<span class="fx-icon-meta">' + esc(label) + " · " + esc(fmtSize(item.file_size)) + "</span>";
       }
@@ -1136,6 +1162,8 @@
     shell.setAttribute("data-folder", data.folder || "");
     shell.setAttribute("data-place", data.place || "home");
     shell.setAttribute("data-person", data.person || "");
+    shell.setAttribute("data-sort", data.sort || "created");
+    shell.setAttribute("data-dir", data.dir || "desc");
     var uf = document.getElementById("fx-upload-form");
     if (uf) {
       var fid = uf.querySelector('input[name="folder_id"]');
@@ -1169,6 +1197,10 @@
       if (data.doc_type) addHidden("doc_type", data.doc_type);
       if (data.person) addHidden("person", data.person);
       if (data.view === "icons") addHidden("view", "icons");
+      if (data.sort && (data.sort !== "created" || data.dir !== "desc")) {
+        addHidden("sort", data.sort);
+        addHidden("dir", data.dir || "desc");
+      }
       var q = search.querySelector('input[type="search"]');
       if (q) {
         q.value = data.q || "";
@@ -1186,7 +1218,56 @@
     if (push) history.pushState({ fx: true }, "", data.here_href || "/admin/locker/explorer");
   }
 
+  function browseParams(extra) {
+    var p = {
+      folder: shell.getAttribute("data-folder") || "",
+      place: shell.getAttribute("data-place") || "",
+      person: shell.getAttribute("data-person") || "",
+      sort: shell.getAttribute("data-sort") || "created",
+      dir: shell.getAttribute("data-dir") || "desc",
+      view: (document.querySelector(".fx-view-icons.on") || location.search.indexOf("view=icons") >= 0) ? "icons" : "list"
+    };
+    if (p.place === "home" || p.place === "folder") p.place = "";
+    if (p.folder) p.place = "";
+    Object.keys(extra || {}).forEach(function (k) { p[k] = extra[k]; });
+    return p;
+  }
+
+  function syncFileMtimes(fileList) {
+    var hid = document.getElementById("fx-upload-mtimes");
+    if (!hid) return;
+    var out = [];
+    if (fileList) {
+      for (var i = 0; i < fileList.length; i++) out.push(fileList[i].lastModified || 0);
+    }
+    hid.value = JSON.stringify(out);
+  }
+
+  if (uploadInput) {
+    uploadInput.addEventListener("change", function () {
+      syncFileMtimes(uploadInput.files);
+    });
+  }
+  if (uploadForm) {
+    uploadForm.addEventListener("submit", function () {
+      syncFileMtimes(uploadInput && uploadInput.files);
+    });
+  }
+
+  pane.addEventListener("click", function (e) {
+    var btn = e.target.closest(".fx-sort");
+    if (!btn || !pane.contains(btn)) return;
+    e.preventDefault();
+    var key = btn.getAttribute("data-sort") || "created";
+    var cur = shell.getAttribute("data-sort") || "created";
+    var dir = shell.getAttribute("data-dir") || "desc";
+    if (key === cur) dir = dir === "asc" ? "desc" : "asc";
+    else dir = key === "name" || key === "type" ? "asc" : "desc";
+    navigate(browseParams({ sort: key, dir: dir }));
+  });
+
   function navigate(params, push) {
+
     if (busy) return;
     busy = true;
     var my = ++seq;

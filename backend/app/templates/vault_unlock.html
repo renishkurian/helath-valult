@@ -9,11 +9,14 @@
       <a href="/admin/security">Security</a>
     </div>
     <h1 class="page-title">Unlock {{ label }}</h1>
-    <p class="page-lead">This vault is locked with 2FA. Enter an authenticator code{% if methods.email %} or email one-time code{% endif %}. Unlock lasts {{ unlock_minutes }} minutes.</p>
+    <p class="page-lead">
+      {% if is_item %}This item is locked with 2FA.{% else %}This vault is locked with 2FA.{% endif %}
+      Enter an authenticator code{% if methods.email %} or email one-time code{% endif %}. Unlock lasts {{ unlock_minutes }} minutes.
+    </p>
   </div>
 </div>
 
-{% if err == 'bad' %}
+{% if err == 'bad' or err == 'badcode' %}
 <div class="alert alert-danger" role="alert">
   <i class="bi bi-exclamation-triangle"></i>
   <span>That code is not valid. Wait for a new one and try again.</span>
@@ -43,7 +46,12 @@
       </div>
       <div class="card-body">
         <form method="post" action="/admin/security/unlock" class="stack">
+          {% if is_item %}
+          <input type="hidden" name="item_kind" value="{{ item_kind }}">
+          <input type="hidden" name="item_id" value="{{ item_id }}">
+          {% else %}
           <input type="hidden" name="module" value="{{ module }}">
+          {% endif %}
           <input type="hidden" name="next" value="{{ next }}">
           <input type="hidden" name="method" value="auto">
           <div>
@@ -69,7 +77,12 @@
         </form>
         {% if methods.email %}
         <form method="post" action="/admin/security/unlock/email" class="mt-3">
+          {% if is_item %}
+          <input type="hidden" name="item_kind" value="{{ item_kind }}">
+          <input type="hidden" name="item_id" value="{{ item_id }}">
+          {% else %}
           <input type="hidden" name="module" value="{{ module }}">
+          {% endif %}
           <input type="hidden" name="next" value="{{ next }}">
           <button class="btn btn-outline-light btn-sm" type="submit">
             <i class="bi bi-envelope"></i> Send code to email

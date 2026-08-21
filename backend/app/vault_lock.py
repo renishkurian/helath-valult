@@ -396,3 +396,281 @@ def verify_api_unlock_code(
         if verify_api_email_otp(db, user, key, code):
             return True
     return False
+
+
+# ---------- Per-item locks (locker / vault / health document) ----------
+
+ITEM_KINDS = ("locker", "vault", "document")
+ITEM_LABELS = {
+    "locker": "Document Vault item",
+    "vault": "Password Vault item",
+    "document": "Health document",
+}
+
+
+def normalize_item_kind(kind: str | None) -> str | None:
+    key = (kind or "").strip().lower()
+    if key in ("passwords", "password"):
+        return "vault"
+    if key in ("health", "documents"):
+        return "document"
+    return key if key in ITEM_KINDS else None
+
+
+def item_key(kind: str, item_id: str) -> str:
+    return f"{kind}:{item_id}"
+
+
+def item_requires_2fa(item) -> bool:
+    return bool(item is not None and getattr(item, "require_2fa", False))
+
+
+def _item_unlock_map(request: Request) -> dict:
+    raw = request.session.get("vault_item_unlock") or {}
+    if not isinstance(raw, dict):
+        return {}
+    now = time.time()
+    clean = {}
+    for k, exp in raw.items():
+        try:
+            if float(exp) > now:
+                clean[str(k)] = float(exp)
+        except (TypeError, ValueError):
+            continue
+    request.session["vault_item_unlock"] = clean
+    return clean
+
+
+def is_item_unlocked(request: Request, kind: str, item_id: str) -> bool:
+    key = normalize_item_kind(kind)
+    if not key or not item_id:
+        return True
+    return item_key(key, item_id) in _item_unlock_map(request)
+
+
+def mark_item_unlocked(request: Request, kind: str, item_id: str) -> float:
+    key = normalize_item_kind(kind)
+    if not key:
+        raise ValueError("Unknown item kind")
+    exp = time.time() + UNLOCK_MINUTES * 60
+    data = _item_unlock_map(request)
+    data[item_key(key, item_id)] = exp
+    request.session["vault_item_unlock"] = data
+    return exp
+
+
+def clear_item_unlock(request: Request, kind: str, item_id: str) -> None:
+    key = normalize_item_kind(kind)
+    if not key:
+        return
+    data = _item_unlock_map(request)
+    data.pop(item_key(key, item_id), None)
+    request.session["vault_item_unlock"] = data
+
+
+def load_item(db: Session, user: models.User, kind: str, item_id: str):
+    """Return owned item row or None."""
+    from app.deps import vault_id
+
+    key = normalize_item_kind(kind)
+    if not key or not item_id:
+        return None
+    oid = vault_id(user)
+    if key == "locker":
+        return (
+            db.query(models.LockerItem)
+            .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == oid)
+            .first()
+        )
+    if key == "vault":
+        return (
+            db.query(models.VaultItem)
+            .filter(models.VaultItem.id == item_id, models.VaultItem.user_id == oid)
+            .first()
+        )
+    # document — owned via person.user_id
+    return (
+        db.query(models.Document)
+        .join(models.Person)
+        .filter(models.Document.id == item_id, models.Person.user_id == oid)
+        .first()
+    )
+
+
+def item_title(item, kind: str) -> str:
+    if item is None:
+        return ITEM_LABELS.get(kind or "", "Item")
+    return (
+        getattr(item, "title", None)
+        or getattr(item, "name", None)
+        or ITEM_LABELS.get(kind or "", "Item")
+    )
+
+
+def unlock_redirect_item(kind: str, item_id: str, next_url: str = "") -> RedirectResponse:
+    key = normalize_item_kind(kind) or "locker"
+    dest = next_url if (next_url or "").startswith("/admin/") and "://" not in next_url else ""
+    q = f"item_kind={quote(key)}&item_id={quote(item_id)}"
+    if dest:
+        q += f"&next={quote(dest)}"
+    return RedirectResponse(f"/admin/security/unlock?{q}", status_code=302)
+
+
+def gate_item_access(
+    request: Request,
+    user: models.User,
+    kind: str,
+    item,
+    *,
+    next_url: str | None = None,
+) -> RedirectResponse | None:
+    """If this item requires 2FA and is not unlocked, redirect to unlock UI."""
+    if not item_requires_2fa(item):
+        return None
+    key = normalize_item_kind(kind)
+    if not key:
+        return None
+    if is_item_unlocked(request, key, item.id):
+        return None
+    path = next_url or (request.url.path + (("?" + request.url.query) if request.url.query else ""))
+    return unlock_redirect_item(key, item.id, path)
+
+
+def create_item_unlock_token(user_id: str, kind: str, item_id: str) -> str:
+    key = normalize_item_kind(kind)
+    if not key:
+        raise ValueError("Unknown item kind")
+    expire = datetime.utcnow() + timedelta(minutes=UNLOCK_MINUTES)
+    from jose import jwt
+    from app.config import settings
+    return jwt.encode(
+        {
+            "sub": user_id,
+            "type": "vault_item_unlock",
+            "kind": key,
+            "iid": item_id,
+            "exp": expire,
+        },
+        settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
+def verify_item_unlock_token(token: str | None, user_id: str, kind: str, item_id: str) -> bool:
+    key = normalize_item_kind(kind)
+    if not token or not key:
+        return False
+    try:
+        payload = security.decode_token(token)
+    except ValueError:
+        return False
+    return (
+        payload.get("type") == "vault_item_unlock"
+        and payload.get("sub") == user_id
+        and payload.get("kind") == key
+        and payload.get("iid") == item_id
+    )
+
+
+def require_api_item_unlock(
+    request: Request,
+    user: models.User,
+    kind: str,
+    item,
+    db: Session | None = None,
+) -> None:
+    if not item_requires_2fa(item):
+        return
+    key = normalize_item_kind(kind)
+    if not key:
+        return
+    token = request.headers.get("X-Vault-Unlock") or request.headers.get("x-vault-unlock")
+    if verify_item_unlock_token(token, user.id, key, item.id):
+        return
+    raise HTTPException(
+        status_code=423,
+        detail={
+            "code": "item_locked",
+            "kind": key,
+            "item_id": item.id,
+            "label": item_title(item, key),
+            "message": f"“{item_title(item, key)}” is locked. Verify with authenticator or email OTP.",
+            "methods": unlock_methods(user, db),
+        },
+    )
+
+
+def issue_item_email_otp(request: Request, user: models.User, kind: str, item_id: str, db: Session) -> bool:
+    """Reuse session email OTP slot with an item-scoped module key."""
+    key = normalize_item_kind(kind)
+    if not key or not mailer.mail_ready(db):
+        return False
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    slot = f"item:{key}:{item_id}"
+    request.session["vault_lock_email_otp"] = {
+        "module": slot,
+        "hash": _hash_otp(code),
+        "exp": time.time() + EMAIL_OTP_MINUTES * 60,
+    }
+    label = ITEM_LABELS.get(key, "item")
+    ok = mailer.send_email(
+        user.email,
+        f"Vault unlock code — {label}",
+        (
+            f"Your one-time code to unlock this {label.lower()} is:\n\n"
+            f"  {code}\n\n"
+            f"It expires in {EMAIL_OTP_MINUTES} minutes. "
+            f"If you did not request this, ignore this email.\n"
+        ),
+        db=db,
+    )
+    if not ok:
+        request.session.pop("vault_lock_email_otp", None)
+    return ok
+
+
+def verify_item_email_otp(request: Request, kind: str, item_id: str, code: str) -> bool:
+    key = normalize_item_kind(kind)
+    slot = f"item:{key}:{item_id}" if key else ""
+    raw = request.session.get("vault_lock_email_otp") or {}
+    if not key or not isinstance(raw, dict) or raw.get("module") != slot:
+        return False
+    try:
+        if float(raw.get("exp") or 0) < time.time():
+            request.session.pop("vault_lock_email_otp", None)
+            return False
+    except (TypeError, ValueError):
+        return False
+    want = str(raw.get("hash") or "")
+    got = _hash_otp(code or "")
+    if not want or not hmac.compare_digest(want, got):
+        return False
+    request.session.pop("vault_lock_email_otp", None)
+    return True
+
+
+def verify_item_unlock_code(
+    request: Request,
+    user: models.User,
+    kind: str,
+    item_id: str,
+    code: str,
+    *,
+    method: str = "auto",
+) -> bool:
+    key = normalize_item_kind(kind)
+    code = (code or "").strip()
+    if not key or not code:
+        return False
+    method = (method or "auto").strip().lower()
+    if method in ("auto", "totp", "authenticator") and totp_util.is_enabled(user):
+        if totp_util.verify_code(user, code):
+            return True
+    if method in ("auto", "email"):
+        if verify_item_email_otp(request, key, item_id, code):
+            return True
+    return False
+
+
+def set_item_require_2fa(item, enabled: bool) -> None:
+    item.require_2fa = bool(enabled)

@@ -197,6 +197,8 @@ class Document(Base):
     extracted_text = Column(Text, nullable=True)  # OCR / PDF text, plaintext so /search can match content
     amount = Column(String(20), nullable=True)  # bill / claim amount for yearly spend
     pinned = Column(Boolean, default=False, nullable=False)
+    # Extra authenticator/email OTP required to open this health document.
+    require_2fa = Column(Boolean, default=False, nullable=False)
 
     # Legacy single-file columns — kept for backward compatibility.
     # New uploads use the DocumentFile child table instead.
@@ -543,6 +545,8 @@ class VaultItem(Base):
     passport_number_enc = Column(Text, nullable=True)
 
     password_changed_at = Column(DateTime, nullable=True)
+    # Extra authenticator/email OTP required to open this vault item.
+    require_2fa = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -949,6 +953,10 @@ class LockerItem(Base):
     tags = Column(String(500), nullable=True)
     notes_enc = Column(Text, nullable=True)
     pinned = Column(Boolean, default=False, nullable=False)
+    # Extra authenticator/email OTP required to open this locker document.
+    require_2fa = Column(Boolean, default=False, nullable=False)
+    # Earliest original file date (EXIF/PDF/client mtime); falls back to created_at in UI.
+    source_created_at = Column(DateTime, nullable=True, index=True)
     deleted_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -970,6 +978,8 @@ class LockerFile(Base):
     file_type = Column(String(100), nullable=True)
     file_size = Column(Integer, nullable=True)
     content_hash = Column(String(64), nullable=True)
+    # Original create/modify time from EXIF, PDF metadata, or browser File.lastModified.
+    source_created_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     item = relationship("LockerItem", back_populates="files")

@@ -76,6 +76,40 @@ def require_mutator(request: Request, db: Session):
     return user, None
 
 
+def _apply_item_2fa_toggle(
+    request: Request,
+    db: Session,
+    user: models.User,
+    *,
+    kind: str,
+    item_id: str,
+    enabled: bool,
+    code: str,
+    next_url: str,
+):
+    """Enable/disable require_2fa on an item. Returns RedirectResponse."""
+    from app import totp as totp_util
+    from app import vault_lock as vlock
+
+    item = vlock.load_item(db, user, kind, item_id)
+    if not item:
+        return RedirectResponse(next_url or "/admin/modules", status_code=302)
+    if enabled and not vlock.can_use_locks(user, db):
+        return RedirectResponse(
+            (next_url or "/admin/security") + ("&" if "?" in (next_url or "") else "?") + "err=need2fa",
+            status_code=302,
+        )
+    # Turning a lock off needs a fresh authenticator code (or a prior item unlock).
+    if not enabled and totp_util.is_enabled(user):
+        unlocked = vlock.is_item_unlocked(request, kind, item_id)
+        if not unlocked and not totp_util.verify_code(user, code or ""):
+            return vlock.unlock_redirect_item(kind, item_id, next_url or f"/admin/modules")
+    vlock.set_item_require_2fa(item, enabled)
+    vlock.clear_item_unlock(request, kind, item_id)
+    db.commit()
+    return RedirectResponse(next_url or "/admin/modules", status_code=302)
+
+
 def vault_person(db: Session, user: models.User, person_id: str) -> Optional[models.Person]:
     """Person belonging to this vault (self or family). None if not found / other user."""
     if not person_id:
@@ -106,6 +140,7 @@ def doc_out(doc: models.Document) -> dict:
         "file_type": (doc.file_type or "").split(";")[0].strip().lower(),
         "file_count": file_count,
         "notes": crypto.decrypt_text(doc.notes_enc),
+        "require_2fa": bool(getattr(doc, "require_2fa", False)),
     }
 
 
@@ -703,7 +738,9 @@ async def security_vault_lock(request: Request, db: Session = Depends(get_db)):
 @router.get("/security/unlock", response_class=HTMLResponse)
 def security_unlock_page(
     request: Request,
-    module: str = "passwords",
+    module: str = "",
+    item_kind: str = "",
+    item_id: str = "",
     next: str = "",
     err: str = "",
     sent: str = "",
@@ -715,12 +752,36 @@ def security_unlock_page(
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    next_ok = next if next.startswith("/admin/") and "://" not in next else ""
+    kind = vlock.normalize_item_kind(item_kind)
+    if kind and item_id:
+        item = vlock.load_item(db, user, kind, item_id)
+        if not item or not vlock.item_requires_2fa(item):
+            return RedirectResponse(next_ok or "/admin/modules", status_code=302)
+        if vlock.is_item_unlocked(request, kind, item_id):
+            return RedirectResponse(next_ok or "/admin/modules", status_code=302)
+        methods = vlock.unlock_methods(user, db)
+        return templates.TemplateResponse("vault_unlock.html", {
+            "request": request, "session_user": user,
+            "active_nav": "security", "active_module": "picker",
+            "people": [], "active_person_id": None,
+            "module": "",
+            "item_kind": kind,
+            "item_id": item_id,
+            "label": vlock.item_title(item, kind),
+            "next": next_ok,
+            "methods": methods,
+            "mail_ready": mailer.mail_ready(db),
+            "err": err or None,
+            "sent": bool(sent),
+            "unlock_minutes": vlock.UNLOCK_MINUTES,
+            "is_item": True,
+        })
     key = vlock.normalize_module(module) or "passwords"
     if not vlock.is_locked(user, key):
-        dest = next if next.startswith("/admin/") and "://" not in next else "/admin/modules"
-        return RedirectResponse(dest, status_code=302)
+        return RedirectResponse(next_ok or "/admin/modules", status_code=302)
     if vlock.is_unlocked(request, key):
-        dest = next if next.startswith("/admin/") and "://" not in next else {
+        dest = next_ok or {
             "passwords": "/admin/passwords",
             "locker": "/admin/locker",
             "health": "/admin/documents",
@@ -732,34 +793,55 @@ def security_unlock_page(
         "active_nav": "security", "active_module": "picker",
         "people": [], "active_person_id": None,
         "module": key,
+        "item_kind": "",
+        "item_id": "",
         "label": vlock.LOCK_LABELS[key],
-        "next": next if next.startswith("/admin/") and "://" not in next else "",
+        "next": next_ok,
         "methods": methods,
         "mail_ready": mailer.mail_ready(db),
         "err": err or None,
         "sent": bool(sent),
         "unlock_minutes": vlock.UNLOCK_MINUTES,
+        "is_item": False,
     })
 
 
 @router.post("/security/unlock", response_class=HTMLResponse)
 async def security_unlock_submit(request: Request, db: Session = Depends(get_db)):
     from app import vault_lock as vlock
+    from urllib.parse import quote
 
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     form = await request.form()
-    key = vlock.normalize_module(str(form.get("module") or "")) or "passwords"
     next_url = str(form.get("next") or "")
     code = str(form.get("code") or "")
     method = str(form.get("method") or "auto")
+    item_kind = vlock.normalize_item_kind(str(form.get("item_kind") or ""))
+    item_id = str(form.get("item_id") or "").strip()
+    if item_kind and item_id:
+        item = vlock.load_item(db, user, item_kind, item_id)
+        if not item or not vlock.item_requires_2fa(item):
+            return RedirectResponse(next_url or "/admin/modules", status_code=302)
+        if not vlock.verify_item_unlock_code(request, user, item_kind, item_id, code, method=method):
+            q = f"item_kind={item_kind}&item_id={quote(item_id)}&err=bad"
+            if next_url.startswith("/admin/") and "://" not in next_url:
+                q += f"&next={quote(next_url)}"
+            return RedirectResponse(f"/admin/security/unlock?{q}", status_code=302)
+        vlock.mark_item_unlocked(request, item_kind, item_id)
+        dest = next_url if next_url.startswith("/admin/") and "://" not in next_url else {
+            "locker": f"/admin/locker/{item_id}",
+            "vault": f"/admin/passwords/{item_id}",
+            "document": f"/admin/documents/{item_id}/viewer",
+        }.get(item_kind, "/admin/modules")
+        return RedirectResponse(dest, status_code=302)
+    key = vlock.normalize_module(str(form.get("module") or "")) or "passwords"
     if not vlock.is_locked(user, key):
         return RedirectResponse(next_url or "/admin/modules", status_code=302)
     if not vlock.verify_unlock_code(request, user, key, code, db=db, method=method):
         q = f"module={key}&err=bad"
         if next_url.startswith("/admin/") and "://" not in next_url:
-            from urllib.parse import quote
             q += f"&next={quote(next_url)}"
         return RedirectResponse(f"/admin/security/unlock?{q}", status_code=302)
     vlock.mark_unlocked(request, key)
@@ -780,8 +862,17 @@ async def security_unlock_email(request: Request, db: Session = Depends(get_db))
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     form = await request.form()
-    key = vlock.normalize_module(str(form.get("module") or "")) or "passwords"
     next_url = str(form.get("next") or "")
+    item_kind = vlock.normalize_item_kind(str(form.get("item_kind") or ""))
+    item_id = str(form.get("item_id") or "").strip()
+    if item_kind and item_id:
+        q = f"item_kind={item_kind}&item_id={quote(item_id)}"
+        if next_url.startswith("/admin/") and "://" not in next_url:
+            q += f"&next={quote(next_url)}"
+        if not vlock.issue_item_email_otp(request, user, item_kind, item_id, db):
+            return RedirectResponse(f"/admin/security/unlock?{q}&err=mail", status_code=302)
+        return RedirectResponse(f"/admin/security/unlock?{q}&sent=1", status_code=302)
+    key = vlock.normalize_module(str(form.get("module") or "")) or "passwords"
     q = f"module={key}"
     if next_url.startswith("/admin/") and "://" not in next_url:
         q += f"&next={quote(next_url)}"
@@ -1368,6 +1459,7 @@ async def documents_add(
 
 @router.get("/documents/{document_id}/download")
 def documents_download(request: Request, document_id: str, file: str | None = None, db: Session = Depends(get_db)):
+    from app import vault_lock as vlock
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1377,6 +1469,9 @@ def documents_download(request: Request, document_id: str, file: str | None = No
     )
     if not doc:
         return RedirectResponse("/admin", status_code=302)
+    gated = vlock.gate_item_access(request, user, "document", doc)
+    if gated is not None:
+        return gated
     try:
         plain, mime, fname = _admin_document_bytes(doc, file)
     except FileNotFoundError:
@@ -1396,6 +1491,7 @@ def documents_view(
     db: Session = Depends(get_db),
 ):
     """Raw file bytes (inline). Prefer /viewer for the UI page."""
+    from app import vault_lock as vlock
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1409,6 +1505,9 @@ def documents_view(
     )
     if not doc:
         raise HTTPException(404, "Document not found")
+    gated = vlock.gate_item_access(request, user, "document", doc)
+    if gated is not None:
+        return gated
     try:
         plain, mime, fname = _admin_document_bytes(doc, file)
     except FileNotFoundError:
@@ -1431,6 +1530,7 @@ def documents_viewer_page(
     db: Session = Depends(get_db),
 ):
     """Full-window document viewer with rotate/save for images and multi-file paging."""
+    from app import vault_lock as vlock
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -1444,6 +1544,9 @@ def documents_viewer_page(
     )
     if not doc:
         raise HTTPException(404, "Document not found")
+    gated = vlock.gate_item_access(request, user, "document", doc)
+    if gated is not None:
+        return gated
     person = doc.person
     out = doc_out(doc)
 
@@ -1627,6 +1730,21 @@ def documents_rotate(
         raise
     q = f"?rotated=1&file={file_id}" if file_id else "?rotated=1"
     return RedirectResponse(f"/admin/documents/{document_id}/viewer{q}", status_code=302)
+
+
+@router.post("/documents/{document_id}/lock")
+async def documents_lock(document_id: str, request: Request, db: Session = Depends(get_db)):
+    user, redir = require_mutator(request, db)
+    if redir:
+        return redir
+    form = await request.form()
+    enabled = str(form.get("enabled") or "") in ("1", "on", "true", "yes")
+    next_url = str(form.get("next") or f"/admin/documents/{document_id}/viewer")
+    return _apply_item_2fa_toggle(
+        request, db, user,
+        kind="document", item_id=document_id, enabled=enabled,
+        code=str(form.get("code") or ""), next_url=next_url,
+    )
 
 
 @router.post("/documents/{document_id}/delete")
@@ -2814,9 +2932,17 @@ def passwords_trash_empty(request: Request, db: Session = Depends(get_db)):
 @router.get("/passwords/{item_id}", response_class=HTMLResponse)
 def password_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.vault import get_item, item_totp, item_history, list_folders, list_item_sends, list_send_requests
+    from app import vault_lock as vlock
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    # Load raw row for lock check before decrypting secrets onto the page.
+    raw = vlock.load_item(db, user, "vault", item_id)
+    if raw is None:
+        return RedirectResponse("/admin/passwords", status_code=302)
+    gated = vlock.gate_item_access(request, user, "vault", raw)
+    if gated is not None:
+        return gated
     item = get_item(item_id, db=db, current_user=user)
     totp = None
     if item.has_totp:
@@ -2834,7 +2960,24 @@ def password_item_page(item_id: str, request: Request, db: Session = Depends(get
         send_token=send_token, send_has_pin=bool(request.query_params.get("pin")),
         send_has_totp=bool(request.query_params.get("totp")),
         public_base=str(request.base_url).rstrip("/"),
+        can_use_item_locks=vlock.can_use_locks(user, db),
+        totp_on=bool(user.totp_enabled),
     ))
+
+
+@router.post("/passwords/{item_id}/lock")
+async def password_item_lock(item_id: str, request: Request, db: Session = Depends(get_db)):
+    user, redir = require_mutator(request, db)
+    if redir:
+        return redir
+    form = await request.form()
+    enabled = str(form.get("enabled") or "") in ("1", "on", "true", "yes")
+    next_url = str(form.get("next") or f"/admin/passwords/{item_id}")
+    return _apply_item_2fa_toggle(
+        request, db, user,
+        kind="vault", item_id=item_id, enabled=enabled,
+        code=str(form.get("code") or ""), next_url=next_url,
+    )
 
 
 @router.post("/passwords/{item_id}")
@@ -3768,10 +3911,13 @@ def _lk_explorer_browse(
     person: str = "",
     q: str = "",
     view: str = "list",
+    sort: str = "created",
+    dir: str = "desc",
 ):
     """Shared Document Explorer state for HTML page + AJAX browse.json."""
     from app.routers import locker as lk
     from urllib.parse import urlencode
+    from datetime import datetime as dt
 
     folder_id = (folder or "").strip()
     place_key = (place or "").strip() or ("folder" if folder_id else "home")
@@ -3781,6 +3927,10 @@ def _lk_explorer_browse(
     expiring = place_key == "expiring"
     unfiled = place_key == "unfiled"
     in_trash = place_key == "trash"
+    sort_key = (sort or "created").strip().lower()
+    if sort_key not in ("name", "size", "created", "added", "type"):
+        sort_key = "created"
+    sort_dir = "asc" if (dir or "").strip().lower() == "asc" else "desc"
     summary = lk.locker_summary(db=db, current_user=user)
     person_scope = person_id or (person_filter if person_filter == "none" else None)
     if in_trash:
@@ -3841,6 +3991,23 @@ def _lk_explorer_browse(
     folder_tree = lk._folder_tree(db, user, scoped_for_folders)
     view_mode = "icons" if view == "icons" else "list"
 
+    reverse = sort_dir == "desc"
+    if sort_key == "name":
+        items = sorted(items, key=lambda i: (i.title or "").lower(), reverse=reverse)
+        child_folders = sorted(child_folders, key=lambda f: (f.name or "").lower(), reverse=reverse)
+    elif sort_key == "size":
+        items = sorted(items, key=lambda i: i.file_size or 0, reverse=reverse)
+    elif sort_key == "type":
+        items = sorted(items, key=lambda i: (i.type_label or "").lower(), reverse=reverse)
+    elif sort_key == "added":
+        items = sorted(items, key=lambda i: i.created_at or dt.min, reverse=reverse)
+    else:
+        items = sorted(
+            items,
+            key=lambda i: (getattr(i, "source_created_at", None) or i.created_at or dt.min),
+            reverse=reverse,
+        )
+
     qs = {}
     if in_trash:
         qs["place"] = "trash"
@@ -3859,6 +4026,9 @@ def _lk_explorer_browse(
         qs["view"] = "icons"
     if q and not in_trash:
         qs["q"] = q
+    if sort_key != "created" or sort_dir != "desc":
+        qs["sort"] = sort_key
+        qs["dir"] = sort_dir
     here_href = "/admin/locker/explorer" + (("?" + urlencode(qs)) if qs else "")
 
     add_qs = {}
@@ -3902,6 +4072,8 @@ def _lk_explorer_browse(
         "person_label": person_label,
         "q": q if not in_trash else "",
         "view": view_mode,
+        "sort": sort_key,
+        "dir": sort_dir,
         "expiring": expiring,
         "unfiled": unfiled,
         "in_trash": in_trash,
@@ -3921,6 +4093,8 @@ def locker_explorer(
     person: str = "",
     q: str = "",
     view: str = "list",
+    sort: str = "created",
+    dir: str = "desc",
     db: Session = Depends(get_db),
 ):
     """Linux/Windows-style Document Explorer over Document Vault folders."""
@@ -3930,6 +4104,7 @@ def locker_explorer(
     state = _lk_explorer_browse(
         db=db, user=user, folder=folder, place=place,
         doc_type=doc_type, person=person, q=q, view=view,
+        sort=sort, dir=dir,
     )
     return templates.TemplateResponse("locker_explorer.html", _lk_ctx(
         request, user, "lk_explorer", **state,
@@ -3945,6 +4120,8 @@ def locker_explorer_browse_json(
     person: str = "",
     q: str = "",
     view: str = "list",
+    sort: str = "created",
+    dir: str = "desc",
     db: Session = Depends(get_db),
 ):
     """AJAX browse for Document Explorer — no full page reload on folder/place change."""
@@ -3955,6 +4132,7 @@ def locker_explorer_browse_json(
     state = _lk_explorer_browse(
         db=db, user=user, folder=folder, place=place,
         doc_type=doc_type, person=person, q=q, view=view,
+        sort=sort, dir=dir,
     )
     # Lighter payload for the pane (skip secrets / summary people blobs beyond counts)
     payload = {
@@ -3975,6 +4153,7 @@ def locker_explorer_browse_json(
                 "file_count": i.file_count,
                 "file_size": i.file_size,
                 "pinned": i.pinned,
+                "source_created_at": getattr(i, "source_created_at", None),
                 "created_at": i.created_at,
                 "deleted_at": i.deleted_at,
             }
@@ -3986,6 +4165,8 @@ def locker_explorer_browse_json(
         "person_label": state["person_label"],
         "q": state["q"],
         "view": state["view"],
+        "sort": state["sort"],
+        "dir": state["dir"],
         "in_trash": state["in_trash"],
         "here_href": state["here_href"],
         "add_href": state["add_href"],
@@ -4006,6 +4187,7 @@ async def locker_explorer_upload(
     folder_id: str = Form(""),
     person_id: str = Form(""),
     next: str = Form(""),
+    file_mtimes: str = Form(""),
     files: list[UploadFile] = File(...),
     db: Session = Depends(get_db),
 ):
@@ -4021,8 +4203,12 @@ async def locker_explorer_upload(
     if not uploads:
         dest = (next or "").strip() or "/admin/locker/explorer"
         return RedirectResponse(dest, status_code=302)
-    for up in uploads:
+    mtimes = lk._parse_mtimes(file_mtimes) or []
+    for idx, up in enumerate(uploads):
         stem = P(up.filename or "file").stem.strip() or "Document"
+        one_mtime = None
+        if idx < len(mtimes):
+            one_mtime = str(mtimes[idx])
         await lk.create_item(
             title=stem,
             doc_type="other",
@@ -4037,6 +4223,7 @@ async def locker_explorer_upload(
             tags=None,
             notes=None,
             files=[up],
+            file_mtimes=one_mtime,
             db=db,
             current_user=user,
         )
@@ -4253,9 +4440,16 @@ def locker_set_folder(
 def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
     from app.routers.vault import list_item_sends, list_send_requests
+    from app import vault_lock as vlock
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    raw = vlock.load_item(db, user, "locker", item_id)
+    if raw is None:
+        return RedirectResponse("/admin/locker", status_code=302)
+    gated = vlock.gate_item_access(request, user, "locker", raw)
+    if gated is not None:
+        return gated
     item = lk.get_item(item_id, db=db, current_user=user)
     files = lk.list_files(item_id, db=db, current_user=user)
     people = _lk_people(db, user)
@@ -4271,7 +4465,24 @@ def locker_item_page(item_id: str, request: Request, db: Session = Depends(get_d
         public_base=str(request.base_url).rstrip("/"),
         send_token=request.query_params.get("send") or "",
         send_has_pin=request.query_params.get("pin") == "1",
+        can_use_item_locks=vlock.can_use_locks(user, db),
+        totp_on=bool(user.totp_enabled),
     ))
+
+
+@router.post("/locker/{item_id}/lock")
+async def locker_item_lock(item_id: str, request: Request, db: Session = Depends(get_db)):
+    user, redir = require_mutator(request, db)
+    if redir:
+        return redir
+    form = await request.form()
+    enabled = str(form.get("enabled") or "") in ("1", "on", "true", "yes")
+    next_url = str(form.get("next") or f"/admin/locker/{item_id}")
+    return _apply_item_2fa_toggle(
+        request, db, user,
+        kind="locker", item_id=item_id, enabled=enabled,
+        code=str(form.get("code") or ""), next_url=next_url,
+    )
 
 
 @router.post("/locker/{item_id}/sends")
@@ -4378,9 +4589,16 @@ def locker_item_update(
 @router.get("/locker/{item_id}/download")
 def locker_download(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
+    from app import vault_lock as vlock
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    raw = vlock.load_item(db, user, "locker", item_id)
+    if raw is None:
+        return RedirectResponse("/admin/locker", status_code=302)
+    gated = vlock.gate_item_access(request, user, "locker", raw)
+    if gated is not None:
+        return gated
     return lk.download_item(item_id, db=db, current_user=user)
 
 
@@ -4388,27 +4606,48 @@ def locker_download(item_id: str, request: Request, db: Session = Depends(get_db
 def locker_view(item_id: str, request: Request, db: Session = Depends(get_db)):
     """Inline preview for the photo lightbox (does not force download)."""
     from app.routers import locker as lk
+    from app import vault_lock as vlock
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    raw = vlock.load_item(db, user, "locker", item_id)
+    if raw is None:
+        return RedirectResponse("/admin/locker", status_code=302)
+    gated = vlock.gate_item_access(request, user, "locker", raw)
+    if gated is not None:
+        return gated
     return lk.view_item(item_id, db=db, current_user=user)
 
 
 @router.get("/locker/{item_id}/files/{file_id}/download")
 def locker_file_download(item_id: str, file_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
+    from app import vault_lock as vlock
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    raw = vlock.load_item(db, user, "locker", item_id)
+    if raw is None:
+        return RedirectResponse("/admin/locker", status_code=302)
+    gated = vlock.gate_item_access(request, user, "locker", raw)
+    if gated is not None:
+        return gated
     return lk.download_file(item_id, file_id, db=db, current_user=user)
 
 
 @router.get("/locker/{item_id}/files/{file_id}/view")
 def locker_file_view(item_id: str, file_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import locker as lk
+    from app import vault_lock as vlock
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    raw = vlock.load_item(db, user, "locker", item_id)
+    if raw is None:
+        return RedirectResponse("/admin/locker", status_code=302)
+    gated = vlock.gate_item_access(request, user, "locker", raw)
+    if gated is not None:
+        return gated
     return lk.view_file(item_id, file_id, db=db, current_user=user)
 
 

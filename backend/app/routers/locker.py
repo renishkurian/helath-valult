@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -106,7 +106,9 @@ def _resolve_folder(
 def _to_file_out(f: models.LockerFile) -> schemas.LockerFileOut:
     return schemas.LockerFileOut(
         id=f.id, item_id=f.item_id, original_filename=f.original_filename,
-        file_type=f.file_type, file_size=f.file_size, created_at=f.created_at,
+        file_type=f.file_type, file_size=f.file_size,
+        source_created_at=getattr(f, "source_created_at", None),
+        created_at=f.created_at,
     )
 
 
@@ -147,6 +149,8 @@ def _to_out(
         file_count=len(item.files) if item.files else 0,
         deleted_at=getattr(item, "deleted_at", None),
         created_at=item.created_at,
+        require_2fa=bool(getattr(item, "require_2fa", False)),
+        source_created_at=getattr(item, "source_created_at", None),
     )
 
 
@@ -563,6 +567,7 @@ async def create_item(
     tags: Optional[str] = Form(None),
     notes: Optional[str] = Form(None),
     files: List[UploadFile] = File(...),
+    file_mtimes: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -594,10 +599,31 @@ async def create_item(
     )
     db.add(item)
     db.flush()
-    await _save_files(item, files, current_user, db)
+    await _save_files(item, files, current_user, db, file_mtimes_ms=_parse_mtimes(file_mtimes))
     db.commit()
     db.refresh(item)
     return _to_out(item, person.name if person else None, folder.name if folder else None)
+
+
+def _parse_mtimes(raw: str | None) -> list[int] | None:
+    if not raw or not str(raw).strip():
+        return None
+    text = str(raw).strip()
+    try:
+        import json
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [int(x) for x in data]
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
+    parts = [p.strip() for p in text.split(",") if p.strip()]
+    out: list[int] = []
+    for p in parts:
+        try:
+            out.append(int(p))
+        except ValueError:
+            out.append(0)
+    return out or None
 
 
 async def _save_files(
@@ -605,15 +631,28 @@ async def _save_files(
     files: List[UploadFile],
     current_user: models.User,
     db: Session,
+    *,
+    file_mtimes_ms: list[int] | None = None,
 ):
     from app.models import gen_id
     from app import quota
+    from app.extract import extract_file_created_at, file_sha256, enhance_scan
 
     dest = settings.STORAGE_DIR / vault_id(current_user) / "locker"
     dest.mkdir(parents=True, exist_ok=True)
-    payloads: list[tuple[bytes, UploadFile]] = []
-    for upload in files:
+    payloads: list[tuple[bytes, UploadFile, datetime | None]] = []
+    for idx, upload in enumerate(files):
         raw = await upload.read()
+        client_ms = None
+        if file_mtimes_ms and idx < len(file_mtimes_ms):
+            try:
+                client_ms = int(file_mtimes_ms[idx])
+            except (TypeError, ValueError):
+                client_ms = None
+        # Read metadata before image re-encode strips EXIF.
+        src_dt = extract_file_created_at(
+            raw, upload.content_type, upload.filename, client_mtime_ms=client_ms,
+        )
         if (upload.content_type or "").startswith("image/"):
             raw = enhance_scan(raw, upload.content_type)
         if len(raw) / (1024 * 1024) > settings.MAX_UPLOAD_MB:
@@ -622,9 +661,10 @@ async def _save_files(
                 status_code=413,
                 detail=f"File '{upload.filename}' exceeds {settings.MAX_UPLOAD_MB} MB limit",
             )
-        payloads.append((raw, upload))
-    quota.assert_can_store(db, current_user, sum(len(r) for r, _ in payloads))
-    for raw, upload in payloads:
+        payloads.append((raw, upload, src_dt))
+    quota.assert_can_store(db, current_user, sum(len(r) for r, _, _ in payloads))
+    source_dates: list[datetime] = []
+    for raw, upload, src_dt in payloads:
         token = gen_id()
         enc_path = dest / f"{item.id}_{token}.enc"
         enc_path.write_bytes(crypto.encrypt_bytes(raw))
@@ -635,13 +675,22 @@ async def _save_files(
             file_type=upload.content_type,
             file_size=len(raw),
             content_hash=file_sha256(raw),
+            source_created_at=src_dt,
         ))
+        if src_dt:
+            source_dates.append(src_dt)
+    if source_dates:
+        earliest = min(source_dates)
+        existing = getattr(item, "source_created_at", None)
+        if existing is None or earliest < existing:
+            item.source_created_at = earliest
 
 
 @router.post("/{item_id}/files", response_model=list[schemas.LockerFileOut], status_code=201)
 async def add_files(
     item_id: str,
     files: List[UploadFile] = File(...),
+    file_mtimes: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
@@ -650,7 +699,7 @@ async def add_files(
     uploads = [f for f in (files or []) if f is not None and getattr(f, "filename", None)]
     if not uploads:
         raise HTTPException(status_code=422, detail="At least one file is required")
-    await _save_files(item, uploads, current_user, db)
+    await _save_files(item, uploads, current_user, db, file_mtimes_ms=_parse_mtimes(file_mtimes))
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
@@ -680,10 +729,13 @@ def delete_file(
 @router.get("/{item_id}", response_model=schemas.LockerItemOut)
 def get_item(
     item_id: str,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    from app import vault_lock as vlock
     item = _owned(item_id, db, current_user)
+    vlock.require_api_item_unlock(request, current_user, "locker", item, db)
     pname = None
     if item.person_id:
         person = _resolve_person(db, current_user, item.person_id)

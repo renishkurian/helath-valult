@@ -20,6 +20,22 @@
     </div>
   </div>
   <div class="page-actions">
+    <form method="post" action="/admin/locker/{{ item.id }}/lock" class="d-inline-flex align-items-center gap-2 flex-wrap">
+      <input type="hidden" name="next" value="/admin/locker/{{ item.id }}">
+      {% if item.require_2fa %}
+      <input type="hidden" name="enabled" value="0">
+      {% if totp_on %}
+      <input class="form-control form-control-sm otp-input" type="text" name="code" required
+             inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="2FA" style="width:5.5rem;">
+      {% endif %}
+      <button class="btn btn-outline-light" type="submit"><i class="bi bi-unlock"></i> Remove lock</button>
+      {% else %}
+      <input type="hidden" name="enabled" value="1">
+      <button class="btn btn-outline-light" type="submit" {% if not can_use_item_locks %}disabled{% endif %}>
+        <i class="bi bi-lock"></i> Lock with 2FA
+      </button>
+      {% endif %}
+    </form>
     {% set ft = (files[0].file_type if files else '')|lower %}
     {% if files %}
       {% if ft.startswith('image/') %}

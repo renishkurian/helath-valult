@@ -123,6 +123,7 @@ def _to_out(item: models.VaultItem, *, active_send_count: int = 0) -> schemas.Va
         created_at=item.created_at,
         updated_at=item.updated_at,
         active_send_count=max(0, int(active_send_count or 0)),
+        require_2fa=bool(getattr(item, "require_2fa", False)),
     )
 
 
@@ -2050,9 +2051,16 @@ def create_item(
 
 
 @router.get("/items/{item_id}", response_model=schemas.VaultItemOut)
-def get_item(item_id: str, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_item(
+    item_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import vault_lock as vlock
     require_owner(current_user)
     item = _owned_item(item_id, db, current_user, include_deleted=True)
+    vlock.require_api_item_unlock(request, current_user, "vault", item, db)
     counts = _active_send_counts(vault_id(current_user), db)
     return _to_out(item, active_send_count=counts.get(item.id, 0))
 

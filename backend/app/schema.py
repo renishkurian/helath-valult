@@ -49,6 +49,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("amount", "VARCHAR(20)"),
         ("pinned", "BOOLEAN NOT NULL DEFAULT 0"),
         ("deleted_at", "DATETIME"),
+        ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
     ],
     "document_files": [
         ("content_hash", "VARCHAR(64)"),
@@ -60,6 +61,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "hospital_cards": [
         ("image_path", "VARCHAR(500)"),
         ("image_mime", "VARCHAR(80)"),
+    ],
+    "vault_items": [
+        ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
     ],
     "finance_accounts": [
         ("credit_limit", "NUMERIC(14,2)"),
@@ -114,6 +118,12 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("person_id", "VARCHAR(32)"),
         ("folder_id", "VARCHAR(32)"),
         ("deleted_at", "DATETIME"),
+        ("require_2fa", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("source_created_at", "DATETIME"),
+    ],
+    "locker_files": [
+        ("content_hash", "VARCHAR(64)"),
+        ("source_created_at", "DATETIME"),
     ],
     "locker_folders": [
         ("parent_id", "VARCHAR(32)"),

@@ -70,6 +70,7 @@ def _to_out(doc: models.Document, include_text: bool = False, favorite: bool = F
         amount=doc.amount,
         pinned=bool(doc.pinned),
         favorite=favorite,
+        require_2fa=bool(getattr(doc, "require_2fa", False)),
         deleted_at=doc.deleted_at,
         created_at=doc.created_at,
     )

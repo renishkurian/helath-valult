@@ -123,6 +123,9 @@
         <td class="mono text-faint">{% if doc.file_size %}{{ (doc.file_size / 1024) | round(0) | int }} KB{% else %}—{% endif %}</td>
         <td>
           <div class="hv-actions">
+            {% if doc.require_2fa %}
+            <span class="hv-icon-btn" title="Locked with 2FA" aria-label="Locked with 2FA"><i class="bi bi-shield-lock"></i></span>
+            {% endif %}
             <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/viewer" target="_blank" rel="noopener" title="View" aria-label="View">
               <i class="bi bi-eye"></i>
             </a>
@@ -132,6 +135,13 @@
             <a class="hv-icon-btn" href="/admin/documents/{{ doc.id }}/download" title="Download" aria-label="Download">
               <i class="bi bi-download"></i>
             </a>
+            <form method="post" action="/admin/documents/{{ doc.id }}/lock" class="d-inline" title="Toggle 2FA lock">
+              <input type="hidden" name="next" value="{{ request.url }}">
+              <input type="hidden" name="enabled" value="{{ '0' if doc.require_2fa else '1' }}">
+              <button class="hv-icon-btn" type="submit" title="{% if doc.require_2fa %}Remove 2FA lock{% else %}Lock with 2FA{% endif %}" aria-label="Toggle 2FA lock">
+                <i class="bi bi-{% if doc.require_2fa %}unlock{% else %}lock{% endif %}"></i>
+              </button>
+            </form>
             <form method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
               <input type="hidden" name="person_id" value="{{ active_person.id }}">
               <input type="hidden" name="category" value="{{ category or '' }}">

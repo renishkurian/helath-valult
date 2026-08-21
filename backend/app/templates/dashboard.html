@@ -423,7 +423,7 @@
             <td>
               <div class="d-flex align-items-center gap-2">
                 <span class="doc-icon" style="background:{{ cat_colors[doc.category] }};">{{ cat_short[doc.category] }}</span>
-                <span class="fw-semibold">{{ doc.title | nice }}</span>
+                <span class="fw-semibold">{{ doc.title | nice }}{% if doc.require_2fa %} <i class="bi bi-shield-lock text-warning" title="Locked with 2FA"></i>{% endif %}</span>
               </div>
             </td>
             <td>{{ (doc.person_name | nice) if doc.person_name else '—' }}</td>
@@ -440,6 +440,13 @@
               <a class="btn btn-outline-light btn-sm" href="/admin/documents/{{ doc.id }}/download">
                 <i class="bi bi-download"></i> Download
               </a>
+              <form class="d-inline" method="post" action="/admin/documents/{{ doc.id }}/lock">
+                <input type="hidden" name="next" value="{{ request.url }}">
+                <input type="hidden" name="enabled" value="{{ '0' if doc.require_2fa else '1' }}">
+                <button class="btn btn-outline-light btn-sm" type="submit" title="{% if doc.require_2fa %}Remove 2FA lock{% else %}Lock with 2FA{% endif %}">
+                  <i class="bi bi-{% if doc.require_2fa %}unlock{% else %}lock{% endif %}"></i>
+                </button>
+              </form>
               <form class="d-inline" method="post" action="/admin/documents/{{ doc.id }}/delete" data-confirm="Move this document to trash?">
                 <input type="hidden" name="person_id" value="{{ doc.person_id or active_person.id }}">
                 <input type="hidden" name="category" value="">

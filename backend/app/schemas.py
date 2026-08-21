@@ -89,6 +89,20 @@ class VaultUnlockOut(BaseModel):
     expires_in_seconds: int
 
 
+class VaultItemUnlockIn(BaseModel):
+    kind: str  # locker | vault | document
+    item_id: str
+    code: str
+    method: str = "auto"
+
+
+class VaultItemUnlockOut(BaseModel):
+    kind: str
+    item_id: str
+    unlock_token: str
+    expires_in_seconds: int
+
+
 class VaultLockStatusOut(BaseModel):
     passwords: bool = False
     locker: bool = False
@@ -248,6 +262,7 @@ class DocumentOut(BaseModel):
     amount: Optional[str] = None
     pinned: bool = False
     favorite: bool = False
+    require_2fa: bool = False
     deleted_at: Optional[datetime] = None
     created_at: datetime
 
@@ -759,6 +774,7 @@ class VaultItemOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime] = None
     active_send_count: int = 0
+    require_2fa: bool = False
 
 
 class VaultTotpOut(BaseModel):
@@ -1410,6 +1426,7 @@ class LockerFileOut(BaseModel):
     original_filename: str
     file_type: Optional[str] = None
     file_size: Optional[int] = None
+    source_created_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -1482,6 +1499,8 @@ class LockerItemOut(BaseModel):
     file_type: Optional[str] = None
     file_size: Optional[int] = None  # total attached file bytes
     file_count: int = 0
+    require_2fa: bool = False
+    source_created_at: Optional[datetime] = None  # original file date when known
     deleted_at: Optional[datetime] = None
     created_at: datetime
 

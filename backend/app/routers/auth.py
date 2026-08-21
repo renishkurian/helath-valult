@@ -314,6 +314,37 @@ def vault_lock_unlock(
     )
 
 
+@router.post("/vault-lock/item-unlock", response_model=schemas.VaultItemUnlockOut)
+def vault_lock_item_unlock(
+    body: schemas.VaultItemUnlockIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app import vault_lock as vlock
+    kind = vlock.normalize_item_kind(body.kind)
+    if not kind or not body.item_id:
+        raise HTTPException(status_code=400, detail="Unknown item")
+    item = vlock.load_item(db, current_user, kind, body.item_id)
+    if not item or not vlock.item_requires_2fa(item):
+        raise HTTPException(status_code=400, detail="This item is not locked")
+    # API email OTP reuses module-style table with slot item:kind:id
+    method = (body.method or "auto").strip().lower()
+    ok = False
+    if method in ("auto", "totp", "authenticator") and totp_util.is_enabled(current_user):
+        ok = totp_util.verify_code(current_user, body.code)
+    if not ok and method in ("auto", "email"):
+        ok = vlock.verify_api_email_otp(db, current_user, f"item:{kind}:{body.item_id}", body.code)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid unlock code")
+    token = vlock.create_item_unlock_token(current_user.id, kind, body.item_id)
+    return schemas.VaultItemUnlockOut(
+        kind=kind,
+        item_id=body.item_id,
+        unlock_token=token,
+        expires_in_seconds=vlock.UNLOCK_MINUTES * 60,
+    )
+
+
 @router.post("/totp/verify", response_model=schemas.LoginResponse)
 def totp_verify(body: schemas.TotpVerifyIn, request: Request, db: Session = Depends(get_db)):
     if not body.totp_token:

@@ -3270,10 +3270,18 @@ body{
   gap:.75rem; align-items:center;
 }
 .fx-list-head{
-  padding:.4rem .65rem .4rem 2.6rem; font-size:.7rem; text-transform:uppercase;
+  padding:.4rem .65rem .4rem .65rem; font-size:.7rem; text-transform:uppercase;
   letter-spacing:.06em; color:var(--v-ink-3); border-bottom:1px solid var(--v-line);
   position:sticky; top:0; background:var(--v-surface); z-index:1;
 }
+.fx-sort{
+  appearance:none; background:transparent; border:0; padding:0; margin:0;
+  font:inherit; letter-spacing:inherit; text-transform:inherit; color:inherit;
+  text-align:left; cursor:pointer; min-width:0;
+}
+.fx-sort:hover, .fx-sort.on{ color:var(--v-ink); }
+.fx-sort i{ font-size:.65rem; opacity:.85; }
+.fx-sort-spacer{ width:2.2rem; }
 .fx-row{
   display:grid;
   color:inherit; text-decoration:none; border-radius:10px;
