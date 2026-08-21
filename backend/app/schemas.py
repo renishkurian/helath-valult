@@ -1447,6 +1447,7 @@ class LockerItemOut(BaseModel):
     file_type: Optional[str] = None
     file_size: Optional[int] = None
     file_count: int = 0
+    deleted_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -1461,6 +1462,7 @@ class LockerSummaryOut(BaseModel):
     total: int = 0
     expiring: int = 0
     unassigned: int = 0
+    trash: int = 0
     types: List[LockerTypeOut] = []
     folders: List[LockerFolderOut] = []
     people: List[LockerPersonOut] = []

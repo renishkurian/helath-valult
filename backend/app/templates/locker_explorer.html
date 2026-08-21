@@ -24,6 +24,10 @@
   {% set add_href = '/admin/locker/add' ~ (('?' ~ person_param) if person_param else '') %}
   {% set here_label = 'Unfiled' %}
   {% set here_base = '/admin/locker/explorer?place=unfiled' %}
+{% elif place == 'trash' %}
+  {% set add_href = '/admin/locker/add' %}
+  {% set here_label = 'Trash' %}
+  {% set here_base = '/admin/locker/explorer?place=trash' %}
 {% elif doc_type %}
   {% set add_href = '/admin/locker/add?doc_type=' ~ doc_type ~ qs_person %}
   {% set here_label = type_label or (doc_type.replace('_', ' ') | title) %}
@@ -90,6 +94,11 @@
          href="/admin/locker/explorer?place=unfiled{{ qs_view }}">
         <i class="bi bi-file-earmark"></i><span>Unfiled</span>
       </a>
+      <a class="fx-tree-item {% if place == 'trash' %}on{% endif %}"
+         href="/admin/locker/explorer?place=trash{{ qs_view }}">
+        <i class="bi bi-trash3"></i><span>Trash</span>
+        <em>{{ '%02d'|format(summary.trash or 0) }}</em>
+      </a>
     </nav>
 
     <div class="fx-tree-head">Family</div>
@@ -145,7 +154,7 @@
   {# ---- Main pane ---- #}
   <section class="fx-main">
     <div class="fx-toolbar">
-      <nav class="fx-crumbs" aria-label="Breadcrumb">
+      <nav class="fx-crumbs" id="fx-crumbs" aria-label="Breadcrumb">
         <a href="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-hdd"></i> Home</a>
         {% if folder_crumbs %}
           {% for c in folder_crumbs %}
@@ -156,7 +165,7 @@
           <span>{{ c.name }}</span>
           {% endif %}
           {% endfor %}
-        {% elif place == 'expiring' or place == 'unfiled' or doc_type or person %}
+        {% elif place == 'expiring' or place == 'unfiled' or place == 'trash' or doc_type or person %}
         <i class="bi bi-chevron-right"></i>
         <span>{{ here_label }}</span>
         {% endif %}
@@ -168,9 +177,9 @@
         {% if pid %}<input type="hidden" name="person" value="{{ pid }}">{% endif %}
         {% if view == 'icons' %}<input type="hidden" name="view" value="icons">{% endif %}
         <i class="bi bi-search"></i>
-        <input type="search" name="q" value="{{ q }}" placeholder="Search…" aria-label="Search documents">
+        <input type="search" name="q" value="{{ q }}" placeholder="Search…" aria-label="Search documents"{% if place == 'trash' %} disabled{% endif %}>
       </form>
-      <div class="fx-toolbar-actions">
+      <div class="fx-toolbar-actions" id="fx-toolbar-actions">
         <button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar"
                 title="Toggle left menu / full screen">
           <i class="bi bi-layout-sidebar-inset" id="fx-toggle-nav-icon"></i>
@@ -186,6 +195,17 @@
             <i class="bi bi-grid"></i>
           </a>
         </div>
+        {% if place == 'trash' %}
+        {% if items %}
+        <form method="post" action="/admin/locker/trash/empty" class="d-inline"
+              data-confirm="Permanently delete everything in trash? This cannot be undone.">
+          <input type="hidden" name="next" value="{{ here_href }}">
+          <button type="submit" class="btn btn-sm btn-outline-danger">
+            <i class="bi bi-trash3"></i> Empty trash
+          </button>
+        </form>
+        {% endif %}
+        {% else %}
         <button type="button" class="btn btn-sm btn-outline-light" id="fx-btn-new-folder">
           <i class="bi bi-folder-plus"></i> New folder
         </button>
@@ -195,6 +215,7 @@
         <a class="btn btn-sm btn-outline-light" href="{{ add_href }}" title="Full add form">
           <i class="bi bi-plus-lg"></i>
         </a>
+        {% endif %}
       </div>
     </div>
 
@@ -267,6 +288,13 @@
       {% endfor %}
 
       {% if not child_folders and not items %}
+        {% if place == 'trash' %}
+        <div class="fx-empty">
+          <i class="bi bi-trash3"></i>
+          <p class="mb-1">Trash is empty</p>
+          <p class="text-faint small mb-0">Deleted documents wait here until you restore them or empty trash.</p>
+        </div>
+        {% else %}
         <div class="fx-empty fx-dropzone" id="fx-dropzone">
           <i class="bi bi-cloud-arrow-up"></i>
           <p class="mb-1">This folder is empty</p>
@@ -280,7 +308,8 @@
             </label>
           </div>
         </div>
-      {% else %}
+        {% endif %}
+      {% elif place != 'trash' %}
         <div class="fx-drop-hint no-print" id="fx-dropzone">Drop files anywhere to upload into this folder</div>
       {% endif %}
     </div>
@@ -300,7 +329,15 @@
 <form id="fx-form-delete-folder" method="post" action="" class="d-none">
   <input type="hidden" name="next" value="/admin/locker/explorer{{ '?view=icons' if view == 'icons' else '' }}">
 </form>
-<form id="fx-form-delete-doc" method="post" action="" class="d-none"></form>
+<form id="fx-form-delete-doc" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-restore-doc" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-permanent-doc" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
 <form id="fx-form-move" method="post" action="" class="d-none">
   <input type="hidden" name="folder_id" id="fx-move-folder-id" value="">
   <input type="hidden" name="next" value="{{ here_href }}">
@@ -323,8 +360,11 @@
   <button type="button" class="fx-menu-item" data-action="new-folder" role="menuitem"><i class="bi bi-folder-plus"></i> New folder…</button>
   <button type="button" class="fx-menu-item" data-action="add" role="menuitem"><i class="bi bi-upload"></i> Upload files…</button>
   <button type="button" class="fx-menu-item" data-action="refresh" role="menuitem"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+  <div class="fx-menu-sep" data-for="trash"></div>
+  <button type="button" class="fx-menu-item" data-action="restore" role="menuitem"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+  <button type="button" class="fx-menu-item danger" data-action="permanent" role="menuitem"><i class="bi bi-x-lg"></i> Delete forever</button>
   <div class="fx-menu-sep" data-for="danger"></div>
-  <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Delete</button>
+  <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Move to trash</button>
   <button type="button" class="fx-menu-item" data-action="properties" role="menuitem"><i class="bi bi-info-circle"></i> Properties</button>
 </div>
 
@@ -417,12 +457,18 @@
   }
 
   function showMenu(x, y, kind) {
+    var inTrash = shell.getAttribute("data-place") === "trash";
     var items = menu.querySelectorAll(".fx-menu-item, .fx-menu-sep");
     items.forEach(function (el) {
       var action = el.getAttribute("data-action");
       var forKind = el.getAttribute("data-for");
       var show = false;
-      if (kind === "empty") {
+      if (inTrash && kind === "doc") {
+        show = ["open", "preview", "download", "restore", "permanent", "properties"].indexOf(action) >= 0
+          || forKind === "trash";
+      } else if (inTrash && kind === "empty") {
+        show = action === "refresh";
+      } else if (kind === "empty") {
         show = ["new-folder", "add", "refresh"].indexOf(action) >= 0 || forKind === "empty";
       } else if (kind === "folder") {
         show = ["open", "rename", "new-folder", "new-here", "delete", "properties", "refresh"].indexOf(action) >= 0
@@ -435,7 +481,8 @@
       if (forKind === "empty" && kind !== "empty") show = false;
       if (forKind === "folder" && kind !== "folder") show = false;
       if (forKind === "doc" && kind !== "doc") show = false;
-      if (forKind === "danger" && (kind === "empty")) show = false;
+      if (forKind === "trash" && !(inTrash && kind === "doc")) show = false;
+      if (forKind === "danger" && (kind === "empty" || inTrash)) show = false;
       el.hidden = !show;
     });
     menu.hidden = false;
@@ -514,8 +561,9 @@
       document.getElementById("fx-form-new-folder").submit();
     });
   }
+  window.fxPromptNewFolder = function () { promptNewFolder(); };
 
-  document.getElementById("fx-btn-new-folder").addEventListener("click", function () {
+  document.getElementById("fx-btn-new-folder") && document.getElementById("fx-btn-new-folder").addEventListener("click", function () {
     promptNewFolder();
   });
   var emptyNew = document.getElementById("fx-empty-new-folder");
@@ -640,15 +688,37 @@
       var askDelDoc = window.vaultConfirm || function (msg) {
         return Promise.resolve(window.confirm(msg));
       };
-      askDelDoc('Delete document "' + t.name + '" and its files? This cannot be undone.', {
-        title: "Delete document",
-        okText: "Delete",
+      askDelDoc('Move "' + t.name + '" to trash?', {
+        title: "Move to trash",
+        okText: "Move to trash",
         danger: true
       }).then(function (ok) {
         if (!ok) return;
         var dd = document.getElementById("fx-form-delete-doc");
         dd.action = "/admin/locker/" + encodeURIComponent(t.id) + "/delete";
         dd.submit();
+      });
+      return;
+    }
+    if (action === "restore" && t.kind === "doc") {
+      var rf = document.getElementById("fx-form-restore-doc");
+      rf.action = "/admin/locker/" + encodeURIComponent(t.id) + "/restore";
+      rf.submit();
+      return;
+    }
+    if (action === "permanent" && t.kind === "doc") {
+      var askGone = window.vaultConfirm || function (msg) {
+        return Promise.resolve(window.confirm(msg));
+      };
+      askGone('Permanently delete "' + t.name + '"? This cannot be undone.', {
+        title: "Delete forever",
+        okText: "Delete forever",
+        danger: true
+      }).then(function (ok) {
+        if (!ok) return;
+        var pf = document.getElementById("fx-form-permanent-doc");
+        pf.action = "/admin/locker/" + encodeURIComponent(t.id) + "/permanent";
+        pf.submit();
       });
       return;
     }
@@ -713,6 +783,362 @@
       document.getElementById("fx-move-folder-id").value = folder.getAttribute("data-id") || "";
       mf.submit();
     });
+  });
+})();
+</script>
+<script>
+(function () {
+  var shell = document.getElementById("fx-shell");
+  var pane = document.getElementById("fx-pane");
+  if (!shell || !pane) return;
+
+  var TYPE_COLORS = {
+    aadhaar: "#7FA6FF", pan: "#F0C36A", passport: "#C0A8FF", driving_license: "#4ADE9B",
+    voter_id: "#22D3EE", certificate: "#FF8095", rc: "#F5A65B", insurance: "#F0C36A",
+    warranty: "#84CC16", property: "#38BDF8", other: "#8B95A8"
+  };
+  var busy = false;
+  var seq = 0;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  }
+
+  function parseExplorerUrl(href) {
+    var u = new URL(href, location.origin);
+    return {
+      folder: u.searchParams.get("folder") || "",
+      place: u.searchParams.get("place") || "",
+      person: u.searchParams.get("person") || "",
+      doc_type: u.searchParams.get("doc_type") || "",
+      view: u.searchParams.get("view") || "",
+      q: u.searchParams.get("q") || ""
+    };
+  }
+
+  function qsFromState(st) {
+    var p = new URLSearchParams();
+    if (st.place === "trash") p.set("place", "trash");
+    else if (st.folder) p.set("folder", st.folder);
+    else if (st.place === "expiring" || st.place === "unfiled") p.set("place", st.place);
+    else if (st.doc_type) p.set("doc_type", st.doc_type);
+    else if (st.person) p.set("person", st.person);
+    if (st.view === "icons") p.set("view", "icons");
+    if (st.q && st.place !== "trash") p.set("q", st.q);
+    var s = p.toString();
+    return "/admin/locker/explorer" + (s ? "?" + s : "");
+  }
+
+  function bindDocDrag() {
+    pane.querySelectorAll(".js-fx-doc").forEach(function (row) {
+      row.setAttribute("draggable", "true");
+      row.addEventListener("dragstart", function (e) {
+        e.dataTransfer.setData("text/plain", row.getAttribute("data-id"));
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", function () { row.classList.remove("dragging"); });
+    });
+  }
+
+  function renderCrumbs(data) {
+    var nav = document.getElementById("fx-crumbs");
+    if (!nav) return;
+    var viewQ = data.view === "icons" ? "?view=icons" : "";
+    var html = '<a href="/admin/locker/explorer' + viewQ + '"><i class="bi bi-hdd"></i> Home</a>';
+    var crumbs = data.folder_crumbs || [];
+    if (crumbs.length) {
+      crumbs.forEach(function (c, i) {
+        html += ' <i class="bi bi-chevron-right"></i> ';
+        if (i < crumbs.length - 1) {
+          html += '<a href="/admin/locker/explorer?folder=' + encodeURIComponent(c.id) +
+            (data.view === "icons" ? "&view=icons" : "") + '">' + esc(c.name) + "</a>";
+        } else {
+          html += "<span>" + esc(c.name) + "</span>";
+        }
+      });
+    } else if (data.place === "expiring" || data.place === "unfiled" || data.place === "trash" ||
+               data.doc_type || data.person) {
+      html += ' <i class="bi bi-chevron-right"></i> <span>' + esc(data.here_label || "") + "</span>";
+    }
+    nav.innerHTML = html;
+  }
+
+  function renderToolbar(data) {
+    var actions = document.getElementById("fx-toolbar-actions");
+    if (!actions) return;
+    var listHref = qsFromState(Object.assign({}, data, { view: "list" }));
+    var iconsHref = qsFromState(Object.assign({}, data, { view: "icons" }));
+    var html =
+      '<button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar" title="Toggle left menu / full screen">' +
+      '<i class="bi bi-layout-sidebar-inset" id="fx-toggle-nav-icon"></i>' +
+      '<span class="d-none d-xl-inline" id="fx-toggle-nav-label">Hide menu</span></button>' +
+      '<div class="btn-group" role="group" aria-label="View">' +
+      '<a class="btn btn-sm btn-outline-light' + (data.view !== "icons" ? " active" : "") + '" href="' + esc(listHref) + '" title="List view"><i class="bi bi-list-ul"></i></a>' +
+      '<a class="btn btn-sm btn-outline-light' + (data.view === "icons" ? " active" : "") + '" href="' + esc(iconsHref) + '" title="Icons view"><i class="bi bi-grid"></i></a>' +
+      "</div>";
+    if (data.in_trash) {
+      if ((data.items || []).length) {
+        html +=
+          '<form method="post" action="/admin/locker/trash/empty" class="d-inline" data-confirm="Permanently delete everything in trash? This cannot be undone.">' +
+          '<input type="hidden" name="next" value="' + esc(data.here_href) + '">' +
+          '<button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash3"></i> Empty trash</button></form>';
+      }
+    } else {
+      html +=
+        '<button type="button" class="btn btn-sm btn-outline-light" id="fx-btn-new-folder"><i class="bi bi-folder-plus"></i> New folder</button>' +
+        '<label class="btn btn-sm btn-primary mb-0" for="fx-upload-input" title="Upload files into this folder"><i class="bi bi-upload"></i> Upload</label>' +
+        '<a class="btn btn-sm btn-outline-light" href="' + esc(data.add_href) + '" title="Full add form"><i class="bi bi-plus-lg"></i></a>';
+    }
+    actions.innerHTML = html;
+    // Re-wire full-screen toggle after replace
+    var toolBtn = document.getElementById("fx-toggle-nav-toolbar");
+    if (toolBtn) {
+      toolBtn.addEventListener("click", function () {
+        document.getElementById("fx-toggle-nav") && document.getElementById("fx-toggle-nav").click();
+      });
+    }
+    var newFolder = document.getElementById("fx-btn-new-folder");
+    if (newFolder) {
+      newFolder.addEventListener("click", function () {
+        // reuse existing prompt via synthetic click on a hidden handler — call navigate reload after form submit
+        var ev = new Event("fx-new-folder");
+        document.dispatchEvent(ev);
+      });
+    }
+  }
+
+  function renderPane(data) {
+    var icons = data.view === "icons";
+    pane.className = "fx-pane " + (icons ? "fx-icons" : "fx-list");
+    var html = "";
+    if (!icons) {
+      html += '<div class="fx-list-head" aria-hidden="true">' +
+        '<span class="fx-col-name">Name</span><span class="fx-col-type">Type</span>' +
+        '<span class="fx-col-meta">Details</span><span class="fx-col-date">Added</span></div>';
+    }
+    (data.child_folders || []).forEach(function (f) {
+      var href = "/admin/locker/explorer?folder=" + encodeURIComponent(f.id) +
+        (icons ? "&view=icons" : "");
+      html += '<a class="fx-row js-fx-folder" href="' + href + '" data-kind="folder" data-id="' + esc(f.id) +
+        '" data-name="' + esc(f.name) + '" data-count="' + (f.count || 0) + '">' +
+        '<span class="fx-ico"><i class="bi bi-folder-fill" style="color:#F0A94E"></i></span>' +
+        '<span class="fx-col-name truncate">' + esc(f.name) + "</span>";
+      if (!icons) {
+        html += '<span class="fx-col-type text-faint">Folder</span>' +
+          '<span class="fx-col-meta text-faint">' + (f.child_count || 0) + " folder" +
+          ((f.child_count || 0) !== 1 ? "s" : "") + " · " + (f.count || 0) + " file" +
+          ((f.count || 0) !== 1 ? "s" : "") + "</span>" +
+          '<span class="fx-col-date text-faint">—</span>';
+      } else {
+        html += '<span class="fx-icon-meta">' + ((f.count || 0) + (f.child_count || 0)) + " items</span>";
+      }
+      html += "</a>";
+    });
+    (data.items || []).forEach(function (item) {
+      var color = TYPE_COLORS[item.doc_type] || "#8B95A8";
+      var label = item.type_label || "Doc";
+      html += '<a class="fx-row js-fx-doc" href="/admin/locker/' + encodeURIComponent(item.id) +
+        '" data-kind="doc" data-id="' + esc(item.id) + '" data-name="' + esc(item.title) +
+        '" data-type="' + esc(label) + '" data-folder="' + esc(item.folder_id || "") +
+        '" data-files="' + (item.file_count || 0) + '">' +
+        '<span class="fx-ico doc-icon" style="background:' + color + '">' +
+        esc(String(label).slice(0, 3).toUpperCase()) + "</span>" +
+        '<span class="fx-col-name truncate">' + esc(item.title) +
+        (item.pinned ? ' <i class="bi bi-pin-angle-fill text-warning ms-1" title="Pinned"></i>' : "") +
+        "</span>";
+      if (!icons) {
+        html += '<span class="fx-col-type">' + esc(label) + "</span>" +
+          '<span class="fx-col-meta text-faint">' +
+          (item.person_name ? esc(item.person_name) + " · " : "") +
+          (item.file_count || 0) + " file" + ((item.file_count || 0) !== 1 ? "s" : "") +
+          "</span>" +
+          '<span class="fx-col-date mono text-faint">' + esc(fmtDate(item.created_at)) + "</span>";
+      } else {
+        html += '<span class="fx-icon-meta">' + esc(label) + "</span>";
+      }
+      html += "</a>";
+    });
+    var empty = !(data.child_folders || []).length && !(data.items || []).length;
+    if (empty) {
+      if (data.in_trash) {
+        html += '<div class="fx-empty"><i class="bi bi-trash3"></i><p class="mb-1">Trash is empty</p>' +
+          '<p class="text-faint small mb-0">Deleted documents wait here until you restore them or empty trash.</p></div>';
+      } else {
+        html += '<div class="fx-empty fx-dropzone" id="fx-dropzone"><i class="bi bi-cloud-arrow-up"></i>' +
+          '<p class="mb-1">This folder is empty</p>' +
+          '<p class="text-faint small mb-3">Drop files here, or use Upload / New folder — like a Linux file manager.</p>' +
+          '<div class="d-flex flex-wrap gap-2 justify-content-center no-print">' +
+          '<button type="button" class="btn btn-outline-light btn-sm" id="fx-empty-new-folder"><i class="bi bi-folder-plus"></i> New folder</button>' +
+          '<label class="btn btn-primary btn-sm mb-0" for="fx-upload-input"><i class="bi bi-upload"></i> Upload files</label>' +
+          "</div></div>";
+      }
+    } else if (!data.in_trash) {
+      html += '<div class="fx-drop-hint no-print" id="fx-dropzone">Drop files anywhere to upload into this folder</div>';
+    }
+    pane.innerHTML = html;
+    bindDocDrag();
+  }
+
+  function syncTree(data) {
+    document.querySelectorAll(".fx-tree-item").forEach(function (el) {
+      el.classList.remove("on");
+    });
+    var sel = null;
+    if (data.folder) {
+      var fid = data.folder.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      sel = document.querySelector('#fx-folder-tree .js-fx-folder[data-id="' + fid + '"]');
+    } else if (data.place === "expiring") {
+      sel = document.querySelector('.fx-tree-item[href*="place=expiring"]');
+    } else if (data.place === "unfiled") {
+      sel = document.querySelector('.fx-tree-item[href*="place=unfiled"]');
+    } else if (data.place === "trash") {
+      sel = document.querySelector('.fx-tree-item[href*="place=trash"]');
+    } else if (data.person) {
+      sel = document.querySelector('.fx-tree-item[href*="person=' + encodeURIComponent(data.person) + '"]');
+    } else if (data.doc_type) {
+      sel = document.querySelector('.fx-tree-item[href*="doc_type=' + encodeURIComponent(data.doc_type) + '"]');
+    } else {
+      sel = document.querySelector('.fx-tree-item[href="/admin/locker/explorer"], .fx-tree-item[href="/admin/locker/explorer?view=icons"]');
+      if (!sel) {
+        document.querySelectorAll(".fx-tree-nav a.fx-tree-item").forEach(function (a) {
+          var h = a.getAttribute("href") || "";
+          if (h === "/admin/locker/explorer" || h.indexOf("/admin/locker/explorer?") === 0 && h.indexOf("folder=") < 0 && h.indexOf("place=") < 0 && h.indexOf("person=") < 0 && h.indexOf("doc_type=") < 0) {
+            if (!sel) sel = a;
+          }
+        });
+      }
+    }
+    if (sel) sel.classList.add("on");
+    var trashEm = document.querySelector('.fx-tree-item[href*="place=trash"] em');
+    if (trashEm && data.summary) {
+      trashEm.textContent = String(data.summary.trash || 0).padStart(2, "0");
+    }
+  }
+
+  function syncShell(data) {
+    shell.setAttribute("data-here", data.here_href || "");
+    shell.setAttribute("data-add", data.add_href || "");
+    shell.setAttribute("data-folder", data.folder || "");
+    shell.setAttribute("data-place", data.place || "home");
+    var uf = document.getElementById("fx-upload-form");
+    if (uf) {
+      var fid = uf.querySelector('input[name="folder_id"]');
+      var nxt = uf.querySelector('input[name="next"]');
+      if (fid) fid.value = data.folder || "";
+      if (nxt) nxt.value = data.here_href || "";
+    }
+    ["fx-form-new-folder", "fx-form-rename-folder", "fx-form-delete-doc", "fx-form-restore-doc", "fx-form-permanent-doc", "fx-form-move"].forEach(function (id) {
+      var f = document.getElementById(id);
+      if (!f) return;
+      var n = f.querySelector('input[name="next"]');
+      if (n) n.value = data.here_href || "";
+      if (id === "fx-form-new-folder") {
+        var p = f.querySelector('input[name="parent_id"]');
+        if (p) p.value = data.folder || "";
+      }
+    });
+    var search = document.querySelector(".fx-search");
+    if (search) {
+      search.querySelectorAll('input[type="hidden"]').forEach(function (h) { h.remove(); });
+      function addHidden(name, val) {
+        if (!val) return;
+        var i = document.createElement("input");
+        i.type = "hidden"; i.name = name; i.value = val;
+        search.insertBefore(i, search.querySelector('input[type="search"]'));
+      }
+      if (data.folder) addHidden("folder", data.folder);
+      if (data.place && data.place !== "home" && data.place !== "folder" && !data.folder) addHidden("place", data.place);
+      if (data.doc_type) addHidden("doc_type", data.doc_type);
+      if (data.person) addHidden("person", data.person);
+      if (data.view === "icons") addHidden("view", "icons");
+      var q = search.querySelector('input[type="search"]');
+      if (q) {
+        q.value = data.q || "";
+        q.disabled = !!data.in_trash;
+      }
+    }
+  }
+
+  function applyBrowse(data, push) {
+    renderCrumbs(data);
+    renderToolbar(data);
+    renderPane(data);
+    syncTree(data);
+    syncShell(data);
+    if (push) history.pushState({ fx: true }, "", data.here_href || "/admin/locker/explorer");
+  }
+
+  function navigate(params, push) {
+    if (busy) return;
+    busy = true;
+    var my = ++seq;
+    pane.classList.add("fx-loading");
+    var p = new URLSearchParams();
+    Object.keys(params || {}).forEach(function (k) {
+      if (params[k]) p.set(k, params[k]);
+    });
+    fetch("/admin/locker/explorer/browse.json?" + p.toString(), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }
+    })
+      .then(function (r) {
+        if (r.status === 401) { location.href = "/admin/login"; return null; }
+        if (!r.ok) throw new Error("browse failed");
+        return r.json();
+      })
+      .then(function (data) {
+        if (!data || my !== seq) return;
+        applyBrowse(data, push !== false);
+      })
+      .catch(function () {
+        // Fallback to full navigation
+        location.href = qsFromState(params || {});
+      })
+      .finally(function () {
+        if (my === seq) {
+          busy = false;
+          pane.classList.remove("fx-loading");
+        }
+      });
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest("a[href*='/admin/locker/explorer']");
+    if (!a || !shell.contains(a)) return;
+    if (a.classList.contains("js-fx-doc")) return;
+    var href = a.getAttribute("href") || "";
+    if (href.indexOf("/admin/locker/explorer") !== 0) return;
+    e.preventDefault();
+    navigate(parseExplorerUrl(href), true);
+  });
+
+  window.addEventListener("popstate", function () {
+    navigate(parseExplorerUrl(location.href), false);
+  });
+
+  // New folder button after AJAX toolbar rebuild
+  document.addEventListener("fx-new-folder", function () {
+    var btn = document.getElementById("fx-btn-new-folder");
+    // Fall through: existing promptNewFolder is bound only at load — call via shared API
+    if (window.fxPromptNewFolder) window.fxPromptNewFolder();
+  });
+  // Expose for empty-state button after re-render
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("#fx-empty-new-folder") && window.fxPromptNewFolder) {
+      e.preventDefault();
+      window.fxPromptNewFolder();
+    }
   });
 })();
 </script>

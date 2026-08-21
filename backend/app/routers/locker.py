@@ -143,11 +143,12 @@ def _to_out(
         file_type=first.file_type if first else None,
         file_size=first.file_size if first else None,
         file_count=len(item.files) if item.files else 0,
+        deleted_at=getattr(item, "deleted_at", None),
         created_at=item.created_at,
     )
 
 
-def _owned(item_id: str, db: Session, user: models.User) -> models.LockerItem:
+def _owned(item_id: str, db: Session, user: models.User, *, include_deleted: bool = False) -> models.LockerItem:
     item = (
         db.query(models.LockerItem)
         .filter(models.LockerItem.id == item_id, models.LockerItem.user_id == vault_id(user))
@@ -155,7 +156,16 @@ def _owned(item_id: str, db: Session, user: models.User) -> models.LockerItem:
     )
     if not item:
         raise HTTPException(status_code=404, detail="Document not found")
+    if item.deleted_at and not include_deleted:
+        raise HTTPException(status_code=404, detail="Document not found")
     return item
+
+
+def _active_item_query(db: Session, user: models.User):
+    return db.query(models.LockerItem).filter(
+        models.LockerItem.user_id == vault_id(user),
+        models.LockerItem.deleted_at.is_(None),
+    )
 
 
 def _norm_type(doc_type: Optional[str], custom_type: Optional[str]) -> tuple[str, Optional[str]]:
@@ -170,7 +180,7 @@ def _norm_type(doc_type: Optional[str], custom_type: Optional[str]) -> tuple[str
 
 def _folder_outs(db: Session, user: models.User, items: list[models.LockerItem] | None = None) -> list[schemas.LockerFolderOut]:
     if items is None:
-        items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(user)).all()
+        items = _active_item_query(db, user).all()
     counts: dict[str, int] = {}
     for item in items:
         if item.folder_id:
@@ -256,7 +266,10 @@ def list_types(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user)).all()
+    items = db.query(models.LockerItem).filter(
+        models.LockerItem.user_id == vault_id(current_user),
+        models.LockerItem.deleted_at.is_(None),
+    ).all()
     counts: dict[str, int] = {k: 0 for k, _ in LOCKER_TYPES}
     for item in items:
         counts[item.doc_type] = counts.get(item.doc_type, 0) + 1
@@ -370,7 +383,15 @@ def locker_summary(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    items = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user)).all()
+    items = _active_item_query(db, current_user).all()
+    trash_count = (
+        db.query(models.LockerItem)
+        .filter(
+            models.LockerItem.user_id == vault_id(current_user),
+            models.LockerItem.deleted_at.isnot(None),
+        )
+        .count()
+    )
     today = datetime.utcnow().strftime("%Y-%m-%d")
     soon = (datetime.utcnow() + timedelta(days=60)).strftime("%Y-%m-%d")
     expiring = sum(
@@ -406,10 +427,58 @@ def locker_summary(
         total=len(items),
         expiring=expiring,
         unassigned=unassigned,
+        trash=trash_count,
         types=types,
         folders=folders,
         people=people,
     )
+
+
+def _purge_item_files(item: models.LockerItem) -> None:
+    for f in list(item.files or []):
+        path = settings.STORAGE_DIR / f.file_path
+        if path.exists():
+            path.unlink()
+
+
+@router.get("/trash", response_model=list[schemas.LockerItemOut])
+def list_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = (
+        db.query(models.LockerItem)
+        .filter(
+            models.LockerItem.user_id == vault_id(current_user),
+            models.LockerItem.deleted_at.isnot(None),
+        )
+        .order_by(models.LockerItem.deleted_at.desc())
+        .all()
+    )
+    names = {p.id: p.name for p in _people_for(db, current_user)}
+    folder_names = {f.id: f.name for f in _folders_for(db, current_user)}
+    return [_to_out(i, names.get(i.person_id), folder_names.get(i.folder_id)) for i in rows]
+
+
+@router.post("/trash/empty", status_code=204)
+def empty_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = (
+        db.query(models.LockerItem)
+        .filter(
+            models.LockerItem.user_id == vault_id(current_user),
+            models.LockerItem.deleted_at.isnot(None),
+        )
+        .all()
+    )
+    for item in rows:
+        _purge_item_files(item)
+        db.delete(item)
+    db.commit()
 
 
 @router.get("", response_model=list[schemas.LockerItemOut])
@@ -423,7 +492,7 @@ def list_items(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    query = db.query(models.LockerItem).filter(models.LockerItem.user_id == vault_id(current_user))
+    query = _active_item_query(db, current_user)
     raw_type = (doc_type or "").strip()
     fid = (folder_id or "").strip()
     if raw_type.startswith("folder:"):
@@ -673,12 +742,42 @@ def delete_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """Move a document to trash (soft delete)."""
     require_owner(current_user)
     item = _owned(item_id, db, current_user)
-    for f in list(item.files or []):
-        path = settings.STORAGE_DIR / f.file_path
-        if path.exists():
-            path.unlink()
+    item.deleted_at = datetime.utcnow()
+    db.commit()
+
+
+@router.post("/{item_id}/restore", response_model=schemas.LockerItemOut)
+def restore_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned(item_id, db, current_user, include_deleted=True)
+    if not item.deleted_at:
+        raise HTTPException(status_code=400, detail="Document is not in trash")
+    item.deleted_at = None
+    db.commit()
+    db.refresh(item)
+    pname = item.person.name if item.person else None
+    fname = item.folder.name if item.folder else None
+    return _to_out(item, pname, fname)
+
+
+@router.delete("/{item_id}/permanent", status_code=204)
+def permanent_delete_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned(item_id, db, current_user, include_deleted=True)
+    if not item.deleted_at:
+        raise HTTPException(status_code=400, detail="Move the document to trash first")
+    _purge_item_files(item)
     db.delete(item)
     db.commit()
 

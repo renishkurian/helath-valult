@@ -932,6 +932,7 @@ class LockerItem(Base):
     tags = Column(String(500), nullable=True)
     notes_enc = Column(Text, nullable=True)
     pinned = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

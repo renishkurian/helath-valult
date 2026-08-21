@@ -3607,6 +3607,140 @@ def locker_home(
     ))
 
 
+def _lk_explorer_browse(
+    *,
+    db,
+    user,
+    folder: str = "",
+    place: str = "",
+    doc_type: str = "",
+    person: str = "",
+    q: str = "",
+    view: str = "list",
+):
+    """Shared Document Explorer state for HTML page + AJAX browse.json."""
+    from app.routers import locker as lk
+    from urllib.parse import urlencode
+
+    folder_id = (folder or "").strip()
+    place_key = (place or "").strip() or ("folder" if folder_id else "home")
+    type_filter = (doc_type or "").strip()
+    person_filter = (person or "").strip()
+    person_id = _lk_person_id(person_filter)
+    expiring = place_key == "expiring"
+    unfiled = place_key == "unfiled"
+    in_trash = place_key == "trash"
+    summary = lk.locker_summary(db=db, current_user=user)
+    if in_trash:
+        items = lk.list_trash(db=db, current_user=user)
+    else:
+        items = lk.list_items(
+            doc_type=type_filter or None,
+            folder_id=folder_id or None,
+            q=q or None,
+            person_id=person_id or (person_filter if person_filter == "none" else None),
+            expiring=expiring,
+            db=db,
+            current_user=user,
+        )
+        if unfiled and not folder_id and not q:
+            items = [i for i in items if not i.folder_id]
+        elif place_key == "home" and not folder_id and not type_filter and not expiring and not q and not person_filter:
+            items = [i for i in items if not i.folder_id]
+    folder_name = None
+    type_label = None
+    person_label = None
+    folder_crumbs = []
+    if folder_id and not in_trash:
+        folder_crumbs = lk._folder_crumbs(db, user, folder_id)
+        folder_name = folder_crumbs[-1].name if folder_crumbs else None
+    if type_filter:
+        type_label = dict(lk.LOCKER_TYPES).get(type_filter, type_filter.replace("_", " ").title())
+    if person_filter and person_filter != "none":
+        for p in summary.people:
+            if p.id == person_filter:
+                person_label = p.name
+                break
+    show_children = bool(
+        not in_trash and not type_filter and not expiring and not unfiled and not person_filter and not q
+    )
+    child_folders = (
+        lk._child_folder_outs(db, user, folder_id or None)
+        if show_children else []
+    )
+    folder_tree = lk._folder_tree(db, user)
+    view_mode = "icons" if view == "icons" else "list"
+
+    qs = {}
+    if in_trash:
+        qs["place"] = "trash"
+    elif folder_id:
+        qs["folder"] = folder_id
+    elif place_key == "expiring":
+        qs["place"] = "expiring"
+    elif place_key == "unfiled":
+        qs["place"] = "unfiled"
+    elif type_filter:
+        qs["doc_type"] = type_filter
+    elif person_filter:
+        qs["person"] = person_filter
+    if view_mode == "icons":
+        qs["view"] = "icons"
+    if q and not in_trash:
+        qs["q"] = q
+    here_href = "/admin/locker/explorer" + (("?" + urlencode(qs)) if qs else "")
+
+    add_qs = {}
+    if folder_id and not in_trash:
+        add_qs["folder"] = folder_id
+    if person_id and not in_trash:
+        add_qs["person"] = person_id
+    if type_filter and not in_trash and not folder_id:
+        add_qs["doc_type"] = type_filter
+    add_href = "/admin/locker/add" + (("?" + urlencode(add_qs)) if add_qs else "")
+
+    here_label = "Home"
+    if in_trash:
+        here_label = "Trash"
+    elif folder_name:
+        here_label = folder_name
+    elif place_key == "expiring":
+        here_label = "Expiring"
+    elif place_key == "unfiled":
+        here_label = "Unfiled"
+    elif type_label:
+        here_label = type_label
+    elif person_label:
+        here_label = person_label
+
+    return {
+        "summary": summary,
+        "items": items,
+        "people": summary.people,
+        "folders": summary.folders,
+        "folder_tree": folder_tree,
+        "child_folders": child_folders,
+        "folder_crumbs": folder_crumbs,
+        "types": lk.LOCKER_TYPES,
+        "folder": folder_id if not in_trash else "",
+        "folder_name": folder_name,
+        "place": place_key,
+        "doc_type": type_filter if not in_trash else "",
+        "type_label": type_label,
+        "person": person_filter if not in_trash else "",
+        "person_label": person_label,
+        "q": q if not in_trash else "",
+        "view": view_mode,
+        "expiring": expiring,
+        "unfiled": unfiled,
+        "in_trash": in_trash,
+        "here_href": here_href,
+        "add_href": add_href,
+        "here_label": here_label,
+        "active_person_id": person_id if not in_trash else None,
+    }
+
+
 @router.get("/locker/explorer", response_class=HTMLResponse)
 def locker_explorer(
     request: Request,
@@ -3619,67 +3753,78 @@ def locker_explorer(
     db: Session = Depends(get_db),
 ):
     """Linux/Windows-style Document Explorer over Document Vault folders."""
-    from app.routers import locker as lk
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    folder_id = (folder or "").strip()
-    place_key = (place or "").strip() or ("folder" if folder_id else "home")
-    type_filter = (doc_type or "").strip()
-    person_filter = (person or "").strip()
-    person_id = _lk_person_id(person_filter)
-    expiring = place_key == "expiring"
-    unfiled = place_key == "unfiled"
-    summary = lk.locker_summary(db=db, current_user=user)
-    items = lk.list_items(
-        doc_type=type_filter or None,
-        folder_id=folder_id or None,
-        q=q or None,
-        person_id=person_id or (person_filter if person_filter == "none" else None),
-        expiring=expiring,
-        db=db,
-        current_user=user,
+    state = _lk_explorer_browse(
+        db=db, user=user, folder=folder, place=place,
+        doc_type=doc_type, person=person, q=q, view=view,
     )
-    if unfiled and not folder_id and not q:
-        items = [i for i in items if not i.folder_id]
-    elif place_key == "home" and not folder_id and not type_filter and not expiring and not q and not person_filter:
-        # Root view: folders + documents not in a folder (like a home directory)
-        items = [i for i in items if not i.folder_id]
-    folder_name = None
-    type_label = None
-    person_label = None
-    folder_crumbs = []
-    if folder_id:
-        folder_crumbs = lk._folder_crumbs(db, user, folder_id)
-        folder_name = folder_crumbs[-1].name if folder_crumbs else None
-    if type_filter:
-        type_label = dict(lk.LOCKER_TYPES).get(type_filter, type_filter.replace("_", " ").title())
-    if person_filter and person_filter != "none":
-        for p in summary.people:
-            if p.id == person_filter:
-                person_label = p.name
-                break
-    # Child folders of current location (Linux: show subfolders in the pane)
-    show_children = bool(
-        not type_filter and not expiring and not unfiled and not person_filter and not q
-    )
-    child_folders = (
-        lk._child_folder_outs(db, user, folder_id or None)
-        if show_children else []
-    )
-    folder_tree = lk._folder_tree(db, user)
-    view_mode = "icons" if view == "icons" else "list"
     return templates.TemplateResponse("locker_explorer.html", _lk_ctx(
-        request, user, "lk_explorer",
-        summary=summary, items=items, people=summary.people,
-        folders=summary.folders, folder_tree=folder_tree, child_folders=child_folders,
-        folder_crumbs=folder_crumbs, types=lk.LOCKER_TYPES,
-        folder=folder_id, folder_name=folder_name, place=place_key,
-        doc_type=type_filter, type_label=type_label, person=person_filter,
-        person_label=person_label, q=q,
-        view=view_mode, expiring=expiring, unfiled=unfiled,
-        active_person_id=_lk_person_id(person_filter),
+        request, user, "lk_explorer", **state,
     ))
+
+
+@router.get("/locker/explorer/browse.json")
+def locker_explorer_browse_json(
+    request: Request,
+    folder: str = "",
+    place: str = "",
+    doc_type: str = "",
+    person: str = "",
+    q: str = "",
+    view: str = "list",
+    db: Session = Depends(get_db),
+):
+    """AJAX browse for Document Explorer — no full page reload on folder/place change."""
+    from fastapi.encoders import jsonable_encoder
+    user = _lk_user(request, db)
+    if not user:
+        return JSONResponse({"error": "login"}, status_code=401)
+    state = _lk_explorer_browse(
+        db=db, user=user, folder=folder, place=place,
+        doc_type=doc_type, person=person, q=q, view=view,
+    )
+    # Lighter payload for the pane (skip secrets / summary people blobs beyond counts)
+    payload = {
+        "place": state["place"],
+        "folder": state["folder"],
+        "folder_name": state["folder_name"],
+        "folder_crumbs": state["folder_crumbs"],
+        "child_folders": state["child_folders"],
+        "items": [
+            {
+                "id": i.id,
+                "title": i.title,
+                "doc_type": i.doc_type,
+                "type_label": i.type_label,
+                "person_name": i.person_name,
+                "folder_id": i.folder_id,
+                "file_count": i.file_count,
+                "pinned": i.pinned,
+                "created_at": i.created_at,
+                "deleted_at": i.deleted_at,
+            }
+            for i in state["items"]
+        ],
+        "doc_type": state["doc_type"],
+        "type_label": state["type_label"],
+        "person": state["person"],
+        "person_label": state["person_label"],
+        "q": state["q"],
+        "view": state["view"],
+        "in_trash": state["in_trash"],
+        "here_href": state["here_href"],
+        "add_href": state["add_href"],
+        "here_label": state["here_label"],
+        "summary": {
+            "total": state["summary"].total,
+            "expiring": state["summary"].expiring,
+            "trash": state["summary"].trash,
+            "unassigned": state["summary"].unassigned,
+        },
+    }
+    return JSONResponse(jsonable_encoder(payload))
 
 
 @router.post("/locker/explorer/upload")
@@ -4125,13 +4270,70 @@ def locker_delete_file(
 
 
 @router.post("/locker/{item_id}/delete")
-def locker_delete(item_id: str, request: Request, db: Session = Depends(get_db)):
+def locker_delete(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers import locker as lk
     user = _lk_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     lk.delete_item(item_id, db=db, current_user=user)
-    return RedirectResponse("/admin/locker", status_code=302)
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = "/admin/locker"
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/locker/{item_id}/restore")
+def locker_restore(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    lk.restore_item(item_id, db=db, current_user=user)
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = "/admin/locker/explorer?place=trash"
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/locker/{item_id}/permanent")
+def locker_permanent(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    lk.permanent_delete_item(item_id, db=db, current_user=user)
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = "/admin/locker/explorer?place=trash"
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/locker/trash/empty")
+def locker_trash_empty(request: Request, next: str = Form(""), db: Session = Depends(get_db)):
+    from app.routers import locker as lk
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    lk.empty_trash(db=db, current_user=user)
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/locker") and "://" not in dest):
+        dest = "/admin/locker/explorer?place=trash"
+    return RedirectResponse(dest, status_code=302)
 
 
 # ---------- URL Vault ----------

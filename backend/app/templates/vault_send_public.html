@@ -20,16 +20,29 @@
 .locker-file-print-main{ flex:1; min-width:12rem; }
 .locker-file-print-actions{ display:flex; flex-wrap:wrap; gap:.4rem; }
 .print-only, .locker-print-sheet{ display:none; }
+/* Keep print assets laid out off-screen so images actually load (display:none skips fetch in some browsers). */
+.locker-print-sheet.is-preload{
+  display:block !important;
+  position:fixed; left:-10000px; top:0; width:800px; height:auto;
+  overflow:hidden; opacity:0; pointer-events:none; z-index:-1;
+}
+#locker-print-frame{
+  position:fixed; right:0; bottom:0; width:0; height:0; border:0;
+  opacity:0; pointer-events:none;
+}
 @media print{
   @page{ margin:8mm; }
   html, body{ background:#fff !important; color:#111 !important; height:auto !important; }
   .public-brand, .public-foot, .no-print, .btn-close, .card-ico,
-  .card-header, .locker-file-print-list, .print-title{ display:none !important; }
+  .card-header, .locker-file-print-list, .print-title, #locker-print-frame{ display:none !important; }
   .public-wrap, .public-card, .card, .card-body{
     box-shadow:none !important; border:none !important; background:#fff !important;
     padding:0 !important; margin:0 !important; max-width:none !important; width:100% !important;
   }
-  .locker-print-sheet{ display:block !important; }
+  .locker-print-sheet, .locker-print-sheet.is-preload{
+    display:block !important; position:static !important; left:auto !important; width:auto !important;
+    height:auto !important; overflow:visible !important; opacity:1 !important; z-index:auto !important;
+  }
   .locker-print-page{
     break-after:page; page-break-after:always;
     margin:0; padding:0; text-align:center;
@@ -260,7 +273,7 @@
               <div class="d-flex flex-wrap align-items-center gap-2 mb-3 no-print">
                 <div class="me-auto">
                   <div class="fw-semibold">Files</div>
-                  <div class="small text-muted">{{ (locker_files|length) if locker_files is defined else 0 }} file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }} · print opens the actual file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }}</div>
+                  <div class="small text-muted">{{ (locker_files|length) if locker_files is defined else 0 }} file{{ 's' if (locker_files is not defined or locker_files|length != 1) else '' }} · Print prints the image, not the file list</div>
                 </div>
                 <button type="button" class="btn btn-outline-light btn-sm" id="locker-print-btn">
                   <i class="bi bi-printer"></i> Print
@@ -274,6 +287,9 @@
                 {% set view_href = '/vault/public/' ~ token ~ '/locker/view?' ~ view_qs %}
                 {% set dl_href = '/vault/public/' ~ token ~ '/locker/download?' ~ view_qs %}
                 {% set ft = (f.type or '')|lower %}
+                {% set fname = (f.name or '')|lower %}
+                {% set is_image = ft.startswith('image/') or fname.endswith('.png') or fname.endswith('.jpg') or fname.endswith('.jpeg') or fname.endswith('.webp') or fname.endswith('.gif') or fname.endswith('.bmp') %}
+                {% set is_pdf = ('pdf' in ft) or fname.endswith('.pdf') %}
                 <li class="locker-file-print-item">
                   <div class="locker-file-print-main">
                     <div class="fw-semibold text-break">{{ f.name }}</div>
@@ -288,7 +304,7 @@
                     </a>
                     <button type="button" class="btn btn-outline-light btn-sm js-locker-print-one"
                             data-href="{{ view_href }}"
-                            data-kind="{% if ft.startswith('image/') %}image{% elif 'pdf' in ft %}pdf{% else %}other{% endif %}"
+                            data-kind="{% if is_image %}image{% elif is_pdf %}pdf{% else %}other{% endif %}"
                             data-name="{{ f.name }}">
                       <i class="bi bi-printer"></i> Print
                     </button>
@@ -300,17 +316,20 @@
                 {% endfor %}
               </ul>
               {# Actual file pixels for browser print — not the file-name list #}
-              <div class="locker-print-sheet" id="locker-print-sheet" aria-hidden="true">
+              <div class="locker-print-sheet is-preload" id="locker-print-sheet" aria-hidden="true">
                 {% for f in locker_files %}
                 {% set view_qs = 'file_id=' ~ f.id %}
                 {% if pin_value %}{% set view_qs = view_qs ~ '&pin=' ~ (pin_value|urlencode) %}{% endif %}
                 {% set view_href = '/vault/public/' ~ token ~ '/locker/view?' ~ view_qs %}
                 {% set ft = (f.type or '')|lower %}
-                <div class="locker-print-page" data-kind="{% if ft.startswith('image/') %}image{% elif 'pdf' in ft %}pdf{% else %}other{% endif %}">
-                  {% if ft.startswith('image/') %}
+                {% set fname = (f.name or '')|lower %}
+                {% set is_image = ft.startswith('image/') or fname.endswith('.png') or fname.endswith('.jpg') or fname.endswith('.jpeg') or fname.endswith('.webp') or fname.endswith('.gif') or fname.endswith('.bmp') %}
+                {% set is_pdf = ('pdf' in ft) or fname.endswith('.pdf') %}
+                <div class="locker-print-page" data-kind="{% if is_image %}image{% elif is_pdf %}pdf{% else %}other{% endif %}">
+                  {% if is_image %}
                   <img src="{{ view_href }}" alt="{{ f.name }}" loading="eager">
                   <span class="locker-print-caption">{{ f.name }}</span>
-                  {% elif 'pdf' in ft %}
+                  {% elif is_pdf %}
                   <div class="locker-print-fallback">
                     <strong>{{ f.name }}</strong>
                     <p>PDF — use Open, then print from the PDF viewer, or tap Print next to this file.</p>
@@ -475,11 +494,17 @@ VaultSendVideo.guest({ token: {{ token|tojson }} });
 <script>
 (function () {
   function waitForImages(root, done) {
-    var imgs = root ? root.querySelectorAll("img") : [];
+    var imgs = root ? Array.prototype.slice.call(root.querySelectorAll("img")) : [];
     var left = 0;
+    var finished = false;
+    function finish() {
+      if (finished) return;
+      finished = true;
+      done();
+    }
     function tick() {
       left -= 1;
-      if (left <= 0) done();
+      if (left <= 0) finish();
     }
     imgs.forEach(function (img) {
       if (img.complete && img.naturalWidth) return;
@@ -487,34 +512,84 @@ VaultSendVideo.guest({ token: {{ token|tojson }} });
       img.addEventListener("load", tick, { once: true });
       img.addEventListener("error", tick, { once: true });
     });
-    if (left === 0) done();
+    if (left === 0) finish();
+    else window.setTimeout(finish, 8000);
   }
 
   function printSheet() {
     var sheet = document.getElementById("locker-print-sheet");
+    if (!sheet) {
+      window.print();
+      return;
+    }
+    sheet.classList.add("is-preload");
     waitForImages(sheet, function () { window.print(); });
   }
 
-  function printOne(href, kind, name) {
-    if (kind === "pdf" || kind === "other") {
-      window.open(href, "_blank", "noopener");
-      return;
+  function printFrame() {
+    var frame = document.getElementById("locker-print-frame");
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.id = "locker-print-frame";
+      frame.setAttribute("aria-hidden", "true");
+      frame.title = "Print";
+      document.body.appendChild(frame);
     }
-    var w = window.open("", "_blank", "noopener");
-    if (!w) {
-      window.open(href, "_blank", "noopener");
-      return;
-    }
-    var safeName = (name || "file").replace(/[<>&"]/g, "");
-    w.document.write(
-      "<!DOCTYPE html><html><head><title>" + safeName + "</title>" +
+    return frame;
+  }
+
+  function printImage(href, name) {
+    var frame = printFrame();
+    var safeName = String(name || "image")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+    var safeHref = String(href || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    var doc = frame.contentDocument || frame.contentWindow.document;
+    doc.open();
+    doc.write(
+      "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + safeName + "</title>" +
       "<style>@page{margin:8mm}html,body{margin:0;background:#fff;text-align:center}" +
-      "img{max-width:100%;max-height:96vh;object-fit:contain}</style></head><body>" +
-      "<img id=p src=\"" + href.replace(/"/g, "&quot;") + "\" alt=\"" + safeName + "\">" +
-      "<script>var i=document.getElementById('p');function go(){setTimeout(function(){window.print()},50)}" +
-      "if(i.complete)go();else{i.onload=go;i.onerror=go}<\\/script></body></html>"
+      "img{max-width:100%;max-height:96vh;object-fit:contain;display:block;margin:0 auto}</style></head><body>" +
+      "<img id=\"p\" src=\"" + safeHref + "\" alt=\"" + safeName + "\">" +
+      "</body></html>"
     );
-    w.document.close();
+    doc.close();
+
+    var win = frame.contentWindow;
+    var img = doc.getElementById("p");
+    var printed = false;
+    function go() {
+      if (printed) return;
+      printed = true;
+      try {
+        win.focus();
+        win.print();
+      } catch (err) {
+        window.print();
+      }
+    }
+    if (!img) {
+      go();
+      return;
+    }
+    if (img.complete && img.naturalWidth) {
+      window.setTimeout(go, 50);
+      return;
+    }
+    img.onload = function () { window.setTimeout(go, 50); };
+    img.onerror = function () { go(); };
+    window.setTimeout(go, 8000);
+  }
+
+  function printOne(href, kind, name) {
+    if (kind === "image") {
+      printImage(href, name);
+      return;
+    }
+    // PDF / other: open the file; browser viewer has its own print
+    window.open(href, "_blank");
   }
 
   var allBtn = document.getElementById("locker-print-btn");

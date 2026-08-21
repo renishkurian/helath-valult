@@ -3263,6 +3263,7 @@ body{
   flex:1; overflow:auto; outline:none; padding:.35rem .5rem .75rem;
   min-height:280px;
 }
+.fx-pane.fx-loading{ opacity:.55; pointer-events:none; transition:opacity .15s ease; }
 .fx-list-head, .fx-list .fx-row{
   display:grid;
   grid-template-columns:minmax(10rem,2.2fr) minmax(5rem,1fr) minmax(7rem,1.4fr) 6.5rem;

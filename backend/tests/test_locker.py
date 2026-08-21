@@ -81,6 +81,23 @@ def test_locker_upload_list_download_delete():
     assert gone.status_code == 204
     empty = client.get("/locker", headers=headers).json()
     assert empty == []
+    trash = client.get("/locker/trash", headers=headers)
+    assert trash.status_code == 200
+    assert len(trash.json()) == 1
+    assert trash.json()[0]["id"] == item_id
+    assert client.get("/locker/summary", headers=headers).json()["trash"] == 1
+
+    restored = client.post(f"/locker/{item_id}/restore", headers=headers)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["id"] == item_id
+    assert client.get("/locker", headers=headers).json()[0]["id"] == item_id
+    assert client.get("/locker/trash", headers=headers).json() == []
+
+    client.delete(f"/locker/{item_id}", headers=headers)
+    purged = client.delete(f"/locker/{item_id}/permanent", headers=headers)
+    assert purged.status_code == 204
+    assert client.get("/locker/trash", headers=headers).json() == []
+    assert client.get(f"/locker/{item_id}", headers=headers).status_code == 404
 
 
 def test_locker_family_profiles_and_search_all():
