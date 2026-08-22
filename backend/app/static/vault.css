@@ -1579,6 +1579,11 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
   font-size:2.25rem !important; font-weight:650; letter-spacing:-0.04em;
   text-align:right; padding:.5rem .75rem; min-height:64px;
   font-variant-numeric:tabular-nums; background:transparent; border:none; box-shadow:none;
+  -moz-appearance:textfield; appearance:textfield;
+}
+.amount-input::-webkit-outer-spin-button,
+.amount-input::-webkit-inner-spin-button{
+  -webkit-appearance:none; margin:0;
 }
 .amount-input:focus{ background:transparent; box-shadow:none; border:none; }
 .amount-well{
