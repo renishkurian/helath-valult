@@ -342,8 +342,430 @@
     });
   }
 
+  /* —— Transactions list —— */
+  function methodLabel(m) {
+    if (!m) return "";
+    return String(m).replace(/_/g, " ");
+  }
+
+  function txnCardHtml(item, opts) {
+    opts = opts || {};
+    var canBulk = !!opts.canBulk;
+    var month = opts.month || "";
+    var view = opts.view || "daily";
+    var ico = TYPE_ICO[item.txn_type] || "bi-receipt";
+    var title = item.payee || item.category_name || "—";
+    var sub = item.category_name || item.txn_type;
+    if (item.description && item.payee) sub += " · " + item.description;
+    var when = item.account_name || "";
+    if (item.to_account_name) when += " → " + item.to_account_name;
+    if (item.payment_method) when += (when ? " · " : "") + methodLabel(item.payment_method);
+    if (opts.showDate && item.txn_date) when += (when ? " · " : "") + item.txn_date;
+    if (opts.showTime && item.txn_time) when += (when ? " · " : "") + String(item.txn_time).slice(0, 5);
+    var sign = item.txn_type === "income" ? "+" : item.txn_type === "expense" ? "−" : "";
+    var check = canBulk
+      ? '<input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="' +
+        esc(item.id) +
+        '" form="mm-bulk-delete" aria-label="Select transaction">'
+      : "";
+    var photo =
+      item.has_image
+        ? '<li><a class="dropdown-item js-photo" href="/admin/finance/transactions/' +
+          esc(item.id) +
+          '/image"><i class="bi bi-image"></i> Receipt</a></li>'
+        : "";
+    return (
+      '<div class="mm-card" data-txn-id="' +
+      esc(item.id) +
+      '">' +
+      check +
+      '<span class="mm-card-ico ' +
+      esc(item.txn_type) +
+      '"><i class="bi ' +
+      ico +
+      '"></i></span>' +
+      '<div class="mm-card-body">' +
+      '<div class="mm-card-title truncate">' +
+      esc(title) +
+      "</div>" +
+      '<div class="mm-card-sub truncate">' +
+      esc(sub) +
+      "</div>" +
+      '<div class="mm-card-when">' +
+      esc(when) +
+      "</div></div>" +
+      '<div class="mm-card-amt mm-' +
+      esc(item.txn_type) +
+      '">' +
+      sign +
+      inr(item.amount) +
+      "</div>" +
+      '<div class="dropdown">' +
+      '<button class="btn btn-ghost btn-icon btn-sm" type="button" data-bs-toggle="dropdown" aria-label="More actions">' +
+      '<i class="bi bi-three-dots-vertical"></i></button>' +
+      '<ul class="dropdown-menu dropdown-menu-end">' +
+      photo +
+      '<li><a class="dropdown-item" href="/admin/finance/transactions/' +
+      esc(item.id) +
+      '/edit"><i class="bi bi-pencil"></i> Edit</a></li>' +
+      '<li><button class="dropdown-item text-danger" type="button" data-mm-delete="' +
+      esc(item.id) +
+      '"><i class="bi bi-trash3"></i> Move to trash</button></li>' +
+      "</ul></div></div>"
+    );
+  }
+
+  function emptyLedgerHtml(label) {
+    return (
+      '<div class="card"><div class="empty-state">' +
+      '<div class="empty-ico"><i class="bi bi-receipt"></i></div>' +
+      '<div class="empty-title">No transactions yet</div>' +
+      "<p>Log income, an expense, or a transfer and it will appear here.</p>" +
+      '<a class="btn btn-primary" href="/admin/finance/add"><i class="bi bi-plus-lg"></i> Add the first entry</a>' +
+      "</div></div>"
+    );
+  }
+
+  function listHtml(ledger, view) {
+    var canBulk = view === "daily" || view === "monthly" || view === "total" || view === "note";
+    var opts = { canBulk: canBulk, month: ledger.year_month, view: view };
+
+    if (view === "calendar") {
+      var days = ["S", "M", "T", "W", "T", "F", "S"];
+      var html =
+        '<div class="card mb-4"><div class="card-body"><div class="mm-cal">' +
+        days.map(function (d) {
+          return '<div class="hd">' + d + "</div>";
+        }).join("");
+      (ledger.weeks || []).forEach(function (week) {
+        week.forEach(function (cell) {
+          if (!cell) {
+            html += '<div class="cell empty-cell"></div>';
+            return;
+          }
+          html +=
+            '<div class="cell"><div class="d">' +
+            esc(String(cell.date || "").slice(-2)) +
+            "</div>";
+          if (cell.income) html += '<div class="mm-income truncate">' + inr(cell.income) + "</div>";
+          if (cell.expense) html += '<div class="mm-expense truncate">' + inr(cell.expense) + "</div>";
+          html += "</div>";
+        });
+      });
+      html += "</div></div></div>";
+      return html;
+    }
+
+    if (view === "monthly" || view === "total") {
+      var txns = ledger.txns || [];
+      if (!txns.length) return emptyLedgerHtml(ledger.label);
+      return (
+        '<div class="mm-card-list mb-4">' +
+        txns
+          .map(function (item) {
+            return txnCardHtml(item, Object.assign({}, opts, { showDate: true }));
+          })
+          .join("") +
+        "</div>"
+      );
+    }
+
+    // daily + note
+    var daysList = ledger.days || [];
+    if (!daysList.length) return emptyLedgerHtml(ledger.label);
+    return daysList
+      .map(function (day) {
+        return (
+          '<div class="mm-day">' +
+          '<div class="mm-day-head">' +
+          '<span class="date"><span class="dnum">' +
+          esc(String(day.date || "").slice(-2)) +
+          "</span> <span>" +
+          esc(day.label || "") +
+          "</span></span>" +
+          '<span class="row-gap"><span class="mm-income">' +
+          inr(day.income) +
+          '</span><span class="mm-expense">' +
+          inr(day.expense) +
+          "</span></span></div>" +
+          (day.txns || [])
+            .map(function (item) {
+              return txnCardHtml(item, Object.assign({}, opts, { showTime: true }));
+            })
+            .join("") +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  function paintLedger(ledger) {
+    var root = document.getElementById("mm-trans");
+    if (!root || !ledger) return;
+    var view = ledger.view || root.dataset.view || "daily";
+    root.dataset.month = ledger.year_month;
+    root.dataset.view = view;
+    root.dataset.q = ledger.q || "";
+
+    var title = root.querySelector("[data-mm-title]");
+    if (title) title.textContent = ledger.label;
+    var lead = root.querySelector("[data-mm-lead]");
+    if (lead) {
+      lead.innerHTML =
+        "Last month carried " +
+        inr(ledger.prev_income) +
+        " in · " +
+        inr(ledger.prev_expense) +
+        " out. This month " +
+        inr(ledger.total) +
+        " plus opening becomes total.";
+    }
+    var prev = root.querySelector("[data-mm-prev]");
+    var next = root.querySelector("[data-mm-next]");
+    if (prev) {
+      prev.dataset.month = ledger.prev;
+      prev.href =
+        "/admin/finance/transactions?month=" +
+        encodeURIComponent(ledger.prev) +
+        "&view=" +
+        encodeURIComponent(view);
+    }
+    if (next) {
+      next.dataset.month = ledger.next;
+      next.href =
+        "/admin/finance/transactions?month=" +
+        encodeURIComponent(ledger.next) +
+        "&view=" +
+        encodeURIComponent(view);
+    }
+    var monthInput = root.querySelector('input[name="month"]');
+    if (monthInput) monthInput.value = ledger.year_month;
+    var viewInput = root.querySelector('input[name="view"]');
+    if (viewInput) viewInput.value = view;
+
+    var opening = root.querySelector("[data-mm-opening]");
+    var income = root.querySelector("[data-mm-income]");
+    var expense = root.querySelector("[data-mm-expense]");
+    var closing = root.querySelector("[data-mm-closing]");
+    var totalSub = root.querySelector("[data-mm-total-sub]");
+    var openSub = root.querySelector("[data-mm-opening-sub]");
+    if (opening) opening.textContent = inr(ledger.opening);
+    if (income) income.textContent = inr(ledger.income);
+    if (expense) expense.textContent = inr(ledger.expense);
+    if (closing) closing.textContent = inr(ledger.closing);
+    if (totalSub) totalSub.textContent = "opening plus " + inr(ledger.total);
+    if (openSub) openSub.textContent = "carried into " + ledger.label;
+
+    root.querySelectorAll("[data-mm-view]").forEach(function (a) {
+      var v = a.getAttribute("data-mm-view");
+      a.classList.toggle("active", v === view);
+      a.href =
+        "/admin/finance/transactions?month=" +
+        encodeURIComponent(ledger.year_month) +
+        "&view=" +
+        encodeURIComponent(v);
+    });
+
+    var bulk = root.querySelector("#mm-bulk-delete");
+    var canBulk = view === "daily" || view === "monthly" || view === "total" || view === "note";
+    if (bulk) {
+      bulk.hidden = !canBulk;
+      var bm = bulk.querySelector('input[name="month"]');
+      var bv = bulk.querySelector('input[name="view"]');
+      if (bm) bm.value = ledger.year_month;
+      if (bv) bv.value = view;
+    }
+
+    var body = root.querySelector("[data-mm-list]");
+    if (body) body.innerHTML = listHtml(ledger, view);
+
+    syncBulkChecks();
+
+    if (window.history && window.history.replaceState) {
+      var q = ledger.q ? "&q=" + encodeURIComponent(ledger.q) : "";
+      window.history.replaceState(
+        { mmMonth: ledger.year_month, mmView: view, mmQ: ledger.q || "" },
+        "",
+        "/admin/finance/transactions?month=" +
+          encodeURIComponent(ledger.year_month) +
+          "&view=" +
+          encodeURIComponent(view) +
+          q
+      );
+    }
+  }
+
+  function loadLedger(month, view, q, preferCache) {
+    view = view || "daily";
+    q = q || "";
+    var key = "ledger:" + month + ":" + view + ":" + q;
+    var url =
+      "/admin/finance/api/ledger?month=" +
+      encodeURIComponent(month) +
+      "&view=" +
+      encodeURIComponent(view) +
+      (q ? "&q=" + encodeURIComponent(q) : "");
+    var network = fetchJson(url).then(function (ledger) {
+      paintLedger(ledger);
+      return idbSet(key, { savedAt: Date.now(), ledger: ledger }).then(function () {
+        return ledger;
+      });
+    });
+    if (!preferCache) {
+      return network.catch(function (err) {
+        toast(err.message || "Could not load", true);
+      });
+    }
+    return idbGet(key).then(function (cached) {
+      if (cached && cached.ledger) paintLedger(cached.ledger);
+      return network.catch(function (err) {
+        if (!(cached && cached.ledger)) toast(err.message || "Could not load", true);
+      });
+    });
+  }
+
+  function syncBulkChecks() {
+    var form = document.getElementById("mm-bulk-delete");
+    if (!form || form.hidden) return;
+    var all = document.getElementById("mm-select-all");
+    var countEl = document.getElementById("mm-selected-count");
+    var delBtn = document.getElementById("mm-delete-selected");
+    var list = Array.prototype.slice.call(document.querySelectorAll(".mm-txn-check"));
+    var n = list.filter(function (c) {
+      return c.checked;
+    }).length;
+    if (countEl) countEl.textContent = n + " selected";
+    if (delBtn) delBtn.disabled = n === 0;
+    if (all) {
+      all.checked = list.length > 0 && n === list.length;
+      all.indeterminate = n > 0 && n < list.length;
+    }
+    if (!form.getAttribute("data-confirm-base")) {
+      form.setAttribute(
+        "data-confirm-base",
+        form.getAttribute("data-confirm") || "Move the selected entries to trash?"
+      );
+    }
+    var base = form.getAttribute("data-confirm-base") || "Move the selected entries to trash?";
+    form.setAttribute(
+      "data-confirm",
+      n
+        ? "Move " + n + " selected entr" + (n === 1 ? "y" : "ies") + " to trash?"
+        : base
+    );
+  }
+
+  function bustCaches(month) {
+    idbSet("dash-invalidate", Date.now());
+    if (month) idbSet("dash:" + month, null);
+  }
+
+  function deleteTxn(id) {
+    var root = document.getElementById("mm-trans");
+    var month = (root && root.dataset.month) || "";
+    var view = (root && root.dataset.view) || "daily";
+    return fetchJson(
+      "/admin/finance/api/transactions/" + encodeURIComponent(id) + "/delete",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+    ).then(function () {
+      toast("Moved to trash");
+      bustCaches(month);
+      return loadLedger(month, view, (root && root.dataset.q) || "", false);
+    });
+  }
+
+  function bulkDelete(ids) {
+    var root = document.getElementById("mm-trans");
+    var month = (root && root.dataset.month) || "";
+    var view = (root && root.dataset.view) || "daily";
+    return fetchJson("/admin/finance/api/transactions/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: ids }),
+    }).then(function (data) {
+      toast((data.deleted || ids.length) + " moved to trash");
+      bustCaches(month);
+      return loadLedger(month, view, (root && root.dataset.q) || "", false);
+    });
+  }
+
+  function wireTrans() {
+    var root = document.getElementById("mm-trans");
+    if (!root) return;
+
+    root.addEventListener("click", function (ev) {
+      var nav = ev.target.closest("[data-mm-prev], [data-mm-next]");
+      if (nav) {
+        ev.preventDefault();
+        loadLedger(nav.dataset.month, root.dataset.view || "daily", root.dataset.q || "", true);
+        return;
+      }
+      var viewA = ev.target.closest("[data-mm-view]");
+      if (viewA) {
+        ev.preventDefault();
+        loadLedger(root.dataset.month, viewA.getAttribute("data-mm-view"), root.dataset.q || "", true);
+        return;
+      }
+      var del = ev.target.closest("[data-mm-delete]");
+      if (del) {
+        ev.preventDefault();
+        var id = del.getAttribute("data-mm-delete");
+        if (!id) return;
+        if (!window.confirm("Move this entry to trash?")) return;
+        deleteTxn(id).catch(function (err) {
+          toast(err.message || "Could not delete", true);
+        });
+        return;
+      }
+    });
+
+    var filter = root.querySelector(".filter-bar");
+    if (filter) {
+      filter.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var qEl = document.getElementById("fn-q");
+        var q = (qEl && qEl.value) || "";
+        root.dataset.q = q;
+        loadLedger(root.dataset.month, root.dataset.view || "daily", q, false);
+      });
+    }
+
+    var bulk = document.getElementById("mm-bulk-delete");
+    if (bulk) {
+      bulk.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var ids = Array.prototype.slice
+          .call(document.querySelectorAll(".mm-txn-check:checked"))
+          .map(function (c) {
+            return c.value;
+          });
+        if (!ids.length) return;
+        var msg = bulk.getAttribute("data-confirm") || "Move the selected entries to trash?";
+        if (!window.confirm(msg)) return;
+        bulkDelete(ids).catch(function (err) {
+          toast(err.message || "Could not delete", true);
+        });
+      });
+      var all = document.getElementById("mm-select-all");
+      if (all) {
+        all.addEventListener("change", function () {
+          document.querySelectorAll(".mm-txn-check").forEach(function (c) {
+            c.checked = all.checked;
+          });
+          syncBulkChecks();
+        });
+      }
+      root.addEventListener("change", function (ev) {
+        if (ev.target && ev.target.classList && ev.target.classList.contains("mm-txn-check")) {
+          syncBulkChecks();
+        }
+      });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     wireForm();
     wireHome();
+    wireTrans();
   });
 })();

@@ -3938,6 +3938,8 @@ async def finance_bulk_delete_txns(request: Request, db: Session = Depends(get_d
     from app import schemas as sc
     user = _fn_user(request, db)
     if not user:
+        if _fn_wants_json(request):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return RedirectResponse("/admin/login", status_code=302)
     form = await request.form()
     ids = [str(v) for v in form.getlist("txn_id") if str(v).strip()]
@@ -3946,7 +3948,10 @@ async def finance_bulk_delete_txns(request: Request, db: Session = Depends(get_d
     if ids:
         bulk_delete_transactions(sc.BulkIds(ids=ids), db=db, current_user=user)
     qs = f"?month={month}&view={view}" if month else f"?view={view}"
-    return RedirectResponse(f"/admin/finance/transactions{qs}", status_code=302)
+    redirect = f"/admin/finance/transactions{qs}"
+    if _fn_wants_json(request):
+        return JSONResponse({"ok": True, "deleted": len(ids), "redirect": redirect, "month": month, "view": view})
+    return RedirectResponse(redirect, status_code=302)
 
 
 @router.post("/finance/transactions/{txn_id}/delete")
@@ -3954,12 +3959,17 @@ def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_
     from app.routers.finance import delete_transaction
     user = _fn_user(request, db)
     if not user:
+        if _fn_wants_json(request):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return RedirectResponse("/admin/login", status_code=302)
     delete_transaction(txn_id, db=db, current_user=user)
     month = (request.query_params.get("month") or "").strip()
     view = (request.query_params.get("view") or "daily").strip() or "daily"
     qs = f"?month={month}&view={view}" if month else ""
-    return RedirectResponse(f"/admin/finance/transactions{qs}", status_code=302)
+    redirect = f"/admin/finance/transactions{qs}"
+    if _fn_wants_json(request):
+        return JSONResponse({"ok": True, "txn_id": txn_id, "redirect": redirect, "month": month, "view": view})
+    return RedirectResponse(redirect, status_code=302)
 
 
 @router.get("/finance/trash", response_class=HTMLResponse)
@@ -4323,6 +4333,42 @@ def finance_rule_delete(rule_id: str, request: Request, db: Session = Depends(ge
     return RedirectResponse("/admin/finance/ai", status_code=302)
 
 
+
+
+
+@router.post("/finance/api/transactions/{txn_id}/delete")
+def finance_api_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import delete_transaction
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    try:
+        delete_transaction(txn_id, db=db, current_user=user)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return JSONResponse({"ok": True, "txn_id": txn_id})
+
+
+@router.post("/finance/api/transactions/bulk-delete")
+async def finance_api_bulk_delete(request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import bulk_delete_transactions
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        form = await request.form()
+        ids = [str(v) for v in form.getlist("txn_id") if str(v).strip()]
+        body = {"ids": ids}
+    ids = [str(v) for v in (body.get("ids") or []) if str(v).strip()]
+    if ids:
+        try:
+            bulk_delete_transactions(sc.BulkIds(ids=ids), db=db, current_user=user)
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    return JSONResponse({"ok": True, "deleted": len(ids)})
 
 
 @router.get("/finance/api/dashboard")

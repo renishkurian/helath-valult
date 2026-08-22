@@ -5,6 +5,7 @@
 {% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
 {% set can_bulk = view in ('daily', 'monthly', 'total', 'note') %}
 
+<div id="mm-trans" data-month="{{ ledger.year_month }}" data-view="{{ view }}" data-q="{{ q or '' }}">
 <div class="page-head">
   <div>
     <div class="eyebrow">
@@ -12,17 +13,17 @@
       <i class="bi bi-chevron-right"></i>
       Money Manager
     </div>
-    <h1 class="page-title">{{ ledger.label }}</h1>
-    <p class="page-lead">
+    <h1 class="page-title" data-mm-title>{{ ledger.label }}</h1>
+    <p class="page-lead" data-mm-lead>
       Last month carried {{ inr(ledger.prev_income) }} in · {{ inr(ledger.prev_expense) }} out.
       This month {{ inr(ledger.total) }} plus opening becomes total.
     </p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance/transactions?month={{ ledger.prev }}&view={{ view }}" aria-label="Previous month">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/transactions?month={{ ledger.prev }}&view={{ view }}" data-mm-prev data-month="{{ ledger.prev }}" aria-label="Previous month">
       <i class="bi bi-chevron-left"></i>
     </a>
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance/transactions?month={{ ledger.next }}&view={{ view }}" aria-label="Next month">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance/transactions?month={{ ledger.next }}&view={{ view }}" data-mm-next data-month="{{ ledger.next }}" aria-label="Next month">
       <i class="bi bi-chevron-right"></i>
     </a>
   </div>
@@ -40,51 +41,51 @@
 </form>
 
 <div class="seg mb-3">
-  <a class="{% if view=='daily' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=daily">Daily</a>
-  <a class="{% if view=='calendar' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=calendar">Calendar</a>
-  <a class="{% if view=='monthly' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=monthly">Monthly</a>
-  <a class="{% if view=='total' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=total">Total</a>
-  <a class="{% if view=='note' %}active{% endif %}" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=note">Note</a>
+  <a class="{% if view=='daily' %}active{% endif %}" data-mm-view="daily" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=daily">Daily</a>
+  <a class="{% if view=='calendar' %}active{% endif %}" data-mm-view="calendar" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=calendar">Calendar</a>
+  <a class="{% if view=='monthly' %}active{% endif %}" data-mm-view="monthly" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=monthly">Monthly</a>
+  <a class="{% if view=='total' %}active{% endif %}" data-mm-view="total" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=total">Total</a>
+  <a class="{% if view=='note' %}active{% endif %}" data-mm-view="note" href="/admin/finance/transactions?month={{ ledger.year_month }}&view=note">Note</a>
 </div>
 
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">
     <div class="stat">
       <div class="lbl"><i class="bi bi-hourglass-split"></i> Opening</div>
-      <div class="val">{{ inr(ledger.opening) }}</div>
-      <div class="sub">carried into {{ ledger.label }}</div>
+      <div class="val" data-mm-opening>{{ inr(ledger.opening) }}</div>
+      <div class="sub" data-mm-opening-sub>carried into {{ ledger.label }}</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat">
       <div class="lbl"><i class="bi bi-arrow-down-left"></i> Income</div>
-      <div class="val mm-income">{{ inr(ledger.income) }}</div>
+      <div class="val mm-income" data-mm-income>{{ inr(ledger.income) }}</div>
       <div class="sub">money in this month</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat">
       <div class="lbl"><i class="bi bi-arrow-up-right"></i> Expenses</div>
-      <div class="val mm-expense">{{ inr(ledger.expense) }}</div>
+      <div class="val mm-expense" data-mm-expense>{{ inr(ledger.expense) }}</div>
       <div class="sub">money out this month</div>
     </div>
   </div>
   <div class="col-6 col-lg-3">
     <div class="stat accent">
       <div class="lbl"><i class="bi bi-wallet2"></i> Total</div>
-      <div class="val">{{ inr(ledger.closing) }}</div>
-      <div class="sub">opening plus {{ inr(ledger.total) }}</div>
+      <div class="val" data-mm-closing>{{ inr(ledger.closing) }}</div>
+      <div class="sub" data-mm-total-sub>opening plus {{ inr(ledger.total) }}</div>
     </div>
   </div>
 </div>
 
-{% if can_bulk %}
 <form
   method="post"
   action="/admin/finance/transactions/bulk-delete"
   id="mm-bulk-delete"
   class="mm-bulk mb-3"
   data-confirm="Move the selected entries to trash?"
+  {% if not can_bulk %}hidden{% endif %}
 >
   <input type="hidden" name="month" value="{{ ledger.year_month }}">
   <input type="hidden" name="view" value="{{ view }}">
@@ -97,8 +98,8 @@
     <i class="bi bi-trash3"></i> Move to trash
   </button>
 </form>
-{% endif %}
 
+<div data-mm-list>
 {% if view == 'calendar' %}
 <div class="card mb-4">
   <div class="card-body">
@@ -124,7 +125,7 @@
 {% elif view == 'monthly' or view == 'total' %}
 <div class="mm-card-list mb-4">
     {% for item in ledger.txns %}
-    <div class="mm-card">
+    <div class="mm-card" data-txn-id="{{ item.id }}">
       {% if can_bulk %}
       <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
       {% endif %}
@@ -148,11 +149,7 @@
           <li><a class="dropdown-item js-photo" href="/admin/finance/transactions/{{ item.id }}/image"><i class="bi bi-image"></i> Receipt</a></li>
           {% endif %}
           <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
-          <li>
-            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Move this entry to trash?">
-              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
-            </form>
-          </li>
+          <li><button class="dropdown-item text-danger" type="button" data-mm-delete="{{ item.id }}"><i class="bi bi-trash3"></i> Move to trash</button></li>
         </ul>
       </div>
     </div>
@@ -181,7 +178,7 @@
       </span>
     </div>
     {% for item in day.txns %}
-    <div class="mm-card">
+    <div class="mm-card" data-txn-id="{{ item.id }}">
       {% if can_bulk %}
       <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
       {% endif %}
@@ -205,11 +202,7 @@
           <li><a class="dropdown-item js-photo" href="/admin/finance/transactions/{{ item.id }}/image"><i class="bi bi-image"></i> Receipt</a></li>
           {% endif %}
           <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
-          <li>
-            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}" data-confirm="Move this entry to trash?">
-              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
-            </form>
-          </li>
+          <li><button class="dropdown-item text-danger" type="button" data-mm-delete="{{ item.id }}"><i class="bi bi-trash3"></i> Move to trash</button></li>
         </ul>
       </div>
     </div>
@@ -226,51 +219,12 @@
   </div>
   {% endfor %}
 {% endif %}
+</div>
 
 <div class="mm-fab-spacer" aria-hidden="true"></div>
 <a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
+</div>
 {% endblock %}
 {% block scripts %}
-{% if can_bulk %}
-<script>
-(function(){
-  var form = document.getElementById("mm-bulk-delete");
-  if (!form) return;
-  var all = document.getElementById("mm-select-all");
-  var countEl = document.getElementById("mm-selected-count");
-  var delBtn = document.getElementById("mm-delete-selected");
-  function checks(){ return Array.prototype.slice.call(document.querySelectorAll(".mm-txn-check")); }
-  function sync(){
-    var list = checks();
-    var n = list.filter(function(c){ return c.checked; }).length;
-    if (countEl) countEl.textContent = n + " selected";
-    if (delBtn) delBtn.disabled = n === 0;
-    if (all){
-      all.checked = list.length > 0 && n === list.length;
-      all.indeterminate = n > 0 && n < list.length;
-    }
-    if (form.getAttribute("data-confirm-base")) {
-      /* keep */
-    } else {
-      form.setAttribute("data-confirm-base", form.getAttribute("data-confirm") || "Move the selected entries to trash?");
-    }
-    var base = form.getAttribute("data-confirm-base") || "Move the selected entries to trash?";
-    form.setAttribute("data-confirm", n ? ("Move " + n + " selected entr" + (n === 1 ? "y" : "ies") + " to trash?") : base);
-  }
-  if (all) all.addEventListener("change", function(){
-    checks().forEach(function(c){ c.checked = all.checked; });
-    sync();
-  });
-  document.addEventListener("change", function(e){
-    if (e.target && e.target.classList && e.target.classList.contains("mm-txn-check")) sync();
-  });
-  form.addEventListener("submit", function(ev){
-    if (checks().filter(function(c){ return c.checked; }).length === 0){
-      ev.preventDefault();
-    }
-  });
-  sync();
-})();
-</script>
-{% endif %}
+<script src="/static/finance-ajax.js?v=2" defer></script>
 {% endblock %}
