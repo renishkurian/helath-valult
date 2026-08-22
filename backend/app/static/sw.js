@@ -1,5 +1,5 @@
 /* Family Vault PWA — cache shell assets; network-first for admin pages. */
-const CACHE = "vault-shell-v2";
+const CACHE = "vault-shell-v3";
 const OFFLINE = "/static/offline.html";
 const PRECACHE = [
   OFFLINE,
@@ -13,6 +13,10 @@ const PRECACHE = [
   "/static/vault.css",
   "/static/pwa.js",
 ];
+
+function isOAuthNavigation(pathname) {
+  return /\/google\/(connect|callback)(\/|$)/.test(pathname);
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -37,14 +41,14 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
+    // OAuth starts with a 302 to Google — never intercept; SW "ok" checks break it.
+    if (isOAuthNavigation(url.pathname)) return;
     event.respondWith(
-      fetch(request)
-        .then((response) => (response && response.ok ? response : Promise.reject()))
-        .catch(() =>
-          caches.match(OFFLINE).then(
-            (page) => page || new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } })
-          )
+      fetch(request).catch(() =>
+        caches.match(OFFLINE).then(
+          (page) => page || new Response("Offline", { status: 503, headers: { "Content-Type": "text/plain" } })
         )
+      )
     );
     return;
   }

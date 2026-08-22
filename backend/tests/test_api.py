@@ -295,6 +295,7 @@ def test_pwa_manifest_and_service_worker():
     assert "javascript" in sw.headers.get("content-type", "")
     assert "serviceWorker" not in sw.text  # our SW file, not HTML
     assert "vault-shell" in sw.text
+    assert "isOAuthNavigation" in sw.text
 
 
 def test_viewer_role_is_read_only():
