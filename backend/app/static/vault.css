@@ -645,6 +645,13 @@ body:has(.ask-ai-fab) .app-main{
 body:has(.ask-ai-fab) .fab{ right:calc(1.5rem + 9.25rem); }
 body:has(.ask-ai-fab) .hv-fab{ right:calc(1.25rem + 9.25rem); }
 
+/* Dense forms: keep Ask AI out of the way */
+body.form-page .ask-ai-fab{ display:none !important; }
+body.form-page.has-tabbar .app-main{
+  padding-bottom:calc(var(--v-tabbar-h) + env(safe-area-inset-bottom) + 1.5rem);
+}
+
+
 /* --------------------------------------------------------------------------
    9. Forms
    -------------------------------------------------------------------------- */
@@ -845,7 +852,15 @@ button.list-row{
   width:100%; text-align:left; background:transparent;
   border:0; border-bottom:1px solid var(--v-line);
   font:inherit; color:inherit; appearance:none;
+  display:flex; align-items:center; gap:.875rem;
+  flex-wrap:nowrap;
 }
+button.list-row .card-ico,
+button.list-row > .bi-chevron-right{
+  flex:0 0 auto; align-self:center;
+}
+button.list-row .row-meta{ margin-top:0; }
+button.list-row .row-title{ margin-top:.1rem; }
 button.list-row:last-child{ border-bottom:none; }
 .card-body button.list-row{ padding-left:0; padding-right:0; }
 .sheet-body button.list-row{ padding-left:.75rem; padding-right:.75rem; }
@@ -1576,8 +1591,9 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 .mm-cal .cell.today{ border-color:var(--v-gold-line); }
 
 .amount-input{
-  font-size:2.25rem !important; font-weight:650; letter-spacing:-0.04em;
-  text-align:right; padding:.5rem .75rem; min-height:64px;
+  flex:1 1 auto; min-width:0; width:auto;
+  font-size:2.25rem !important; font-weight:650; letter-spacing:-0.04em; line-height:1.1;
+  text-align:right; padding:.35rem .35rem .35rem .5rem; min-height:0; height:auto;
   font-variant-numeric:tabular-nums; background:transparent; border:none; box-shadow:none;
   -moz-appearance:textfield; appearance:textfield;
 }
@@ -1587,18 +1603,22 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 }
 .amount-input:focus{ background:transparent; box-shadow:none; border:none; }
 .amount-well{
-  display:flex; align-items:center; gap:.5rem; padding:.375rem .875rem;
+  display:flex; align-items:center; gap:.55rem; padding:.55rem .65rem .55rem .9rem;
   background:var(--v-bg-2); border:1px solid var(--v-line-2); border-radius:var(--v-r);
   box-shadow:inset 0 1px 2px rgba(0,0,0,0.28);
 }
-.amount-well .cur{ font-size:1.5rem; font-weight:600; color:var(--v-ink-3); }
+.amount-well .cur{
+  flex:0 0 auto; font-size:1.5rem; font-weight:600; line-height:1;
+  color:var(--v-ink-3); align-self:center;
+}
 .amount-calc-btn{
-  flex:0 0 auto; width:44px; height:44px; border-radius:12px;
-  display:grid; place-items:center; padding:0;
+  flex:0 0 auto; width:42px; height:42px; border-radius:12px;
+  display:grid; place-items:center; padding:0; align-self:center;
   background:var(--v-surface-2); border:1px solid var(--v-line);
-  color:var(--v-ink-2); font-size:1.25rem; cursor:pointer;
+  color:var(--v-ink-2); font-size:1.125rem; line-height:1; cursor:pointer;
   transition:border-color var(--v-fast) var(--v-ease), color var(--v-fast) var(--v-ease), background var(--v-fast) var(--v-ease);
 }
+.amount-calc-btn i{ font-size:1.125rem; line-height:1; }
 .amount-calc-btn:hover, .amount-calc-btn:focus-visible{
   color:var(--v-gold); border-color:var(--v-gold-line); background:var(--v-surface);
   outline:none;
@@ -2003,15 +2023,18 @@ details.reveal > summary i{ font-size:1rem; }
   .ask-ai-fab{
     right:1rem;
     bottom:calc(var(--v-tabbar-h) + env(safe-area-inset-bottom) + 0.75rem);
+    width:48px; height:48px; padding:0; border-radius:16px;
+    justify-content:center; gap:0;
   }
+  .ask-ai-fab-label{ display:none; }
+  body:has(.ask-ai-fab) .fab,
+  body:has(.ask-ai-fab) .hv-fab{ right:calc(1rem + 3.75rem); }
   body.has-composer:has(.ask-ai-fab) .ask-ai-fab{
     bottom:calc(var(--v-tabbar-h) + env(safe-area-inset-bottom) + var(--shop-composer-stack, 5.75rem) + 0.35rem);
     height:42px; padding:0 .65rem 0 .55rem; font-size:.75rem;
     z-index:1022;
   }
   body.has-composer:has(.ask-ai-fab) .ask-ai-fab-label{ display:none; }
-  body:has(.ask-ai-fab) .fab{ right:calc(1rem + 9.25rem); }
-  body:has(.ask-ai-fab) .hv-fab{ right:calc(1rem + 9.25rem); }
   .table > thead th,.table > tbody > tr > td{ padding:.75rem .875rem; }
   .facts{ gap:1rem 1.75rem; }
   .form-control,.form-select,.btn{ font-size:1rem; min-height:44px; }
@@ -3604,16 +3627,21 @@ body.fx-focus.has-tabbar .app-main{
     -webkit-overflow-scrolling:touch;
     padding-bottom:.25rem;
   }
-  .list-row:not(.shop-swipe-front){
+  /* Password vault rows with side actions — not finance picker buttons */
+  .list-row:not(.shop-swipe-front):has(.row-side){
     flex-wrap:wrap; align-items:flex-start; gap:.75rem;
   }
-  .list-row:not(.shop-swipe-front) > a.d-flex{
+  .list-row:not(.shop-swipe-front):has(.row-side) > a.d-flex{
     flex:1 1 12rem; min-width:0;
   }
-  .list-row:not(.shop-swipe-front) .row-side{
+  .list-row:not(.shop-swipe-front):has(.row-side) .row-side{
     margin-left:0; width:100%;
     display:flex; flex-wrap:wrap; justify-content:flex-start; gap:.5rem;
     padding-left:calc(2.75rem + .875rem); /* align under title past avatar */
+  }
+  button.list-row{
+    flex-wrap:nowrap !important;
+    align-items:center !important;
   }
   .list-row .row-side .badge,
   .list-row .row-side .btn{

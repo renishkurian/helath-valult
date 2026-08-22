@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block body_class %}form-page{% endblock %}
 {% block title %}{% if edit_txn %}Edit{% else %}{{ txn_type|capitalize }}{% endif %}{% endblock %}
 {% block content %}
 {% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
