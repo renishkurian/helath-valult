@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Family Vault — Offline</title>
+<meta name="theme-color" content="#0A0C11">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css">
+<style>
+  body{ min-height:100dvh; display:grid; place-items:center; padding:1.5rem; }
+  .offline-card{ max-width:26rem; text-align:center; }
+  .offline-mark{
+    width:4rem; height:4rem; border-radius:1rem; margin:0 auto 1rem;
+    display:grid; place-items:center; font-weight:700; font-size:1.5rem;
+    background:linear-gradient(145deg,#EBD6A6,#C29B54); color:#18130A;
+  }
+</style>
+</head>
+<body>
+<div class="offline-card">
+  <div class="offline-mark">V</div>
+  <h1 class="h4 mb-2">You are offline</h1>
+  <p class="text-muted mb-4">Family Vault needs a network connection to load your encrypted data. Check Wi‑Fi or mobile data, then try again.</p>
+  <button class="btn btn-primary" type="button" onclick="location.reload()">
+    <i class="bi bi-arrow-repeat"></i> Try again
+  </button>
+</div>
+</body>
+</html>

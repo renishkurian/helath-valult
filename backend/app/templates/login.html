@@ -2,14 +2,21 @@
 <html lang="en" data-bs-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Vault — Sign in</title>
+<link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Family Vault">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=35">
+<link rel="stylesheet" href="/static/vault.css?v=52">
 </head>
 <body>
 <div class="auth-wrap">
@@ -89,5 +96,27 @@
     </div>
   </section>
 </div>
+<div id="pwa-install" class="pwa-banner" hidden>
+  <div class="pwa-banner-inner">
+    <span class="pwa-banner-ico"><i class="bi bi-phone"></i></span>
+    <div class="pwa-banner-text">
+      <strong>Install Family Vault</strong>
+      <span>Add to your home screen for quick access like an app.</span>
+    </div>
+    <button class="btn btn-primary btn-sm" type="button" data-pwa-install>Install</button>
+    <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss install prompt"><i class="bi bi-x-lg"></i></button>
+  </div>
+</div>
+<div id="pwa-ios-hint" class="pwa-banner pwa-banner-ios" hidden>
+  <div class="pwa-banner-inner">
+    <span class="pwa-banner-ico"><i class="bi bi-box-arrow-up"></i></span>
+    <div class="pwa-banner-text">
+      <strong>Add to Home Screen</strong>
+      <span>Tap Share, then <em>Add to Home Screen</em> in Safari.</span>
+    </div>
+    <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss"><i class="bi bi-x-lg"></i></button>
+  </div>
+</div>
+<script src="/static/pwa.js" defer></script>
 </body>
 </html>

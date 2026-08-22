@@ -236,11 +236,12 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Family Vault">
 <meta name="color-scheme" content="dark">
-<link rel="apple-touch-icon" href="/static/icon.svg">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=51">
+<link rel="stylesheet" href="/static/vault.css?v=52">
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">
@@ -716,6 +717,28 @@
 {% if session_user %}
 <script src="/static/vault-send-chat.js?v=1"></script>
 {% endif %}
+<div id="pwa-install" class="pwa-banner" hidden>
+  <div class="pwa-banner-inner">
+    <span class="pwa-banner-ico"><i class="bi bi-phone"></i></span>
+    <div class="pwa-banner-text">
+      <strong>Install Family Vault</strong>
+      <span>Add to your home screen for quick access like an app.</span>
+    </div>
+    <button class="btn btn-primary btn-sm" type="button" data-pwa-install>Install</button>
+    <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss install prompt"><i class="bi bi-x-lg"></i></button>
+  </div>
+</div>
+<div id="pwa-ios-hint" class="pwa-banner pwa-banner-ios" hidden>
+  <div class="pwa-banner-inner">
+    <span class="pwa-banner-ico"><i class="bi bi-box-arrow-up"></i></span>
+    <div class="pwa-banner-text">
+      <strong>Add to Home Screen</strong>
+      <span>Tap Share, then <em>Add to Home Screen</em> in Safari.</span>
+    </div>
+    <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss"><i class="bi bi-x-lg"></i></button>
+  </div>
+</div>
+<script src="/static/pwa.js" defer></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

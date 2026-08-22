@@ -197,3 +197,16 @@ def pwa_manifest():
     if path.exists():
         return FileResponse(path, media_type="application/manifest+json")
     return {"name": "Family Vault", "start_url": "/admin", "display": "standalone"}
+
+
+@app.get("/sw.js")
+def pwa_service_worker():
+    from fastapi.responses import FileResponse
+    path = _static / "sw.js"
+    if not path.exists():
+        return HTMLResponse("// missing", status_code=404, media_type="application/javascript")
+    return FileResponse(
+        path,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ lst.name }}{% endblock %}
-{% block body_class %}has-composer{% endblock %}
+{% block body_class %}has-composer has-composer-tall{% endblock %}
 {% block topbar_end %}
 <form method="post" action="/admin/tracker/lists/{{ lst.id }}/share" class="d-lg-none">
   <button class="icon-btn" type="submit" aria-label="Share"><i class="bi bi-share"></i></button>
