@@ -204,13 +204,14 @@ Doc / pack / send shares support optional PIN, expiry, and view limits where con
 
 ## Clients
 
-### Web admin (desktop + phone)
+### Web admin (desktop + phone + PWA)
 `/admin` — full module UI (dark vault theme), module picker, Ask AI FAB, live Send-request toasts via SSE.
 
 - Responsive layout with bottom tab bar / slide-over nav on phones
 - Touch-sized controls (44px+), safe-area padding, horizontal profile chips
 - Password Vault profile filter, assign-profile, and Secret Share work in mobile Safari / Chrome
 - Public share pages (`/v/…`, `/s/…`, `/shop/…`, …) are mobile-first
+- **Installable PWA** — add to home screen on Android / desktop Chrome; Safari “Add to Home Screen” on iOS; offline shell with reconnect prompt
 
 ### Android
 Kotlin + Compose hub matching the same modules: family, health, passwords (incl. Sends + profile tags), **Secret Share**, finance, expense analyser, AI, locker, shopping, URLs, diary, settings.

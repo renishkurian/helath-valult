@@ -281,6 +281,22 @@ def test_health_endpoint():
     assert r.json() == {"status": "ok"}
 
 
+def test_pwa_manifest_and_service_worker():
+    manifest = client.get("/manifest.webmanifest")
+    assert manifest.status_code == 200
+    assert "application/manifest" in manifest.headers.get("content-type", "")
+    body = manifest.json()
+    assert body["name"] == "Family Vault"
+    assert body["display"] == "standalone"
+    assert any(i.get("sizes") == "192x192" for i in body.get("icons", []))
+
+    sw = client.get("/sw.js")
+    assert sw.status_code == 200
+    assert "javascript" in sw.headers.get("content-type", "")
+    assert "serviceWorker" not in sw.text  # our SW file, not HTML
+    assert "vault-shell" in sw.text
+
+
 def test_viewer_role_is_read_only():
     """Legacy invite path now creates family members; they cannot add household profiles."""
     owner = _register("owner@example.com", "password123", "Vault Owner")

@@ -29,23 +29,23 @@ def auth_url(client_id: str, redirect_uri: str, state: str) -> str:
     return f"{AUTH_URL}?{q}"
 
 
-def _oauth_http_error(exc: urllib.error.HTTPError) -> RuntimeError:
+def _oauth_http_error(exc: urllib.error.HTTPError) -> None:
     body = exc.read().decode(errors="replace")
     try:
         err = json.loads(body)
     except json.JSONDecodeError:
-        return RuntimeError(f"Google OAuth failed (HTTP {exc.code})") from exc
+        raise RuntimeError(f"Google OAuth failed (HTTP {exc.code})") from exc
     code = str(err.get("error") or "").strip()
     desc = str(err.get("error_description") or "").strip()
     if code == "invalid_grant":
-        return RuntimeError(
+        raise RuntimeError(
             "Google access expired or revoked — disconnect and reconnect Gmail in Expense Analyser settings"
         ) from exc
     if desc:
-        return RuntimeError(f"Google OAuth error: {desc}") from exc
+        raise RuntimeError(f"Google OAuth error: {desc}") from exc
     if code:
-        return RuntimeError(f"Google OAuth error: {code}") from exc
-    return RuntimeError(f"Google OAuth failed (HTTP {exc.code})") from exc
+        raise RuntimeError(f"Google OAuth error: {code}") from exc
+    raise RuntimeError(f"Google OAuth failed (HTTP {exc.code})") from exc
 
 
 def _post_form(url: str, data: dict[str, str]) -> dict[str, Any]:
@@ -57,7 +57,7 @@ def _post_form(url: str, data: dict[str, str]) -> dict[str, Any]:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
-        raise _oauth_http_error(exc) from exc
+        _oauth_http_error(exc)
 
 
 def _request_json(url: str, token: str, method: str = "GET", payload: dict | None = None) -> dict[str, Any]:
