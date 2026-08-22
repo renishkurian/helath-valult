@@ -726,6 +726,7 @@ class FinanceAccount(Base):
     institution = Column(String(255), nullable=True)
     last4 = Column(String(8), nullable=True)
     archived = Column(Boolean, default=False, nullable=False)
+    no_default_categories = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

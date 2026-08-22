@@ -383,6 +383,7 @@ def _account_out(db: Session, a: models.FinanceAccount) -> schemas.FinanceAccoun
         id=a.id, name=a.name, account_type=a.account_type, currency=a.currency or "INR",
         opening_balance=_f(a.opening_balance), credit_limit=_f(a.credit_limit) if a.credit_limit is not None else None,
         institution=a.institution, last4=a.last4, archived=bool(a.archived),
+        no_default_categories=bool(a.no_default_categories),
         balance=_f(bal), is_liability=a.account_type in LIABILITY_TYPES,
         created_at=a.created_at,
     )
@@ -508,6 +509,8 @@ def _find_category(
     name: str,
     kind: str,
     account_id: str | None = None,
+    *,
+    no_default_categories: bool = False,
 ) -> models.FinanceCategory | None:
     want = (name or "").strip().lower()
     if not want:
@@ -516,21 +519,30 @@ def _find_category(
         for c in categories:
             if c.name.lower() == want and c.kind == kind and c.account_id == account_id:
                 return c
-    for c in categories:
-        if c.name.lower() == want and c.kind == kind and not c.account_id:
-            return c
+    if not no_default_categories:
+        for c in categories:
+            if c.name.lower() == want and c.kind == kind and not c.account_id:
+                return c
     for c in categories:
         if c.name.lower() == want and c.kind == kind:
             return c
-    for c in categories:
-        if c.name.lower() == want and (not c.account_id or c.account_id == account_id):
-            return c
+    if not no_default_categories:
+        for c in categories:
+            if c.name.lower() == want and (not c.account_id or c.account_id == account_id):
+                return c
     return None
 
 
-def _assert_category_for_account(cat: models.FinanceCategory | None, account_id: str) -> None:
-    if cat and cat.account_id and cat.account_id != account_id:
+def _assert_category_for_account(
+    cat: models.FinanceCategory | None,
+    account: models.FinanceAccount,
+) -> None:
+    if not cat:
+        return
+    if cat.account_id and cat.account_id != account.id:
         raise HTTPException(400, "That category belongs to another account")
+    if account.no_default_categories and not cat.account_id:
+        raise HTTPException(400, "This account only allows its own categories")
 
 
 def _get_txn(
@@ -729,6 +741,7 @@ def create_account(
         currency=body.currency or "INR", opening_balance=_dec(body.opening_balance),
         credit_limit=_dec(body.credit_limit) if body.credit_limit is not None else None,
         institution=body.institution, last4=body.last4,
+        no_default_categories=bool(body.no_default_categories),
     )
     db.add(row)
     db.commit()
@@ -751,6 +764,7 @@ def update_account(
     row.credit_limit = _dec(body.credit_limit) if body.credit_limit is not None else None
     row.institution = body.institution
     row.last4 = body.last4
+    row.no_default_categories = bool(body.no_default_categories)
     db.commit()
     db.refresh(row)
     return _account_out(db, row)
@@ -780,10 +794,14 @@ def list_categories(
     uid = _owned(db, current_user)
     query = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid)
     if account_id:
-        query = query.filter(
-            (models.FinanceCategory.account_id.is_(None))
-            | (models.FinanceCategory.account_id == account_id)
-        )
+        acc = _get_account(db, current_user, account_id)
+        if acc.no_default_categories:
+            query = query.filter(models.FinanceCategory.account_id == account_id)
+        else:
+            query = query.filter(
+                (models.FinanceCategory.account_id.is_(None))
+                | (models.FinanceCategory.account_id == account_id)
+            )
     rows = query.order_by(models.FinanceCategory.kind, models.FinanceCategory.name).all()
     accounts = _acct_map(db, uid)
     cats = {c.id: c for c in rows}
@@ -907,7 +925,7 @@ def create_transaction(
         raise HTTPException(400, "Amount must be greater than 0")
     if body.category_id:
         cat = _get_category(db, current_user, body.category_id)
-        _assert_category_for_account(cat, acc.id)
+        _assert_category_for_account(cat, acc)
     method = _clean_method(body.payment_method)
     desc = (body.description or "").strip() or None
     if not desc:
@@ -953,7 +971,7 @@ def update_transaction(
         raise HTTPException(400, "Amount must be greater than 0")
     if body.category_id:
         cat = _get_category(db, current_user, body.category_id)
-        _assert_category_for_account(cat, acc.id)
+        _assert_category_for_account(cat, acc)
     method = _clean_method(body.payment_method)
     desc = (body.description or "").strip() or None
     if not desc:
@@ -1881,7 +1899,10 @@ def ingest_messages(
         method = _clean_method(parsed.get("payment_method"))
         override = default_account if body.account_id else None
         target = _account_for_method(accounts, method, override)
-        cat = _find_category(cats, parsed.get("category") or "", kind, target.id if target else None)
+        cat = _find_category(
+            cats, parsed.get("category") or "", kind, target.id if target else None,
+            no_default_categories=bool(target and target.no_default_categories),
+        )
         msg = models.FinanceMessage(
             user_id=uid, raw_text=chunk, direction=direction,
             amount=_dec(parsed["amount"]) if parsed.get("amount") is not None else None,

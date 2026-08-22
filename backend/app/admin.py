@@ -3684,7 +3684,11 @@ def finance_add_page(
         for c in categories
     ])
     accts_json = json.dumps([
-        {"id": str(a.id), "name": a.name, "account_type": a.account_type} for a in accounts
+        {
+            "id": str(a.id), "name": a.name, "account_type": a.account_type,
+            "no_default_categories": bool(a.no_default_categories),
+        }
+        for a in accounts
     ])
     return templates.TemplateResponse("finance_add.html", _fn_ctx(
         request, user, "fn_trans", accounts=accounts, categories=categories,
@@ -3761,7 +3765,11 @@ def finance_edit_page(
         for c in categories
     ])
     accts_json = json.dumps([
-        {"id": str(a.id), "name": a.name, "account_type": a.account_type} for a in accounts
+        {
+            "id": str(a.id), "name": a.name, "account_type": a.account_type,
+            "no_default_categories": bool(a.no_default_categories),
+        }
+        for a in accounts
     ])
     return templates.TemplateResponse("finance_add.html", _fn_ctx(
         request, user, "fn_trans", accounts=accounts, categories=categories,
@@ -3959,6 +3967,7 @@ def finance_account_add(
     account_type: str = Form("cash"),
     opening_balance: str = Form("0"),
     credit_limit: str = Form(""),
+    no_default_categories: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers.finance import create_account
@@ -3970,6 +3979,7 @@ def finance_account_add(
         name=name, account_type=account_type,
         opening_balance=float(opening_balance or 0),
         credit_limit=float(credit_limit) if credit_limit.strip() else None,
+        no_default_categories=bool(no_default_categories),
     ), db=db, current_user=user)
     return RedirectResponse("/admin/finance/accounts", status_code=302)
 
@@ -4207,12 +4217,25 @@ def finance_category_add(
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    create_category(
-        sc.FinanceCategoryIn(
-            name=name, kind=kind, account_id=account_id or None, parent_id=parent_id or None,
-        ),
-        db=db, current_user=user,
+    wants_json = "application/json" in (request.headers.get("accept") or "").lower() or (
+        request.headers.get("x-requested-with") == "XMLHttpRequest"
     )
+    try:
+        row = create_category(
+            sc.FinanceCategoryIn(
+                name=name, kind=kind, account_id=account_id or None, parent_id=parent_id or None,
+            ),
+            db=db, current_user=user,
+        )
+    except HTTPException as exc:
+        if wants_json:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        raise
+    if wants_json:
+        return JSONResponse({
+            "id": row.id, "name": row.name, "kind": row.kind,
+            "parent_id": row.parent_id, "account_id": row.account_id,
+        })
     return RedirectResponse("/admin/finance/categories", status_code=302)
 
 

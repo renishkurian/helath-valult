@@ -154,8 +154,10 @@ fun FinanceAddScreen(
     }
     LaunchedEffect(accountId) { reloadCats() }
 
+    val account = accounts.firstOrNull { it.id == accountId }
+    val noDefaultCategories = account?.no_default_categories == true
     val visibleCats = categories.filter {
-        it.kind == txnType && (it.account_id == null || it.account_id == accountId)
+        it.kind == txnType && (it.account_id == accountId || (!noDefaultCategories && it.account_id == null))
     }
     LaunchedEffect(txnType, categories, accountId) {
         if (visibleCats.isEmpty()) return@LaunchedEffect
@@ -164,7 +166,6 @@ fun FinanceAddScreen(
         }
     }
 
-    val account = accounts.firstOrNull { it.id == accountId }
     val toAccount = accounts.firstOrNull { it.id == toAccountId }
     val category = categories.firstOrNull { it.id == categoryId }
     val categoryLabel = when {
@@ -347,9 +348,13 @@ fun FinanceAddScreen(
                 if (pickingTo) toAccountId = it else accountId = it
                 sheet = EntrySheet.None
             },
-            onAdd = { name, type ->
+            onAdd = { name, type, noDefault ->
                 scope.launch {
-                    runCatching { repository.createFinanceAccount(FinanceAccountIn(name, type)) }
+                    runCatching {
+                        repository.createFinanceAccount(
+                            FinanceAccountIn(name, type, no_default_categories = noDefault)
+                        )
+                    }
                         .onSuccess { created ->
                             accounts = repository.listFinanceAccounts()
                             if (pickingTo) toAccountId = created.id else accountId = created.id
@@ -369,7 +374,12 @@ fun FinanceAddScreen(
                 scope.launch {
                     runCatching {
                         repository.createFinanceCategory(
-                            FinanceCategoryIn(name = name, kind = txnType, account_id = null, parent_id = parentId)
+                            FinanceCategoryIn(
+                                name = name,
+                                kind = txnType,
+                                account_id = accountId.takeIf { noDefaultCategories },
+                                parent_id = parentId
+                            )
                         )
                     }.onSuccess { created ->
                         categories = repository.listFinanceCategories(accountId)
@@ -441,12 +451,13 @@ private fun AccountPickerSheet(
     accounts: List<FinanceAccountOut>,
     selectedId: String?,
     onSelect: (String) -> Unit,
-    onAdd: (String, String) -> Unit,
+    onAdd: (String, String, Boolean) -> Unit,
     onClose: () -> Unit
 ) {
     var adding by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var newType by remember { mutableStateOf("bank") }
+    var noDefaultCategories by remember { mutableStateOf(false) }
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -486,9 +497,10 @@ private fun AccountPickerSheet(
                     TextButton(onClick = {
                         val n = newName.trim()
                         if (n.isNotEmpty()) {
-                            onAdd(n, newType)
+                            onAdd(n, newType, noDefaultCategories)
                             adding = false
                             newName = ""
+                            noDefaultCategories = false
                         }
                     }) { Text("Save") }
                 },
@@ -502,6 +514,11 @@ private fun AccountPickerSheet(
                             listOf("cash" to "Cash", "bank" to "Bank", "credit_card" to "Card", "wallet" to "Wallet").forEach { (k, l) ->
                                 FilterChip(selected = newType == k, onClick = { newType = k }, label = { Text(l) })
                             }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(checked = noDefaultCategories, onCheckedChange = { noDefaultCategories = it })
+                            Text("No default categories", color = InkSoft, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

@@ -49,6 +49,7 @@ fun FinanceAccountsScreen(
     var adding by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
     var newType by remember { mutableStateOf("bank") }
+    var noDefaultCategories by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
@@ -110,8 +111,13 @@ fun FinanceAccountsScreen(
                     val n = newName.trim()
                     if (n.isEmpty()) return@TextButton
                     scope.launch {
-                        runCatching { repository.createFinanceAccount(FinanceAccountIn(n, newType)) }
+                        runCatching {
+                            repository.createFinanceAccount(
+                                FinanceAccountIn(n, newType, no_default_categories = noDefaultCategories)
+                            )
+                        }
                         newName = ""
+                        noDefaultCategories = false
                         adding = false
                         reload()
                     }
@@ -127,6 +133,11 @@ fun FinanceAccountsScreen(
                         listOf("cash" to "Cash", "bank" to "Bank", "credit_card" to "Card", "loan" to "Loan", "wallet" to "Wallet").forEach { (k, l) ->
                             FilterChip(selected = newType == k, onClick = { newType = k }, label = { Text(l) })
                         }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = noDefaultCategories, onCheckedChange = { noDefaultCategories = it })
+                        Text("No default categories", color = InkSoft, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             }

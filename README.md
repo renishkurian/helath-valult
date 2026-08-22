@@ -53,19 +53,37 @@ Bitwarden-style secrets on your Pi.
 
 - **Item types** — login, secure note, payment card, identity
 - **Folders, favorites, trash** — organize, soft-delete, restore, empty trash
+- **Family profiles** — tag items to Renish / Deepthi (etc.) like Health Vault; works **before** that person has a login
+- **Ownership transfer** — move a login to another family member account; optional keep-access share for the manager
 - **Encryption** — passwords, notes, card numbers / CVV, TOTP secrets encrypted at rest
 - **Authenticator (TOTP)** — store secrets; live codes in app and web
 - **Password history** — previous values kept when you change a login
 - **Generator** — strong password / passphrase generation
 - **Password health** — weak, reused, missing TOTP, aging passwords
 - **Sends** — share text or a login snapshot via link (`/v/{token}`); optional PIN, expiry, max views
-- **Send options** — include TOTP; require owner **grant** before revealing; **email OTP** to allowlisted addresses
-- **Access requests** — recipient can request access (optional photo); owner grants or dismisses
+- **Send options** — include TOTP; require owner **grant** before revealing; **email OTP** to allowlisted addresses; **first-browser lock** (only the first browser that opens the link can view it until expiry)
+- **Access requests** — recipient can request access (optional photo); owner grants or dismisses; blocked second-browser attempts appear here too
 - **Live alerts** — FCM push + admin SSE toasts / modal for pending requests
 - **Request chat** — short chat on a pending request (owner ↔ recipient)
 - **Video verify** — optional WebRTC face / video check before grant
 - **Sealed page** — branded locked-door page when a send is expired or out of views
 - **Short links** — `/v/{token}` and `/v/{token}/qr` for authenticator setup
+
+### Secret Share
+Standalone expiring text shares (same gates as Password Send).
+
+- **Paste a secret** — create a link recipients open without an account (`/v/{token}`)
+- **Gates** — PIN, one-time view, grant request, email OTP, authenticator
+- **First-browser lock** — bind the reveal to the first browser; other browsers are blocked and logged
+- **Access requests** — pending grants and blocked-browser attempts in one list
+
+### Family Vault
+Household logins under one vault owner.
+
+- **Invite member** — create a login for a spouse / relative and link it to their profile
+- **Private by default** — each member’s passwords / locker docs stay private until shared
+- **Per-item share** — view or edit permission to another household login
+- **Module** — enable / disable from Super Admin like other modules
 
 ### Money Manager
 Household ledger.
@@ -158,7 +176,7 @@ Server control plane (superadmin only).
 |-----------|--------|
 | `/s/{token}` | Single medical document share |
 | `/p/{token}` | Multi-document pack |
-| `/v/{token}` | Password Vault Send (text or login) |
+| `/v/{token}` | Password Vault Send **or** Secret Share |
 | `/v/{token}/qr` | Authenticator setup for a Send (no password on page) |
 | `/u/{token}` | Shared bookmark |
 | `/shop/{token}` | Collaborative shopping list |
@@ -171,7 +189,7 @@ Doc / pack / send shares support optional PIN, expiry, and view limits where con
 ## Security & accounts
 
 - **Auth** — email + password; JWT (Android API) and signed session cookie (web admin)
-- **Roles** — owner, view-only invitee (scoped), superadmin
+- **Roles** — owner, family member (linked profile login), view-only invitee (scoped), superadmin
 - **TOTP 2FA** — setup / enable / disable; enforced on web and API when on
 - **App-approve login** — web login waits for Allow / Deny on a signed-in Android device (FCM)
 - **QR login** — web shows a challenge QR; app scans and approves
@@ -186,11 +204,16 @@ Doc / pack / send shares support optional PIN, expiry, and view limits where con
 
 ## Clients
 
-### Web admin
+### Web admin (desktop + phone)
 `/admin` — full module UI (dark vault theme), module picker, Ask AI FAB, live Send-request toasts via SSE.
 
+- Responsive layout with bottom tab bar / slide-over nav on phones
+- Touch-sized controls (44px+), safe-area padding, horizontal profile chips
+- Password Vault profile filter, assign-profile, and Secret Share work in mobile Safari / Chrome
+- Public share pages (`/v/…`, `/s/…`, `/shop/…`, …) are mobile-first
+
 ### Android
-Kotlin + Compose hub matching the same modules: health, passwords (incl. Sends), finance, expense analyser, AI, locker, shopping, URLs, diary, settings.
+Kotlin + Compose hub matching the same modules: family, health, passwords (incl. Sends + profile tags), **Secret Share**, finance, expense analyser, AI, locker, shopping, URLs, diary, settings.
 
 - Runtime **server URL** (Immich-style); probes `/health`
 - Encrypted token store + refresh-token retry
@@ -199,6 +222,9 @@ Kotlin + Compose hub matching the same modules: health, passwords (incl. Sends),
 - FCM + poll for login-approve and Send access requests
 - PIN / biometric app lock
 - Theme prefs (dark, large text, Ask AI FAB)
+- Password list filters by family profile; item screen can assign profile
+- Secret Share module with first-browser lock option
+- Password / locker Sends include first-browser lock when creating a link
 
 ---
 

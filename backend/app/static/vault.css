@@ -949,6 +949,9 @@ button.list-row:last-child{ border-bottom:none; }
   border-bottom:1px solid var(--v-line); font-weight:600; letter-spacing:-0.015em;
 }
 .sheet-head .sheet-x{ margin-left:auto; }
+.sheet-head .sheet-add{ margin-left:auto; color:var(--v-gold); }
+.sheet-head .sheet-add + .sheet-x{ margin-left:0; }
+.sheet-cat-add .form-text{ margin-top:.35rem; }
 .sheet-body{ padding:1rem 1.25rem 1.5rem; overflow-y:auto; }
 .sheet-grip{ width:40px; height:4px; border-radius:99px; background:var(--v-line-2); margin:.625rem auto 0; }
 
@@ -3424,3 +3427,46 @@ body.fx-focus.has-tabbar .app-main{
 .fx-empty.fx-dropzone{
   border:1px dashed var(--v-line); border-radius:14px; margin:.5rem;
 }
+
+/* Password / Secret Share — phone layout */
+@media (max-width:991.98px){
+  .chip-row, .filter-chips, .pw-profile-chips, .chip-scroll{
+    display:flex; flex-wrap:wrap; gap:.5rem;
+  }
+  .chip-scroll{
+    overflow-x:auto; flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;
+    padding-bottom:.25rem;
+  }
+  .list-row{
+    flex-wrap:wrap; align-items:flex-start; gap:.75rem;
+  }
+  .list-row > a.d-flex{
+    flex:1 1 12rem; min-width:0;
+  }
+  .list-row .row-side{
+    margin-left:0; width:100%;
+    display:flex; flex-wrap:wrap; justify-content:flex-start; gap:.5rem;
+    padding-left:calc(2.75rem + .875rem); /* align under title past avatar */
+  }
+  .list-row .row-side .badge,
+  .list-row .row-side .btn{
+    min-height:36px; display:inline-flex; align-items:center;
+  }
+  .js-list-assign-profile{
+    max-width:100%;
+  }
+  #list-assign-profile .modal-dialog,
+  #list-change-owner .modal-dialog,
+  #transfer-item .modal-dialog{
+    margin:.75rem; max-width:calc(100% - 1.5rem);
+  }
+  .page-head .page-actions{
+    width:100%; display:flex; flex-wrap:wrap; gap:.5rem;
+  }
+  .page-head .page-actions > .btn{ flex:1 1 auto; min-width:8rem; }
+}
+@media (max-width:575.98px){
+  .list-row .row-side{ padding-left:0; }
+}
+

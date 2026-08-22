@@ -115,18 +115,23 @@ app-approve, and QR login when configured.
 
 Covers:
 - **Module picker** — open only what Super Admin enabled for the vault
+- **Family Vault** — invite household logins; link to profiles; private shares
 - **Health** — family, cards, documents, care, reminders, shares, ICE, audit, storage
-- **Passwords** — items, generator, health report, Sends (grant / email OTP / requests)
+- **Passwords** — items, profile tags, ownership transfer, generator, health report, Sends (grant / email OTP / first-browser lock / requests)
+- **Secret Share** — paste text → expiring `/v/` link with the same gates + first-browser lock
 - **Finance** — accounts, ledger, budgets, EMIs, SMS inbox
 - **Expense Analyser** — Gmail sync, PDF statements, insights
 - **AI, Locker, Shopping List, URLs, Diary** — as in the [root README](../README.md)
 - **Super Admin** — users, modules, presence, failed logins, server settings (OAuth, FCM, mail, lockout)
 
+Phone browsers use the same `/admin` UI (responsive CSS, touch targets, profile chip scroller).
+The Android app covers the same modules over JWT (see root README → Clients).
+
 It uses a signed session cookie (separate from the mobile JWT), so web and
 phone sessions do not invalidate each other. Cookies are signed with
 `JWT_SECRET`.
 
-Public share pages (doc, pack, Send, shop, URL, ICE) do not require login.
+Public share pages (doc, pack, Send, Secret Share, shop, URL, ICE) do not require login.
 Keep admin behind LAN / WireGuard / your tunnel edge the same way you would
 the API.
 
@@ -175,8 +180,8 @@ Core health-oriented examples:
 | POST   | `/auth/invite`                 | Create a view-only login for this vault |
 | GET    | `/audit`                       | Who viewed/downloaded/shared what |
 
-Additional prefixes (see Swagger for full lists): `/vault`, `/finance`,
-`/expense-analyser`, `/ai`, `/locker`, `/tracker`, `/urls`, `/diary`,
+Additional prefixes (see Swagger for full lists): `/vault`, `/secrets`, `/family`,
+`/finance`, `/expense-analyser`, `/ai`, `/locker`, `/tracker`, `/urls`, `/diary`,
 `/storage`, `/health` (care APIs).
 
 `category` for health documents is one of: `hospital_card`, `prescription`,

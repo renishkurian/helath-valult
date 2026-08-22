@@ -40,8 +40,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.rklab.healthvault.data.model.PersonOut
 import com.rklab.healthvault.data.model.VaultHistoryOut
 import com.rklab.healthvault.data.model.VaultItemOut
+import com.rklab.healthvault.data.model.VaultItemUpdate
 import com.rklab.healthvault.data.model.VaultSendCreate
 import com.rklab.healthvault.data.model.VaultTotpOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
@@ -81,6 +83,8 @@ fun VaultItemScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var showShare by remember { mutableStateOf(false) }
     var showFamilyShare by remember { mutableStateOf(false) }
+    var showAssignProfile by remember { mutableStateOf(false) }
+    var people by remember { mutableStateOf<List<PersonOut>>(emptyList()) }
     var sharePin by remember { mutableStateOf("") }
     var shareHours by remember { mutableStateOf("48") }
     var shareOneTime by remember { mutableStateOf(false) }
@@ -186,6 +190,16 @@ fun VaultItemScreen(
         if (current.is_owned) {
             VaultOutlinedButton("Share with family", { showFamilyShare = true })
             Spacer(Modifier.height(8.dp))
+            VaultOutlinedButton(
+                "Assign profile · ${(current.owner_full_name ?: "None").replaceFirstChar { it.uppercase() }}",
+                {
+                    scope.launch {
+                        people = runCatching { repository.listPeople() }.getOrDefault(emptyList())
+                        showAssignProfile = true
+                    }
+                }
+            )
+            Spacer(Modifier.height(8.dp))
         }
         if (current.item_type == "login" && current.is_owned) {
             VaultOutlinedButton("Share link", {
@@ -241,6 +255,54 @@ fun VaultItemScreen(
             sharedWith = item?.shared_with.orEmpty(),
             onDismiss = { showFamilyShare = false },
             onChanged = { load() },
+        )
+    }
+
+    if (showAssignProfile && item?.is_owned == true) {
+        AlertDialog(
+            onDismissRequest = { showAssignProfile = false },
+            title = { Text("Assign profile") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        "Tag this item to a family profile (works before they have a login).",
+                        color = HubTextDim,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    TextButton(onClick = {
+                        scope.launch {
+                            runCatching {
+                                repository.updateVaultItem(itemId, VaultItemUpdate(person_id = ""))
+                            }
+                            showAssignProfile = false
+                            load()
+                        }
+                    }) { Text("No profile tag", color = HubTextDim) }
+                    people.forEach { person ->
+                        TextButton(onClick = {
+                            scope.launch {
+                                runCatching {
+                                    repository.updateVaultItem(
+                                        itemId,
+                                        VaultItemUpdate(person_id = person.id)
+                                    )
+                                }
+                                showAssignProfile = false
+                                load()
+                            }
+                        }) {
+                            Text(
+                                person.name.replaceFirstChar { it.uppercase() } +
+                                    if (person.linked_user_id != null) " · login" else "",
+                                color = if (item?.person_id == person.id) VaultGold else HubText
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAssignProfile = false }) { Text("Close") }
+            }
         )
     }
 

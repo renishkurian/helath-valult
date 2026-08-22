@@ -109,12 +109,14 @@ Full module list: **[root README](../README.md)**. On Android specifically:
 - **Auth** — register / login; JWT in Keystore-backed encrypted prefs;
   refresh-token retry on 401; optional TOTP; QR login approve; app-approve
   for web logins
-- **Module hub** — Health, Passwords, Finance, Expense Analyser, AI, Locker,
-  Shopping List, URLs, Diary (respects server enablement)
+- **Module hub** — Family, Health, Passwords, Secret Share, Finance, Expense
+  Analyser, AI, Locker, Shopping List, URLs, Diary (respects server enablement)
 - **Health** — family, hospital cards, documents (camera / gallery), search,
   reminders (WorkManager), care, doctors
-- **Passwords** — items, editor, generator, health report, Sends, trash;
-  autofill service
+- **Passwords** — items, profile filter / assign profile, editor, generator,
+  health report, Sends (incl. first-browser lock), trash; autofill service
+- **Secret Share** — paste text → expiring link; PIN / grant / email OTP /
+  first-browser lock; revoke and request list
 - **Finance** — transactions, stats, accounts, EMIs, SMS inbox, add flow
 - **Expense Analyser, AI, Locker, Tracker, URLs, Diary** — module screens
   aligned with the web app

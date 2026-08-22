@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -42,6 +44,7 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import com.rklab.healthvault.data.model.PersonOut
 import com.rklab.healthvault.data.model.VaultFolderOut
 import com.rklab.healthvault.data.model.VaultItemOut
 import com.rklab.healthvault.data.repository.HealthVaultRepository
@@ -73,8 +76,10 @@ fun VaultListScreen(
     var query by remember { mutableStateOf("") }
     var type by remember { mutableStateOf<String?>(null) }
     var folderId by remember { mutableStateOf<String?>(null) }
+    var personId by remember { mutableStateOf<String?>(null) }
     var items by remember { mutableStateOf<List<VaultItemOut>>(emptyList()) }
     var folders by remember { mutableStateOf<List<VaultFolderOut>>(emptyList()) }
+    var people by remember { mutableStateOf<List<PersonOut>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf(false) }
@@ -86,11 +91,24 @@ fun VaultListScreen(
         error = null
         runCatching {
             folders = repository.listVaultFolders()
-            items = repository.listVaultItems(query.ifBlank { null }, type, folderId)
+            people = repository.listPeople()
+            val all = repository.listVaultItems(query.ifBlank { null }, type, folderId)
+            items = when (val pid = personId) {
+                null -> all
+                else -> {
+                    val person = people.firstOrNull { it.id == pid }
+                    val linked = person?.linked_user_id
+                    all.filter { item ->
+                        item.person_id == pid ||
+                            (linked != null && item.owner_user_id == linked) ||
+                            (linked == null && item.person_id == pid)
+                    }
+                }
+            }
         }.onFailure { error = it.message ?: "Could not load vault" }
         loading = false
     }
-    LaunchedEffect(query, type, folderId, lifecycleOwner) {
+    LaunchedEffect(query, type, folderId, personId, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             reload()
         }
@@ -134,6 +152,24 @@ fun VaultListScreen(
                 colors = vaultFieldColors(),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)
             )
+            if (people.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        VaultFilterChip(selected = personId == null, onClick = { personId = null }, label = "Everyone")
+                    }
+                    items(people) { person ->
+                        VaultFilterChip(
+                            selected = personId == person.id,
+                            onClick = { personId = person.id },
+                            label = person.name.replaceFirstChar { it.uppercase() }
+                        )
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+            }
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -177,10 +213,12 @@ fun VaultListScreen(
                             item.shared_with.isNotEmpty() -> "Shared with family"
                             else -> null
                         }
+                        val profile = item.owner_full_name?.replaceFirstChar { it.uppercase() }
                         VaultListRow(
                             title = item.name,
                             subtitle = listOfNotNull(
                                 item.username ?: item.email ?: item.uris.firstOrNull() ?: item.item_type,
+                                profile,
                                 shareHint
                             ).joinToString(" · "),
                             meta = item.item_type,

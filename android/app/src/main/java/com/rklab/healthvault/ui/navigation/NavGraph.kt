@@ -86,6 +86,7 @@ private object Routes {
     const val VAULT_TRASH = "vault_trash"
     const val VAULT_ITEM = "vault_item/{itemId}"
     const val VAULT_EDIT = "vault_edit?itemId={itemId}&type={type}"
+    const val SECRETS = "secrets"
     const val FINANCE = "finance"
     const val FINANCE_TRANS = "finance_trans"
     const val FINANCE_STATS = "finance_stats"
@@ -518,6 +519,12 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                             launchSingleTop = true
                         }
                     },
+                    onSecrets = {
+                        navController.navigate(Routes.SECRETS) {
+                            popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
+                            launchSingleTop = true
+                        }
+                    },
                     onFinance = {
                         navController.navigate(Routes.FINANCE) {
                             popUpTo(Routes.MODULES) { inclusive = false; saveState = true }
@@ -872,6 +879,16 @@ fun HealthVaultNavGraph(repository: HealthVaultRepository) {
                 )
             }
             composable(Routes.VAULT_GENERATOR) { GeneratorScreen(repository) }
+            composable(Routes.SECRETS) {
+                com.rklab.healthvault.ui.screens.secrets.SecretsScreen(
+                    repository = repository,
+                    onOpenModules = {
+                        navController.navigate(Routes.MODULES) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
             composable(Routes.VAULT_HEALTH) {
                 VaultHealthScreen(repository) { navController.navigate(Routes.vaultItem(it)) }
             }

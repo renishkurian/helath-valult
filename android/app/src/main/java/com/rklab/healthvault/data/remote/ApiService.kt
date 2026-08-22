@@ -55,6 +55,13 @@ interface ApiService {
         @Path("toUserId") toUserId: String
     ): Response<Unit>
 
+    @POST("family/transfer/{resourceType}/{resourceId}")
+    suspend fun transferFamilyResource(
+        @Path("resourceType") resourceType: String,
+        @Path("resourceId") resourceId: String,
+        @Body body: FamilyTransferIn
+    ): Map<String, Any?>
+
     @GET("auth/members")
     suspend fun listVaultMembers(): List<UserOut>
 
@@ -412,6 +419,18 @@ interface ApiService {
 
     @DELETE("vault/sends/{id}")
     suspend fun revokeVaultSend(@Path("id") id: String): Response<Unit>
+
+    @GET("secrets/sends")
+    suspend fun listSecretSends(): List<VaultSendOut>
+
+    @POST("secrets/sends")
+    suspend fun createSecretSend(@Body body: VaultSendCreate): VaultSendOut
+
+    @DELETE("secrets/sends/{id}")
+    suspend fun revokeSecretSend(@Path("id") id: String): Response<Unit>
+
+    @GET("secrets/send-requests")
+    suspend fun listSecretSendRequests(@Query("status") status: String? = "pending"): List<VaultSendRequestOut>
 
     @GET("vault/send-requests")
     suspend fun listVaultSendRequests(@Query("status") status: String? = "pending"): List<VaultSendRequestOut>

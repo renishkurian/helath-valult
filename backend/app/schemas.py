@@ -744,6 +744,8 @@ class VaultItemUpdate(BaseModel):
     ssn: Optional[str] = None
     license_number: Optional[str] = None
     passport_number: Optional[str] = None
+    # Tag to a family profile (Person id); empty/null clears the tag
+    person_id: Optional[str] = None
 
 
 class VaultItemOut(BaseModel):
@@ -956,6 +958,7 @@ class FinanceAccountIn(BaseModel):
     credit_limit: Optional[float] = None
     institution: Optional[str] = None
     last4: Optional[str] = None
+    no_default_categories: bool = False
 
 
 class FinanceAccountOut(BaseModel):
@@ -968,6 +971,7 @@ class FinanceAccountOut(BaseModel):
     institution: Optional[str] = None
     last4: Optional[str] = None
     archived: bool = False
+    no_default_categories: bool = False
     balance: float = 0
     is_liability: bool = False
     created_at: datetime

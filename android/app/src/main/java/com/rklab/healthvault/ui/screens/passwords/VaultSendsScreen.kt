@@ -61,6 +61,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
     var requireGrant by remember { mutableStateOf(false) }
     var requireEmailOtp by remember { mutableStateOf(false) }
     var allowedEmails by remember { mutableStateOf("") }
+    var bindFirstBrowser by remember { mutableStateOf(false) }
     val fieldColors = vaultFieldColors()
     val selectedItem = items.firstOrNull { it.id == itemId }
     val canIncludeTotp = sendType == "login" && selectedItem?.has_totp == true
@@ -195,6 +196,13 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = bindFirstBrowser, onCheckedChange = { bindFirstBrowser = it })
+                    Text("Lock to first browser that opens the link", color = HubText)
+                }
                 Spacer(Modifier.height(8.dp))
                 VaultPrimaryButton(
                     text = "Create send",
@@ -218,7 +226,8 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                         require_grant = requireGrant,
                                         require_email_otp = requireEmailOtp,
                                         allowed_emails = emails,
-                                        require_vault_user_email = false
+                                        require_vault_user_email = false,
+                                        bind_first_browser = bindFirstBrowser
                                     )
                                 )
                                 val url = "$base/v/${created.token}"
@@ -232,6 +241,7 @@ fun VaultSendsScreen(repository: HealthVaultRepository, prefillItemId: String? =
                                 })
                                 name = ""; text = ""; pin = ""; oneTime = false; includeTotp = false
                                 requireGrant = false; requireEmailOtp = false; allowedEmails = ""
+                                bindFirstBrowser = false
                                 reload()
                             }
                         }

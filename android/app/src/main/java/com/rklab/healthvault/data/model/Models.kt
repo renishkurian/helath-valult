@@ -124,7 +124,8 @@ data class PersonOut(
     val emergency_phone: String? = null,
     val abha_id: String? = null,
     val ayushman_id: String? = null,
-    val ice_token: String? = null
+    val ice_token: String? = null,
+    val linked_user_id: String? = null
 )
 
 data class PersonCreate(
@@ -507,7 +508,9 @@ data class VaultItemIn(
     val country: String? = null,
     val ssn: String? = null,
     val license_number: String? = null,
-    val passport_number: String? = null
+    val passport_number: String? = null,
+    val owner_user_id: String? = null,
+    val person_id: String? = null
 )
 data class VaultItemUpdate(
     val folder_id: String? = null,
@@ -530,7 +533,8 @@ data class VaultItemUpdate(
     val phone: String? = null,
     val ssn: String? = null,
     val license_number: String? = null,
-    val passport_number: String? = null
+    val passport_number: String? = null,
+    val person_id: String? = null
 )
 data class VaultItemOut(
     val id: String,
@@ -572,6 +576,8 @@ data class VaultItemOut(
     val active_send_count: Int = 0,
     val require_2fa: Boolean = false,
     val owner_user_id: String? = null,
+    val owner_full_name: String? = null,
+    val person_id: String? = null,
     val is_owned: Boolean = true,
     val my_permission: String = "edit",
     val shared_with: List<FamilyShareParty> = emptyList(),
@@ -618,7 +624,8 @@ data class VaultSendCreate(
     val require_email_otp: Boolean = false,
     val allowed_emails: List<String> = emptyList(),
     val require_vault_user_email: Boolean = false,
-    val files_only: Boolean = false
+    val files_only: Boolean = false,
+    val bind_first_browser: Boolean = false
 )
 data class VaultSendOut(
     val id: String,
@@ -634,7 +641,15 @@ data class VaultSendOut(
     val requires_totp: Boolean = false,
     val requires_grant: Boolean = false,
     val requires_email_otp: Boolean = false,
+    val bind_first_browser: Boolean = false,
+    val browser_bound: Boolean = false,
     val created_at: String
+)
+
+data class FamilyTransferIn(
+    val to_user_id: String,
+    val keep_access: Boolean = true,
+    val keep_permission: String = "view"
 )
 
 data class VaultSendRequestOut(
@@ -679,6 +694,7 @@ data class FinanceAccountOut(
     val institution: String? = null,
     val last4: String? = null,
     val archived: Boolean = false,
+    val no_default_categories: Boolean = false,
     val balance: Double = 0.0,
     val is_liability: Boolean = false,
     val created_at: String = ""
@@ -687,7 +703,8 @@ data class FinanceAccountIn(
     val name: String,
     val account_type: String = "cash",
     val opening_balance: Double = 0.0,
-    val credit_limit: Double? = null
+    val credit_limit: Double? = null,
+    val no_default_categories: Boolean = false
 )
 data class FinanceCategoryOut(
     val id: String,

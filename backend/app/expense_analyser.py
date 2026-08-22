@@ -1651,7 +1651,10 @@ def post_to_finance(
         account_id=acc.id,
     )
     if not cat and item.suggested_category:
-        cat = fn._find_category(cats, item.suggested_category.split(" / ")[0], kind, acc.id)
+        cat = fn._find_category(
+            cats, item.suggested_category.split(" / ")[0], kind, acc.id,
+            no_default_categories=bool(acc.no_default_categories),
+        )
         if " / " in (item.suggested_category or ""):
             parent, sub = match_category_ids(cats, item.suggested_category, kind)
             cat = next((c for c in cats if c.id == (sub or parent)), cat)

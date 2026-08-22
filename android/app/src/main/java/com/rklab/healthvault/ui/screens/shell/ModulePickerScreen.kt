@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Favorite
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Person
@@ -111,6 +112,7 @@ fun ModulePickerScreen(
     onFamily: () -> Unit = {},
     onHealth: () -> Unit,
     onPasswords: () -> Unit,
+    onSecrets: () -> Unit = {},
     onFinance: () -> Unit,
     onExpense: () -> Unit,
     onAi: () -> Unit,
@@ -302,6 +304,48 @@ fun ModulePickerScreen(
                     TileFooter(stat = state.financeFooter)
                 }
             }
+            }
+            if (state.moduleOn("secrets")) {
+                Spacer(Modifier.height(12.dp))
+                HubTile(
+                    glow = HubAmber,
+                    onClick = onSecrets,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp),
+                    contentDescription = "Open Secret Share"
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        TileIcon(Icons.Outlined.Key, HubAmber)
+                        Text(
+                            "Expiring links",
+                            color = HubAmber,
+                            fontFamily = MonoFont,
+                            fontSize = 9.sp,
+                            modifier = Modifier
+                                .clip(ChipShape)
+                                .background(HubAmber.copy(alpha = 0.12f))
+                                .border(1.dp, HubAmber.copy(alpha = 0.25f), ChipShape)
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    Column {
+                        Text("Secret Share", color = HubText, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            "Paste a secret · optional first-browser lock",
+                            color = HubTextDim,
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
             }
             if (state.moduleOn("expense")) {
             Spacer(Modifier.height(12.dp))

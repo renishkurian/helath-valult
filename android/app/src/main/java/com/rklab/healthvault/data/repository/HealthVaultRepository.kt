@@ -216,10 +216,25 @@ class HealthVaultRepository(
     suspend fun listVaultSends() = api.listVaultSends()
     suspend fun createVaultSend(body: VaultSendCreate) = api.createVaultSend(body)
     suspend fun revokeVaultSend(id: String) = api.revokeVaultSend(id)
+    suspend fun listSecretSends() = api.listSecretSends()
+    suspend fun createSecretSend(body: VaultSendCreate) = api.createSecretSend(body)
+    suspend fun revokeSecretSend(id: String) = api.revokeSecretSend(id)
+    suspend fun listSecretSendRequests(status: String? = "pending") = api.listSecretSendRequests(status)
     suspend fun listVaultSendRequests(status: String? = "pending") = api.listVaultSendRequests(status)
     suspend fun markVaultSendRequestSeen(id: String) = api.markVaultSendRequestSeen(id)
     suspend fun grantVaultSendRequest(id: String) = api.grantVaultSendRequest(id)
     suspend fun dismissVaultSendRequest(id: String) = api.dismissVaultSendRequest(id)
+    suspend fun transferFamilyResource(
+        resourceType: String,
+        resourceId: String,
+        toUserId: String,
+        keepAccess: Boolean = true,
+        keepPermission: String = "edit"
+    ) = api.transferFamilyResource(
+        resourceType,
+        resourceId,
+        FamilyTransferIn(toUserId, keepAccess, keepPermission)
+    )
     suspend fun downloadVaultSendRequestPhoto(id: String, destination: java.io.File): java.io.File {
         val body = api.downloadVaultSendRequestPhoto(id)
         body.byteStream().use { input ->

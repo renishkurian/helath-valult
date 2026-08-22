@@ -2544,12 +2544,47 @@ def update_item(
         item.license_number_enc = crypto.encrypt_text(data.pop("license_number"))
     if "passport_number" in data:
         item.passport_number_enc = crypto.encrypt_text(data.pop("passport_number"))
+    if "person_id" in data:
+        want = (data.pop("person_id") or "").strip() or None
+        if want:
+            if not faccess.is_family_admin(current_user):
+                raise HTTPException(status_code=403, detail="Only the family manager can tag a profile")
+            prof = (
+                db.query(models.Person)
+                .filter(models.Person.id == want, models.Person.user_id == vault_id(current_user))
+                .first()
+            )
+            if not prof:
+                raise HTTPException(status_code=404, detail="Profile not found")
+            item.person_id = prof.id
+            if (
+                prof.linked_user_id
+                and prof.linked_user_id != faccess.item_owner_id(item.owner_user_id, item.user_id)
+            ):
+                try:
+                    faccess.transfer_ownership(
+                        db,
+                        actor=current_user,
+                        resource_type=models.ShareResourceType.password.value,
+                        resource_id=item.id,
+                        to_user_id=prof.linked_user_id,
+                        keep_access=True,
+                        keep_permission=models.SharePermission.edit.value,
+                    )
+                except HTTPException:
+                    pass
+        else:
+            item.person_id = None
     for field, value in data.items():
         setattr(item, field, value)
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
-    return _to_out(item)
+    oid = faccess.item_owner_id(item.owner_user_id, item.user_id)
+    owner = db.query(models.User).filter(models.User.id == oid).first()
+    person = db.query(models.Person).filter(models.Person.id == item.person_id).first() if item.person_id else None
+    label = (person.name if person and person.name else None) or (owner.full_name if owner else None)
+    return _to_out(item, is_owned=(oid == current_user.id), owner_full_name=label)
 
 
 @router.delete("/items/{item_id}", status_code=204)

@@ -453,6 +453,37 @@ def test_account_scoped_categories():
     assert shared.status_code == 200, shared.text
 
 
+def test_account_no_default_categories():
+    r = client.post("/auth/register", json={
+        "email": "nodefault@example.com", "password": "password123", "full_name": "No Default",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    client.get("/finance/accounts", headers=headers)
+    isolated = client.post("/finance/accounts", headers=headers, json={
+        "name": "Isolated", "account_type": "bank", "no_default_categories": True,
+    }).json()
+    assert isolated["no_default_categories"] is True
+    home_cats = client.get("/finance/categories", headers=headers, params={"account_id": isolated["id"]}).json()
+    assert home_cats == []
+    rent = client.post("/finance/categories", headers=headers, json={
+        "name": "Rent", "kind": "expense", "account_id": isolated["id"],
+    }).json()
+    home_cats = client.get("/finance/categories", headers=headers, params={"account_id": isolated["id"]}).json()
+    assert {c["name"] for c in home_cats} == {"Rent"}
+    general = next(c for c in client.get("/finance/categories", headers=headers).json() if c["name"] == "Food & dining")
+    bad = client.post("/finance/transactions", headers=headers, json={
+        "account_id": isolated["id"], "category_id": general["id"], "txn_type": "expense",
+        "amount": 50, "txn_date": "2026-08-13",
+    })
+    assert bad.status_code == 400
+    ok = client.post("/finance/transactions", headers=headers, json={
+        "account_id": isolated["id"], "category_id": rent["id"], "txn_type": "expense",
+        "amount": 50, "txn_date": "2026-08-13",
+    })
+    assert ok.status_code == 200, ok.text
+
+
 def test_category_subcategory():
     r = client.post("/auth/register", json={
         "email": "subcat@example.com", "password": "password123", "full_name": "Sub User",
