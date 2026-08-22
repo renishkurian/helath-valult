@@ -3700,3 +3700,15 @@ body.fx-focus.has-tabbar .app-main{
   .pwa-banner-text{ flex-basis:calc(100% - 3rem); }
 }
 
+
+
+/* Money Manager AJAX toast */
+.mm-ajax-toast{
+  position:fixed; left:50%; bottom:calc(var(--v-tabbar-h, 64px) + 1.25rem + env(safe-area-inset-bottom));
+  transform:translateX(-50%); z-index:2000;
+  max-width:min(92vw, 22rem); padding:.7rem 1rem; border-radius:12px;
+  font-size:.875rem; font-weight:600; text-align:center;
+  box-shadow:0 10px 28px rgba(0,0,0,.35);
+}
+.mm-ajax-toast.ok{ background:var(--v-gold); color:var(--v-on-gold); }
+.mm-ajax-toast.err{ background:#8B2E2E; color:#fff; }

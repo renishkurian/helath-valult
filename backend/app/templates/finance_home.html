@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Money Manager{% endblock %}
 {% block content %}
+<div id="mm-home" data-month="{{ dash.year_month }}">
 {% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
 {% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
 {% set s = dash.summary %}
@@ -12,11 +13,11 @@
     <p class="mm-dash-sub">Track every rupee. Understand every expense.</p>
   </div>
   <div class="page-actions">
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.prev }}" aria-label="Previous month">
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.prev }}" data-mm-prev data-month="{{ dash.prev }}" aria-label="Previous month">
       <i class="bi bi-chevron-left"></i>
     </a>
-    <span class="mm-dash-month">{{ dash.label }}</span>
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.next }}" aria-label="Next month">
+    <span class="mm-dash-month" data-mm-month>{{ dash.label }}</span>
+    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.next }}" data-mm-next data-month="{{ dash.next }}" aria-label="Next month">
       <i class="bi bi-chevron-right"></i>
     </a>
   </div>
@@ -25,11 +26,11 @@
 <section class="mm-hero mb-3" aria-label="Total balance">
   <div class="mm-hero-kicker">Total balance</div>
   <div class="mm-hero-row">
-    <div class="mm-hero-val">{{ inr(s.net) }}</div>
+    <div class="mm-hero-val" data-mm-net>{{ inr(s.net) }}</div>
     <span class="mm-hero-badge">Active</span>
   </div>
-  <div class="mm-hero-net {% if s.total >= 0 %}mm-income{% else %}mm-expense{% endif %}">
-    Net this month {{ inr(s.total) }} · opening {{ inr(s.opening) }}
+  <div class="mm-hero-net {% if s.total >= 0 %}mm-income{% else %}mm-expense{% endif %}" data-mm-netline>
+    Net this month <span data-mm-total>{{ inr(s.total) }}</span> · opening <span data-mm-opening>{{ inr(s.opening) }}</span>
   </div>
   <div class="mm-hero-orbs" aria-hidden="true"></div>
 </section>
@@ -39,14 +40,14 @@
     <div class="mm-split-ico"><i class="bi bi-wallet2"></i></div>
     <div>
       <div class="mm-split-lbl">Income</div>
-      <div class="mm-split-val mm-income">{{ inr(s.income) }}</div>
+      <div class="mm-split-val mm-income" data-mm-income>{{ inr(s.income) }}</div>
     </div>
   </div>
   <div class="mm-split-card out">
     <div class="mm-split-ico"><i class="bi bi-bag"></i></div>
     <div>
       <div class="mm-split-lbl">Expenses</div>
-      <div class="mm-split-val mm-expense">{{ inr(s.expense) }}</div>
+      <div class="mm-split-val mm-expense" data-mm-expense>{{ inr(s.expense) }}</div>
     </div>
   </div>
 </div>
@@ -55,35 +56,36 @@
   <div class="mm-split-card stack">
     <div class="mm-split-lbl">Top category</div>
     {% if dash.top_category %}
-    <div class="mm-split-name" title="{{ dash.top_category.name }}">{{ dash.top_category.name }}</div>
-    <div class="mm-split-meta">{{ inr(dash.top_category.amount) }} · {{ dash.top_category.pct|int }}% of spend</div>
+    <div class="mm-split-name" data-mm-top-name title="{{ dash.top_category.name }}">{{ dash.top_category.name }}</div>
+    <div class="mm-split-meta" data-mm-top-meta>{{ inr(dash.top_category.amount) }} · {{ dash.top_category.pct|int }}% of spend</div>
     {% else %}
-    <div class="mm-split-name text-muted">No spend yet</div>
+    <div class="mm-split-name text-muted" data-mm-top-name>No spend yet</div>
+    <div class="mm-split-meta" data-mm-top-meta></div>
     {% endif %}
   </div>
   <div class="mm-split-card stack">
     <div class="mm-split-lbl">Highest spend</div>
     {% if dash.highest %}
-    <div class="mm-split-name" title="{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
-    <div class="mm-split-meta mm-expense">{{ inr(dash.highest.amount) }}{% if dash.highest.category_name %} · {{ dash.highest.category_name }}{% endif %}</div>
+    <div class="mm-split-name" data-mm-hi-name title="{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
+    <div class="mm-split-meta mm-expense" data-mm-hi-meta>{{ inr(dash.highest.amount) }}{% if dash.highest.category_name %} · {{ dash.highest.category_name }}{% endif %}</div>
     {% else %}
-    <div class="mm-split-name text-muted">Nothing posted</div>
+    <div class="mm-split-name text-muted" data-mm-hi-name>Nothing posted</div>
+    <div class="mm-split-meta mm-expense" data-mm-hi-meta></div>
     {% endif %}
   </div>
 </div>
 
-{% if dash.insight %}
-<section class="mm-insight mb-4">
+<section class="mm-insight mb-4" data-mm-insight {% if not dash.insight %}hidden{% endif %}>
   <div class="mm-insight-kicker"><i class="bi bi-stars"></i> Smart insight</div>
-  <p class="mb-0">{{ dash.insight }}</p>
+  <p class="mb-0" data-mm-insight-text>{% if dash.insight %}{{ dash.insight }}{% endif %}</p>
 </section>
-{% endif %}
 
 <div class="d-flex align-items-center justify-content-between mb-2">
   <h2 class="h6 mb-0">Recent</h2>
-  <a class="small" href="/admin/finance/transactions?month={{ dash.year_month }}">See all</a>
+  <a class="small" href="/admin/finance/transactions?month={{ dash.year_month }}" data-mm-see-all>See all</a>
 </div>
 
+<div data-mm-recent>
 {% if dash.recent %}
 <div class="mm-card-list">
   {% for item in dash.recent %}
@@ -112,7 +114,13 @@
   </div>
 </div>
 {% endif %}
+</div>
 
 <div class="mm-fab-spacer" aria-hidden="true"></div>
 <a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/finance-ajax.js?v=1" defer></script>
 {% endblock %}

@@ -3589,6 +3589,99 @@ def password_item_permanent(item_id: str, request: Request, db: Session = Depend
 
 
 # ---------- Money Manager ----------
+
+def _fn_wants_json(request: Request) -> bool:
+    accept = (request.headers.get("accept") or "").lower()
+    return "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def _fn_txn_dict(row, accounts=None, categories=None) -> dict:
+    from app.routers.finance import _txn_out
+    if hasattr(row, "model_dump"):
+        return row.model_dump()
+    if hasattr(row, "dict") and not hasattr(row, "account_id"):
+        return row.dict()
+    if accounts is None or categories is None:
+        raise ValueError("accounts/categories required for ORM txn")
+    out = _txn_out(row, accounts, categories)
+    return out.model_dump() if hasattr(out, "model_dump") else out.dict()
+
+
+def _fn_dashboard_json(db, user, ym: str) -> dict:
+    from app.routers.finance import build_dashboard, _txn_out, _acct_map, _cat_map, _owned
+    dash = build_dashboard(db, user, ym)
+    uid = _owned(db, user)
+    accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
+    snap = dash["summary"]
+    summary = snap.model_dump() if hasattr(snap, "model_dump") else dict(snap)
+    recent = []
+    for t in dash.get("recent") or []:
+        recent.append(_fn_txn_dict(t, accounts, categories))
+    highest = dash.get("highest")
+    highest_d = _fn_txn_dict(highest, accounts, categories) if highest is not None else None
+    top = dash.get("top_category")
+    return {
+        "year_month": dash["year_month"],
+        "label": dash["label"],
+        "prev": dash["prev"],
+        "next": dash["next"],
+        "summary": summary,
+        "top_category": top,
+        "highest": highest_d,
+        "recent": recent,
+        "insight": dash.get("insight") or "",
+        "report_rows": dash.get("report_rows") or [],
+    }
+
+
+def _fn_ledger_json(db, user, ym: str, q: str | None = None, notes_only: bool = False) -> dict:
+    from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned
+    ledger = month_ledger(db, user, ym, q=q, notes_only=notes_only)
+    uid = _owned(db, user)
+    accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
+    txns = [_fn_txn_dict(t, accounts, categories) for t in (ledger.get("txns") or [])]
+    days = []
+    for d in ledger.get("days") or []:
+        days.append({
+            "date": d.get("date"),
+            "label": d.get("label"),
+            "income": float(d.get("income") or 0),
+            "expense": float(d.get("expense") or 0),
+            "txns": [_fn_txn_dict(t, accounts, categories) for t in (d.get("txns") or [])],
+        })
+    weeks = []
+    for week in ledger.get("weeks") or []:
+        row = []
+        for cell in week:
+            if not cell:
+                row.append(None)
+                continue
+            row.append({
+                "date": cell.get("date"),
+                "income": float(cell.get("income") or 0),
+                "expense": float(cell.get("expense") or 0),
+            })
+        weeks.append(row)
+    return {
+        "year_month": ledger["year_month"],
+        "label": ledger["label"],
+        "prev": ledger["prev"],
+        "next": ledger["next"],
+        "income": float(ledger.get("income") or 0),
+        "expense": float(ledger.get("expense") or 0),
+        "total": float(ledger.get("total") or 0),
+        "opening": float(ledger.get("opening") or 0),
+        "closing": float(ledger.get("closing") or 0),
+        "prev_month": ledger.get("prev_month"),
+        "prev_income": float(ledger.get("prev_income") or 0),
+        "prev_expense": float(ledger.get("prev_expense") or 0),
+        "prev_total": float(ledger.get("prev_total") or 0),
+        "days": days,
+        "weeks": weeks,
+        "txns": txns,
+    }
+
+
 def _fn_ctx(request, user, active_nav, **extra):
     ctx = {
         "request": request, "session_user": user, "active_nav": active_nav,
@@ -3732,6 +3825,9 @@ def finance_add(
         raw = image.file.read()
         if raw:
             save_txn_image(db, user, txn.id, raw, image.content_type)
+    if _fn_wants_json(request):
+        payload = txn.model_dump() if hasattr(txn, "model_dump") else txn.dict()
+        return JSONResponse({"ok": True, "txn": payload, "redirect": "/admin/finance"})
     return RedirectResponse("/admin/finance", status_code=302)
 
 
@@ -3822,6 +3918,8 @@ def finance_edit_save(
         raw = image.file.read()
         if raw:
             save_txn_image(db, user, txn_id, raw, image.content_type)
+    if _fn_wants_json(request):
+        return JSONResponse({"ok": True, "txn_id": txn_id, "redirect": "/admin/finance"})
     return RedirectResponse("/admin/finance", status_code=302)
 
 
@@ -4223,6 +4321,140 @@ def finance_rule_delete(rule_id: str, request: Request, db: Session = Depends(ge
         return RedirectResponse("/admin/login", status_code=302)
     delete_rule(rule_id, db=db, current_user=user)
     return RedirectResponse("/admin/finance/ai", status_code=302)
+
+
+
+
+@router.get("/finance/api/dashboard")
+def finance_api_dashboard(request: Request, month: Optional[str] = None, db: Session = Depends(get_db)):
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    try:
+        datetime.strptime(ym + "-01", "%Y-%m-%d")
+    except ValueError:
+        ym = datetime.utcnow().strftime("%Y-%m")
+    return JSONResponse(_fn_dashboard_json(db, user, ym))
+
+
+@router.get("/finance/api/ledger")
+def finance_api_ledger(
+    request: Request,
+    month: Optional[str] = None,
+    view: str = "daily",
+    q: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    ym = month or datetime.utcnow().strftime("%Y-%m")
+    try:
+        datetime.strptime(ym + "-01", "%Y-%m-%d")
+    except ValueError:
+        ym = datetime.utcnow().strftime("%Y-%m")
+    data = _fn_ledger_json(db, user, ym, q=q, notes_only=(view == "note"))
+    data["view"] = view
+    data["q"] = q or ""
+    return JSONResponse(data)
+
+
+def _fn_form_str(form, key: str) -> str:
+    v = form.get(key)
+    if v is None:
+        return ""
+    if hasattr(v, "read"):
+        return ""
+    return str(v).strip()
+
+
+def _fn_form_opt(form, key: str) -> str | None:
+    s = _fn_form_str(form, key)
+    return s or None
+
+
+@router.post("/finance/api/transactions")
+async def finance_api_create_txn(request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import create_transaction, save_txn_image
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    form = await request.form()
+    try:
+        amount = float(_fn_form_str(form, "amount") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"detail": "Invalid amount"}, status_code=400)
+    try:
+        txn = create_transaction(sc.FinanceTxnIn(
+            account_id=_fn_form_str(form, "account_id"),
+            to_account_id=_fn_form_opt(form, "to_account_id"),
+            category_id=_fn_form_opt(form, "category_id"),
+            txn_type=_fn_form_str(form, "txn_type") or "expense",
+            amount=amount,
+            txn_date=_fn_form_str(form, "txn_date"),
+            txn_time=_fn_form_opt(form, "txn_time"),
+            payee=_fn_form_opt(form, "payee"),
+            notes=_fn_form_opt(form, "notes"),
+            description=_fn_form_opt(form, "description"),
+            payment_method=_fn_form_opt(form, "payment_method"),
+            frequency=_fn_form_opt(form, "frequency"),
+        ), db=db, current_user=user)
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    except Exception as exc:
+        return JSONResponse({"detail": str(exc) or "Could not save"}, status_code=400)
+    image = form.get("image") or form.get("receipt")
+    if image is not None and getattr(image, "filename", None):
+        raw = await image.read()
+        if raw:
+            save_txn_image(db, user, txn.id, raw, getattr(image, "content_type", None))
+    payload = txn.model_dump() if hasattr(txn, "model_dump") else txn.dict()
+    return JSONResponse({"ok": True, "txn": payload, "redirect": "/admin/finance"})
+
+
+@router.post("/finance/api/transactions/{txn_id}")
+async def finance_api_update_txn(txn_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import update_transaction, save_txn_image
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    form = await request.form()
+    try:
+        amount = float(_fn_form_str(form, "amount") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"detail": "Invalid amount"}, status_code=400)
+    try:
+        txn = update_transaction(
+            txn_id,
+            sc.FinanceTxnIn(
+                account_id=_fn_form_str(form, "account_id"),
+                to_account_id=_fn_form_opt(form, "to_account_id"),
+                category_id=_fn_form_opt(form, "category_id"),
+                txn_type=_fn_form_str(form, "txn_type") or "expense",
+                amount=amount,
+                txn_date=_fn_form_str(form, "txn_date"),
+                txn_time=_fn_form_opt(form, "txn_time"),
+                payee=_fn_form_opt(form, "payee"),
+                notes=_fn_form_opt(form, "notes"),
+                description=_fn_form_opt(form, "description"),
+                payment_method=_fn_form_opt(form, "payment_method"),
+            ),
+            db=db, current_user=user,
+        )
+    except HTTPException as exc:
+        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+    except Exception as exc:
+        return JSONResponse({"detail": str(exc) or "Could not save"}, status_code=400)
+    image = form.get("image") or form.get("receipt")
+    if image is not None and getattr(image, "filename", None):
+        raw = await image.read()
+        if raw:
+            save_txn_image(db, user, txn_id, raw, getattr(image, "content_type", None))
+    payload = txn.model_dump() if hasattr(txn, "model_dump") else txn.dict()
+    return JSONResponse({"ok": True, "txn": payload, "redirect": "/admin/finance"})
 
 
 @router.get("/finance/categories", response_class=HTMLResponse)
