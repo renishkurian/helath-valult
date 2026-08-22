@@ -51,6 +51,10 @@
           <input class="form-control amount-input" id="amount" type="number" name="amount"
                  step="0.01" min="0.01" required placeholder="0.00" inputmode="decimal"
                  value="{{ '%.2f'|format(edit_txn.amount|float) if editing else '' }}">
+          <button class="amount-calc-btn" type="button" id="amount-calc-open"
+                  aria-label="Open calculator" title="Calculate amount">
+            <i class="bi bi-calculator"></i>
+          </button>
         </div>
 
         <div class="list-rows">
@@ -145,6 +149,45 @@
     </button>
   </div>
   <div class="sheet-body" id="sheet-body"></div>
+</div>
+
+<div class="sheet-scrim" id="calc-scrim"></div>
+<div class="sheet amount-calc-sheet" id="calc-sheet" role="dialog" aria-modal="true" aria-labelledby="calc-title" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head">
+    <strong id="calc-title">Calculator</strong>
+    <button class="btn btn-ghost btn-icon btn-sm sheet-x" type="button" id="calc-close" aria-label="Close calculator">
+      <i class="bi bi-x-lg"></i>
+    </button>
+  </div>
+  <div class="sheet-body amount-calc-body">
+    <div class="amount-calc-expr" id="calc-expr" aria-live="polite"></div>
+    <div class="amount-calc-display" id="calc-display">0</div>
+    <div class="amount-calc-pad" id="calc-pad">
+      <button type="button" data-calc="clear">C</button>
+      <button type="button" data-calc="back"><i class="bi bi-backspace"></i></button>
+      <button type="button" data-calc="op" data-op="/">÷</button>
+      <button type="button" data-calc="op" data-op="*">×</button>
+      <button type="button" data-calc="digit">7</button>
+      <button type="button" data-calc="digit">8</button>
+      <button type="button" data-calc="digit">9</button>
+      <button type="button" data-calc="op" data-op="-">−</button>
+      <button type="button" data-calc="digit">4</button>
+      <button type="button" data-calc="digit">5</button>
+      <button type="button" data-calc="digit">6</button>
+      <button type="button" data-calc="op" data-op="+">+</button>
+      <button type="button" data-calc="digit">1</button>
+      <button type="button" data-calc="digit">2</button>
+      <button type="button" data-calc="digit">3</button>
+      <button type="button" data-calc="equals" class="amount-calc-eq">=</button>
+      <button type="button" data-calc="digit" class="amount-calc-zero">0</button>
+      <button type="button" data-calc="dot">.</button>
+      <button type="button" data-calc="pct">%</button>
+    </div>
+    <button class="btn btn-primary btn-lg btn-block mt-3" type="button" id="calc-use">
+      <i class="bi bi-check2"></i> Use amount
+    </button>
+  </div>
 </div>
 {% endblock %}
 
@@ -428,6 +471,176 @@
       }
     });
   }
+
+  /* —— amount calculator —— */
+  var amountInput = document.getElementById("amount");
+  var calcScrim = document.getElementById("calc-scrim");
+  var calcSheet = document.getElementById("calc-sheet");
+  var calcDisplay = document.getElementById("calc-display");
+  var calcExpr = document.getElementById("calc-expr");
+  var calcState = { display: "0", acc: null, op: null, fresh: true };
+
+  function fmtCalc(n){
+    if(!isFinite(n)) return "Error";
+    var s = Math.round(n * 100) / 100;
+    if(Math.abs(s) >= 1e12) return "Error";
+    var t = s.toFixed(2).replace(/\.?0+$/, "");
+    if(t.indexOf(".") < 0) return t;
+    return parseFloat(t).toString();
+  }
+  function paintCalc(){
+    calcDisplay.textContent = calcState.display;
+    var parts = [];
+    if(calcState.acc != null && calcState.op){
+      var sym = { "+":"+", "-":"−", "*":"×", "/":"÷" }[calcState.op] || calcState.op;
+      parts.push(fmtCalc(calcState.acc), sym);
+      if(!calcState.fresh) parts.push(calcState.display);
+    }
+    calcExpr.textContent = parts.join(" ");
+  }
+  function applyOp(a, op, b){
+    if(op === "+") return a + b;
+    if(op === "-") return a - b;
+    if(op === "*") return a * b;
+    if(op === "/") return b === 0 ? NaN : a / b;
+    return b;
+  }
+  function commitPending(){
+    var cur = parseFloat(calcState.display);
+    if(calcState.acc == null || !calcState.op){
+      calcState.acc = cur;
+      return true;
+    }
+    var res = applyOp(calcState.acc, calcState.op, cur);
+    if(!isFinite(res)){
+      calcState.display = "Error";
+      calcState.acc = null;
+      calcState.op = null;
+      calcState.fresh = true;
+      paintCalc();
+      return false;
+    }
+    calcState.acc = res;
+    calcState.display = fmtCalc(res);
+    return true;
+  }
+  function openCalc(){
+    var v = parseFloat(amountInput.value);
+    calcState = {
+      display: (isFinite(v) && v > 0) ? fmtCalc(v) : "0",
+      acc: null, op: null, fresh: true
+    };
+    paintCalc();
+    calcScrim.classList.add("open");
+    calcSheet.classList.add("open");
+    calcSheet.setAttribute("aria-hidden", "false");
+  }
+  function closeCalc(){
+    calcScrim.classList.remove("open");
+    calcSheet.classList.remove("open");
+    calcSheet.setAttribute("aria-hidden", "true");
+  }
+  function useCalc(){
+    if(calcState.display === "Error") return;
+    if(calcState.op && calcState.acc != null && !calcState.fresh){
+      if(!commitPending()) return;
+      calcState.op = null;
+    }
+    var n = parseFloat(calcState.display);
+    if(!isFinite(n) || n <= 0){
+      calcState.display = "Error";
+      paintCalc();
+      return;
+    }
+    amountInput.value = (Math.round(n * 100) / 100).toFixed(2);
+    amountInput.dispatchEvent(new Event("input", { bubbles: true }));
+    closeCalc();
+    amountInput.focus();
+  }
+  function onCalcKey(action, btn){
+    if(calcState.display === "Error" && action !== "clear"){
+      calcState = { display: "0", acc: null, op: null, fresh: true };
+    }
+    if(action === "clear"){
+      calcState = { display: "0", acc: null, op: null, fresh: true };
+    } else if(action === "back"){
+      if(calcState.fresh) return;
+      calcState.display = calcState.display.length <= 1 ? "0" : calcState.display.slice(0, -1);
+      if(calcState.display === "-" || calcState.display === "-0") calcState.display = "0";
+      calcState.fresh = calcState.display === "0";
+    } else if(action === "digit"){
+      var d = btn.textContent.trim();
+      if(calcState.fresh || calcState.display === "0"){
+        calcState.display = d;
+        calcState.fresh = false;
+      } else if(calcState.display.replace(".", "").length < 12){
+        calcState.display += d;
+      }
+    } else if(action === "dot"){
+      if(calcState.fresh){
+        calcState.display = "0.";
+        calcState.fresh = false;
+      } else if(calcState.display.indexOf(".") < 0){
+        calcState.display += ".";
+      }
+    } else if(action === "pct"){
+      var p = parseFloat(calcState.display);
+      if(!isFinite(p)) return;
+      if(calcState.acc != null && (calcState.op === "+" || calcState.op === "-")){
+        calcState.display = fmtCalc(calcState.acc * (p / 100));
+      } else {
+        calcState.display = fmtCalc(p / 100);
+      }
+      calcState.fresh = true;
+    } else if(action === "op"){
+      var next = btn.getAttribute("data-op");
+      if(!calcState.fresh || calcState.acc == null){
+        if(!commitPending()) return;
+      }
+      calcState.op = next;
+      calcState.fresh = true;
+    } else if(action === "equals"){
+      if(calcState.op && calcState.acc != null){
+        if(!commitPending()) return;
+        calcState.op = null;
+        calcState.fresh = true;
+      }
+    }
+    paintCalc();
+  }
+
+  var calcOpenBtn = document.getElementById("amount-calc-open");
+  if(calcOpenBtn) calcOpenBtn.addEventListener("click", openCalc);
+  document.getElementById("calc-close").addEventListener("click", closeCalc);
+  calcScrim.addEventListener("click", closeCalc);
+  document.getElementById("calc-use").addEventListener("click", useCalc);
+  document.getElementById("calc-pad").addEventListener("click", function(ev){
+    var btn = ev.target.closest("[data-calc]");
+    if(!btn) return;
+    onCalcKey(btn.getAttribute("data-calc"), btn);
+  });
+  document.addEventListener("keydown", function(e){
+    if(!calcSheet.classList.contains("open")) return;
+    if(e.key === "Escape"){ e.preventDefault(); closeCalc(); return; }
+    if(e.key === "Enter"){ e.preventDefault(); useCalc(); return; }
+    if(e.key >= "0" && e.key <= "9"){
+      e.preventDefault();
+      onCalcKey("digit", { textContent: e.key });
+    } else if(e.key === "."){
+      e.preventDefault(); onCalcKey("dot");
+    } else if(e.key === "Backspace"){
+      e.preventDefault(); onCalcKey("back");
+    } else if(e.key === "+" || e.key === "-" || e.key === "*" || e.key === "/"){
+      e.preventDefault();
+      onCalcKey("op", { getAttribute: function(){ return e.key; } });
+    } else if(e.key === "="){
+      e.preventDefault(); onCalcKey("equals");
+    } else if(e.key === "%"){
+      e.preventDefault(); onCalcKey("pct");
+    } else if(e.key === "c" || e.key === "C"){
+      e.preventDefault(); onCalcKey("clear");
+    }
+  });
 
   syncLabels();
 })();

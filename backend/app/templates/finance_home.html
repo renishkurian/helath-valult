@@ -51,20 +51,20 @@
   </div>
 </div>
 
-<div class="mm-split mb-4">
-  <div class="mm-split-card">
+<div class="mm-split mm-split-facts mb-4">
+  <div class="mm-split-card stack">
     <div class="mm-split-lbl">Top category</div>
     {% if dash.top_category %}
-    <div class="mm-split-name">{{ dash.top_category.name }}</div>
+    <div class="mm-split-name" title="{{ dash.top_category.name }}">{{ dash.top_category.name }}</div>
     <div class="mm-split-meta">{{ inr(dash.top_category.amount) }} · {{ dash.top_category.pct|int }}% of spend</div>
     {% else %}
     <div class="mm-split-name text-muted">No spend yet</div>
     {% endif %}
   </div>
-  <div class="mm-split-card">
+  <div class="mm-split-card stack">
     <div class="mm-split-lbl">Highest spend</div>
     {% if dash.highest %}
-    <div class="mm-split-name">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
+    <div class="mm-split-name" title="{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
     <div class="mm-split-meta mm-expense">{{ inr(dash.highest.amount) }}{% if dash.highest.category_name %} · {{ dash.highest.category_name }}{% endif %}</div>
     {% else %}
     <div class="mm-split-name text-muted">Nothing posted</div>
