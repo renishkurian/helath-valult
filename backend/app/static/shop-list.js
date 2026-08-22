@@ -391,4 +391,145 @@
       }
     });
   });
+
+  // Swipe right → delete, swipe left → mark purchased (toggle).
+  (function setupShopSwipe() {
+    var THRESH = 72;
+    var MAX = 96;
+    var open = null;
+
+    function frontOf(el) {
+      return el && el.querySelector(".shop-swipe-front");
+    }
+
+    function reset(el) {
+      if (!el) return;
+      el.classList.remove("dragging", "swiped-left", "swiped-right");
+      var front = frontOf(el);
+      if (front) front.style.transform = "";
+    }
+
+    function closeOpen(except) {
+      if (open && open !== except) {
+        reset(open);
+        open = null;
+      }
+    }
+
+    function triggerToggle(el) {
+      var form = el.querySelector(".js-shop-toggle");
+      if (!form) return;
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.submit();
+    }
+
+    function triggerDelete(el) {
+      var form = el.querySelector(".js-shop-delete");
+      if (!form) return;
+      var msg = form.getAttribute("data-confirm") || "Remove this item?";
+      function go() {
+        form.removeAttribute("data-confirm");
+        if (typeof form.requestSubmit === "function") form.requestSubmit();
+        else form.submit();
+      }
+      if (typeof window.vaultConfirm === "function") {
+        window.vaultConfirm(msg).then(function (ok) {
+          if (!ok) { reset(el); open = null; return; }
+          go();
+        });
+        return;
+      }
+      if (window.confirm(msg)) go();
+      else { reset(el); open = null; }
+    }
+
+    function onStart(el, x, y) {
+      closeOpen(el);
+      el._sx = x;
+      el._sy = y;
+      el._dx = 0;
+      el._axis = null;
+      el.classList.add("dragging");
+    }
+
+    function onMove(el, x, y, ev) {
+      if (el._sx == null) return;
+      var dx = x - el._sx;
+      var dy = y - el._sy;
+      if (!el._axis) {
+        if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+        el._axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (el._axis === "y") {
+          el.classList.remove("dragging");
+          el._sx = null;
+          return;
+        }
+      }
+      if (el._axis !== "x") return;
+      if (ev && ev.cancelable) ev.preventDefault();
+      var hasDelete = !!el.querySelector(".js-shop-delete");
+      var hasToggle = !!el.querySelector(".js-shop-toggle");
+      if (dx > 0 && !hasDelete) dx = 0;
+      if (dx < 0 && !hasToggle) dx = 0;
+      dx = Math.max(-MAX, Math.min(MAX, dx));
+      el._dx = dx;
+      var front = frontOf(el);
+      if (front) front.style.transform = "translateX(" + dx + "px)";
+    }
+
+    function onEnd(el) {
+      if (el._sx == null) return;
+      var dx = el._dx || 0;
+      el._sx = null;
+      el.classList.remove("dragging");
+      var front = frontOf(el);
+      if (front) front.style.transform = "";
+      if (dx >= THRESH && el.querySelector(".js-shop-delete")) {
+        el.classList.add("swiped-right");
+        open = el;
+        setTimeout(function () { triggerDelete(el); }, 160);
+        return;
+      }
+      if (dx <= -THRESH && el.querySelector(".js-shop-toggle")) {
+        el.classList.add("swiped-left");
+        open = el;
+        setTimeout(function () {
+          triggerToggle(el);
+          reset(el);
+          open = null;
+        }, 160);
+        return;
+      }
+      reset(el);
+      if (open === el) open = null;
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll(".shop-swipe"), function (el) {
+      var front = frontOf(el);
+      if (!front) return;
+      front.addEventListener("touchstart", function (e) {
+        if (!e.touches || !e.touches.length) return;
+        onStart(el, e.touches[0].clientX, e.touches[0].clientY);
+      }, { passive: true });
+      front.addEventListener("touchmove", function (e) {
+        if (!e.touches || !e.touches.length) return;
+        onMove(el, e.touches[0].clientX, e.touches[0].clientY, e);
+      }, { passive: false });
+      front.addEventListener("touchend", function () { onEnd(el); });
+      front.addEventListener("touchcancel", function () {
+        el._sx = null;
+        el.classList.remove("dragging");
+        var f = frontOf(el);
+        if (f) f.style.transform = "";
+        reset(el);
+      });
+    });
+
+    document.addEventListener("click", function (e) {
+      if (open && !e.target.closest(".shop-swipe")) {
+        reset(open);
+        open = null;
+      }
+    });
+  })();
 })();

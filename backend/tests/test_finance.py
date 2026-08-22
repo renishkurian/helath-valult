@@ -659,6 +659,39 @@ def test_admin_account_statement_and_recurring_pages():
     assert "Amount histogram" in r.text
 
 
+def test_admin_account_edit_name_and_no_default_categories():
+    r = client.post("/auth/register", json={
+        "email": "editacc@example.com", "password": "password123", "full_name": "Edit Acc",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    bank = next(a for a in accounts if a["account_type"] == "bank")
+    client.post(
+        "/admin/login",
+        data={"email": "editacc@example.com", "password": "password123"},
+        follow_redirects=False,
+    )
+    page = client.get("/admin/finance/accounts")
+    assert page.status_code == 200, page.text
+    assert "edit-account" in page.text
+    assert "js-edit-account" in page.text
+    edit = client.post(
+        f"/admin/finance/accounts/{bank['id']}/edit",
+        data={
+            "name": "Salary account",
+            "account_type": "bank",
+            "opening_balance": str(bank["opening_balance"]),
+            "no_default_categories": "1",
+        },
+        follow_redirects=False,
+    )
+    assert edit.status_code == 302, edit.text
+    updated = next(a for a in client.get("/finance/accounts", headers=headers).json() if a["id"] == bank["id"])
+    assert updated["name"] == "Salary account"
+    assert updated["no_default_categories"] is True
+
+
 def test_transaction_optional_image():
     r = client.post("/auth/register", json={
         "email": "photo@example.com", "password": "password123", "full_name": "Photo User",

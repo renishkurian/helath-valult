@@ -1912,11 +1912,6 @@ details.reveal > summary i{ font-size:1rem; }
   body.has-composer-tall{
     --shop-composer-stack:9rem;
   }
-  body.has-tabbar.has-composer .app-main,
-  body.has-tabbar.has-composer-tall .app-main{
-    padding-bottom:calc(var(--v-tabbar-h) + var(--shop-composer-stack) + env(safe-area-inset-bottom));
-    scroll-padding-bottom:calc(var(--v-tabbar-h) + var(--shop-composer-stack) + env(safe-area-inset-bottom));
-  }
   .page-head{ align-items:flex-start; margin-bottom:1rem; gap:.75rem; }
   .page-head .eyebrow{ display:none; }
   .page-lead{ display:none; }
@@ -2314,6 +2309,35 @@ body.ask-ai .app-main{
 .shop-item-block{ border-bottom:1px solid var(--v-line); }
 .shop-item-block:last-child{ border-bottom:none; }
 .shop-item-block .list-row{ border-bottom:none; }
+.shop-row-actions{ display:flex; gap:.25rem; flex-shrink:0; align-items:center; }
+.shop-swipe-hint{
+  display:none; text-align:center; font-size:.7rem; color:var(--v-ink-3);
+  padding:.1rem 0 .35rem;
+}
+.shop-swipe{ position:relative; overflow:hidden; }
+.shop-swipe-bg{
+  position:absolute; inset:0; display:none; z-index:0; pointer-events:none;
+}
+.shop-swipe-del,
+.shop-swipe-buy{
+  position:absolute; top:0; bottom:0; width:5.5rem;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:.2rem;
+  font-size:.65rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#fff;
+}
+.shop-swipe-del{ left:0; background:linear-gradient(155deg,var(--v-bad),#b8455c); }
+.shop-swipe-buy{ right:0; background:linear-gradient(155deg,#2a9d6a,#1d7a52); }
+.shop-swipe-del i,
+.shop-swipe-buy i{ font-size:1.15rem; line-height:1; }
+.shop-swipe-front{
+  position:relative; z-index:1; background:var(--v-surface);
+  transform:translateX(0);
+  transition:transform .22s cubic-bezier(.2,.8,.2,1);
+  touch-action:pan-y;
+  will-change:transform;
+}
+.shop-swipe.dragging .shop-swipe-front{ transition:none; }
+.shop-swipe.swiped-right .shop-swipe-front{ transform:translateX(5.5rem); }
+.shop-swipe.swiped-left .shop-swipe-front{ transform:translateX(-5.5rem); }
 .shop-edit-form{
   padding:.25rem 1rem 1rem;
   background:var(--v-surface-2);
@@ -2456,6 +2480,45 @@ button.app-tab{
   .shop-composer .shop-suggest{
     top:auto; bottom:100%; margin-top:0; margin-bottom:.35rem; z-index:1035;
   }
+  .shop-swipe-hint{ display:block; }
+  .shop-swipe-bg{ display:block; }
+  .shop-item-block .shop-swipe-front.list-row,
+  .shop-swipe .shop-swipe-front.list-row{
+    flex-wrap:nowrap !important;
+    align-items:center !important;
+    gap:.65rem;
+    min-height:56px;
+    padding:.7rem .9rem;
+  }
+  .shop-swipe .row-body{ flex:1 1 auto; min-width:0; }
+  .shop-swipe .row-side{
+    margin-left:0 !important; width:auto !important; padding-left:0 !important;
+    flex-shrink:0; white-space:nowrap; font-size:.8rem;
+  }
+  .shop-swipe .shop-row-actions .js-shop-delete{ display:none; }
+  .shop-swipe .shop-row-actions{ flex-shrink:0; }
+  .shop-swipe .shop-row-actions .btn-ghost{
+    width:40px; height:40px; padding:0; display:inline-grid; place-items:center;
+  }
+  .shop-swipe .js-shop-toggle{ flex-shrink:0; }
+  .shop-swipe .js-shop-toggle .btn{ min-height:40px; min-width:40px; }
+  .shop-item-block > .list-row{
+    flex-wrap:nowrap !important; align-items:center !important; gap:.5rem;
+  }
+  .shop-item-block > .list-row .row-actions{
+    flex-wrap:wrap; justify-content:flex-end; gap:.35rem; margin-left:auto;
+    width:auto !important; padding-left:0 !important;
+  }
+  .shop-item-block > .list-row .row-actions .btn-sm{ min-height:36px; padding:.25rem .55rem; }
+  body.has-composer .app-main,
+  body.has-composer-tall .app-main{
+    padding-bottom:calc(var(--shop-composer-stack, 5.75rem) + env(safe-area-inset-bottom) + 1rem);
+  }
+  body.has-tabbar.has-composer .app-main,
+  body.has-tabbar.has-composer-tall .app-main{
+    padding-bottom:calc(var(--v-tabbar-h) + var(--shop-composer-stack, 5.75rem) + env(safe-area-inset-bottom));
+  }
+  .shop-composer form .shop-composer-extra{ display:none; }
   .public-app{
     height:100dvh; height:100svh; overflow:hidden; display:flex; flex-direction:column;
   }
@@ -3462,13 +3525,13 @@ body.fx-focus.has-tabbar .app-main{
     -webkit-overflow-scrolling:touch;
     padding-bottom:.25rem;
   }
-  .list-row{
+  .list-row:not(.shop-swipe-front){
     flex-wrap:wrap; align-items:flex-start; gap:.75rem;
   }
-  .list-row > a.d-flex{
+  .list-row:not(.shop-swipe-front) > a.d-flex{
     flex:1 1 12rem; min-width:0;
   }
-  .list-row .row-side{
+  .list-row:not(.shop-swipe-front) .row-side{
     margin-left:0; width:100%;
     display:flex; flex-wrap:wrap; justify-content:flex-start; gap:.5rem;
     padding-left:calc(2.75rem + .875rem); /* align under title past avatar */

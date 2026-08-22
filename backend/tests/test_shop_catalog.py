@@ -119,7 +119,6 @@ def test_catalog_translate_api_ai_fallback():
 
 def test_admin_catalog_page_has_ai_translate():
     headers, email = _headers("page")
-    # Hit API first so middleware is warm, then cookie-login on a fresh client
     assert client.get("/tracker/catalog", headers=headers).status_code == 200
     session = TestClient(app)
     login = session.post(
@@ -133,3 +132,35 @@ def test_admin_catalog_page_has_ai_translate():
     assert "AI translate Manglish" in page.text
     assert 'id="c-ai-translate"' in page.text
     assert "/admin/tracker/catalog/translate" in page.text
+    assert "Potato" in page.text
+    assert "Tomato" in page.text
+    assert "Built-in" in page.text
+    assert 'id="catalog-search"' in page.text
+
+
+def test_builtin_catalog_override():
+    headers, email = _headers("builtin")
+    session = TestClient(app)
+    session.post("/admin/login", data={"email": email, "password": "password123"}, follow_redirects=True)
+    save = session.post("/admin/tracker/catalog/builtin/save", data={
+        "seed_key": "vegetables:potato",
+        "english": "Potato XL",
+        "malayalam": "ഉരുളക്കിഴങ്ങ്",
+        "emoji": "🥔",
+        "category": "vegetables",
+        "scope": "personal",
+        "aliases": "urula",
+    }, follow_redirects=False)
+    assert save.status_code == 302, save.text
+    groups = client.get("/tracker/quick-add", headers=headers).json()["groups"]
+    veg = next(g for g in groups if g["key"] == "vegetables")
+    names = [e["english"] for e in veg["entries"]]
+    assert "Potato XL" in names
+    assert "Potato" not in names
+    reset = session.post("/admin/tracker/catalog", data={
+        "english": "Only Mine",
+        "emoji": "⭐",
+        "category": "custom",
+        "scope": "personal",
+    }, follow_redirects=False)
+    assert reset.status_code == 302

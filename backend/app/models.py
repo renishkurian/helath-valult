@@ -1410,5 +1410,6 @@ class ShopCatalogItem(Base):
     emoji = Column(String(16), default="🛒")
     category = Column(String(80), nullable=False, default="essentials", index=True)
     aliases = Column(Text, nullable=True)  # comma-separated extra match keys
+    seed_key = Column(String(120), nullable=True, index=True)  # e.g. vegetables:potato — overrides built-in chip
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

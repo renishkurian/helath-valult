@@ -239,6 +239,28 @@ def _all_catalog() -> list[dict]:
     return rows
 
 
+def builtin_seed_key(category: str, english: str) -> str:
+    cat = (category or "custom").strip().lower()
+    en = (english or "").strip().lower()
+    return f"{cat}:{en}"
+
+
+def _load_catalog_rows(db: Session, user_id: str) -> list[models.ShopCatalogItem]:
+    from sqlalchemy import or_
+
+    return (
+        db.query(models.ShopCatalogItem)
+        .filter(
+            or_(
+                models.ShopCatalogItem.scope == "global",
+                models.ShopCatalogItem.user_id == user_id,
+            )
+        )
+        .order_by(models.ShopCatalogItem.english)
+        .all()
+    )
+
+
 def _fold(s: str) -> str:
     """Normalize for matching: lowercase alphanumeric, drop Malayalam virama/marks."""
     out: list[str] = []
@@ -321,11 +343,11 @@ def _catalog_row_from_db(row: models.ShopCatalogItem) -> dict:
         "category": cat,
         "aliases": aliases,
         "catalog_id": row.id,
+        "seed_key": (row.seed_key or "").strip() or None,
         "scope": row.scope or "personal",
         "custom": True,
     }
     base["aliases"] = _entry_keys(base)  # folded keys for chip search
-    # Keep raw alias strings for display/edit separately via aliases_raw if needed
     return base
 
 
@@ -333,61 +355,61 @@ def load_user_catalog(db: Session | None, user_id: str | None) -> list[dict]:
     """Personal items for this vault plus all global items."""
     if db is None or not user_id:
         return []
-    from sqlalchemy import or_
-
-    rows = (
-        db.query(models.ShopCatalogItem)
-        .filter(
-            or_(
-                models.ShopCatalogItem.scope == "global",
-                models.ShopCatalogItem.user_id == user_id,
-            )
-        )
-        .order_by(models.ShopCatalogItem.english)
-        .all()
-    )
-    return [_catalog_row_from_db(r) for r in rows]
+    return [_catalog_row_from_db(r) for r in _load_catalog_rows(db, user_id)]
 
 
 def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> list[dict]:
     by_cat: dict[str, list[dict]] = {k: [] for k in QUICK_ADD}
     by_cat["custom"] = []
     seen: set[tuple[str, str]] = set()
+    seed_overrides: dict[str, dict] = {}
+    db_rows = load_user_catalog(db, user_id)
+    for row in db_rows:
+        sk = (row.get("seed_key") or "").strip()
+        if sk:
+            seed_overrides[sk] = row
 
     for key, items in QUICK_ADD.items():
         for it in items:
             en = (it.get("english") or "").strip()
+            seed = builtin_seed_key(key, en)
+            if seed in seed_overrides:
+                ov = seed_overrides[seed]
+                cat = ov.get("category") or key
+                by_cat.setdefault(cat, []).append({
+                    **ov,
+                    "star": en.lower() in FREQUENT,
+                    "custom": True,
+                })
+                seen.add((cat, (ov.get("english") or en).lower()))
+                continue
             entry = {
                 **it,
                 "category": key,
                 "aliases": _entry_keys({**it, "category": key}),
                 "star": en.lower() in FREQUENT,
                 "custom": False,
+                "seed_key": seed,
             }
             by_cat[key].append(entry)
             seen.add((key, en.lower()))
 
-    for row in load_user_catalog(db, user_id):
+    for row in db_rows:
+        if (row.get("seed_key") or "").strip():
+            continue
         cat = row["category"]
         en = (row.get("english") or "").strip()
         if not en:
             continue
         slot = (cat, en.lower())
         if slot in seen:
-            # Prefer user/global override: replace seed chip in that category
             for i, existing in enumerate(by_cat.get(cat) or []):
                 if (existing.get("english") or "").lower() == en.lower():
-                    by_cat[cat][i] = {
-                        **row,
-                        "star": en.lower() in FREQUENT,
-                    }
+                    by_cat[cat][i] = {**row, "star": en.lower() in FREQUENT}
                     break
             continue
         seen.add(slot)
-        by_cat.setdefault(cat, []).append({
-            **row,
-            "star": True,
-        })
+        by_cat.setdefault(cat, []).append({**row, "star": True})
 
     groups = []
     order = list(QUICK_ADD.keys()) + (["custom"] if by_cat.get("custom") else [])
@@ -399,8 +421,83 @@ def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> 
             "key": key,
             "label": GROUP_LABELS.get(key, key.title()),
             "icon": GROUP_ICONS.get(key, "🛒"),
-            # Use "entries" — Jinja treats dict.items as dict.items(), which 500s the list page.
             "entries": entries,
+        })
+    return groups
+
+
+def admin_catalog_groups(db: Session, owner: str) -> list[dict]:
+    """Built-in Kerala chips plus DB overrides/custom rows for the admin catalog page."""
+    rows = _load_catalog_rows(db, owner)
+    by_seed: dict[str, models.ShopCatalogItem] = {}
+    by_slot: dict[tuple[str, str], models.ShopCatalogItem] = {}
+    for row in rows:
+        sk = (row.seed_key or "").strip()
+        if sk:
+            by_seed[sk] = row
+        by_slot[((row.category or "custom").lower(), (row.english or "").lower())] = row
+
+    used_ids: set[str] = set()
+    groups: list[dict] = []
+
+    def _entry_from_row(row: models.ShopCatalogItem, *, is_builtin: bool, seed_key: str | None) -> dict:
+        return {
+            "id": row.id,
+            "seed_key": seed_key or row.seed_key,
+            "is_builtin": is_builtin,
+            "has_override": bool(is_builtin and row.id),
+            "english": row.english,
+            "malayalam": row.malayalam,
+            "emoji": row.emoji or "🛒",
+            "category": row.category or "custom",
+            "scope": row.scope or "personal",
+            "aliases": row.aliases,
+            "mine": row.user_id == owner,
+        }
+
+    for cat, items in QUICK_ADD.items():
+        entries: list[dict] = []
+        for it in items:
+            en = (it.get("english") or "").strip()
+            seed = builtin_seed_key(cat, en)
+            row = by_seed.get(seed) or by_slot.get((cat, en.lower()))
+            if row:
+                used_ids.add(row.id)
+                entries.append(_entry_from_row(row, is_builtin=True, seed_key=seed))
+            else:
+                entries.append({
+                    "id": None,
+                    "seed_key": seed,
+                    "is_builtin": True,
+                    "has_override": False,
+                    "english": en,
+                    "malayalam": it.get("malayalam"),
+                    "emoji": it.get("emoji") or "🛒",
+                    "category": cat,
+                    "scope": "builtin",
+                    "aliases": None,
+                    "mine": True,
+                })
+        groups.append({
+            "key": cat,
+            "label": GROUP_LABELS.get(cat, cat.title()),
+            "icon": GROUP_ICONS.get(cat, "🛒"),
+            "entries": entries,
+        })
+
+    custom_entries: list[dict] = []
+    for row in rows:
+        if row.id in used_ids:
+            continue
+        if (row.seed_key or "").strip():
+            continue
+        custom_entries.append(_entry_from_row(row, is_builtin=False, seed_key=None))
+    if custom_entries:
+        groups.append({
+            "key": "custom",
+            "label": GROUP_LABELS.get("custom", "Custom"),
+            "icon": GROUP_ICONS.get("custom", "⭐"),
+            "entries": custom_entries,
         })
     return groups
 

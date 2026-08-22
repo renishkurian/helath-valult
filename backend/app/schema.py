@@ -123,6 +123,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("finance_txn_id", "VARCHAR(32)"),
         ("finance_category_id", "VARCHAR(32)"),
     ],
+    "shop_catalog_items": [
+        ("seed_key", "VARCHAR(120)"),
+    ],
     "locker_items": [
         ("person_id", "VARCHAR(32)"),
         ("folder_id", "VARCHAR(32)"),

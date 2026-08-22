@@ -308,10 +308,15 @@
   <h2>Items</h2>
   <input class="form-control shop-item-filter" id="shop-item-filter" type="search" placeholder="Search items…" autocomplete="off">
 </div>
+<p class="shop-swipe-hint mb-2">Swipe right to delete · swipe left to mark purchased</p>
 <div class="list-rows mb-4" id="shop-item-rows">
   {% for item in approved %}
-  <div class="shop-item-block shop-item {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
-    <div class="list-row">
+  <div class="shop-item-block shop-item shop-swipe {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
+    <div class="shop-swipe-bg" aria-hidden="true">
+      <div class="shop-swipe-del"><i class="bi bi-trash3"></i><span>Delete</span></div>
+      <div class="shop-swipe-buy"><i class="bi bi-check2"></i><span>{% if item.checked %}Undo{% else %}Bought{% endif %}</span></div>
+    </div>
+    <div class="shop-swipe-front list-row">
       <form class="js-shop-toggle" method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/toggle">
         <button class="btn btn-ghost p-0" type="submit" aria-label="{% if item.checked %}Uncheck{% else %}Check{% endif %}">
           <i class="bi {% if item.checked %}bi-check-circle-fill{% else %}bi-circle{% endif %}"></i>
@@ -327,10 +332,12 @@
         </span>
       </span>
       <span class="row-side">{% if item.price %}{{ inr(item.price) }}{% endif %}</span>
-      <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/delete" data-confirm="Remove this item?">
-        <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
-      </form>
+      <div class="shop-row-actions">
+        <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+        <form class="js-shop-delete" method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/delete" data-confirm="Remove this item?">
+          <button class="btn btn-ghost" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
+        </form>
+      </div>
     </div>
     <form class="shop-edit-form" id="edit-{{ item.id }}" hidden method="post" action="/admin/tracker/lists/{{ lst.id }}/items/{{ item.id }}/edit">
       <div class="row g-2 align-items-end">
@@ -382,5 +389,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/shop-list.js?v=7"></script>
+<script src="/static/shop-list.js?v=9"></script>
 {% endblock %}

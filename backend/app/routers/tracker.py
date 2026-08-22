@@ -1260,6 +1260,9 @@ def _catalog_out(row: models.ShopCatalogItem, owner: str) -> schemas.ShopCatalog
         category=row.category or "custom",
         scope=row.scope or "personal",
         aliases=row.aliases,
+        seed_key=row.seed_key,
+        is_builtin=bool(row.seed_key),
+        has_override=bool(row.seed_key),
         mine=row.user_id == owner,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -1273,6 +1276,7 @@ def _normalize_catalog_fields(
     category: str,
     scope: str,
     aliases: Optional[str],
+    seed_key: Optional[str] = None,
 ) -> dict:
     en = (english or "").strip()
     if not en:
@@ -1284,6 +1288,7 @@ def _normalize_catalog_fields(
     if sc not in VALID_SCOPES:
         sc = "personal"
     al = (aliases or "").strip() or None
+    sk = (seed_key or "").strip() or None
     return {
         "english": en[:255],
         "malayalam": ((malayalam or "").strip() or None),
@@ -1291,6 +1296,7 @@ def _normalize_catalog_fields(
         "category": cat,
         "scope": sc,
         "aliases": al[:500] if al else None,
+        "seed_key": sk[:120] if sk else None,
     }
 
 
@@ -1357,7 +1363,7 @@ def add_catalog_item(
     require_owner(current_user)
     owner = _uid(current_user)
     fields = _normalize_catalog_fields(
-        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases,
+        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases, body.seed_key,
     )
     row = models.ShopCatalogItem(user_id=owner, **fields)
     db.add(row)
@@ -1402,6 +1408,7 @@ def update_catalog_item(
         raise HTTPException(404, "Catalog item not found")
     fields = _normalize_catalog_fields(
         body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases,
+        body.seed_key or row.seed_key,
     )
     for k, v in fields.items():
         setattr(row, k, v)
@@ -1430,6 +1437,42 @@ def delete_catalog_item(
     db.delete(row)
     db.commit()
     return None
+
+
+def upsert_builtin_catalog(
+    body: schemas.ShopCatalogItemIn,
+    db: Session,
+    current_user: models.User,
+) -> schemas.ShopCatalogItemOut:
+    """Save a personal/global override for a built-in quick-add chip."""
+    require_owner(current_user)
+    owner = _uid(current_user)
+    seed = (body.seed_key or "").strip()
+    if not seed:
+        raise HTTPException(400, "seed_key is required")
+    row = (
+        db.query(models.ShopCatalogItem)
+        .filter(
+            models.ShopCatalogItem.seed_key == seed,
+            models.ShopCatalogItem.user_id == owner,
+        )
+        .first()
+    )
+    fields = _normalize_catalog_fields(
+        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases, seed,
+    )
+    if row:
+        for k, v in fields.items():
+            setattr(row, k, v)
+        row.updated_at = datetime.utcnow()
+    else:
+        row = models.ShopCatalogItem(user_id=owner, **fields)
+        db.add(row)
+    db.flush()
+    _sync_dict_for_global(db, row)
+    db.commit()
+    db.refresh(row)
+    return _catalog_out(row, owner)
 
 
 @router.get("/quick-add")

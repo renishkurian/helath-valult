@@ -3984,6 +3984,41 @@ def finance_account_add(
     return RedirectResponse("/admin/finance/accounts", status_code=302)
 
 
+@router.post("/finance/accounts/{account_id}/edit")
+def finance_account_edit(
+    account_id: str,
+    request: Request,
+    name: str = Form(...),
+    account_type: str = Form("cash"),
+    opening_balance: str = Form("0"),
+    credit_limit: str = Form(""),
+    no_default_categories: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers.finance import list_accounts, update_account
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    accounts = list_accounts(db=db, current_user=user)
+    account = next((a for a in accounts if a.id == account_id), None)
+    if not account:
+        return RedirectResponse("/admin/finance/accounts", status_code=302)
+    update_account(
+        account_id,
+        sc.FinanceAccountIn(
+            name=name,
+            account_type=account_type,
+            opening_balance=float(opening_balance or account.opening_balance or 0),
+            credit_limit=float(credit_limit) if credit_limit.strip() else None,
+            no_default_categories=bool(no_default_categories),
+        ),
+        db=db,
+        current_user=user,
+    )
+    return RedirectResponse("/admin/finance/accounts", status_code=302)
+
+
 @router.post("/finance/accounts/{account_id}/delete")
 def finance_account_delete(account_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers.finance import delete_account
@@ -7061,15 +7096,16 @@ def tracker_delete_friend(contact_id: str, request: Request, db: Session = Depen
 
 @router.get("/tracker/catalog", response_class=HTMLResponse)
 def tracker_catalog(request: Request, db: Session = Depends(get_db)):
-    from app.routers import tracker as tr
-    from app.grocery import CATALOG_CATEGORIES, GROUP_LABELS
+    from app.grocery import CATALOG_CATEGORIES, GROUP_LABELS, admin_catalog_groups
     user = _tr_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    items = tr.list_catalog(db=db, current_user=user)
+    from app.deps import vault_id
+    groups = admin_catalog_groups(db, vault_id(user))
     cats = [(k, GROUP_LABELS.get(k, k.title())) for k in CATALOG_CATEGORIES]
+    total = sum(len(g["entries"]) for g in groups)
     return templates.TemplateResponse("tracker_catalog.html", _tr_ctx(
-        request, user, "tr_catalog", items=items, categories=cats,
+        request, user, "tr_catalog", groups=groups, categories=cats, total=total,
     ))
 
 
@@ -7111,6 +7147,7 @@ def tracker_update_catalog(
     category: str = Form("custom"),
     scope: str = Form("personal"),
     aliases: str = Form(""),
+    seed_key: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers import tracker as tr
@@ -7123,9 +7160,39 @@ def tracker_update_catalog(
         tr.update_catalog_item(item_id, sc.ShopCatalogItemIn(
             english=english, malayalam=malayalam or None, emoji=emoji or "🛒",
             category=category, scope=scope, aliases=aliases or None,
+            seed_key=seed_key or None,
         ), db=db, current_user=user)
     except Exception as e:
         msg = getattr(e, "detail", None) or str(e) or "Could not update"
+        return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
+
+@router.post("/tracker/catalog/builtin/save")
+def tracker_save_builtin_catalog(
+    request: Request,
+    seed_key: str = Form(...),
+    english: str = Form(...),
+    malayalam: str = Form(""),
+    emoji: str = Form("🛒"),
+    category: str = Form("custom"),
+    scope: str = Form("personal"),
+    aliases: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    from urllib.parse import quote
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.upsert_builtin_catalog(sc.ShopCatalogItemIn(
+            english=english, malayalam=malayalam or None, emoji=emoji or "🛒",
+            category=category, scope=scope, aliases=aliases or None, seed_key=seed_key,
+        ), db=db, current_user=user)
+    except Exception as e:
+        msg = getattr(e, "detail", None) or str(e) or "Could not save"
         return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
     return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
 

@@ -1978,6 +1978,7 @@ class ShopCatalogItemIn(BaseModel):
     category: str = Field(default="custom", max_length=80)
     scope: str = Field(default="personal", max_length=20)  # personal | global
     aliases: Optional[str] = Field(default=None, max_length=500)
+    seed_key: Optional[str] = Field(default=None, max_length=120)
 
 
 class ShopCatalogTranslateIn(BaseModel):
@@ -1996,15 +1997,18 @@ class ShopCatalogTranslateOut(BaseModel):
 
 
 class ShopCatalogItemOut(BaseModel):
-    id: str
+    id: Optional[str] = None
     english: str
     malayalam: Optional[str] = None
     emoji: Optional[str] = None
     category: str
     scope: str
     aliases: Optional[str] = None
+    seed_key: Optional[str] = None
+    is_builtin: bool = False
+    has_override: bool = False
     mine: bool = True
-    created_at: datetime
+    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 

@@ -6,9 +6,8 @@
     <div class="eyebrow">Shopping List</div>
     <h1 class="page-title">Quick add items</h1>
     <p class="page-lead">
-      Add chips that appear under Quick add on every list.
-      <strong>Personal</strong> stays in your vault;
-      <strong>Global</strong> shows for every user on this server.
+      All chips shown under <strong>Quick add</strong> on lists — built-in Kerala groceries plus your custom items.
+      Edit any row; built-in changes save as a personal override (or global for everyone).
     </p>
   </div>
 </div>
@@ -21,7 +20,10 @@
 {% endif %}
 
 <div class="surface mb-4">
-  <div class="section-head"><h2>Add item</h2></div>
+  <div class="section-head d-flex flex-wrap gap-2 align-items-center justify-content-between">
+    <h2 class="mb-0">Add custom item</h2>
+    <span class="badge badge-soft">{{ total }} items in catalog</span>
+  </div>
   <form method="post" action="/admin/tracker/catalog" class="row g-2 align-items-end" id="catalog-add-form">
     <div class="col-12">
       <label class="shop-ai-toggle mb-1">
@@ -68,79 +70,168 @@
   </form>
 </div>
 
-{% if items %}
-<div class="list-rows">
-  {% for it in items %}
-  <div class="list-row align-items-start flex-wrap gap-2">
-    <span class="row-body flex-grow-1">
-      <span class="row-title">{{ it.emoji or '🛒' }} {{ it.english }}{% if it.malayalam %} ({{ it.malayalam }}){% endif %}</span>
-      <span class="row-meta">
-        {{ it.category }}
-        · {% if it.scope == 'global' %}<span class="badge badge-info">Global</span>{% else %}<span class="badge">Personal</span>{% endif %}
-        {% if not it.mine %} · from another vault{% endif %}
-        {% if it.aliases %} · aliases: {{ it.aliases }}{% endif %}
-      </span>
-    </span>
-    {% if it.mine %}
-    <details class="w-100">
-      <summary class="btn btn-ghost btn-sm">Edit</summary>
-      <form method="post" action="/admin/tracker/catalog/{{ it.id }}/update" class="row g-2 mt-2">
-        <div class="col-md-3">
-          <label class="form-label">English</label>
-          <input class="form-control" name="english" value="{{ it.english }}" required maxlength="255">
+<div class="mb-3">
+  <label class="form-label visually-hidden" for="catalog-search">Search items</label>
+  <input class="form-control" id="catalog-search" type="search" placeholder="Search English, Malayalam, or category…" autocomplete="off">
+</div>
+
+{% for group in groups %}
+<div class="card mb-3 catalog-group" data-group="{{ group.key }}">
+  <div class="card-header">
+    <span class="card-ico"><span aria-hidden="true">{{ group.icon }}</span></span>
+    <div>
+      <h2>{{ group.label }}</h2>
+      <div class="card-sub">{{ group.entries | length }} item{% if group.entries | length != 1 %}s{% endif %}</div>
+    </div>
+  </div>
+  <div class="list-rows">
+    {% for it in group.entries %}
+    <div class="list-row catalog-item align-items-center flex-wrap gap-2"
+         data-search="{{ (it.english ~ ' ' ~ (it.malayalam or '') ~ ' ' ~ group.label) | lower }}">
+      <span class="avatar" aria-hidden="true">{{ it.emoji or '🛒' }}</span>
+      <div class="row-body flex-grow-1">
+        <div class="row-title">{{ it.english }}</div>
+        <div class="row-meta">
+          {% if it.malayalam %}{{ it.malayalam }} · {% endif %}
+          {{ group.label.split(' · ')[0] }}
+          {% if it.is_builtin and not it.id %} · <span class="badge badge-soft">Built-in</span>{% endif %}
+          {% if it.id and it.is_builtin %} · <span class="badge badge-info">Edited</span>{% endif %}
+          {% if it.id and not it.is_builtin %} · <span class="badge">Custom</span>{% endif %}
+          {% if it.scope == 'global' %} · <span class="badge badge-info">Global</span>{% elif it.id %} · Personal{% endif %}
+          {% if it.aliases %} · aliases: {{ it.aliases }}{% endif %}
         </div>
-        <div class="col-md-2">
-          <label class="form-label">Malayalam</label>
-          <input class="form-control" name="malayalam" value="{{ it.malayalam or '' }}" maxlength="255">
+      </div>
+      <div class="row-actions">
+        {% if it.id and not it.mine %}
+        <span class="text-muted small">View only</span>
+        {% else %}
+        <button class="btn btn-sm btn-outline-light js-edit-catalog" type="button"
+                data-bs-toggle="modal" data-bs-target="#edit-catalog"
+                data-item-id="{{ it.id or '' }}"
+                data-seed-key="{{ it.seed_key or '' }}"
+                data-english="{{ it.english }}"
+                data-malayalam="{{ it.malayalam or '' }}"
+                data-emoji="{{ it.emoji or '🛒' }}"
+                data-category="{{ it.category }}"
+                data-scope="{{ it.scope if it.scope != 'builtin' else 'personal' }}"
+                data-aliases="{{ it.aliases or '' }}"
+                data-is-builtin="{{ '1' if it.is_builtin else '0' }}">
+          <i class="bi bi-pencil"></i> Edit
+        </button>
+        {% if it.id and it.mine %}
+        <form method="post" action="/admin/tracker/catalog/{{ it.id }}/delete" data-confirm="Remove this item? Built-in defaults will return if this was an override.">
+          <button class="btn btn-sm btn-outline-danger btn-icon" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
+        </form>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endfor %}
+
+<div class="modal fade" id="edit-catalog" tabindex="-1" aria-labelledby="edit-catalog-title" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <form method="post" id="edit-catalog-form" action="/admin/tracker/catalog/builtin/save">
+        <input type="hidden" name="seed_key" id="edit-seed-key" value="">
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="edit-catalog-title">Edit quick-add item</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
-        <div class="col-md-1">
-          <label class="form-label">Emoji</label>
-          <input class="form-control" name="emoji" value="{{ it.emoji or '🛒' }}" maxlength="16">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label" for="edit-en">English name</label>
+              <input class="form-control" id="edit-en" name="english" required maxlength="255">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="edit-ml">Malayalam</label>
+              <input class="form-control" id="edit-ml" name="malayalam" maxlength="255">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label" for="edit-emoji">Emoji</label>
+              <input class="form-control" id="edit-emoji" name="emoji" maxlength="16">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="edit-cat">Category</label>
+              <select class="form-select" id="edit-cat" name="category">
+                {% for key, label in categories %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label" for="edit-scope">Visibility</label>
+              <select class="form-select" id="edit-scope" name="scope">
+                <option value="personal">Personal — only me</option>
+                <option value="global">Global — all users</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="edit-aliases">Aliases</label>
+              <input class="form-control" id="edit-aliases" name="aliases" maxlength="500"
+                     placeholder="Manglish spellings for search">
+            </div>
+          </div>
+          <p class="small text-muted mt-3 mb-0" id="edit-catalog-hint"></p>
         </div>
-        <div class="col-md-2">
-          <label class="form-label">Category</label>
-          <select class="form-select" name="category">
-            {% for key, label in categories %}
-            <option value="{{ key }}" {% if key == it.category %}selected{% endif %}>{{ label }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Visibility</label>
-          <select class="form-select" name="scope">
-            <option value="personal" {% if it.scope != 'global' %}selected{% endif %}>Personal</option>
-            <option value="global" {% if it.scope == 'global' %}selected{% endif %}>Global</option>
-          </select>
-        </div>
-        <div class="col-md-2 d-flex align-items-end gap-2">
-          <button class="btn btn-primary" type="submit">Save</button>
-        </div>
-        <div class="col-12">
-          <label class="form-label">Aliases</label>
-          <input class="form-control" name="aliases" value="{{ it.aliases or '' }}" maxlength="500">
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save</button>
         </div>
       </form>
-    </details>
-    <form method="post" action="/admin/tracker/catalog/{{ it.id }}/delete" data-confirm="Remove this Quick add item?">
-      <button class="btn btn-ghost text-danger" type="submit" aria-label="Delete"><i class="bi bi-trash3"></i></button>
-    </form>
-    {% else %}
-    <span class="row-meta text-muted">You can use it; only the creator can edit.</span>
-    {% endif %}
+    </div>
   </div>
-  {% endfor %}
 </div>
-{% else %}
-<div class="empty-state">
-  <i class="bi bi-stars"></i>
-  <p>No custom Quick add items yet. Built-in Kerala groceries stay available on every list.</p>
-</div>
-{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
 (function () {
+  var search = document.getElementById("catalog-search");
+  if (search) {
+    search.addEventListener("input", function () {
+      var q = (search.value || "").trim().toLowerCase();
+      document.querySelectorAll(".catalog-item").forEach(function (row) {
+        var hay = row.getAttribute("data-search") || "";
+        row.style.display = !q || hay.indexOf(q) >= 0 ? "" : "none";
+      });
+      document.querySelectorAll(".catalog-group").forEach(function (card) {
+        var visible = card.querySelectorAll('.catalog-item:not([style*="display: none"])').length;
+        card.style.display = visible ? "" : "none";
+      });
+    });
+  }
+
+  var modal = document.getElementById("edit-catalog");
+  if (modal) {
+    modal.addEventListener("show.bs.modal", function (ev) {
+      var btn = ev.relatedTarget;
+      if (!btn || !btn.classList.contains("js-edit-catalog")) return;
+      var form = document.getElementById("edit-catalog-form");
+      var id = btn.getAttribute("data-item-id") || "";
+      var seed = btn.getAttribute("data-seed-key") || "";
+      document.getElementById("edit-seed-key").value = seed;
+      document.getElementById("edit-en").value = btn.getAttribute("data-english") || "";
+      document.getElementById("edit-ml").value = btn.getAttribute("data-malayalam") || "";
+      document.getElementById("edit-emoji").value = btn.getAttribute("data-emoji") || "🛒";
+      document.getElementById("edit-cat").value = btn.getAttribute("data-category") || "custom";
+      document.getElementById("edit-scope").value = btn.getAttribute("data-scope") || "personal";
+      document.getElementById("edit-aliases").value = btn.getAttribute("data-aliases") || "";
+      form.action = id
+        ? ("/admin/tracker/catalog/" + encodeURIComponent(id) + "/update")
+        : "/admin/tracker/catalog/builtin/save";
+      var hint = document.getElementById("edit-catalog-hint");
+      if (hint) {
+        hint.textContent = btn.getAttribute("data-is-builtin") === "1" && !id
+          ? "Saving creates a personal override of this built-in item for your vault."
+          : "";
+      }
+    });
+  }
+
   var en = document.getElementById("c-en");
   var ml = document.getElementById("c-ml");
   var emoji = document.getElementById("c-emoji");
@@ -214,7 +305,6 @@
         setStatus((res.body && res.body.detail) || "Translate failed");
         return;
       }
-      // Only apply if the field still matches what we asked for
       if ((en.value || "").trim() !== q) return;
       applyResult(res.body, q);
     }).catch(function () {

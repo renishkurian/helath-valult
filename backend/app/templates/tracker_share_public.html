@@ -12,7 +12,7 @@
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=35">
+<link rel="stylesheet" href="/static/vault.css?v=54">
 </head>
 <body class="has-composer public-app">
 <div class="public-wrap" id="shop-list-root" data-catalog="{{ catalog_json | e }}" data-suggest="{{ suggest_url or '' }}" data-live="/tracker/shared/{{ token }}" data-revision="{{ revision or '' }}">
@@ -54,10 +54,15 @@
 
     <div class="public-scroll">
     {% if items %}
+    <p class="shop-swipe-hint mb-2">Swipe left to mark purchased</p>
     <div class="list-rows">
       {% for item in items %}
-      <div class="shop-item-block shop-item {% if item.checked %}checked{% endif %}">
-        <div class="list-row">
+      <div class="shop-item-block shop-item shop-swipe {% if item.checked %}checked{% endif %}" data-name="{{ item.name }}">
+        <div class="shop-swipe-bg" aria-hidden="true">
+          <div class="shop-swipe-del"><i class="bi bi-trash3"></i><span>Delete</span></div>
+          <div class="shop-swipe-buy"><i class="bi bi-check2"></i><span>{% if item.checked %}Undo{% else %}Bought{% endif %}</span></div>
+        </div>
+        <div class="shop-swipe-front list-row">
           {% if item.status == 'approved' %}
           <form class="js-shop-toggle" method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/toggle">
             <button class="btn btn-ghost p-0" type="submit" aria-label="Toggle">
@@ -73,7 +78,9 @@
               · {{ item.added_by_name or item.guest_name or 'Someone' }}
             </span>
           </span>
-          <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+          <div class="shop-row-actions">
+            <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+          </div>
         </div>
         <form class="shop-edit-form" id="edit-{{ item.id }}" hidden method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/edit">
           <div class="row g-2 align-items-end">
@@ -113,7 +120,7 @@
     </form>
   </div>
 </div>
-<script src="/static/shop-list.js?v=7"></script>
+<script src="/static/shop-list.js?v=9"></script>
 <script>
 (function(){
   var guest = document.getElementById("guest");

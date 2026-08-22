@@ -60,6 +60,7 @@
         </div>
         <div class="row-meta">
           {{ a.account_type.replace('_',' ') }}{% if a.institution %} · {{ a.institution }}{% endif %}
+          {% if a.no_default_categories %} · <span class="text-faint">no default categories</span>{% endif %}
         </div>
         {% if a.account_type=='credit_card' %}
         <div class="row-meta">
@@ -71,6 +72,18 @@
         <div class="amount {% if a.is_liability or a.balance < 0 %}mm-expense{% else %}mm-income{% endif %}">{{ inr(a.balance) }}</div>
       </div>
       <div class="row-actions">
+        <button class="btn btn-sm btn-outline-light btn-icon js-edit-account" type="button"
+                aria-label="Edit {{ a.name }}"
+                data-bs-toggle="modal"
+                data-bs-target="#edit-account"
+                data-account-id="{{ a.id }}"
+                data-account-name="{{ a.name }}"
+                data-account-type="{{ a.account_type }}"
+                data-credit-limit="{{ a.credit_limit if a.credit_limit is not none else '' }}"
+                data-opening-balance="{{ a.opening_balance }}"
+                data-no-default-categories="{{ '1' if a.no_default_categories else '' }}">
+          <i class="bi bi-pencil"></i>
+        </button>
         <a class="btn btn-sm btn-outline-light" href="/admin/finance/accounts/{{ a.id }}">
           <i class="bi bi-receipt"></i> <span class="d-none d-md-inline">Statement</span>
         </a>
@@ -144,4 +157,69 @@
     </form>
   </div>
 </div>
+
+<div class="modal fade" id="edit-account" tabindex="-1" aria-labelledby="edit-account-title" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" id="edit-account-form" action="/admin/finance/accounts/placeholder/edit">
+        <div class="modal-header">
+          <h2 class="modal-title h5" id="edit-account-title">Edit account</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label" for="edit-acc-name">Name <span class="req">*</span></label>
+            <input class="form-control" id="edit-acc-name" type="text" name="name" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="edit-acc-type">Type</label>
+            <select class="form-select" id="edit-acc-type" name="account_type">
+              <option value="cash">Cash</option>
+              <option value="bank">Accounts / bank</option>
+              <option value="credit_card">Card</option>
+              <option value="loan">Loan</option>
+              <option value="wallet">Wallet</option>
+              <option value="investment">Investment</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="edit-acc-limit">Credit limit (cards)</label>
+            <input class="form-control" id="edit-acc-limit" name="credit_limit" placeholder="optional">
+          </div>
+          <input type="hidden" id="edit-acc-open" name="opening_balance" value="0">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="edit-acc-no-default-cats" name="no_default_categories" value="1">
+            <label class="form-check-label" for="edit-acc-no-default-cats">No default categories</label>
+            <div class="form-text">When checked, only categories created for this account appear when logging entries.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  var modal = document.getElementById("edit-account");
+  if (!modal) return;
+  modal.addEventListener("show.bs.modal", function(ev){
+    var btn = ev.relatedTarget;
+    if (!btn || !btn.classList.contains("js-edit-account")) return;
+    var form = document.getElementById("edit-account-form");
+    var id = btn.getAttribute("data-account-id") || "";
+    form.action = "/admin/finance/accounts/" + encodeURIComponent(id) + "/edit";
+    document.getElementById("edit-acc-name").value = btn.getAttribute("data-account-name") || "";
+    document.getElementById("edit-acc-type").value = btn.getAttribute("data-account-type") || "cash";
+    document.getElementById("edit-acc-limit").value = btn.getAttribute("data-credit-limit") || "";
+    document.getElementById("edit-acc-open").value = btn.getAttribute("data-opening-balance") || "0";
+    document.getElementById("edit-acc-no-default-cats").checked = btn.getAttribute("data-no-default-categories") === "1";
+  });
+})();
+</script>
 {% endblock %}
