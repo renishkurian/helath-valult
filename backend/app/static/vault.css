@@ -3019,6 +3019,44 @@ body.vdlg-open{ overflow:hidden; }
 }
 .diary-cat-card .row-actions{ margin-top:auto; display:flex; gap:.35rem; flex-wrap:wrap; }
 
+/* Money Manager — accounts explorer (same card language as diary folders) */
+.mm-acct-card .mm-acct-bal{
+  font-size:1rem; font-weight:700; letter-spacing:-0.02em;
+  font-variant-numeric:tabular-nums; line-height:1.2;
+}
+.mm-acct-card .row-actions form{ margin:0; display:inline-flex; }
+@media (max-width:991.98px){
+  .mm-acct-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width:420px){
+  .mm-acct-grid{ grid-template-columns:1fr; }
+}
+
+.mm-cat-grid{ margin-bottom:0.25rem; }
+.mm-cat-subs{
+  list-style:none; margin:0; padding:0;
+  display:flex; flex-direction:column; gap:0.25rem;
+}
+.mm-cat-subs li{
+  display:flex; align-items:center; justify-content:space-between; gap:0.35rem;
+  font-size:0.75rem; color:var(--v-ink-2);
+  padding:0.2rem 0.35rem; border-radius:6px;
+  background:rgba(255,255,255,0.03);
+}
+.mm-cat-subs form{ margin:0; }
+.mm-cat-acct-label{
+  font-size:0.75rem; font-weight:650; letter-spacing:0.04em;
+  text-transform:uppercase; color:var(--v-ink-3);
+  margin:0.75rem 0 0.5rem;
+}
+.mm-cat-acct-block + .mm-cat-acct-block{ margin-top:0.5rem; }
+@media (max-width:991.98px){
+  .mm-cat-grid{ grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width:420px){
+  .mm-cat-grid{ grid-template-columns:1fr; }
+}
+
 /* Vault Send access-request chat (pre-video) */
 .send-chat{
   margin-top:.85rem;

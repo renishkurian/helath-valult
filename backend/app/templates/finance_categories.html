@@ -3,153 +3,136 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <div class="eyebrow"><a href="/admin/finance/more"><i class="bi bi-chevron-left"></i> More</a></div>
+    <div class="eyebrow">
+      <a href="/admin/finance/more"><i class="bi bi-chevron-left"></i> More</a>
+    </div>
     <h1 class="page-title">Categories</h1>
-    <p class="page-lead">General categories apply to every account. Account categories (Home, Personal…) only show when that account is selected.</p>
+    <p class="page-lead">General shelves for every account, plus account-only folders when you need them.</p>
   </div>
 </div>
 
-<div class="card mb-4">
-  <div class="card-header">
-    <span class="card-ico gold"><i class="bi bi-plus-lg"></i></span>
-    <div>
-      <h2>Add category</h2>
-      <div class="card-sub">Pick a parent to file it as a subcategory</div>
-    </div>
-  </div>
-  <div class="card-body">
-    <form method="post" action="/admin/finance/categories">
-      <div class="row g-3">
-        <div class="col-md-6">
-          <label class="form-label" for="cat-name">Name <span class="req">*</span></label>
-          <input class="form-control" id="cat-name" type="text" name="name" required placeholder="Groceries, maid, school…">
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="section-head"><h2>General — all accounts</h2></div>
+    {% set ns = namespace(has_general=false) %}
+    <div class="diary-cat-grid mm-cat-grid">
+      {% for c in categories if not c.account_id and not c.parent_id %}
+      {% set ns.has_general = true %}
+      <div class="diary-cat-card" style="--cat:{{ c.color or ('#34D399' if c.kind == 'income' else '#F87171') }};">
+        <div class="swatch" aria-hidden="true"><i class="bi bi-tag-fill"></i></div>
+        <div class="name truncate" title="{{ c.name }}">{{ c.name }}</div>
+        <div class="meta">
+          {{ c.kind }}
+          {% set sub_count = namespace(n=0) %}
+          {% for sub in categories if sub.parent_id == c.id %}{% set sub_count.n = sub_count.n + 1 %}{% endfor %}
+          {% if sub_count.n %} · {{ sub_count.n }} sub{% if sub_count.n != 1 %}s{% endif %}{% endif %}
+          {% if c.is_system %} · built-in{% endif %}
         </div>
-        <div class="col-md-6">
-          <label class="form-label" for="cat-kind">Kind</label>
-          <select class="form-select" id="cat-kind" name="kind">
-            <option value="expense">Expense</option>
-            <option value="income">Income</option>
-          </select>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label" for="cat-scope">Scope</label>
-          <select class="form-select" id="cat-scope" name="account_id">
-            <option value="">General — all accounts</option>
-            {% for a in accounts %}
-            <option value="{{ a.id }}">Only {{ a.name }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label" for="cat-parent">Parent category</label>
-          <select class="form-select" id="cat-parent" name="parent_id">
-            <option value="">None — top-level</option>
-            {% for c in categories if not c.parent_id %}
-            <option value="{{ c.id }}">{{ c.name }} ({{ c.kind }})</option>
-            {% endfor %}
-          </select>
-          <div class="form-text">A parent overrides the kind and scope above.</div>
-        </div>
-      </div>
-      <div class="d-flex gap-2 mt-4">
-        <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save category</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<div class="section-head"><h2>General — all accounts</h2></div>
-<div class="card mb-4">
-  <div class="card-header">
-    <span class="card-ico info"><i class="bi bi-tags"></i></span>
-    <div>
-      <h2>General</h2>
-      <div class="card-sub">Available to every account</div>
-    </div>
-  </div>
-  <div class="list-rows">
-    {% for c in categories if not c.account_id and not c.parent_id %}
-    <div class="list-row">
-      <span class="dot" style="background:{{ c.color or 'var(--v-expense)' }}"></span>
-      <div class="row-body">
-        <div class="row-title">{{ c.name }}</div>
-        <div class="row-meta">{{ c.kind }} · all accounts</div>
-        {% for sub in categories if sub.parent_id == c.id %}
-        <div class="row-meta d-flex align-items-center gap-2 mt-1">
-          <i class="bi bi-arrow-return-right"></i>
-          <span>{{ sub.name }}</span>
-          {% if not sub.is_system %}
-          <form method="post" action="/admin/finance/categories/{{ sub.id }}/delete">
-            <button class="btn btn-ghost btn-sm btn-icon text-danger" type="submit" aria-label="Remove {{ sub.name }}">
-              <i class="bi bi-trash3"></i>
-            </button>
-          </form>
-          {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-      {% if not c.is_system %}
-      <div class="row-actions">
-        <form method="post" action="/admin/finance/categories/{{ c.id }}/delete">
-          <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
-        </form>
-      </div>
-      {% else %}
-      <span class="badge badge-soft">Built-in</span>
-      {% endif %}
-    </div>
-    {% else %}
-    <div class="empty-state">
-      <div class="empty-ico"><i class="bi bi-tags"></i></div>
-      <div class="empty-title">No general categories yet</div>
-      <p>Add one above and leave the scope on “General — all accounts”.</p>
-    </div>
-    {% endfor %}
-  </div>
-</div>
-
-{% if accounts %}
-<div class="section-head"><h2>Per account</h2></div>
-<div class="row g-3">
-  {% for a in accounts %}
-  <div class="col-lg-6">
-    <div class="card">
-      <div class="card-header">
-        <span class="card-ico"><i class="bi bi-wallet2"></i></span>
-        <div>
-          <h2>{{ a.name }}</h2>
-          <div class="card-sub">Only this account</div>
-        </div>
-      </div>
-      <div class="list-rows">
-        {% for c in categories if c.account_id == a.id %}
-        <div class="list-row">
-          <span class="dot" style="background:{{ c.color or 'var(--v-expense)' }}"></span>
-          <div class="row-body">
-            <div class="row-title">{{ c.name }}</div>
-            <div class="row-meta">{{ c.kind }} · {{ a.name }}</div>
-          </div>
-          {% if not c.is_system %}
-          <div class="row-actions">
-            <form method="post" action="/admin/finance/categories/{{ c.id }}/delete">
-              <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
+        <ul class="mm-cat-subs">
+          {% for sub in categories if sub.parent_id == c.id %}
+          <li>
+            <span class="truncate">{{ sub.name }}</span>
+            {% if not sub.is_system %}
+            <form method="post" action="/admin/finance/categories/{{ sub.id }}/delete"
+                  data-confirm="Remove subcategory {{ sub.name }}?">
+              <button class="btn btn-ghost btn-sm btn-icon text-danger" type="submit" aria-label="Remove {{ sub.name }}">
+                <i class="bi bi-trash3"></i>
+              </button>
             </form>
-          </div>
+            {% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        <div class="row-actions">
+          {% if not c.is_system %}
+          <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"
+                data-confirm="Remove category {{ c.name }}?">
+            <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+          </form>
           {% else %}
           <span class="badge badge-soft">Built-in</span>
           {% endif %}
         </div>
-        {% else %}
-        <div class="empty-state">
-          <div class="empty-ico"><i class="bi bi-tag"></i></div>
-          <div class="empty-title">Nothing account-specific</div>
-          <p>No categories just for {{ a.name }}. Add one above and pick “Only {{ a.name }}”.</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% if not ns.has_general %}
+    <div class="diary-empty mb-4">
+      <div class="diary-empty-ico" aria-hidden="true"><i class="bi bi-tags"></i></div>
+      <h2>No general categories yet</h2>
+      <p>Create one on the right and leave scope on “General — all accounts”.</p>
+    </div>
+    {% endif %}
+
+    {% if accounts %}
+    <div class="section-head mt-4"><h2>Per account</h2></div>
+    {% for a in accounts %}
+    {% set ns2 = namespace(has_owned=false) %}
+    <div class="mm-cat-acct-block">
+      <div class="mm-cat-acct-label">{{ a.name }}</div>
+      <div class="diary-cat-grid mm-cat-grid">
+        {% for c in categories if c.account_id == a.id %}
+        {% set ns2.has_owned = true %}
+        <div class="diary-cat-card" style="--cat:{{ c.color or ('#34D399' if c.kind == 'income' else '#F87171') }};">
+          <div class="swatch" aria-hidden="true"><i class="bi bi-bookmark-fill"></i></div>
+          <div class="name truncate" title="{{ c.name }}">{{ c.name }}</div>
+          <div class="meta">{{ c.kind }} · {{ a.name }}{% if c.is_system %} · built-in{% endif %}</div>
+          <div class="row-actions">
+            {% if not c.is_system %}
+            <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"
+                  data-confirm="Remove category {{ c.name }}?">
+              <button class="btn btn-ghost btn-sm" type="submit">Delete</button>
+            </form>
+            {% else %}
+            <span class="badge badge-soft">Built-in</span>
+            {% endif %}
+          </div>
         </div>
         {% endfor %}
       </div>
+      {% if not ns2.has_owned %}
+      <p class="text-muted small mb-3">Nothing account-specific for {{ a.name }} yet.</p>
+      {% endif %}
     </div>
+    {% endfor %}
+    {% endif %}
   </div>
-  {% endfor %}
+
+  <div class="col-lg-4">
+    <form class="diary-desk-card" method="post" action="/admin/finance/categories">
+      <div class="section-head"><h2>New category</h2></div>
+      <div class="mb-3">
+        <label class="form-label" for="cat-name">Name <span class="req">*</span></label>
+        <input class="form-control" id="cat-name" type="text" name="name" required maxlength="80" placeholder="Groceries, maid, school…">
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="cat-kind">Kind</label>
+        <select class="form-select" id="cat-kind" name="kind">
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="cat-scope">Scope</label>
+        <select class="form-select" id="cat-scope" name="account_id">
+          <option value="">General — all accounts</option>
+          {% for a in accounts %}
+          <option value="{{ a.id }}">Only {{ a.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="cat-parent">Parent category</label>
+        <select class="form-select" id="cat-parent" name="parent_id">
+          <option value="">None — top-level</option>
+          {% for c in categories if not c.parent_id %}
+          <option value="{{ c.id }}">{{ c.name }} ({{ c.kind }})</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">A parent overrides the kind and scope above.</div>
+      </div>
+      <button class="btn btn-primary w-100" type="submit"><i class="bi bi-folder-plus"></i> Create category</button>
+    </form>
+  </div>
 </div>
-{% endif %}
 {% endblock %}
