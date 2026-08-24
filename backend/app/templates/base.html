@@ -82,9 +82,11 @@
   {% set mod_key = 'urls' %}
   {% set nav_items = [
     {'key':'url_home','label':'All links','short':'Links','href':'/admin/urls','icon':'bi-link-45deg'},
+    {'key':'url_explorer','label':'Explorer','short':'Explore','href':'/admin/urls/explorer','icon':'bi-folder2-open'},
     {'key':'url_add','label':'Add link','short':'Add','href':'/admin/urls/add','icon':'bi-plus-lg'},
     {'key':'url_fav','label':'Favorites','short':'Stars','href':'/admin/urls?favorite=1','icon':'bi-star'},
-    {'key':'url_manage','label':'Categories & tags','short':'More','href':'/admin/urls/manage','icon':'bi-sliders'}
+    {'key':'url_manage','label':'Categories & tags','short':'More','href':'/admin/urls/manage','icon':'bi-sliders'},
+    {'key':'url_trash','label':'Trash','short':'Trash','href':'/admin/urls/trash','icon':'bi-trash3'}
   ] %}
 {% elif active_module == 'diary' %}
   {% set mod_key = 'diary' %}

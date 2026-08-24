@@ -1133,6 +1133,7 @@ class UrlItem(Base):
     category_id = Column(String(32), ForeignKey("url_categories.id"), nullable=True, index=True)
     notes_enc = Column(Text, nullable=True)
     favorite = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)
     og_title = Column(String(500), nullable=True)
     og_description = Column(Text, nullable=True)
     og_image = Column(String(2000), nullable=True)

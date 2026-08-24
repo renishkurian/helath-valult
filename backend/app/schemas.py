@@ -1690,6 +1690,7 @@ class UrlItemOut(BaseModel):
     favicon_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class UrlPreviewOut(BaseModel):
@@ -1726,6 +1727,8 @@ class UrlShareOut(BaseModel):
 class UrlSummaryOut(BaseModel):
     total: int = 0
     favorites: int = 0
+    trash: int = 0
+    unfiled: int = 0
     categories: List[UrlCategoryOut] = []
     tags: List[UrlTagOut] = []
 

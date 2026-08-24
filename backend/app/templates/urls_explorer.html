@@ -1,0 +1,694 @@
+{% extends "base.html" %}
+{% block title %}URL Explorer{% endblock %}
+{% block body_class %}{% endblock %}
+{% block content %}
+{% set place = place or 'home' %}
+{% set view = view or 'list' %}
+{% if folder %}
+  {% set here_label = folder_name or 'Category' %}
+  {% set here_base = '/admin/urls/explorer?folder=' ~ folder %}
+  {% set add_href = '/admin/urls/add?category_id=' ~ folder ~ '&next=' ~ (here_base | urlencode) %}
+{% elif place == 'favorites' %}
+  {% set here_label = 'Favorites' %}
+  {% set here_base = '/admin/urls/explorer?place=favorites' %}
+  {% set add_href = '/admin/urls/add?next=' ~ (here_base | urlencode) %}
+{% elif place == 'unfiled' %}
+  {% set here_label = 'Unfiled' %}
+  {% set here_base = '/admin/urls/explorer?place=unfiled' %}
+  {% set add_href = '/admin/urls/add?next=' ~ (here_base | urlencode) %}
+{% elif place == 'trash' %}
+  {% set here_label = 'Trash' %}
+  {% set here_base = '/admin/urls/explorer?place=trash' %}
+  {% set add_href = '/admin/urls/add' %}
+{% else %}
+  {% set here_label = 'All links' %}
+  {% set here_base = '/admin/urls/explorer' %}
+  {% set add_href = '/admin/urls/add?next=' ~ (here_base | urlencode) %}
+{% endif %}
+{% macro view_qs(v) -%}
+  {%- if v == 'list' -%}{{ here_base }}
+  {%- else -%}{{ here_base ~ ('&' if '?' in here_base else '?') ~ 'view=' ~ v }}
+  {%- endif -%}
+{%- endmacro %}
+{% set list_href = view_qs('list') %}
+{% set icons_href = view_qs('icons') %}
+{% set cards_href = view_qs('cards') %}
+{% set here_href = view_qs(view) %}
+
+<div class="page-head mb-3 fx-page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      <a href="/admin/urls">URL Vault</a>
+      <i class="bi bi-chevron-right"></i>
+      Explorer
+    </div>
+    <h1 class="page-title">URL Explorer</h1>
+    <p class="page-lead mb-0">Browse links like a file manager — categories on the left, list / grid / card previews on the right.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-outline-light" id="fx-toggle-nav" title="Hide left menu for full-screen explorer">
+      <i class="bi bi-arrows-fullscreen"></i> Full screen
+    </button>
+  </div>
+</div>
+
+{% if notice == 'folder' %}
+<div class="alert alert-success" role="status">Category created.</div>
+{% endif %}
+{% if err %}
+<div class="alert alert-danger" role="alert">{{ err }}</div>
+{% endif %}
+
+<div class="fx-shell urls-fx" id="fx-shell"
+     data-here="{{ here_href }}"
+     data-add="{{ add_href }}"
+     data-folder="{{ folder or '' }}"
+     data-place="{{ place }}">
+
+  <aside class="fx-tree" aria-label="Places">
+    <div class="fx-tree-head">Places</div>
+    <nav class="fx-tree-nav">
+      <a class="fx-tree-item {% if place == 'home' and not folder %}on{% endif %}"
+         href="/admin/urls/explorer{{ '?view=' ~ view if view != 'list' else '' }}">
+        <i class="bi bi-house-door"></i><span>All links</span>
+        <em>{{ '%02d'|format(summary.total) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'favorites' %}on{% endif %}"
+         href="/admin/urls/explorer?place=favorites{{ '&view=' ~ view if view != 'list' else '' }}">
+        <i class="bi bi-star"></i><span>Favorites</span>
+        <em>{{ '%02d'|format(summary.favorites) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'unfiled' %}on{% endif %}"
+         href="/admin/urls/explorer?place=unfiled{{ '&view=' ~ view if view != 'list' else '' }}">
+        <i class="bi bi-file-earmark"></i><span>Unfiled</span>
+        <em>{{ '%02d'|format(summary.unfiled or 0) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'trash' %}on{% endif %}"
+         href="/admin/urls/explorer?place=trash{{ '&view=' ~ view if view != 'list' else '' }}">
+        <i class="bi bi-trash3"></i><span>Trash</span>
+        <em>{{ '%02d'|format(summary.trash or 0) }}</em>
+      </a>
+    </nav>
+
+    <div class="fx-tree-head">Categories</div>
+    <nav class="fx-tree-nav" id="fx-folder-tree">
+      {% for c in categories %}
+      <a class="fx-tree-item {% if folder == c.id %}on{% endif %}"
+         href="/admin/urls/explorer?folder={{ c.id }}{{ '&view=' ~ view if view != 'list' else '' }}"
+         data-kind="folder"
+         data-id="{{ c.id }}"
+         data-name="{{ c.name }}">
+        <i class="bi {% if folder == c.id %}bi-folder2-open{% else %}bi-folder2{% endif %}"
+           style="color:{{ c.color or '#5B8DEF' }}"></i>
+        <span>{{ c.name }}</span>
+        <em>{{ '%02d'|format(c.count or 0) }}</em>
+      </a>
+      {% else %}
+      <div class="fx-tree-empty">No categories yet — create one below.</div>
+      {% endfor %}
+    </nav>
+
+    <form class="fx-new-folder" method="post" action="/admin/urls/categories"{% if place == 'trash' %} hidden{% endif %}>
+      <input type="hidden" name="next" value="{{ here_href }}">
+      <label class="visually-hidden" for="ux-folder-name">New category name</label>
+      <input class="form-control form-control-sm" id="ux-folder-name" name="name" required maxlength="80"
+             placeholder="New category">
+      <input class="form-control form-control-color form-control-sm" type="color" name="color" value="#5B8DEF" title="Color" aria-label="Category color">
+      <button class="btn btn-sm btn-outline-light" type="submit" title="Create category">
+        <i class="bi bi-folder-plus"></i>
+      </button>
+    </form>
+  </aside>
+
+  <section class="fx-main">
+    <div class="fx-toolbar">
+      <nav class="fx-crumbs" aria-label="Breadcrumb">
+        <a href="/admin/urls/explorer{{ '?view=' ~ view if view != 'list' else '' }}"><i class="bi bi-link-45deg"></i> URLs</a>
+        {% if folder %}
+        <i class="bi bi-chevron-right"></i>
+        <span>{{ here_label }}</span>
+        {% elif place in ('favorites', 'unfiled', 'trash') %}
+        <i class="bi bi-chevron-right"></i>
+        <span>{{ here_label }}</span>
+        {% endif %}
+      </nav>
+      <form class="fx-search" method="get" action="/admin/urls/explorer">
+        {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+        {% if place in ('favorites', 'unfiled', 'trash') and not folder %}<input type="hidden" name="place" value="{{ place }}">{% endif %}
+        {% if view != 'list' %}<input type="hidden" name="view" value="{{ view }}">{% endif %}
+        <i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Search links…" aria-label="Search links"{% if place == 'trash' %} disabled{% endif %}>
+      </form>
+      <div class="fx-toolbar-actions">
+        <button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar"
+                title="Toggle left menu / full screen">
+          <i class="bi bi-layout-sidebar-inset" id="fx-toggle-nav-icon"></i>
+          <span class="d-none d-xl-inline" id="fx-toggle-nav-label">Hide menu</span>
+        </button>
+        <div class="btn-group" role="group" aria-label="View">
+          <a class="btn btn-sm btn-outline-light {% if view == 'list' %}active{% endif %}" href="{{ list_href }}" title="List view">
+            <i class="bi bi-list-ul"></i>
+          </a>
+          <a class="btn btn-sm btn-outline-light {% if view == 'icons' %}active{% endif %}" href="{{ icons_href }}" title="Grid view">
+            <i class="bi bi-grid"></i>
+          </a>
+          <a class="btn btn-sm btn-outline-light {% if view == 'cards' %}active{% endif %}" href="{{ cards_href }}" title="Card preview">
+            <i class="bi bi-card-image"></i>
+          </a>
+        </div>
+        {% if place == 'trash' %}
+          {% if items %}
+          <form method="post" action="/admin/urls/trash/empty" class="d-inline"
+                data-confirm="Permanently delete everything in trash? This cannot be undone.">
+            <input type="hidden" name="next" value="{{ here_href }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash3"></i> Empty trash
+            </button>
+          </form>
+          {% endif %}
+        {% else %}
+        <a class="btn btn-sm btn-outline-light" href="/admin/urls/manage" title="Manage categories &amp; tags">
+          <i class="bi bi-sliders"></i>
+        </a>
+        <a class="btn btn-sm btn-primary" href="{{ add_href }}" title="Add link here">
+          <i class="bi bi-plus-lg"></i> Add link
+        </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="fx-pane {% if view == 'icons' %}fx-icons{% elif view == 'cards' %}fx-cards{% else %}fx-list{% endif %}" id="fx-pane" tabindex="0">
+      {% if view == 'list' %}
+      <div class="fx-list-head" role="row">
+        <span class="fx-sort-spacer" aria-hidden="true"></span>
+        <span class="fx-col-name">Title</span>
+        <span class="fx-col-type">Category</span>
+        <span class="fx-col-meta">Site</span>
+        <span class="fx-col-size">★</span>
+        <span class="fx-col-date">Saved</span>
+      </div>
+      {% endif %}
+
+      {% for item in items %}
+      {% set host = item.og_site_name or (item.url.split('/')[2] if item.url and item.url.split('/')|length > 2 else item.url) %}
+      {% set needs_meta = (not item.og_image and not item.og_description and not item.og_title) %}
+      {% if place == 'trash' %}
+        {% if view == 'cards' %}
+        <article class="fx-card ux-card"
+                 data-kind="link"
+                 data-id="{{ item.id }}"
+                 data-name="{{ item.title }}"
+                 data-url="{{ item.url }}"
+                 data-host="{{ host }}">
+          <div class="fx-card-thumb">
+            {% if item.og_image %}
+            <img src="{{ item.og_image }}" alt="" loading="lazy">
+            {% else %}
+            <i class="bi bi-link-45deg"></i>
+            {% endif %}
+          </div>
+          <div class="fx-card-body">
+            <div class="fx-card-title truncate">{{ item.title }}</div>
+            <div class="fx-card-host truncate">
+              {% if item.favicon_url %}<img src="{{ item.favicon_url }}" alt="" width="12" height="12" loading="lazy">{% else %}<i class="bi bi-globe2"></i>{% endif %}
+              {{ host }}
+            </div>
+            {% if item.deleted_at %}
+            <p class="fx-card-desc text-faint mb-0">Deleted {{ item.deleted_at.strftime('%d %b %Y') }}</p>
+            {% endif %}
+          </div>
+          <div class="fx-card-actions" onclick="event.stopPropagation()">
+            <form method="post" action="/admin/urls/{{ item.id }}/restore">
+              <input type="hidden" name="next" value="{{ here_href }}">
+              <button class="btn btn-sm btn-outline-light" type="submit" title="Restore"><i class="bi bi-arrow-counterclockwise"></i></button>
+            </form>
+            <form method="post" action="/admin/urls/{{ item.id }}/permanent"
+                  data-confirm="Delete forever? This cannot be undone.">
+              <input type="hidden" name="next" value="{{ here_href }}">
+              <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete forever"><i class="bi bi-x-lg"></i></button>
+            </form>
+          </div>
+        </article>
+        {% else %}
+        <div class="fx-row"
+             data-kind="link"
+             data-id="{{ item.id }}"
+             data-name="{{ item.title }}"
+             data-url="{{ item.url }}"
+             data-host="{{ host }}"
+             data-category="{{ item.category_name or '' }}"
+             data-created="{{ item.created_at.isoformat() if item.created_at else '' }}">
+          <span class="fx-ico" style="color:#8B95A8">
+            {% if item.favicon_url %}
+            <img src="{{ item.favicon_url }}" alt="" width="18" height="18" loading="lazy">
+            {% else %}
+            <i class="bi bi-link-45deg"></i>
+            {% endif %}
+          </span>
+          <span class="fx-col-name truncate">{{ item.title }}</span>
+          {% if view == 'list' %}
+          <span class="fx-col-type truncate">{{ item.category_name or '—' }}</span>
+          <span class="fx-col-meta text-faint truncate">
+            {% if item.deleted_at %}Deleted {{ item.deleted_at.strftime('%d %b %Y') }}{% else %}In trash{% endif %}
+          </span>
+          <span class="fx-col-size mono text-faint">{% if item.favorite %}★{% else %}—{% endif %}</span>
+          <span class="fx-col-date text-faint">{{ item.created_at.strftime('%d %b %Y') if item.created_at else '—' }}</span>
+          {% else %}
+          <span class="fx-icon-meta">In trash</span>
+          {% endif %}
+          <span class="fx-row-actions ms-auto d-flex gap-1" onclick="event.stopPropagation()">
+            <form method="post" action="/admin/urls/{{ item.id }}/restore">
+              <input type="hidden" name="next" value="{{ here_href }}">
+              <button class="btn btn-sm btn-outline-light" type="submit" title="Restore"><i class="bi bi-arrow-counterclockwise"></i></button>
+            </form>
+            <form method="post" action="/admin/urls/{{ item.id }}/permanent"
+                  data-confirm="Delete forever? This cannot be undone.">
+              <input type="hidden" name="next" value="{{ here_href }}">
+              <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete forever"><i class="bi bi-x-lg"></i></button>
+            </form>
+          </span>
+        </div>
+        {% endif %}
+      {% else %}
+        {% if view == 'cards' %}
+        <a class="fx-card ux-card{% if needs_meta %} needs-meta{% endif %}"
+           href="/admin/urls/{{ item.id }}"
+           data-kind="link"
+           data-id="{{ item.id }}"
+           data-name="{{ item.title }}"
+           data-url="{{ item.url }}"
+           data-host="{{ host }}"
+           data-needs-meta="{{ '1' if needs_meta else '0' }}"
+           data-category="{{ item.category_name or '' }}"
+           data-created="{{ item.created_at.isoformat() if item.created_at else '' }}">
+          {% if item.favorite %}<span class="fx-card-fav" title="Favorite"><i class="bi bi-star-fill"></i></span>{% endif %}
+          <div class="fx-card-thumb js-meta-thumb">
+            {% if item.og_image %}
+            <img src="{{ item.og_image }}" alt="" loading="lazy">
+            {% else %}
+            <i class="bi bi-link-45deg"></i>
+            {% endif %}
+            {% if needs_meta %}<span class="fx-card-fetch js-meta-status">Fetching preview…</span>{% endif %}
+          </div>
+          <div class="fx-card-body">
+            <div class="fx-card-title truncate js-meta-title">{{ item.og_title or item.title }}</div>
+            <div class="fx-card-host truncate js-meta-host">
+              {% if item.favicon_url %}<img class="js-meta-fav" src="{{ item.favicon_url }}" alt="" width="12" height="12" loading="lazy">{% else %}<i class="bi bi-globe2 js-meta-fav-ico"></i>{% endif %}
+              <span class="js-meta-site">{{ host }}</span>
+            </div>
+            <p class="fx-card-desc js-meta-desc{% if not item.og_description %} d-none{% endif %}">{{ (item.og_description or '')[:160] }}{% if item.og_description and item.og_description|length > 160 %}…{% endif %}</p>
+            {% if item.category_name %}
+            <span class="badge badge-soft mt-1" style="color:{{ item.category_color or '#8B95A8' }};border-color:{{ item.category_color or '#8B95A8' }}55;">{{ item.category_name }}</span>
+            {% endif %}
+          </div>
+        </a>
+        {% else %}
+        <a class="fx-row"
+           href="/admin/urls/{{ item.id }}"
+           data-kind="link"
+           data-id="{{ item.id }}"
+           data-name="{{ item.title }}"
+           data-url="{{ item.url }}"
+           data-host="{{ host }}"
+           data-category="{{ item.category_name or '' }}"
+           data-created="{{ item.created_at.isoformat() if item.created_at else '' }}"
+           data-favorite="{{ '1' if item.favorite else '0' }}">
+          <span class="fx-ico" style="color:{{ item.category_color or '#5B8DEF' }}">
+            {% if item.favicon_url %}
+            <img src="{{ item.favicon_url }}" alt="" width="18" height="18" loading="lazy">
+            {% else %}
+            <i class="bi {% if item.favorite %}bi-star-fill{% else %}bi-link-45deg{% endif %}"></i>
+            {% endif %}
+          </span>
+          <span class="fx-col-name truncate">
+            {{ item.title }}
+            {% if item.favorite %}<i class="bi bi-star-fill text-warning ms-1" title="Favorite"></i>{% endif %}
+          </span>
+          {% if view == 'list' %}
+          <span class="fx-col-type truncate">{{ item.category_name or '—' }}</span>
+          <span class="fx-col-meta text-faint truncate">{{ host }}</span>
+          <span class="fx-col-size mono text-faint">{% if item.favorite %}★{% else %}—{% endif %}</span>
+          <span class="fx-col-date text-faint">{{ item.created_at.strftime('%d %b %Y') if item.created_at else '—' }}</span>
+          {% else %}
+          <span class="fx-icon-meta truncate">{{ host }}</span>
+          {% endif %}
+        </a>
+        {% endif %}
+      {% endif %}
+      {% else %}
+      <div class="fx-empty">
+        {% if place == 'trash' %}
+        <div class="empty-ico"><i class="bi bi-trash3"></i></div>
+        <div class="empty-title">Trash is empty</div>
+        <p class="text-muted mb-0">Deleted links wait here until you restore them or empty trash.</p>
+        {% else %}
+        <div class="empty-ico"><i class="bi bi-link-45deg"></i></div>
+        <div class="empty-title">{% if q %}Nothing matches{% elif folder %}This category is empty{% else %}No links here{% endif %}</div>
+        <p class="text-muted mb-3">
+          {% if q %}Try another search.
+          {% elif folder %}Add a link into {{ folder_name }}.
+          {% else %}Save a URL to fill this place.{% endif %}
+        </p>
+        <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> Add link</a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+<div class="fx-menu" id="ux-menu" hidden role="menu">
+  <button type="button" class="fx-menu-item" data-action="open" role="menuitem"><i class="bi bi-box-arrow-up-right"></i> Open details</button>
+  <button type="button" class="fx-menu-item" data-action="visit" role="menuitem"><i class="bi bi-globe2"></i> Open URL</button>
+  <button type="button" class="fx-menu-item" data-action="copy" role="menuitem"><i class="bi bi-clipboard"></i> Copy URL</button>
+  <button type="button" class="fx-menu-item" data-action="preview" role="menuitem"><i class="bi bi-image"></i> Refresh preview</button>
+  <button type="button" class="fx-menu-item" data-action="properties" role="menuitem"><i class="bi bi-info-circle"></i> Properties</button>
+  <div class="fx-menu-sep" data-for="trash"></div>
+  <button type="button" class="fx-menu-item" data-action="restore" role="menuitem"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+  <button type="button" class="fx-menu-item danger" data-action="permanent" role="menuitem"><i class="bi bi-x-lg"></i> Delete forever</button>
+  <div class="fx-menu-sep" data-for="danger"></div>
+  <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Move to trash</button>
+</div>
+
+<form id="ux-form-delete" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="ux-form-restore" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="ux-form-permanent" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="ux-form-preview" method="post" action="" class="d-none"></form>
+
+<div class="modal fade" id="ux-props" tabindex="-1" aria-labelledby="ux-props-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="ux-props-title">Properties</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="dx-props-list mb-0" id="ux-props-body"></dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+        <a class="btn btn-primary" id="ux-props-open" href="#"><i class="bi bi-box-arrow-up-right"></i> Open</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var KEY = "urls-fx-nav-collapsed";
+  var body = document.body;
+  var headBtn = document.getElementById("fx-toggle-nav");
+  var toolBtn = document.getElementById("fx-toggle-nav-toolbar");
+  var icon = document.getElementById("fx-toggle-nav-icon");
+  var label = document.getElementById("fx-toggle-nav-label");
+
+  function apply(collapsed) {
+    body.classList.toggle("nav-collapsed", collapsed);
+    body.classList.toggle("fx-focus", collapsed);
+    try { localStorage.setItem(KEY, collapsed ? "1" : "0"); } catch (e) {}
+    if (icon) {
+      icon.className = collapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset";
+    }
+    if (label) label.textContent = collapsed ? "Show menu" : "Hide menu";
+    if (headBtn) {
+      headBtn.innerHTML = collapsed
+        ? '<i class="bi bi-layout-sidebar"></i> Show menu'
+        : '<i class="bi bi-arrows-fullscreen"></i> Full screen';
+    }
+  }
+
+  function toggle() { apply(!body.classList.contains("nav-collapsed")); }
+
+  var saved = false;
+  try { saved = localStorage.getItem(KEY) === "1"; } catch (e) {}
+  try {
+    if (localStorage.getItem(KEY) === null && window.matchMedia("(min-width:992px)").matches) {
+      saved = true;
+    }
+  } catch (e) {}
+  apply(saved);
+
+  if (headBtn) headBtn.addEventListener("click", toggle);
+  if (toolBtn) toolBtn.addEventListener("click", toggle);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "[" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      var t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      toggle();
+    }
+  });
+})();
+
+(function () {
+  var menu = document.getElementById("ux-menu");
+  var pane = document.getElementById("fx-pane");
+  var shell = document.getElementById("fx-shell");
+  var target = null;
+  var inTrash = shell && shell.getAttribute("data-place") === "trash";
+
+  function hideMenu() {
+    if (!menu) return;
+    menu.hidden = true;
+    target = null;
+  }
+
+  function showMenu(x, y, row) {
+    if (!menu || !row) return;
+    target = row;
+    var kind = row.getAttribute("data-kind") || "";
+    menu.querySelectorAll(".fx-menu-item, .fx-menu-sep").forEach(function (el) {
+      var action = el.getAttribute("data-action");
+      var forKind = el.getAttribute("data-for");
+      var show = false;
+      if (inTrash && kind === "link") {
+        show = ["restore", "permanent", "properties", "copy", "visit"].indexOf(action) >= 0 || forKind === "trash";
+      } else if (kind === "link") {
+        show = ["open", "visit", "copy", "preview", "properties", "delete"].indexOf(action) >= 0
+          || forKind === "danger";
+      }
+      if (forKind === "trash" && !(inTrash && kind === "link")) show = false;
+      if (forKind === "danger" && inTrash) show = false;
+      el.hidden = !show;
+    });
+    menu.hidden = false;
+    var mw = menu.offsetWidth || 200;
+    var mh = menu.offsetHeight || 160;
+    var left = Math.min(x, window.innerWidth - mw - 8);
+    var top = Math.min(y, window.innerHeight - mh - 8);
+    menu.style.left = Math.max(8, left) + "px";
+    menu.style.top = Math.max(8, top) + "px";
+  }
+
+  function rowData(row) {
+    return {
+      id: row.getAttribute("data-id") || "",
+      name: row.getAttribute("data-name") || "",
+      url: row.getAttribute("data-url") || "",
+      host: row.getAttribute("data-host") || "",
+      category: row.getAttribute("data-category") || "",
+      created: row.getAttribute("data-created") || "",
+      href: row.getAttribute("href") || ("/admin/urls/" + (row.getAttribute("data-id") || ""))
+    };
+  }
+
+  function confirmDanger(msg, title) {
+    if (window.vaultConfirm) {
+      return window.vaultConfirm(msg, { title: title || "Confirm", danger: true });
+    }
+    return Promise.resolve(window.confirm(msg));
+  }
+
+  function submitForm(form, action) {
+    if (!form) return;
+    if (action) form.action = action;
+    form.submit();
+  }
+
+  function fmtWhen(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    try {
+      return d.toLocaleString(undefined, {
+        year: "numeric", month: "short", day: "2-digit",
+        hour: "2-digit", minute: "2-digit"
+      });
+    } catch (e) {
+      return d.toISOString();
+    }
+  }
+
+  if (pane) {
+    pane.addEventListener("contextmenu", function (e) {
+      var row = e.target.closest("[data-kind='link']");
+      if (!row || !pane.contains(row)) return;
+      e.preventDefault();
+      showMenu(e.clientX, e.clientY, row);
+    });
+  }
+
+  document.addEventListener("click", hideMenu);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") hideMenu();
+  });
+
+  if (menu) {
+    menu.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var btn = e.target.closest("[data-action]");
+      if (!btn || !target) return;
+      var action = btn.getAttribute("data-action");
+      var d = rowData(target);
+      hideMenu();
+      if (action === "open") {
+        window.location.href = d.href;
+      } else if (action === "visit" && d.url) {
+        window.open(d.url, "_blank", "noopener,noreferrer");
+      } else if (action === "copy" && d.url) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(d.url);
+        } else {
+          prompt("Copy URL", d.url);
+        }
+      } else if (action === "preview" && d.id) {
+        submitForm(document.getElementById("ux-form-preview"), "/admin/urls/" + d.id + "/preview");
+      } else if (action === "delete" && d.id) {
+        confirmDanger("Move “" + d.name + "” to trash?", "Move to trash").then(function (ok) {
+          if (ok) submitForm(document.getElementById("ux-form-delete"), "/admin/urls/" + d.id + "/delete");
+        });
+      } else if (action === "restore" && d.id) {
+        submitForm(document.getElementById("ux-form-restore"), "/admin/urls/" + d.id + "/restore");
+      } else if (action === "permanent" && d.id) {
+        confirmDanger("Delete “" + d.name + "” forever? This cannot be undone.", "Delete forever").then(function (ok) {
+          if (ok) submitForm(document.getElementById("ux-form-permanent"), "/admin/urls/" + d.id + "/permanent");
+        });
+      } else if (action === "properties") {
+        var body = document.getElementById("ux-props-body");
+        var open = document.getElementById("ux-props-open");
+        if (body) {
+          body.innerHTML =
+            "<dt>Title</dt><dd>" + (d.name || "—") + "</dd>" +
+            "<dt>URL</dt><dd class='text-break'>" + (d.url || "—") + "</dd>" +
+            "<dt>Site</dt><dd>" + (d.host || "—") + "</dd>" +
+            "<dt>Category</dt><dd>" + (d.category || "—") + "</dd>" +
+            "<dt>Saved</dt><dd>" + fmtWhen(d.created) + "</dd>";
+        }
+        if (open) open.href = d.href;
+        var modalEl = document.getElementById("ux-props");
+        if (modalEl && window.bootstrap && bootstrap.Modal) {
+          bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+      }
+    });
+  }
+})();
+
+(function () {
+  var cards = document.querySelectorAll(".ux-card[data-needs-meta='1']");
+  if (!cards.length) return;
+  var queue = Array.prototype.slice.call(cards);
+  var inflight = 0;
+  var MAX = 3;
+
+  function applyMeta(card, item) {
+    card.classList.remove("needs-meta");
+    card.setAttribute("data-needs-meta", "0");
+    var thumb = card.querySelector(".js-meta-thumb");
+    var status = card.querySelector(".js-meta-status");
+    if (status) status.remove();
+    if (thumb && item.og_image) {
+      thumb.innerHTML = "";
+      var img = document.createElement("img");
+      img.src = item.og_image;
+      img.alt = "";
+      img.loading = "lazy";
+      thumb.appendChild(img);
+    }
+    var title = card.querySelector(".js-meta-title");
+    if (title && (item.og_title || item.title)) title.textContent = item.og_title || item.title;
+    var site = card.querySelector(".js-meta-site");
+    if (site && (item.og_site_name || item.url)) {
+      site.textContent = item.og_site_name || card.getAttribute("data-host") || "";
+    }
+    var fav = card.querySelector(".js-meta-fav");
+    var favIco = card.querySelector(".js-meta-fav-ico");
+    var hostEl = card.querySelector(".js-meta-host");
+    if (item.favicon_url && hostEl) {
+      if (fav) {
+        fav.src = item.favicon_url;
+      } else if (favIco) {
+        favIco.replaceWith((function () {
+          var i = document.createElement("img");
+          i.className = "js-meta-fav";
+          i.src = item.favicon_url;
+          i.alt = "";
+          i.width = 12;
+          i.height = 12;
+          i.loading = "lazy";
+          return i;
+        })());
+      }
+    }
+    var desc = card.querySelector(".js-meta-desc");
+    if (desc && item.og_description) {
+      var text = item.og_description;
+      desc.textContent = text.length > 160 ? text.slice(0, 160) + "…" : text;
+      desc.classList.remove("d-none");
+    }
+  }
+
+  function pump() {
+    while (inflight < MAX && queue.length) {
+      var card = queue.shift();
+      var id = card.getAttribute("data-id");
+      if (!id) continue;
+      inflight += 1;
+      fetch("/admin/urls/" + id + "/preview?format=json", {
+        method: "POST",
+        headers: { "Accept": "application/json" },
+        credentials: "same-origin"
+      }).then(function (r) {
+        if (!r.ok) throw new Error("preview failed");
+        return r.json();
+      }).then(function (item) {
+        applyMeta(card, item || {});
+      }).catch(function () {
+        var status = card.querySelector(".js-meta-status");
+        if (status) status.textContent = "No preview";
+        card.classList.remove("needs-meta");
+      }).finally(function () {
+        inflight -= 1;
+        pump();
+      });
+    }
+  }
+
+  if ("IntersectionObserver" in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        var card = entry.target;
+        io.unobserve(card);
+        if (card.getAttribute("data-needs-meta") !== "1") return;
+        queue.push(card);
+        pump();
+      });
+    }, { rootMargin: "120px" });
+    cards.forEach(function (c) { io.observe(c); });
+    queue = [];
+  } else {
+    pump();
+  }
+})();
+</script>
+{% endblock %}

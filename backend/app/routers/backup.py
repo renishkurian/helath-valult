@@ -349,7 +349,10 @@ def _export_finance(db: Session, owner: str) -> dict:
 def _export_urls(db: Session, owner: str) -> dict:
     cats = db.query(models.UrlCategory).filter(models.UrlCategory.user_id == owner).all()
     tags = db.query(models.UrlTag).filter(models.UrlTag.user_id == owner).all()
-    items = db.query(models.UrlItem).filter(models.UrlItem.user_id == owner).all()
+    items = db.query(models.UrlItem).filter(
+        models.UrlItem.user_id == owner,
+        models.UrlItem.deleted_at.is_(None),
+    ).all()
     cat_name = {c.id: c.name for c in cats}
     return {
         "categories": [{"name": c.name, "color": getattr(c, "color", None)} for c in cats],

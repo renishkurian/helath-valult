@@ -6489,6 +6489,7 @@ def urls_home(
 def urls_add_page(
     request: Request,
     category_id: str = "",
+    next: str = "",
     db: Session = Depends(get_db),
 ):
     from app.routers import urls as uv
@@ -6496,10 +6497,13 @@ def urls_add_page(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     summary = uv.urls_summary(db=db, current_user=user)
+    next_url = (next or "").strip()
+    if next_url and not next_url.startswith("/admin/urls"):
+        next_url = ""
     return templates.TemplateResponse("url_add.html", _url_ctx(
         request, user, "url_add",
         categories=summary.categories, tags=summary.tags,
-        prefill_category=category_id,
+        prefill_category=category_id, next_url=next_url,
     ))
 
 
@@ -6521,6 +6525,9 @@ async def urls_add(request: Request, db: Session = Depends(get_db)):
         favorite=bool(form.get("favorite")),
         fetch_preview=True,
     ), db=db, current_user=user)
+    dest = str(form.get("next") or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/urls", status_code=302)
 
 
@@ -6537,6 +6544,84 @@ def urls_manage_page(request: Request, db: Session = Depends(get_db)):
     ))
 
 
+@router.get("/urls/explorer", response_class=HTMLResponse)
+def urls_explorer(
+    request: Request,
+    folder: str = "",
+    place: str = "home",
+    q: str = "",
+    view: str = "list",
+    notice: Optional[str] = None,
+    err: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = uv.urls_summary(db=db, current_user=user)
+    place = (place or "home").strip().lower()
+    if place not in ("home", "favorites", "unfiled", "trash"):
+        place = "home"
+    folder_id = (folder or "").strip()
+    folder_name = None
+    categories = summary.categories or []
+    if place == "trash":
+        items = uv.list_trash(db=db, current_user=user)
+        folder_id = ""
+    elif folder_id:
+        match = next((c for c in categories if c.id == folder_id), None)
+        if not match:
+            return RedirectResponse("/admin/urls/explorer", status_code=302)
+        folder_name = match.name
+        place = "folder"
+        items = uv.list_items(
+            category_id=folder_id, q=q or None, db=db, current_user=user,
+        )
+    elif place == "favorites":
+        items = uv.list_items(favorite=True, q=q or None, db=db, current_user=user)
+    elif place == "unfiled":
+        items = uv.list_items(unfiled=True, q=q or None, db=db, current_user=user)
+    else:
+        items = uv.list_items(q=q or None, db=db, current_user=user)
+    view = view if view in ("list", "icons", "cards") else "list"
+    return templates.TemplateResponse("urls_explorer.html", _url_ctx(
+        request, user, "url_explorer",
+        summary=summary, items=items, categories=categories,
+        folder=folder_id, folder_name=folder_name, place=place,
+        q=q or "", view=view, notice=notice, err=err,
+    ))
+
+
+@router.get("/urls/trash", response_class=HTMLResponse)
+def urls_trash_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = uv.list_trash(db=db, current_user=user)
+    return templates.TemplateResponse("urls_trash.html", _url_ctx(
+        request, user, "url_trash", items=items,
+    ))
+
+
+@router.post("/urls/trash/empty")
+def urls_trash_empty(
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    uv.empty_trash(db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse("/admin/urls/trash", status_code=302)
+
+
 @router.post("/urls/categories")
 async def urls_category_add(request: Request, db: Session = Depends(get_db)):
     from app.routers import urls as uv
@@ -6549,6 +6634,9 @@ async def urls_category_add(request: Request, db: Session = Depends(get_db)):
         name=str(form.get("name") or ""),
         color=str(form.get("color") or "") or None,
     ), db=db, current_user=user)
+    dest = str(form.get("next") or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/urls/manage", status_code=302)
 
 
@@ -6657,20 +6745,39 @@ async def urls_item_update(item_id: str, request: Request, db: Session = Depends
 @router.post("/urls/{item_id}/preview")
 def urls_item_preview(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import urls as uv
+    from fastapi.encoders import jsonable_encoder
     user = _url_user(request, db)
     if not user:
+        if request.query_params.get("format") == "json":
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return RedirectResponse("/admin/login", status_code=302)
-    uv.refresh_preview(item_id, db=db, current_user=user)
+    item = uv.refresh_preview(item_id, db=db, current_user=user)
+    if request.query_params.get("format") == "json":
+        return JSONResponse(jsonable_encoder(item))
+    referer = request.headers.get("referer") or f"/admin/urls/{item_id}"
+    if "/admin/urls/explorer" in (referer or ""):
+        return RedirectResponse(referer, status_code=302)
     return RedirectResponse(f"/admin/urls/{item_id}", status_code=302)
 
 
 @router.post("/urls/{item_id}/favorite")
-def urls_item_favorite(item_id: str, request: Request, db: Session = Depends(get_db)):
+def urls_item_favorite(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers import urls as uv
     user = _url_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     uv.toggle_favorite(item_id, db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    referer = request.headers.get("referer") or ""
+    if "/admin/urls/explorer" in referer:
+        return RedirectResponse(referer, status_code=302)
     return RedirectResponse(f"/admin/urls/{item_id}", status_code=302)
 
 
@@ -6702,13 +6809,65 @@ def urls_share_revoke(share_id: str, request: Request, db: Session = Depends(get
 
 
 @router.post("/urls/{item_id}/delete")
-def urls_item_delete(item_id: str, request: Request, db: Session = Depends(get_db)):
+def urls_item_delete(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers import urls as uv
-    user = _url_user(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
     uv.delete_item(item_id, db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/urls", status_code=302)
+
+
+@router.post("/urls/{item_id}/restore")
+def urls_item_restore(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        uv.restore_item(item_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 403, 404):
+            raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse("/admin/urls/trash", status_code=302)
+
+
+@router.post("/urls/{item_id}/permanent")
+def urls_item_permanent(
+    item_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import urls as uv
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        uv.permanent_delete_item(item_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 403, 404):
+            raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/urls") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse("/admin/urls/trash", status_code=302)
 
 
 # ---------- Shared AI providers ----------

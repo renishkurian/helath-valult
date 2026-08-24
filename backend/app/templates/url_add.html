@@ -23,6 +23,7 @@
       </div>
       <div class="card-body">
         <form method="post" action="/admin/urls/add">
+          {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label" for="url">URL <span class="req">*</span></label>

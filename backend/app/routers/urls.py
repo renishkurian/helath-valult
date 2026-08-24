@@ -56,15 +56,34 @@ def ensure_defaults(db: Session, user: models.User) -> None:
         db.commit()
 
 
-def _owned_item(item_id: str, db: Session, user: models.User) -> models.UrlItem:
-    item = (
-        db.query(models.UrlItem)
-        .filter(models.UrlItem.id == item_id, models.UrlItem.user_id == vault_id(user))
-        .first()
+def _owned_item(
+    item_id: str,
+    db: Session,
+    user: models.User,
+    *,
+    include_deleted: bool = False,
+) -> models.UrlItem:
+    q = db.query(models.UrlItem).filter(
+        models.UrlItem.id == item_id,
+        models.UrlItem.user_id == vault_id(user),
     )
+    if not include_deleted:
+        q = q.filter(models.UrlItem.deleted_at.is_(None))
+    item = q.first()
     if not item:
         raise HTTPException(status_code=404, detail="Link not found")
     return item
+
+
+def _active_item_query(db: Session, user: models.User):
+    return db.query(models.UrlItem).filter(
+        models.UrlItem.user_id == vault_id(user),
+        models.UrlItem.deleted_at.is_(None),
+    )
+
+
+def _purge_item(db: Session, item: models.UrlItem) -> None:
+    db.delete(item)
 
 
 def _owned_category(category_id: str, db: Session, user: models.User) -> models.UrlCategory:
@@ -126,6 +145,7 @@ def _to_out(item: models.UrlItem) -> schemas.UrlItemOut:
         favicon_url=item.favicon_url,
         created_at=item.created_at,
         updated_at=item.updated_at,
+        deleted_at=item.deleted_at,
     )
 
 
@@ -183,7 +203,22 @@ def urls_summary(
 ):
     ensure_defaults(db, current_user)
     uid = vault_id(current_user)
-    items = db.query(models.UrlItem).filter(models.UrlItem.user_id == uid).all()
+    items = (
+        db.query(models.UrlItem)
+        .filter(
+            models.UrlItem.user_id == uid,
+            models.UrlItem.deleted_at.is_(None),
+        )
+        .all()
+    )
+    trash = (
+        db.query(models.UrlItem)
+        .filter(
+            models.UrlItem.user_id == uid,
+            models.UrlItem.deleted_at.isnot(None),
+        )
+        .count()
+    )
     cats = (
         db.query(models.UrlCategory)
         .filter(models.UrlCategory.user_id == uid)
@@ -204,9 +239,12 @@ def urls_summary(
     for item in items:
         for t in item.tags or []:
             tag_counts[t.id] = tag_counts.get(t.id, 0) + 1
+    unfiled = sum(1 for i in items if not i.category_id)
     return schemas.UrlSummaryOut(
         total=len(items),
         favorites=sum(1 for i in items if i.favorite),
+        trash=trash,
+        unfiled=unfiled,
         categories=[_cat_out(c, cat_counts.get(c.id, 0)) for c in cats],
         tags=[_tag_out(t, tag_counts.get(t.id, 0)) for t in tags],
     )
@@ -388,7 +426,10 @@ def list_shares(
     q = (
         db.query(models.UrlShare)
         .join(models.UrlItem)
-        .filter(models.UrlItem.user_id == uid)
+        .filter(
+            models.UrlItem.user_id == uid,
+            models.UrlItem.deleted_at.is_(None),
+        )
     )
     if item_id:
         q = q.filter(models.UrlShare.item_id == item_id)
@@ -423,6 +464,8 @@ def _public_share(token: str, db: Session) -> models.UrlShare:
         raise HTTPException(410, "This link has expired")
     if share.max_views is not None and (share.view_count or 0) >= share.max_views:
         raise HTTPException(410, "This link has reached its view limit")
+    if not share.item or share.item.deleted_at is not None:
+        raise HTTPException(404, "Link not found")
     return share
 
 
@@ -473,12 +516,15 @@ def list_items(
     category_id: Optional[str] = None,
     tag_id: Optional[str] = None,
     favorite: bool = False,
+    unfiled: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     ensure_defaults(db, current_user)
-    query = db.query(models.UrlItem).filter(models.UrlItem.user_id == vault_id(current_user))
-    if category_id:
+    query = _active_item_query(db, current_user)
+    if unfiled:
+        query = query.filter(models.UrlItem.category_id.is_(None))
+    elif category_id:
         query = query.filter(models.UrlItem.category_id == category_id)
     if favorite:
         query = query.filter(models.UrlItem.favorite.is_(True))
@@ -495,6 +541,44 @@ def list_items(
         ))
     rows = query.order_by(models.UrlItem.favorite.desc(), models.UrlItem.created_at.desc()).all()
     return [_to_out(i) for i in rows]
+
+
+@router.get("/trash", response_model=list[schemas.UrlItemOut])
+def list_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.UrlItem)
+        .filter(
+            models.UrlItem.user_id == vault_id(current_user),
+            models.UrlItem.deleted_at.isnot(None),
+        )
+        .order_by(models.UrlItem.deleted_at.desc())
+        .all()
+    )
+    return [_to_out(i) for i in rows]
+
+
+@router.post("/trash/empty")
+def empty_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = (
+        db.query(models.UrlItem)
+        .filter(
+            models.UrlItem.user_id == vault_id(current_user),
+            models.UrlItem.deleted_at.isnot(None),
+        )
+        .all()
+    )
+    n = len(rows)
+    for item in rows:
+        _purge_item(db, item)
+    db.commit()
+    return {"ok": True, "deleted": n}
 
 
 @router.post("", response_model=schemas.UrlItemOut, status_code=201)
@@ -583,9 +667,42 @@ def delete_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """Soft-delete: move link to trash."""
     require_owner(current_user)
     item = _owned_item(item_id, db, current_user)
-    db.delete(item)
+    item.deleted_at = datetime.utcnow()
+    item.updated_at = datetime.utcnow()
+    db.commit()
+
+
+@router.post("/{item_id}/restore", response_model=schemas.UrlItemOut)
+def restore_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned_item(item_id, db, current_user, include_deleted=True)
+    if item.deleted_at is None:
+        raise HTTPException(status_code=400, detail="Link is not in trash")
+    item.deleted_at = None
+    item.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    return _to_out(item)
+
+
+@router.delete("/{item_id}/permanent", status_code=204)
+def permanent_delete_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    item = _owned_item(item_id, db, current_user, include_deleted=True)
+    if item.deleted_at is None:
+        raise HTTPException(status_code=400, detail="Move to trash before permanent delete")
+    _purge_item(db, item)
     db.commit()
 
 
