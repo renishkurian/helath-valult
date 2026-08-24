@@ -36,14 +36,63 @@
       if (btn) btn.setAttribute("aria-expanded", "false");
       if (menu) {
         menu.hidden = true;
+        menu.classList.remove("is-fixed");
         menu.style.position = "";
         menu.style.left = "";
         menu.style.top = "";
         menu.style.width = "";
+        menu.style.minWidth = "";
         menu.style.right = "";
       }
     });
     OPEN = null;
+  }
+
+  function needsFixedMenu(el) {
+    var node = el.parentElement;
+    while (node && node !== document.documentElement) {
+      if (
+        node.classList.contains("modal") ||
+        node.classList.contains("modal-dialog") ||
+        node.classList.contains("modal-content") ||
+        node.classList.contains("modal-body") ||
+        node.classList.contains("sheet") ||
+        node.classList.contains("sheet-body")
+      ) {
+        return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
+
+  function placeMenu(btn, menu) {
+    var r = btn.getBoundingClientRect();
+    var width = Math.max(r.width, 160);
+    // Default: absolute under .v-pick (matches trigger width). Fixed only when clipped.
+    if (!needsFixedMenu(btn)) {
+      menu.classList.remove("is-fixed");
+      menu.style.position = "";
+      menu.style.left = "";
+      menu.style.top = "";
+      menu.style.width = "";
+      menu.style.minWidth = "";
+      menu.style.right = "";
+      return;
+    }
+    var left = Math.min(r.left, window.innerWidth - width - 8);
+    var top = r.bottom + 6;
+    var maxH = Math.min(288, window.innerHeight * 0.55);
+    if (top + maxH > window.innerHeight - 8) {
+      top = Math.max(8, r.top - 6 - Math.min(maxH, menu.scrollHeight || 180));
+    }
+    menu.classList.add("is-fixed");
+    menu.style.position = "fixed";
+    menu.style.left = Math.max(8, left) + "px";
+    menu.style.top = top + "px";
+    menu.style.width = width + "px";
+    menu.style.minWidth = width + "px";
+    menu.style.right = "auto";
   }
 
   function selectedOption(sel) {
@@ -200,19 +249,7 @@
         root.classList.add("open");
         btn.setAttribute("aria-expanded", "true");
         menu.hidden = false;
-        // Fixed so menus escape modal / overflow containers.
-        var r = btn.getBoundingClientRect();
-        var width = Math.max(r.width, 160);
-        var left = Math.min(r.left, window.innerWidth - width - 8);
-        var top = r.bottom + 6;
-        if (top + Math.min(288, window.innerHeight * 0.55) > window.innerHeight - 8) {
-          top = Math.max(8, r.top - 6 - Math.min(288, menu.scrollHeight || 180));
-        }
-        menu.style.position = "fixed";
-        menu.style.left = Math.max(8, left) + "px";
-        menu.style.top = top + "px";
-        menu.style.width = width + "px";
-        menu.style.right = "auto";
+        placeMenu(btn, menu);
         OPEN = root;
       }
     });

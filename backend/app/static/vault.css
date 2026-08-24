@@ -2916,12 +2916,15 @@ body.vdlg-open{ overflow:hidden; }
 }
 .v-pick-menu{
   position:absolute; z-index:1085; top:calc(100% + .35rem); left:0; right:0;
-  min-width:100%; max-height:min(18rem, 55vh); overflow:auto;
+  width:auto; min-width:0; max-height:min(18rem, 55vh); overflow:auto;
   padding:.35rem;
   border-radius:14px;
   border:1px solid var(--v-line);
   background:#141820;
   box-shadow:0 16px 40px rgba(0,0,0,.5);
+}
+.v-pick-menu.is-fixed{
+  right:auto;
 }
 .v-pick-group{
   padding:.45rem .65rem .2rem;
