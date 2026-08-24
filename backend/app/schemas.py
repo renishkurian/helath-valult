@@ -1564,6 +1564,7 @@ class DiaryCategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     color: Optional[str] = Field(default=None, max_length=16)
     sort_order: Optional[int] = None
+    parent_id: Optional[str] = None
 
 
 class DiaryCategoryOut(BaseModel):
@@ -1573,6 +1574,11 @@ class DiaryCategoryOut(BaseModel):
     sort_order: int = 0
     is_default: bool = False
     count: int = 0
+    parent_id: Optional[str] = None
+    child_count: int = 0
+    depth: int = 0
+    path_label: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
 class DiaryImageOut(BaseModel):

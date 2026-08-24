@@ -7586,34 +7586,42 @@ def diary_explorer(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     summary = dy.diary_summary(db=db, current_user=user)
-    folders = list(summary.categories or [])
+    folder_tree = dy.folder_tree(db, user)
     place = (place or "home").strip().lower()
     if place not in ("home", "pinned", "unfiled"):
         place = "home"
     folder_id = (folder or "").strip()
     folder_name = None
+    folder_crumbs = []
+    child_folders = []
     if folder_id:
-        match = next((c for c in folders if c.id == folder_id), None)
+        match = next((c for c in folder_tree if c.id == folder_id), None)
         if not match:
             return RedirectResponse("/admin/diary/explorer", status_code=302)
         folder_name = match.name
         place = "folder"
+        folder_crumbs = dy.folder_crumbs(db, user, folder_id)
+        child_folders = dy.child_folders(db, user, folder_id)
         entries = dy.list_entries(
             category_id=folder_id, q=q or None, db=db, current_user=user,
         )
     elif place == "pinned":
         entries = dy.list_entries(pinned=True, q=q or None, db=db, current_user=user)
+        child_folders = []
     elif place == "unfiled":
         entries = dy.list_entries(unfiled=True, q=q or None, db=db, current_user=user)
+        child_folders = []
     else:
         entries = dy.list_entries(q=q or None, db=db, current_user=user)
-    filed = sum(int(getattr(c, "count", 0) or 0) for c in folders)
+        child_folders = []
+    filed = sum(int(getattr(c, "count", 0) or 0) for c in folder_tree)
     unfiled_count = max(0, int(summary.total or 0) - filed)
     view = "icons" if view == "icons" else "list"
     return templates.TemplateResponse("diary_explorer.html", _dy_ctx(
         request, user, "dy_explorer",
-        summary=summary, folders=folders, entries=entries,
+        summary=summary, folders=folder_tree, entries=entries,
         folder=folder_id, folder_name=folder_name, place=place,
+        folder_crumbs=folder_crumbs, child_folders=child_folders,
         q=q or "", view=view, unfiled_count=unfiled_count,
         notice=notice, err=err,
     ))
@@ -7698,6 +7706,7 @@ def diary_category_add(
     request: Request,
     name: str = Form(...),
     color: str = Form("#5B8CFF"),
+    parent_id: str = Form(""),
     next: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -7712,7 +7721,12 @@ def diary_category_add(
     if dest and not dest.startswith("/admin/diary"):
         dest = ""
     try:
-        dy.create_category(sc.DiaryCategoryIn(name=name, color=color or None), db=db, current_user=user)
+        dy.create_category(
+            sc.DiaryCategoryIn(
+                name=name, color=color or None, parent_id=(parent_id or "").strip() or None,
+            ),
+            db=db, current_user=user,
+        )
     except HTTPException as exc:
         fail = dest or "/admin/diary/manage"
         sep = "&" if "?" in fail else "?"

@@ -2869,7 +2869,15 @@ body.vdlg-open{ overflow:hidden; }
 .diary-chip.on .n{ color:var(--v-gold); background:rgba(217,185,120,0.15); }
 
 /* Modern custom select (replaces native OS dropdown chrome) */
-.v-pick{ position:relative; }
+.v-pick{ position:relative; width:100%; min-width:0; }
+.v-pick-native{
+  position:absolute !important;
+  width:1px !important; height:1px !important;
+  padding:0 !important; margin:-1px !important;
+  overflow:hidden !important; clip:rect(0,0,0,0) !important;
+  white-space:nowrap !important; border:0 !important;
+  opacity:0 !important; pointer-events:none !important;
+}
 .v-pick-btn{
   width:100%; display:flex; align-items:center; gap:.5rem;
   min-height:44px; padding:.5rem .75rem;
@@ -2880,18 +2888,23 @@ body.vdlg-open{ overflow:hidden; }
   text-align:left; cursor:pointer;
   transition:border-color var(--v-fast) var(--v-ease), background var(--v-fast) var(--v-ease);
 }
+.v-pick-sm .v-pick-btn{ min-height:34px; padding:.35rem .65rem; font-size:.8125rem; }
 .v-pick-btn:hover{ border-color:rgba(255,255,255,.18); background:var(--v-hover); }
 .v-pick.open .v-pick-btn{
   border-color:var(--v-gold-line);
   background:var(--v-gold-soft);
   box-shadow:0 0 0 3px rgba(217,185,120,.12);
 }
+.v-pick.is-disabled .v-pick-btn,
+.v-pick-btn:disabled{
+  opacity:.55; cursor:not-allowed; background:rgba(255,255,255,.03);
+}
 .v-pick-btn .bi-chevron-down{
-  margin-left:auto; font-size:.75rem; color:var(--v-ink-3);
+  margin-left:auto; font-size:.75rem; color:var(--v-ink-3); flex-shrink:0;
   transition:transform var(--v-fast) var(--v-ease);
 }
 .v-pick.open .v-pick-btn .bi-chevron-down{ transform:rotate(180deg); color:var(--v-gold); }
-.v-pick-label{ min-width:0; }
+.v-pick-label{ min-width:0; flex:1; }
 .v-pick-dot{
   width:8px; height:8px; border-radius:50%; flex-shrink:0;
   box-shadow:0 0 0 2px rgba(0,0,0,.25);
@@ -2902,7 +2915,7 @@ body.vdlg-open{ overflow:hidden; }
   box-shadow:none;
 }
 .v-pick-menu{
-  position:absolute; z-index:40; top:calc(100% + .35rem); left:0; right:0;
+  position:absolute; z-index:1085; top:calc(100% + .35rem); left:0; right:0;
   min-width:100%; max-height:min(18rem, 55vh); overflow:auto;
   padding:.35rem;
   border-radius:14px;
@@ -2910,12 +2923,21 @@ body.vdlg-open{ overflow:hidden; }
   background:#141820;
   box-shadow:0 16px 40px rgba(0,0,0,.5);
 }
+.v-pick-group{
+  padding:.45rem .65rem .2rem;
+  font-size:.65rem; font-weight:700; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--v-ink-3);
+}
+.v-pick-empty{
+  padding:.65rem; font-size:.8125rem; color:var(--v-ink-3); text-align:center;
+}
 .v-pick-opt{
   width:100%; display:flex; align-items:center; gap:.55rem;
   padding:.55rem .65rem; border:0; border-radius:10px;
   background:transparent; color:var(--v-ink);
   font-size:.875rem; text-align:left; cursor:pointer;
 }
+.v-pick-sm .v-pick-opt{ padding:.4rem .55rem; font-size:.8125rem; }
 .v-pick-opt:hover, .v-pick-opt:focus-visible{
   background:var(--v-hover); outline:none;
 }
@@ -2923,12 +2945,43 @@ body.vdlg-open{ overflow:hidden; }
   background:var(--v-gold-soft);
   color:var(--v-ink);
 }
+.v-pick-opt:disabled{ opacity:.45; cursor:not-allowed; }
 .v-pick-opt em{
   margin-left:auto; font-style:normal; font-size:.7rem;
   font-variant-numeric:tabular-nums; color:var(--v-ink-3);
   background:rgba(255,255,255,.06); padding:.1rem .35rem; border-radius:999px;
 }
 .v-pick-opt.on em{ color:var(--v-gold); background:rgba(217,185,120,.15); }
+
+/* Keep layout helpers that targeted .form-select working on the wrapper */
+.diary-toolbar .v-pick,
+.filter-bar .v-pick,
+.toolbar .v-pick{ width:auto; flex:0 1 200px; min-width:9.5rem; }
+.filter-bar .v-pick.grow,
+.toolbar .v-pick.grow{ flex:1 1 220px; min-width:12rem; }
+.input-group > .v-pick{ flex:1 1 auto; }
+.input-group > .v-pick .v-pick-btn{ border-radius:inherit; }
+.row > [class*="col"] > .v-pick{ width:100%; }
+.mb-3 > .v-pick,
+.form-floating + .v-pick,
+label + .v-pick{ width:100%; }
+
+.dx-props-list{
+  display:grid; gap:.55rem;
+  margin:0;
+}
+.dx-props-list > div{
+  display:grid; grid-template-columns:7.5rem minmax(0,1fr); gap:.75rem;
+  align-items:baseline;
+}
+.dx-props-list dt{
+  margin:0; font-size:.75rem; font-weight:650; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--v-ink-3);
+}
+.dx-props-list dd{
+  margin:0; font-size:.9375rem; color:var(--v-ink);
+  overflow-wrap:anywhere;
+}
 
 .diary-feed{ display:flex; flex-direction:column; gap:.875rem; }
 .diary-card{

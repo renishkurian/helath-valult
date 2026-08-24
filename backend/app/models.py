@@ -1042,6 +1042,7 @@ class DiaryCategory(Base):
     __tablename__ = "diary_categories"
     id = Column(String(32), primary_key=True, default=gen_id)
     user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    parent_id = Column(String(32), ForeignKey("diary_categories.id"), nullable=True, index=True)
     name = Column(String(80), nullable=False)
     color = Column(String(16), nullable=True)
     sort_order = Column(Integer, default=0, nullable=False)
@@ -1049,7 +1050,7 @@ class DiaryCategory(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     entries = relationship("DiaryEntry", back_populates="category")
-
+    parent = relationship("DiaryCategory", remote_side=[id], backref="children")
 
 class DiaryEntry(Base):
     """A diary note: title, encrypted body, optional category/tags/mood, photos."""

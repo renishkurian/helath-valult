@@ -31,7 +31,7 @@
         <select class="form-select" id="dy-cat" name="category_id">
           <option value="">None</option>
           {% for c in categories %}
-          <option value="{{ c.id }}" {% if entry.category_id==c.id %}selected{% endif %}>{{ c.name }}</option>
+          <option value="{{ c.id }}" {% if entry.category_id==c.id %}selected{% endif %}>{{ c.path_label or c.name }}</option>
           {% endfor %}
         </select>
       </div>

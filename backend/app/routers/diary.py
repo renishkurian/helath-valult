@@ -80,10 +80,19 @@ def _image_out(img: models.DiaryImage) -> schemas.DiaryImageOut:
     )
 
 
-def _cat_out(cat: models.DiaryCategory, count: int = 0) -> schemas.DiaryCategoryOut:
+def _cat_out(
+    cat: models.DiaryCategory,
+    count: int = 0,
+    child_count: int = 0,
+    depth: int = 0,
+    path_label: str | None = None,
+) -> schemas.DiaryCategoryOut:
     return schemas.DiaryCategoryOut(
         id=cat.id, name=cat.name, color=cat.color,
         sort_order=cat.sort_order or 0, is_default=bool(cat.is_default), count=count,
+        parent_id=cat.parent_id, child_count=child_count, depth=depth,
+        path_label=path_label or cat.name,
+        created_at=cat.created_at,
     )
 
 
@@ -106,6 +115,128 @@ def _to_out(entry: models.DiaryEntry, include_images: bool = False) -> schemas.D
         created_at=entry.created_at,
         updated_at=entry.updated_at,
     )
+
+
+def _category_rows(db: Session, user: models.User) -> list[models.DiaryCategory]:
+    return (
+        db.query(models.DiaryCategory)
+        .filter(models.DiaryCategory.user_id == vault_id(user))
+        .order_by(models.DiaryCategory.sort_order, models.DiaryCategory.name)
+        .all()
+    )
+
+
+def _entry_counts(db: Session, user: models.User) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in (
+        db.query(models.DiaryEntry.category_id)
+        .filter(
+            models.DiaryEntry.user_id == vault_id(user),
+            models.DiaryEntry.category_id.isnot(None),
+        )
+        .all()
+    ):
+        counts[row[0]] = counts.get(row[0], 0) + 1
+    return counts
+
+
+def _folder_outs(db: Session, user: models.User) -> list[schemas.DiaryCategoryOut]:
+    rows = _category_rows(db, user)
+    counts = _entry_counts(db, user)
+    by_id = {c.id: c for c in rows}
+    child_counts: dict[str, int] = {}
+    for c in rows:
+        if c.parent_id:
+            child_counts[c.parent_id] = child_counts.get(c.parent_id, 0) + 1
+
+    def path_for(cat: models.DiaryCategory) -> str:
+        parts: list[str] = []
+        cur: models.DiaryCategory | None = cat
+        seen: set[str] = set()
+        while cur and cur.id not in seen:
+            seen.add(cur.id)
+            parts.append(cur.name)
+            cur = by_id.get(cur.parent_id) if cur.parent_id else None
+        parts.reverse()
+        return " / ".join(parts)
+
+    return [
+        _cat_out(
+            c,
+            count=counts.get(c.id, 0),
+            child_count=child_counts.get(c.id, 0),
+            path_label=path_for(c),
+        )
+        for c in rows
+    ]
+
+
+def folder_tree(db: Session, user: models.User) -> list[schemas.DiaryCategoryOut]:
+    """Depth-first flat tree for the Diary Explorer sidebar."""
+    folders = _folder_outs(db, user)
+    by_parent: dict[str | None, list[schemas.DiaryCategoryOut]] = {}
+    for f in folders:
+        by_parent.setdefault(f.parent_id, []).append(f)
+    for kids in by_parent.values():
+        kids.sort(key=lambda x: ((x.sort_order or 0), (x.name or "").lower()))
+    out: list[schemas.DiaryCategoryOut] = []
+
+    def walk(parent_id: str | None, depth: int) -> None:
+        for f in by_parent.get(parent_id, []):
+            out.append(schemas.DiaryCategoryOut(
+                id=f.id, name=f.name, color=f.color, sort_order=f.sort_order,
+                is_default=f.is_default, count=f.count, parent_id=f.parent_id,
+                child_count=f.child_count, depth=depth, path_label=f.path_label,
+                created_at=f.created_at,
+            ))
+            walk(f.id, depth + 1)
+
+    walk(None, 0)
+    return out
+
+
+def folder_crumbs(db: Session, user: models.User, folder_id: str) -> list[schemas.DiaryCategoryOut]:
+    by_id = {c.id: c for c in _folder_outs(db, user)}
+    crumbs: list[schemas.DiaryCategoryOut] = []
+    cur = by_id.get(folder_id)
+    seen: set[str] = set()
+    while cur and cur.id not in seen:
+        seen.add(cur.id)
+        crumbs.append(cur)
+        cur = by_id.get(cur.parent_id) if cur.parent_id else None
+    crumbs.reverse()
+    return crumbs
+
+
+def child_folders(db: Session, user: models.User, parent_id: str | None) -> list[schemas.DiaryCategoryOut]:
+    return [f for f in _folder_outs(db, user) if (f.parent_id or None) == (parent_id or None)]
+
+
+def _resolve_parent(
+    parent_id: Optional[str], db: Session, user: models.User, *, self_id: str | None = None,
+) -> Optional[str]:
+    if not parent_id:
+        return None
+    parent = _owned_category(parent_id, db, user)
+    if self_id and parent.id == self_id:
+        raise HTTPException(400, "A folder cannot be inside itself")
+    by_id = {c.id: c for c in _category_rows(db, user)}
+    if self_id:
+        cur = parent
+        seen = {self_id}
+        while cur:
+            if cur.id in seen:
+                raise HTTPException(400, "That would create a folder loop")
+            seen.add(cur.id)
+            cur = by_id.get(cur.parent_id) if cur.parent_id else None
+    depth = 0
+    cur = parent
+    while cur and depth < 8:
+        depth += 1
+        cur = by_id.get(cur.parent_id) if cur.parent_id else None
+    if depth >= 6:
+        raise HTTPException(400, "Folders can only nest 6 levels deep")
+    return parent.id
 
 
 def _resolve_category(category_id: Optional[str], db: Session, user: models.User) -> Optional[str]:
@@ -164,20 +295,11 @@ def diary_summary(
     ensure_defaults(db, current_user)
     uid = vault_id(current_user)
     entries = db.query(models.DiaryEntry).filter(models.DiaryEntry.user_id == uid).all()
-    cats = (
-        db.query(models.DiaryCategory)
-        .filter(models.DiaryCategory.user_id == uid)
-        .order_by(models.DiaryCategory.sort_order, models.DiaryCategory.name)
-        .all()
-    )
-    cat_counts: dict[str, int] = {}
-    for e in entries:
-        if e.category_id:
-            cat_counts[e.category_id] = cat_counts.get(e.category_id, 0) + 1
+    cats = folder_tree(db, current_user)
     return schemas.DiarySummaryOut(
         total=len(entries),
         pinned=sum(1 for e in entries if e.pinned),
-        categories=[_cat_out(c, cat_counts.get(c.id, 0)) for c in cats],
+        categories=cats,
     )
 
 
@@ -187,21 +309,7 @@ def list_categories(
     current_user: models.User = Depends(get_current_user),
 ):
     ensure_defaults(db, current_user)
-    uid = vault_id(current_user)
-    cats = (
-        db.query(models.DiaryCategory)
-        .filter(models.DiaryCategory.user_id == uid)
-        .order_by(models.DiaryCategory.sort_order, models.DiaryCategory.name)
-        .all()
-    )
-    counts: dict[str, int] = {}
-    for row in (
-        db.query(models.DiaryEntry.category_id)
-        .filter(models.DiaryEntry.user_id == uid, models.DiaryEntry.category_id.isnot(None))
-        .all()
-    ):
-        counts[row[0]] = counts.get(row[0], 0) + 1
-    return [_cat_out(c, counts.get(c.id, 0)) for c in cats]
+    return folder_tree(db, current_user)
 
 
 @router.post("/categories", response_model=schemas.DiaryCategoryOut, status_code=201)
@@ -216,28 +324,34 @@ def create_category(
     if not name:
         raise HTTPException(400, "Folder name is required")
     uid = vault_id(current_user)
-    existing = (
-        db.query(models.DiaryCategory)
-        .filter(
-            models.DiaryCategory.user_id == uid,
-            models.DiaryCategory.name.ilike(name),
-        )
-        .first()
+    parent_id = _resolve_parent(body.parent_id, db, current_user)
+    q = db.query(models.DiaryCategory).filter(
+        models.DiaryCategory.user_id == uid,
+        models.DiaryCategory.name.ilike(name),
     )
+    if parent_id:
+        q = q.filter(models.DiaryCategory.parent_id == parent_id)
+    else:
+        q = q.filter(models.DiaryCategory.parent_id.is_(None))
+    existing = q.first()
     if existing:
-        raise HTTPException(400, f"Folder “{existing.name}” already exists")
+        raise HTTPException(400, f"Folder “{existing.name}” already exists here")
     color = _norm_color(body.color, CAT_COLORS[0])
+    if parent_id and not body.color:
+        parent = _owned_category(parent_id, db, current_user)
+        color = _norm_color(parent.color, color)
     row = models.DiaryCategory(
         user_id=uid,
         name=name,
         color=color,
+        parent_id=parent_id,
         sort_order=body.sort_order if body.sort_order is not None else 100,
         is_default=False,
     )
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _cat_out(row)
+    return _cat_out(row, path_label=row.name)
 
 
 @router.patch("/categories/{category_id}", response_model=schemas.DiaryCategoryOut)
@@ -254,6 +368,9 @@ def update_category(
         row.color = _norm_color(body.color, row.color or CAT_COLORS[0])
     if body.sort_order is not None:
         row.sort_order = body.sort_order
+    data = body.model_dump(exclude_unset=True)
+    if "parent_id" in data:
+        row.parent_id = _resolve_parent(data.get("parent_id"), db, current_user, self_id=row.id)
     db.commit()
     db.refresh(row)
     return _cat_out(row)
@@ -267,6 +384,11 @@ def delete_category(
 ):
     require_owner(current_user)
     row = _owned_category(category_id, db, current_user)
+    # Reparent child folders (Document Vault behavior).
+    db.query(models.DiaryCategory).filter(
+        models.DiaryCategory.parent_id == row.id,
+        models.DiaryCategory.user_id == vault_id(current_user),
+    ).update({models.DiaryCategory.parent_id: row.parent_id}, synchronize_session=False)
     db.query(models.DiaryEntry).filter(
         models.DiaryEntry.category_id == row.id,
         models.DiaryEntry.user_id == vault_id(current_user),

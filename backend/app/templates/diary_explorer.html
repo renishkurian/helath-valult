@@ -92,12 +92,18 @@
       {% for f in folders %}
       <a class="fx-tree-item {% if folder == f.id %}on{% endif %}"
          href="/admin/diary/explorer?folder={{ f.id }}{{ '&view=icons' if view == 'icons' else '' }}"
+         style="padding-left: calc(.65rem + {{ (f.depth * 0.9)|round(2) }}rem)"
          data-kind="folder"
          data-id="{{ f.id }}"
-         data-name="{{ f.name }}">
-        <i class="bi bi-folder2{% if folder == f.id %}-open{% endif %}" style="color:{{ f.color or '#F0A94E' }}"></i>
+         data-name="{{ f.name }}"
+         data-parent="{{ f.parent_id or '' }}"
+         data-count="{{ f.count }}"
+         data-child-count="{{ f.child_count }}"
+         data-created="{{ f.created_at.isoformat() if f.created_at else '' }}">
+        <i class="bi {% if folder == f.id or f.child_count %}bi-folder2-open{% else %}bi-folder2{% endif %}"
+           style="color:{{ f.color or '#F0A94E' }}"></i>
         <span>{{ f.name }}</span>
-        <em>{{ '%02d'|format(f.count) }}</em>
+        <em>{{ '%02d'|format(f.count + f.child_count) }}</em>
       </a>
       {% else %}
       <div class="fx-tree-empty">No folders yet — create one below.</div>
@@ -106,10 +112,14 @@
 
     <form class="fx-new-folder" method="post" action="/admin/diary/categories">
       <input type="hidden" name="next" value="{{ here_href }}">
+      <input type="hidden" name="parent_id" value="{{ folder or '' }}">
       <label class="visually-hidden" for="dx-folder-name">New folder name</label>
-      <input class="form-control form-control-sm" id="dx-folder-name" name="name" required maxlength="80" placeholder="New folder">
+      <input class="form-control form-control-sm" id="dx-folder-name" name="name" required maxlength="80"
+             placeholder="{% if folder %}New subfolder{% else %}New folder{% endif %}">
       <input class="form-control form-control-color form-control-sm" type="color" name="color" value="#F06BA8" title="Color" aria-label="Folder color">
-      <button class="btn btn-sm btn-outline-light" type="submit" title="Create folder"><i class="bi bi-folder-plus"></i></button>
+      <button class="btn btn-sm btn-outline-light" type="submit" title="{% if folder %}Create subfolder here{% else %}Create folder{% endif %}">
+        <i class="bi bi-folder-plus"></i>
+      </button>
     </form>
   </aside>
 
@@ -117,7 +127,16 @@
     <div class="fx-toolbar">
       <nav class="fx-crumbs" aria-label="Breadcrumb">
         <a href="/admin/diary/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-journal-richtext"></i> Diary</a>
-        {% if folder or place in ('pinned', 'unfiled') %}
+        {% if folder_crumbs %}
+          {% for c in folder_crumbs %}
+          <i class="bi bi-chevron-right"></i>
+          {% if not loop.last %}
+          <a href="/admin/diary/explorer?folder={{ c.id }}{{ '&view=icons' if view == 'icons' else '' }}">{{ c.name }}</a>
+          {% else %}
+          <span>{{ c.name }}</span>
+          {% endif %}
+          {% endfor %}
+        {% elif place in ('pinned', 'unfiled') %}
         <i class="bi bi-chevron-right"></i>
         <span>{{ here_label }}</span>
         {% endif %}
@@ -164,9 +183,32 @@
       </div>
       {% endif %}
 
-      {% if folder and not entries and not q %}
-      {# keep empty — empty state below #}
-      {% endif %}
+      {% for f in child_folders %}
+      <a class="fx-row"
+         href="/admin/diary/explorer?folder={{ f.id }}{{ '&view=icons' if view == 'icons' else '' }}"
+         data-kind="folder"
+         data-id="{{ f.id }}"
+         data-name="{{ f.name }}"
+         data-count="{{ f.count }}"
+         data-child-count="{{ f.child_count }}"
+         data-created="{{ f.created_at.isoformat() if f.created_at else '' }}">
+        <span class="fx-ico" style="color:{{ f.color or '#F0A94E' }}">
+          <i class="bi bi-folder-fill"></i>
+        </span>
+        <span class="fx-col-name truncate">{{ f.name }}</span>
+        {% if view == 'list' %}
+        <span class="fx-col-type text-faint">Folder</span>
+        <span class="fx-col-meta text-faint">
+          {{ f.child_count }} subfolder{{ 's' if f.child_count != 1 else '' }}
+          · {{ f.count }} page{{ 's' if f.count != 1 else '' }}
+        </span>
+        <span class="fx-col-size mono text-faint">—</span>
+        <span class="fx-col-date text-faint">—</span>
+        {% else %}
+        <span class="fx-icon-meta">{{ f.count + f.child_count }} items</span>
+        {% endif %}
+      </a>
+      {% endfor %}
 
       {% for e in entries %}
       {% set d = e.entry_date or '' %}
@@ -174,7 +216,16 @@
       <a class="fx-row"
          href="/admin/diary/{{ e.id }}"
          data-kind="entry"
-         data-id="{{ e.id }}">
+         data-id="{{ e.id }}"
+         data-name="{{ e.title }}"
+         data-folder="{{ e.category_name or '' }}"
+         data-entry-date="{{ e.entry_date or '' }}"
+         data-created="{{ e.created_at.isoformat() if e.created_at else '' }}"
+         data-updated="{{ e.updated_at.isoformat() if e.updated_at else '' }}"
+         data-photos="{{ e.image_count or 0 }}"
+         data-mood="{{ e.mood or '' }}"
+         data-tags="{{ e.tags or '' }}"
+         data-pinned="{{ '1' if e.pinned else '0' }}">
         <span class="fx-ico" style="color:{{ e.category_color or '#F06BA8' }}">
           <i class="bi {% if e.pinned %}bi-pin-angle-fill{% else %}bi-journal-text{% endif %}"></i>
         </span>
@@ -201,17 +252,44 @@
         {% endif %}
       </a>
       {% else %}
+      {% if not child_folders %}
       <div class="fx-empty">
         <div class="empty-ico"><i class="bi bi-journal"></i></div>
         <div class="empty-title">{% if q %}Nothing matches{% elif folder %}This folder is empty{% else %}No pages here{% endif %}</div>
         <p class="text-muted mb-3">
-          {% if q %}Try another search.{% elif folder %}New entries created here will be tagged to {{ folder_name }}.{% else %}Write a page to fill this place.{% endif %}
+          {% if q %}Try another search.
+          {% elif folder %}Add a subfolder below-left, or create a page tagged to {{ folder_name }}.
+          {% else %}Write a page to fill this place.{% endif %}
         </p>
         <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> New entry</a>
       </div>
+      {% endif %}
       {% endfor %}
     </div>
   </section>
+</div>
+
+<div class="fx-menu" id="dx-menu" hidden role="menu">
+  <button type="button" class="fx-menu-item" data-action="open" role="menuitem"><i class="bi bi-box-arrow-up-right"></i> Open</button>
+  <button type="button" class="fx-menu-item" data-action="properties" role="menuitem"><i class="bi bi-info-circle"></i> Properties</button>
+</div>
+
+<div class="modal fade" id="dx-props" tabindex="-1" aria-labelledby="dx-props-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="dx-props-title">Properties</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="dx-props-list mb-0" id="dx-props-body"></dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+        <a class="btn btn-primary" id="dx-props-open" href="#"><i class="bi bi-box-arrow-up-right"></i> Open</a>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -244,7 +322,6 @@
 
   var saved = false;
   try { saved = localStorage.getItem(KEY) === "1"; } catch (e) {}
-  // Default to full-screen explorer on first visit (desktop), matching Document Vault.
   try {
     if (localStorage.getItem(KEY) === null && window.matchMedia("(min-width:992px)").matches) {
       saved = true;
@@ -261,6 +338,170 @@
       toggle();
     }
   });
+})();
+
+(function () {
+  var menu = document.getElementById("dx-menu");
+  var pane = document.getElementById("fx-pane");
+  var tree = document.getElementById("fx-folder-tree");
+  var target = null;
+
+  function hideMenu() {
+    if (!menu) return;
+    menu.hidden = true;
+    target = null;
+  }
+
+  function showMenu(x, y, row) {
+    if (!menu || !row) return;
+    target = row;
+    menu.hidden = false;
+    var mw = menu.offsetWidth || 180;
+    var mh = menu.offsetHeight || 80;
+    var left = Math.min(x, window.innerWidth - mw - 8);
+    var top = Math.min(y, window.innerHeight - mh - 8);
+    menu.style.left = Math.max(8, left) + "px";
+    menu.style.top = Math.max(8, top) + "px";
+  }
+
+  function fmtWhen(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    try {
+      return d.toLocaleString(undefined, {
+        year: "numeric", month: "short", day: "2-digit",
+        hour: "2-digit", minute: "2-digit"
+      });
+    } catch (e) {
+      return d.toISOString();
+    }
+  }
+
+  function fmtEntryDate(s) {
+    if (!s || s.length < 10) return s || "—";
+    var d = new Date(s + "T00:00:00");
+    if (isNaN(d.getTime())) return s;
+    try {
+      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "2-digit" });
+    } catch (e) {
+      return s;
+    }
+  }
+
+  function rowData(row) {
+    return {
+      kind: row.getAttribute("data-kind") || "",
+      id: row.getAttribute("data-id") || "",
+      name: row.getAttribute("data-name") || "",
+      href: row.getAttribute("href") || "#",
+      folder: row.getAttribute("data-folder") || "",
+      entryDate: row.getAttribute("data-entry-date") || "",
+      created: row.getAttribute("data-created") || "",
+      updated: row.getAttribute("data-updated") || "",
+      photos: row.getAttribute("data-photos") || "0",
+      mood: row.getAttribute("data-mood") || "",
+      tags: row.getAttribute("data-tags") || "",
+      pinned: row.getAttribute("data-pinned") === "1",
+      count: row.getAttribute("data-count") || "0",
+      childCount: row.getAttribute("data-child-count") || "0"
+    };
+  }
+
+  function showProperties(row) {
+    var t = rowData(row);
+    var body = document.getElementById("dx-props-body");
+    var open = document.getElementById("dx-props-open");
+    var title = document.getElementById("dx-props-title");
+    if (!body) return;
+    var rows = [];
+    function add(label, value) {
+      if (value === "" || value == null) return;
+      rows.push(
+        "<div><dt>" + label + "</dt><dd>" + String(value)
+          .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") +
+        "</dd></div>"
+      );
+    }
+    if (t.kind === "folder") {
+      if (title) title.textContent = "Folder properties";
+      add("Name", t.name);
+      add("Type", "Folder");
+      add("Pages", t.count);
+      add("Subfolders", t.childCount);
+      add("Created", fmtWhen(t.created));
+    } else {
+      if (title) title.textContent = "Page properties";
+      add("Title", t.name);
+      add("Folder", t.folder || "Unfiled");
+      add("Entry date", fmtEntryDate(t.entryDate));
+      add("Created", fmtWhen(t.created));
+      add("Last updated", fmtWhen(t.updated));
+      add("Photos", t.photos);
+      if (t.pinned) add("Pinned", "Yes");
+      add("Mood", t.mood);
+      add("Tags", t.tags);
+    }
+    body.innerHTML = rows.join("");
+    if (open) open.href = t.href;
+    var modalEl = document.getElementById("dx-props");
+    if (window.bootstrap && modalEl) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else if (window.vaultAlert) {
+      window.vaultAlert(body.innerText, { title: title ? title.textContent : "Properties", icon: "bi-info-circle" });
+    } else {
+      window.alert(body.innerText);
+    }
+  }
+
+  function onContext(e) {
+    var row = e.target.closest(".fx-row[data-kind]");
+    if (!row) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showMenu(e.clientX, e.clientY, row);
+  }
+
+  if (pane) pane.addEventListener("contextmenu", onContext);
+  if (tree) {
+    tree.addEventListener("contextmenu", function (e) {
+      var row = e.target.closest(".fx-tree-item[data-kind='folder']");
+      if (!row) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!row.getAttribute("data-name")) {
+        var span = row.querySelector("span");
+        row.setAttribute("data-name", span ? span.textContent.trim() : "");
+      }
+      if (!row.getAttribute("data-count")) row.setAttribute("data-count", "0");
+      if (!row.getAttribute("data-child-count")) row.setAttribute("data-child-count", "0");
+      showMenu(e.clientX, e.clientY, row);
+    });
+  }
+
+  document.addEventListener("click", hideMenu);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") hideMenu();
+  });
+  window.addEventListener("resize", hideMenu);
+  window.addEventListener("scroll", hideMenu, true);
+
+  if (menu) {
+    menu.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-action]");
+      if (!btn || !target) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var action = btn.getAttribute("data-action");
+      var row = target;
+      hideMenu();
+      if (action === "open") {
+        window.location.href = row.getAttribute("href") || "#";
+        return;
+      }
+      if (action === "properties") showProperties(row);
+    });
+  }
 })();
 </script>
 {% endblock %}

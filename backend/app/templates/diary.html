@@ -39,34 +39,14 @@
     <i class="bi bi-search"></i>
     <input class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Search title, story, tags, mood…" aria-label="Search diary">
   </div>
-  {% set selected_folder = (summary.categories | selectattr('id', 'equalto', category_id) | list | first) if category_id else none %}
-  <div class="v-pick" data-v-pick>
-    <input type="hidden" name="category_id" value="{{ category_id or '' }}">
-    <button type="button" class="v-pick-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="Folder">
-      <span class="v-pick-dot" style="background:{{ selected_folder.color if selected_folder and selected_folder.color else '#8B95A8' }}" {% if not selected_folder %}hidden{% endif %}></span>
-      <span class="v-pick-label truncate">
-        {% if selected_folder %}{{ selected_folder.name }} ({{ selected_folder.count }}){% else %}All folders{% endif %}
-      </span>
-      <i class="bi bi-chevron-down" aria-hidden="true"></i>
-    </button>
-    <div class="v-pick-menu" role="listbox" hidden>
-      <button type="button" class="v-pick-opt {% if not category_id %}on{% endif %}" role="option"
-              data-value="" data-label="All folders" data-color="">
-        <span class="v-pick-dot is-all" aria-hidden="true"></span>
-        <span class="truncate">All folders</span>
-      </button>
-      {% for c in summary.categories %}
-      <button type="button" class="v-pick-opt {% if category_id == c.id %}on{% endif %}" role="option"
-              data-value="{{ c.id }}"
-              data-label="{{ c.name }} ({{ c.count }})"
-              data-color="{{ c.color or '#8B95A8' }}">
-        <span class="v-pick-dot" style="background:{{ c.color or '#8B95A8' }}" aria-hidden="true"></span>
-        <span class="truncate">{{ c.name }}</span>
-        <em>{{ c.count }}</em>
-      </button>
-      {% endfor %}
-    </div>
-  </div>
+  <select class="form-select" name="category_id" aria-label="Folder">
+    <option value="">All folders</option>
+    {% for c in summary.categories %}
+    <option value="{{ c.id }}" data-color="{{ c.color or '#8B95A8' }}" {% if category_id==c.id %}selected{% endif %}>
+      {{ c.path_label or c.name }} ({{ c.count }})
+    </option>
+    {% endfor %}
+  </select>
   {% if pinned %}<input type="hidden" name="pinned" value="1">{% endif %}
   <button class="btn btn-outline-light" type="submit">Search</button>
   {% if q or category_id or pinned %}
@@ -82,7 +62,7 @@
      href="/admin/diary?category_id={{ c.id }}"
      style="--chip-accent:{{ c.color or '#8B95A8' }};">
     <span class="dot" aria-hidden="true"></span>
-    {{ c.name }}
+    {{ c.path_label or c.name }}
     {% if c.count %}<span class="n">{{ c.count }}</span>{% endif %}
   </a>
   {% endfor %}
@@ -144,64 +124,4 @@
 {% endif %}
 
 <a class="fab" href="{{ add_href }}" aria-label="New entry"><i class="bi bi-plus-lg"></i></a>
-{% endblock %}
-
-{% block scripts %}
-<script>
-(function () {
-  function closeAll(except) {
-    document.querySelectorAll("[data-v-pick].open").forEach(function (el) {
-      if (except && el === except) return;
-      el.classList.remove("open");
-      var btn = el.querySelector(".v-pick-btn");
-      var menu = el.querySelector(".v-pick-menu");
-      if (btn) btn.setAttribute("aria-expanded", "false");
-      if (menu) menu.hidden = true;
-    });
-  }
-  document.querySelectorAll("[data-v-pick]").forEach(function (root) {
-    var btn = root.querySelector(".v-pick-btn");
-    var menu = root.querySelector(".v-pick-menu");
-    var hidden = root.querySelector('input[type="hidden"]');
-    var label = root.querySelector(".v-pick-label");
-    var dot = root.querySelector(".v-pick-btn > .v-pick-dot");
-    if (!btn || !menu || !hidden) return;
-    btn.addEventListener("click", function (ev) {
-      ev.preventDefault();
-      ev.stopPropagation();
-      var open = !root.classList.contains("open");
-      closeAll();
-      if (open) {
-        root.classList.add("open");
-        btn.setAttribute("aria-expanded", "true");
-        menu.hidden = false;
-      }
-    });
-    menu.querySelectorAll(".v-pick-opt").forEach(function (opt) {
-      opt.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        hidden.value = opt.getAttribute("data-value") || "";
-        if (label) label.textContent = opt.getAttribute("data-label") || opt.textContent.trim();
-        if (dot) {
-          var color = opt.getAttribute("data-color") || "";
-          if (color) {
-            dot.style.background = color;
-            dot.hidden = false;
-          } else {
-            dot.hidden = true;
-          }
-        }
-        menu.querySelectorAll(".v-pick-opt").forEach(function (o) {
-          o.classList.toggle("on", o === opt);
-        });
-        closeAll();
-      });
-    });
-  });
-  document.addEventListener("click", function () { closeAll(); });
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape") closeAll();
-  });
-})();
-</script>
 {% endblock %}
