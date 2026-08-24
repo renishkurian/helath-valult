@@ -5,6 +5,13 @@
   '01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun',
   '07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'
 } %}
+{% if category_id %}
+  {% set add_href = '/admin/diary/add?category_id=' ~ category_id ~ '&next=' ~ (('/admin/diary?category_id=' ~ category_id) | urlencode) %}
+{% elif pinned %}
+  {% set add_href = '/admin/diary/add?next=' ~ ('/admin/diary?pinned=1' | urlencode) %}
+{% else %}
+  {% set add_href = '/admin/diary/add' %}
+{% endif %}
 
 <section class="diary-hero">
   <div class="diary-hero-top">
@@ -15,8 +22,9 @@
       <p class="page-lead">Private notes and photos, encrypted on your Pi.</p>
     </div>
     <div class="page-actions">
+      <a class="btn btn-outline-light" href="/admin/diary/explorer"><i class="bi bi-folder2-open"></i> Explorer</a>
       <a class="btn btn-outline-light" href="/admin/diary/manage"><i class="bi bi-folder"></i> Folders</a>
-      <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
+      <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> New entry</a>
     </div>
   </div>
   <div class="diary-stats" aria-label="Diary summary">
@@ -108,10 +116,10 @@
   {% if q or category_id or pinned %}
   <a class="btn btn-outline-light" href="/admin/diary">Clear filters</a>
   {% else %}
-  <a class="btn btn-primary" href="/admin/diary/add"><i class="bi bi-plus-lg"></i> New entry</a>
+  <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> New entry</a>
   {% endif %}
 </div>
 {% endif %}
 
-<a class="fab" href="/admin/diary/add" aria-label="New entry"><i class="bi bi-plus-lg"></i></a>
+<a class="fab" href="{{ add_href }}" aria-label="New entry"><i class="bi bi-plus-lg"></i></a>
 {% endblock %}

@@ -3657,6 +3657,31 @@ body{
 .fx-menu-item i{ width:1rem; text-align:center; opacity:.85; }
 .fx-menu-sep{ height:1px; background:var(--v-line); margin:.3rem .35rem; }
 
+/* Diary explorer — inline new-folder strip + empty pane */
+.fx-new-folder{
+  display:flex; align-items:center; gap:.35rem;
+  padding:.55rem .65rem .75rem; margin-top:auto;
+  border-top:1px solid var(--v-line);
+}
+.fx-new-folder .form-control{ min-width:0; }
+.fx-new-folder .form-control-color{
+  width:2rem; height:1.85rem; padding:.15rem; flex-shrink:0;
+}
+.fx-new-folder .btn{ flex-shrink:0; }
+.fx-empty{
+  grid-column:1 / -1;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  text-align:center; padding:2.5rem 1.25rem; min-height:12rem;
+}
+.fx-empty .empty-ico{
+  width:3rem; height:3rem; border-radius:14px;
+  display:grid; place-items:center; margin-bottom:.75rem;
+  background:rgba(240,107,168,.12); color:#F06BA8; font-size:1.25rem;
+}
+.fx-empty .empty-title{ font-weight:650; margin-bottom:.35rem; }
+.diary-fx .fx-tree{ display:flex; flex-direction:column; }
+.diary-fx .fx-new-folder{ margin-top:auto; }
+
 @media (max-width: 991.98px){
   .fx-shell{ grid-template-columns:1fr; min-height:0; }
   .fx-tree{ max-height:220px; border-right:none; border-bottom:1px solid var(--v-line); }

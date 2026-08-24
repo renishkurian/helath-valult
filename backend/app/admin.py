@@ -7570,16 +7570,78 @@ def diary_home(
     ))
 
 
+@router.get("/diary/explorer", response_class=HTMLResponse)
+def diary_explorer(
+    request: Request,
+    folder: str = "",
+    place: str = "home",
+    q: str = "",
+    view: str = "list",
+    notice: Optional[str] = None,
+    err: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    summary = dy.diary_summary(db=db, current_user=user)
+    folders = list(summary.categories or [])
+    place = (place or "home").strip().lower()
+    if place not in ("home", "pinned", "unfiled"):
+        place = "home"
+    folder_id = (folder or "").strip()
+    folder_name = None
+    if folder_id:
+        match = next((c for c in folders if c.id == folder_id), None)
+        if not match:
+            return RedirectResponse("/admin/diary/explorer", status_code=302)
+        folder_name = match.name
+        place = "folder"
+        entries = dy.list_entries(
+            category_id=folder_id, q=q or None, db=db, current_user=user,
+        )
+    elif place == "pinned":
+        entries = dy.list_entries(pinned=True, q=q or None, db=db, current_user=user)
+    elif place == "unfiled":
+        entries = dy.list_entries(unfiled=True, q=q or None, db=db, current_user=user)
+    else:
+        entries = dy.list_entries(q=q or None, db=db, current_user=user)
+    filed = sum(int(getattr(c, "count", 0) or 0) for c in folders)
+    unfiled_count = max(0, int(summary.total or 0) - filed)
+    view = "icons" if view == "icons" else "list"
+    return templates.TemplateResponse("diary_explorer.html", _dy_ctx(
+        request, user, "dy_explorer",
+        summary=summary, folders=folders, entries=entries,
+        folder=folder_id, folder_name=folder_name, place=place,
+        q=q or "", view=view, unfiled_count=unfiled_count,
+        notice=notice, err=err,
+    ))
+
+
 @router.get("/diary/add", response_class=HTMLResponse)
-def diary_add_page(request: Request, db: Session = Depends(get_db)):
+def diary_add_page(
+    request: Request,
+    category_id: str = "",
+    next: str = "",
+    db: Session = Depends(get_db),
+):
     from app.routers import diary as dy
     user = _dy_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     cats = dy.list_categories(db=db, current_user=user)
+    prefill = (category_id or "").strip()
+    if prefill and not any(c.id == prefill for c in cats):
+        prefill = ""
+    next_url = (next or "").strip()
+    if next_url and not next_url.startswith("/admin/diary"):
+        next_url = ""
     return templates.TemplateResponse("diary_add.html", _dy_ctx(
         request, user, "dy_add", categories=cats,
         today=__import__("datetime").datetime.utcnow().strftime("%Y-%m-%d"),
+        prefill_category=prefill,
+        next_url=next_url,
     ))
 
 
@@ -7593,6 +7655,7 @@ async def diary_add(
     tags: str = Form(""),
     mood: str = Form(""),
     pinned: str = Form(""),
+    next: str = Form(""),
     images: list[UploadFile] = File(None),
     db: Session = Depends(get_db),
 ):
@@ -7605,6 +7668,11 @@ async def diary_add(
         category_id=category_id or None, tags=tags or None, mood=mood or None,
         pinned=bool(pinned), images=images or [], db=db, current_user=user,
     )
+    dest = (next or "").strip()
+    if dest and dest.startswith("/admin/diary"):
+        return RedirectResponse(dest, status_code=302)
+    if category_id:
+        return RedirectResponse(f"/admin/diary?category_id={category_id}", status_code=302)
     return RedirectResponse("/admin/diary", status_code=302)
 
 
@@ -7630,6 +7698,7 @@ def diary_category_add(
     request: Request,
     name: str = Form(...),
     color: str = Form("#5B8CFF"),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from urllib.parse import quote
@@ -7639,13 +7708,18 @@ def diary_category_add(
     user = _dy_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    dest = (next or "").strip()
+    if dest and not dest.startswith("/admin/diary"):
+        dest = ""
     try:
         dy.create_category(sc.DiaryCategoryIn(name=name, color=color or None), db=db, current_user=user)
     except HTTPException as exc:
-        return RedirectResponse(
-            f"/admin/diary/manage?err={quote(str(exc.detail))}",
-            status_code=302,
-        )
+        fail = dest or "/admin/diary/manage"
+        sep = "&" if "?" in fail else "?"
+        return RedirectResponse(f"{fail}{sep}err={quote(str(exc.detail))}", status_code=302)
+    if dest:
+        sep = "&" if "?" in dest else "?"
+        return RedirectResponse(f"{dest}{sep}notice=folder", status_code=302)
     return RedirectResponse("/admin/diary/manage?notice=folder", status_code=302)
 
 

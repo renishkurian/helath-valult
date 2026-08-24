@@ -1,18 +1,25 @@
 {% extends "base.html" %}
 {% block title %}New diary entry{% endblock %}
 {% block content %}
+{% set cancel_href = next_url if next_url else '/admin/diary' %}
 <div class="page-head">
   <div>
     <div class="eyebrow">
-      <a href="/admin/diary"><i class="bi bi-chevron-left"></i> Diary</a>
+      <a href="{{ cancel_href }}"><i class="bi bi-chevron-left"></i> Diary</a>
     </div>
     <h1 class="page-title">New entry</h1>
-    <p class="page-lead">A quiet page for the day — title, story, and optional photos.</p>
+    <p class="page-lead">
+      A quiet page for the day — title, story, and optional photos.
+      {% if prefill_category %}
+      <span class="text-muted">Folder is pre-selected from where you started.</span>
+      {% endif %}
+    </p>
   </div>
 </div>
 
 <div class="diary-desk">
   <form class="diary-desk-card" method="post" action="/admin/diary/add" enctype="multipart/form-data">
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
     <label class="visually-hidden" for="dy-title">Title</label>
     <input class="form-control title-input" id="dy-title" name="title" required maxlength="255"
            placeholder="What do you want to remember?" autofocus>
@@ -27,7 +34,7 @@
         <select class="form-select" id="dy-cat" name="category_id">
           <option value="">None</option>
           {% for c in categories %}
-          <option value="{{ c.id }}">{{ c.name }}</option>
+          <option value="{{ c.id }}" {% if prefill_category == c.id %}selected{% endif %}>{{ c.name }}</option>
           {% endfor %}
         </select>
       </div>
@@ -57,7 +64,7 @@
         <input class="form-check-input" type="checkbox" name="pinned" value="1" id="pinned">
         <label class="form-check-label" for="pinned">Pin to top</label>
       </div>
-      <a class="btn btn-ghost" href="/admin/diary">Cancel</a>
+      <a class="btn btn-ghost" href="{{ cancel_href }}">Cancel</a>
       <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save entry</button>
     </div>
   </form>

@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Diary Explorer{% endblock %}
+{% block body_class %}{% endblock %}
+{% block content %}
+{% set months = {
+  '01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun',
+  '07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'
+} %}
+{% set place = place or 'home' %}
+{% set view = view or 'list' %}
+{% if folder %}
+  {% set here_label = folder_name or 'Folder' %}
+  {% set here_base = '/admin/diary/explorer?folder=' ~ folder %}
+  {% set add_href = '/admin/diary/add?category_id=' ~ folder ~ '&next=' ~ (here_base | urlencode) %}
+{% elif place == 'pinned' %}
+  {% set here_label = 'Pinned' %}
+  {% set here_base = '/admin/diary/explorer?place=pinned' %}
+  {% set add_href = '/admin/diary/add?next=' ~ (here_base | urlencode) %}
+{% elif place == 'unfiled' %}
+  {% set here_label = 'Unfiled' %}
+  {% set here_base = '/admin/diary/explorer?place=unfiled' %}
+  {% set add_href = '/admin/diary/add?next=' ~ (here_base | urlencode) %}
+{% else %}
+  {% set here_label = 'All entries' %}
+  {% set here_base = '/admin/diary/explorer' %}
+  {% set add_href = '/admin/diary/add?next=' ~ (here_base | urlencode) %}
+{% endif %}
+{% if view == 'icons' %}
+  {% set here_href = here_base ~ ('&' if '?' in here_base else '?') ~ 'view=icons' %}
+  {% set list_href = here_base %}
+  {% set icons_href = here_href %}
+{% else %}
+  {% set here_href = here_base %}
+  {% set list_href = here_base %}
+  {% set icons_href = here_base ~ ('&' if '?' in here_base else '?') ~ 'view=icons' %}
+{% endif %}
+
+<div class="page-head mb-3 fx-page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      <a href="/admin/diary">Digital Diary</a>
+      <i class="bi bi-chevron-right"></i>
+      Explorer
+    </div>
+    <h1 class="page-title">Diary Explorer</h1>
+    <p class="page-lead mb-0">Browse like a file manager — folders on the left, pages on the right. New pages inherit the open folder.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-outline-light" id="fx-toggle-nav" title="Hide left menu for full-screen explorer">
+      <i class="bi bi-arrows-fullscreen"></i> Full screen
+    </button>
+  </div>
+</div>
+
+{% if notice == 'folder' %}
+<div class="alert alert-success" role="status">Folder created.</div>
+{% endif %}
+{% if err %}
+<div class="alert alert-danger" role="alert">{{ err }}</div>
+{% endif %}
+
+<div class="fx-shell diary-fx" id="fx-shell"
+     data-here="{{ here_href }}"
+     data-add="{{ add_href }}"
+     data-folder="{{ folder or '' }}"
+     data-place="{{ place }}">
+
+  <aside class="fx-tree" aria-label="Places">
+    <div class="fx-tree-head">Places</div>
+    <nav class="fx-tree-nav">
+      <a class="fx-tree-item {% if place == 'home' and not folder %}on{% endif %}"
+         href="/admin/diary/explorer{{ '?view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-house-door"></i><span>All entries</span>
+        <em>{{ '%02d'|format(summary.total) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'pinned' %}on{% endif %}"
+         href="/admin/diary/explorer?place=pinned{{ '&view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-pin-angle"></i><span>Pinned</span>
+        <em>{{ '%02d'|format(summary.pinned) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'unfiled' %}on{% endif %}"
+         href="/admin/diary/explorer?place=unfiled{{ '&view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-file-earmark"></i><span>Unfiled</span>
+        <em>{{ '%02d'|format(unfiled_count) }}</em>
+      </a>
+    </nav>
+
+    <div class="fx-tree-head">Folders</div>
+    <nav class="fx-tree-nav" id="fx-folder-tree">
+      {% for f in folders %}
+      <a class="fx-tree-item {% if folder == f.id %}on{% endif %}"
+         href="/admin/diary/explorer?folder={{ f.id }}{{ '&view=icons' if view == 'icons' else '' }}"
+         data-kind="folder"
+         data-id="{{ f.id }}"
+         data-name="{{ f.name }}">
+        <i class="bi bi-folder2{% if folder == f.id %}-open{% endif %}" style="color:{{ f.color or '#F0A94E' }}"></i>
+        <span>{{ f.name }}</span>
+        <em>{{ '%02d'|format(f.count) }}</em>
+      </a>
+      {% else %}
+      <div class="fx-tree-empty">No folders yet — create one below.</div>
+      {% endfor %}
+    </nav>
+
+    <form class="fx-new-folder" method="post" action="/admin/diary/categories">
+      <input type="hidden" name="next" value="{{ here_href }}">
+      <label class="visually-hidden" for="dx-folder-name">New folder name</label>
+      <input class="form-control form-control-sm" id="dx-folder-name" name="name" required maxlength="80" placeholder="New folder">
+      <input class="form-control form-control-color form-control-sm" type="color" name="color" value="#F06BA8" title="Color" aria-label="Folder color">
+      <button class="btn btn-sm btn-outline-light" type="submit" title="Create folder"><i class="bi bi-folder-plus"></i></button>
+    </form>
+  </aside>
+
+  <section class="fx-main">
+    <div class="fx-toolbar">
+      <nav class="fx-crumbs" aria-label="Breadcrumb">
+        <a href="/admin/diary/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-journal-richtext"></i> Diary</a>
+        {% if folder or place in ('pinned', 'unfiled') %}
+        <i class="bi bi-chevron-right"></i>
+        <span>{{ here_label }}</span>
+        {% endif %}
+      </nav>
+      <form class="fx-search" method="get" action="/admin/diary/explorer">
+        {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
+        {% if place in ('pinned', 'unfiled') and not folder %}<input type="hidden" name="place" value="{{ place }}">{% endif %}
+        {% if view == 'icons' %}<input type="hidden" name="view" value="icons">{% endif %}
+        <i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Search pages…" aria-label="Search diary">
+      </form>
+      <div class="fx-toolbar-actions">
+        <button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar"
+                title="Toggle left menu / full screen">
+          <i class="bi bi-layout-sidebar-inset" id="fx-toggle-nav-icon"></i>
+          <span class="d-none d-xl-inline" id="fx-toggle-nav-label">Hide menu</span>
+        </button>
+        <div class="btn-group" role="group" aria-label="View">
+          <a class="btn btn-sm btn-outline-light {% if view == 'list' %}active{% endif %}" href="{{ list_href }}" title="List view">
+            <i class="bi bi-list-ul"></i>
+          </a>
+          <a class="btn btn-sm btn-outline-light {% if view == 'icons' %}active{% endif %}" href="{{ icons_href }}" title="Icons view">
+            <i class="bi bi-grid"></i>
+          </a>
+        </div>
+        <a class="btn btn-sm btn-outline-light" href="/admin/diary/manage" title="Manage folders">
+          <i class="bi bi-folder"></i>
+        </a>
+        <a class="btn btn-sm btn-primary" href="{{ add_href }}" title="New entry in this place">
+          <i class="bi bi-plus-lg"></i> New entry
+        </a>
+      </div>
+    </div>
+
+    <div class="fx-pane {% if view == 'icons' %}fx-icons{% else %}fx-list{% endif %}" id="fx-pane" tabindex="0">
+      {% if view == 'list' %}
+      <div class="fx-list-head" role="row">
+        <span class="fx-sort-spacer" aria-hidden="true"></span>
+        <span class="fx-col-name">Title</span>
+        <span class="fx-col-type">Folder</span>
+        <span class="fx-col-meta">Details</span>
+        <span class="fx-col-size">Photos</span>
+        <span class="fx-col-date">Date</span>
+      </div>
+      {% endif %}
+
+      {% if folder and not entries and not q %}
+      {# keep empty — empty state below #}
+      {% endif %}
+
+      {% for e in entries %}
+      {% set d = e.entry_date or '' %}
+      {% set mon = months.get(d[5:7], '') if d|length >= 7 else '' %}
+      <a class="fx-row"
+         href="/admin/diary/{{ e.id }}"
+         data-kind="entry"
+         data-id="{{ e.id }}">
+        <span class="fx-ico" style="color:{{ e.category_color or '#F06BA8' }}">
+          <i class="bi {% if e.pinned %}bi-pin-angle-fill{% else %}bi-journal-text{% endif %}"></i>
+        </span>
+        <span class="fx-col-name truncate">
+          {{ e.title }}
+          {% if e.pinned %}<i class="bi bi-pin-angle-fill text-warning ms-1" title="Pinned"></i>{% endif %}
+        </span>
+        {% if view == 'list' %}
+        <span class="fx-col-type truncate">{{ e.category_name or '—' }}</span>
+        <span class="fx-col-meta text-faint truncate">
+          {% if e.mood %}{{ e.mood }}{% endif %}
+          {% if e.mood and e.tags %} · {% endif %}
+          {% if e.tags %}{{ e.tags }}{% elif not e.mood %}{% if e.body %}{{ e.body | truncate(48, True, '…') }}{% else %}—{% endif %}{% endif %}
+        </span>
+        <span class="fx-col-size mono text-faint">{{ e.image_count or '—' }}</span>
+        <span class="fx-col-date text-faint">
+          {% if d|length >= 10 %}{{ d[8:10] }} {{ mon }} {{ d[0:4] }}{% else %}—{% endif %}
+        </span>
+        {% else %}
+        <span class="fx-icon-meta">
+          {% if d|length >= 10 %}{{ d[8:10] }} {{ mon }}{% endif %}
+          {% if e.category_name %} · {{ e.category_name }}{% endif %}
+        </span>
+        {% endif %}
+      </a>
+      {% else %}
+      <div class="fx-empty">
+        <div class="empty-ico"><i class="bi bi-journal"></i></div>
+        <div class="empty-title">{% if q %}Nothing matches{% elif folder %}This folder is empty{% else %}No pages here{% endif %}</div>
+        <p class="text-muted mb-3">
+          {% if q %}Try another search.{% elif folder %}New entries created here will be tagged to {{ folder_name }}.{% else %}Write a page to fill this place.{% endif %}
+        </p>
+        <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> New entry</a>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var KEY = "diary-fx-nav-collapsed";
+  var body = document.body;
+  var headBtn = document.getElementById("fx-toggle-nav");
+  var toolBtn = document.getElementById("fx-toggle-nav-toolbar");
+  var icon = document.getElementById("fx-toggle-nav-icon");
+  var label = document.getElementById("fx-toggle-nav-label");
+  function apply(collapsed) {
+    body.classList.toggle("fx-focus", collapsed);
+    if (icon) icon.className = "bi " + (collapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset");
+    if (label) label.textContent = collapsed ? "Show menu" : "Hide menu";
+    try { localStorage.setItem(KEY, collapsed ? "1" : "0"); } catch (e) {}
+  }
+  function toggle() { apply(!body.classList.contains("fx-focus")); }
+  try { if (localStorage.getItem(KEY) === "1") apply(true); } catch (e) {}
+  if (headBtn) headBtn.addEventListener("click", toggle);
+  if (toolBtn) toolBtn.addEventListener("click", toggle);
+})();
+</script>
+{% endblock %}

@@ -281,6 +281,7 @@ def list_entries(
     category_id: Optional[str] = None,
     q: Optional[str] = None,
     pinned: bool = False,
+    unfiled: bool = False,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -288,7 +289,9 @@ def list_entries(
 ):
     ensure_defaults(db, current_user)
     query = db.query(models.DiaryEntry).filter(models.DiaryEntry.user_id == vault_id(current_user))
-    if category_id:
+    if unfiled:
+        query = query.filter(models.DiaryEntry.category_id.is_(None))
+    elif category_id:
         query = query.filter(models.DiaryEntry.category_id == category_id)
     if pinned:
         query = query.filter(models.DiaryEntry.pinned.is_(True))
