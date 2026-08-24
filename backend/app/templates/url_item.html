@@ -151,14 +151,22 @@
         </form>
       </div>
       {% if shares %}
+      {% set share_base = (request.base_url | string).rstrip('/') %}
       <div class="list-rows">
         {% for s in shares %}
-        <div class="list-row">
-          <div class="row-body">
-            <div class="row-title mono">/u/{{ s.token }}</div>
-            <div class="row-meta">
-              {% if s.revoked %}Revoked{% else %}Expires {{ s.expires_at.strftime('%d %b %Y') }} · {{ s.view_count }} view{{ 's' if s.view_count != 1 else '' }}{% endif %}
+        <div class="list-row align-items-start">
+          <div class="row-body" style="min-width:0;flex:1">
+            {% if s.revoked %}
+            <div class="row-title mono text-faint">/u/{{ s.token }}</div>
+            <div class="row-meta">Revoked</div>
+            {% else %}
+            <label class="visually-hidden" for="share-link-{{ s.id }}">Share link</label>
+            <input class="form-control form-control-sm mono js-copyable" id="share-link-{{ s.id }}" type="text"
+                   value="{{ share_base }}/u/{{ s.token }}" readonly aria-label="Share link">
+            <div class="row-meta mt-1">
+              Expires {{ s.expires_at.strftime('%d %b %Y') }} · {{ s.view_count }} view{{ 's' if s.view_count != 1 else '' }}
             </div>
+            {% endif %}
           </div>
           {% if not s.revoked %}
           <div class="row-actions">
