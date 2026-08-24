@@ -681,6 +681,10 @@ body.form-page.has-tabbar .app-main{
 }
 .form-control:disabled,.form-select:disabled{ background-color:rgba(255,255,255,0.03); color:var(--v-ink-3); opacity:1; }
 .form-control[readonly]{ background-color:rgba(255,255,255,0.02); color:var(--v-ink-2); }
+.form-control-sm,.form-select-sm{
+  min-height:34px; padding:.35rem .55rem; font-size:.8125rem;
+  border-radius:8px;
+}
 textarea.form-control{ min-height:96px; line-height:1.55; }
 .form-select{ background-image:url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23A8B0BF' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m4 6 4 4 4-4'/%3e%3c/svg%3e"); background-size:15px 12px; }
 .form-control-color{ min-width:52px; padding:.25rem; }
@@ -2100,6 +2104,7 @@ details.reveal > summary i{ font-size:1rem; }
   .table > thead th,.table > tbody > tr > td{ padding:.75rem .875rem; }
   .facts{ gap:1rem 1.75rem; }
   .form-control,.form-select,.btn{ font-size:1rem; min-height:44px; }
+  .form-control-sm,.form-select-sm,.btn-sm{ font-size:.8125rem; min-height:34px; }
   .app-main .list-rows{
     margin-left:-1rem; margin-right:-1rem;
     background:var(--v-surface); border-block:1px solid var(--v-line);
@@ -2983,6 +2988,41 @@ body.vdlg-open{ overflow:hidden; }
 .form-floating + .v-pick,
 label + .v-pick{ width:100%; }
 .lk-folder-pick .v-pick-btn{ min-height:34px; font-size:.8125rem; padding:.35rem .65rem; }
+
+/* Super Admin — All users table */
+.sa-users-table.table-card{ overflow:visible; }
+.sa-users-table > .table-responsive{
+  overflow-x:auto; overflow-y:visible;
+  -webkit-overflow-scrolling:touch;
+  border-radius:inherit;
+}
+.sa-users-table .table{ margin-bottom:0; width:100%; }
+.sa-users-table .table > thead th,
+.sa-users-table .table > tbody > tr > td{
+  padding:.75rem .85rem; vertical-align:middle;
+}
+.sa-users-table .min-w-0{ min-width:0; }
+.sa-quota-cell{ white-space:nowrap; }
+.sa-quota-used{
+  font-size:.75rem; color:var(--v-ink-3); margin-bottom:.35rem; white-space:nowrap;
+}
+.sa-quota-form{
+  display:inline-flex; align-items:center; gap:.35rem;
+  margin:0; flex-wrap:nowrap; max-width:100%;
+}
+.sa-quota-input{
+  width:5.25rem !important; min-width:5.25rem; max-width:5.25rem;
+  min-height:34px !important; padding:.3rem .45rem !important;
+  font-size:.8125rem !important; flex:0 0 auto;
+}
+.sa-quota-unit{
+  flex:0 0 auto; font-size:.75rem; color:var(--v-ink-3); font-weight:600;
+}
+.sa-quota-form .btn{ flex:0 0 auto; white-space:nowrap; }
+.sa-access-actions{
+  display:inline-flex; align-items:center; gap:.35rem; flex-wrap:wrap;
+}
+.sa-access-actions form{ margin:0; }
 
 /* Native select fallback (before JS / no-JS) still looks vault-styled */
 select.form-select:not(.v-pick-native){

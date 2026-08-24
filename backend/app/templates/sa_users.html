@@ -76,11 +76,11 @@
     <table class="table table-hover align-middle">
       <thead>
         <tr>
-          <th style="min-width:12rem;">Person</th>
+          <th>Person</th>
           <th>Role</th>
-          <th style="min-width:11rem;">Storage quota</th>
+          <th>Storage quota</th>
           <th>2FA / app</th>
-          <th style="min-width:8rem;">Access</th>
+          <th>Access</th>
           <th>Last seen</th>
         </tr>
       </thead>
@@ -91,27 +91,30 @@
           <td>
             <div class="d-flex align-items-center gap-2">
               <span class="avatar {% if is_online(u) %}avatar-good{% else %}avatar-gold{% endif %}">{{ (u.full_name | nice)[:1] }}</span>
-              <div>
-                <div class="fw-semibold">{{ u.full_name | nice }}</div>
-                <div class="text-faint" style="font-size:.75rem;">{{ u.email }}</div>
+              <div class="min-w-0">
+                <div class="fw-semibold truncate">{{ u.full_name | nice }}</div>
+                <div class="text-faint truncate" style="font-size:.75rem;">{{ u.email }}</div>
               </div>
             </div>
           </td>
           <td>
-            <span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span>
-            {% if is_online(u) %}<span class="badge badge-good ms-1">online</span>{% endif %}
-            {% if u.blocked %}<span class="badge badge-bad ms-1">blocked</span>{% endif %}
+            <div class="d-flex flex-wrap gap-1">
+              <span class="badge {% if u.role == 'superadmin' %}badge-gold{% elif u.role == 'viewer' %}badge-soft{% else %}badge-info{% endif %}">{{ u.role }}</span>
+              {% if is_online(u) %}<span class="badge badge-good">online</span>{% endif %}
+              {% if u.blocked %}<span class="badge badge-bad">blocked</span>{% endif %}
+            </div>
           </td>
-          <td style="min-width:11rem;">
+          <td class="sa-quota-cell">
             {% if snap %}
-            <div class="text-faint small mb-1">{{ '%.1f'|format(snap.used_mb) }} / {{ '%.0f'|format(snap.quota_mb) }} MB used</div>
+            <div class="sa-quota-used">{{ '%.1f'|format(snap.used_mb) }} / {{ '%.0f'|format(snap.quota_mb) }} MB used</div>
             {% endif %}
             {% if u.role != 'viewer' %}
-            <form method="post" action="/admin/sa/users/{{ u.id }}/quota" class="d-flex gap-1 align-items-center">
-              <input class="form-control form-control-sm mono" type="number" name="quota_mb" min="1" max="1048576" step="1"
-                     value="{{ '%.0f'|format(snap.quota_mb) if snap else 100 }}" style="width:5.5rem;"
-                     title="Total vault storage limit in MB (any number of files)">
-              <span class="text-faint small">MB</span>
+            <form method="post" action="/admin/sa/users/{{ u.id }}/quota" class="sa-quota-form">
+              <input class="form-control form-control-sm mono sa-quota-input" type="number" name="quota_mb" min="1" max="1048576" step="1"
+                     value="{{ '%.0f'|format(snap.quota_mb) if snap else 100 }}"
+                     title="Total vault storage limit in MB (any number of files)"
+                     aria-label="Quota in MB for {{ u.full_name | nice }}">
+              <span class="sa-quota-unit">MB</span>
               <button class="btn btn-outline-light btn-sm" type="submit">Set</button>
             </form>
             {% else %}
@@ -141,14 +144,14 @@
             {% if u.id == session_user.id %}
             <span class="text-faint">you</span>
             {% elif u.blocked %}
-            <div class="d-flex gap-1 flex-wrap">
+            <div class="sa-access-actions">
               <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
               <form method="post" action="/admin/sa/users/{{ u.id }}/unblock">
                 <button class="btn btn-outline-light btn-sm" type="submit">Unblock</button>
               </form>
             </div>
             {% else %}
-            <div class="d-flex gap-1 flex-wrap">
+            <div class="sa-access-actions">
               <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
               <form method="post" action="/admin/sa/users/{{ u.id }}/block"
                     data-confirm="Block this account? They will not be able to sign in.">
@@ -157,7 +160,7 @@
             </div>
             {% endif %}
           </td>
-          <td class="mono text-muted">{{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') if u.last_seen_at else '—' }}</td>
+          <td class="mono text-muted text-nowrap">{{ u.last_seen_at.strftime('%Y-%m-%d %H:%M') if u.last_seen_at else '—' }}</td>
         </tr>
         {% else %}
         <tr>
