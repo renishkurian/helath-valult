@@ -2838,7 +2838,7 @@ body.vdlg-open{ overflow:hidden; }
   margin:0 0 1rem;
 }
 .diary-toolbar .search-field{ flex:1 1 220px; min-width:0; }
-.diary-toolbar .form-select{ flex:0 1 180px; }
+.diary-toolbar .v-pick{ flex:0 1 200px; min-width:9.5rem; }
 .diary-chips{
   display:flex; gap:.5rem; overflow-x:auto; padding:.15rem 0 0.65rem;
   margin:0 0 1.25rem; scrollbar-width:thin;
@@ -2867,6 +2867,68 @@ body.vdlg-open{ overflow:hidden; }
   padding:.1rem .35rem; border-radius:999px;
 }
 .diary-chip.on .n{ color:var(--v-gold); background:rgba(217,185,120,0.15); }
+
+/* Modern custom select (replaces native OS dropdown chrome) */
+.v-pick{ position:relative; }
+.v-pick-btn{
+  width:100%; display:flex; align-items:center; gap:.5rem;
+  min-height:44px; padding:.5rem .75rem;
+  border-radius:var(--v-r-md, 12px);
+  border:1px solid var(--v-line);
+  background:var(--v-surface-2, rgba(255,255,255,.04));
+  color:var(--v-ink); font-size:.875rem; font-weight:550;
+  text-align:left; cursor:pointer;
+  transition:border-color var(--v-fast) var(--v-ease), background var(--v-fast) var(--v-ease);
+}
+.v-pick-btn:hover{ border-color:rgba(255,255,255,.18); background:var(--v-hover); }
+.v-pick.open .v-pick-btn{
+  border-color:var(--v-gold-line);
+  background:var(--v-gold-soft);
+  box-shadow:0 0 0 3px rgba(217,185,120,.12);
+}
+.v-pick-btn .bi-chevron-down{
+  margin-left:auto; font-size:.75rem; color:var(--v-ink-3);
+  transition:transform var(--v-fast) var(--v-ease);
+}
+.v-pick.open .v-pick-btn .bi-chevron-down{ transform:rotate(180deg); color:var(--v-gold); }
+.v-pick-label{ min-width:0; }
+.v-pick-dot{
+  width:8px; height:8px; border-radius:50%; flex-shrink:0;
+  box-shadow:0 0 0 2px rgba(0,0,0,.25);
+}
+.v-pick-dot.is-all{
+  background:transparent;
+  border:1.5px solid var(--v-ink-3);
+  box-shadow:none;
+}
+.v-pick-menu{
+  position:absolute; z-index:40; top:calc(100% + .35rem); left:0; right:0;
+  min-width:100%; max-height:min(18rem, 55vh); overflow:auto;
+  padding:.35rem;
+  border-radius:14px;
+  border:1px solid var(--v-line);
+  background:#141820;
+  box-shadow:0 16px 40px rgba(0,0,0,.5);
+}
+.v-pick-opt{
+  width:100%; display:flex; align-items:center; gap:.55rem;
+  padding:.55rem .65rem; border:0; border-radius:10px;
+  background:transparent; color:var(--v-ink);
+  font-size:.875rem; text-align:left; cursor:pointer;
+}
+.v-pick-opt:hover, .v-pick-opt:focus-visible{
+  background:var(--v-hover); outline:none;
+}
+.v-pick-opt.on{
+  background:var(--v-gold-soft);
+  color:var(--v-ink);
+}
+.v-pick-opt em{
+  margin-left:auto; font-style:normal; font-size:.7rem;
+  font-variant-numeric:tabular-nums; color:var(--v-ink-3);
+  background:rgba(255,255,255,.06); padding:.1rem .35rem; border-radius:999px;
+}
+.v-pick-opt.on em{ color:var(--v-gold); background:rgba(217,185,120,.15); }
 
 .diary-feed{ display:flex; flex-direction:column; gap:.875rem; }
 .diary-card{

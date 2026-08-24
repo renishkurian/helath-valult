@@ -224,16 +224,43 @@
   var toolBtn = document.getElementById("fx-toggle-nav-toolbar");
   var icon = document.getElementById("fx-toggle-nav-icon");
   var label = document.getElementById("fx-toggle-nav-label");
+
   function apply(collapsed) {
+    body.classList.toggle("nav-collapsed", collapsed);
     body.classList.toggle("fx-focus", collapsed);
-    if (icon) icon.className = "bi " + (collapsed ? "bi-layout-sidebar" : "bi-layout-sidebar-inset");
-    if (label) label.textContent = collapsed ? "Show menu" : "Hide menu";
     try { localStorage.setItem(KEY, collapsed ? "1" : "0"); } catch (e) {}
+    if (icon) {
+      icon.className = collapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset";
+    }
+    if (label) label.textContent = collapsed ? "Show menu" : "Hide menu";
+    if (headBtn) {
+      headBtn.innerHTML = collapsed
+        ? '<i class="bi bi-layout-sidebar"></i> Show menu'
+        : '<i class="bi bi-arrows-fullscreen"></i> Full screen';
+    }
   }
-  function toggle() { apply(!body.classList.contains("fx-focus")); }
-  try { if (localStorage.getItem(KEY) === "1") apply(true); } catch (e) {}
+
+  function toggle() { apply(!body.classList.contains("nav-collapsed")); }
+
+  var saved = false;
+  try { saved = localStorage.getItem(KEY) === "1"; } catch (e) {}
+  // Default to full-screen explorer on first visit (desktop), matching Document Vault.
+  try {
+    if (localStorage.getItem(KEY) === null && window.matchMedia("(min-width:992px)").matches) {
+      saved = true;
+    }
+  } catch (e) {}
+  apply(saved);
+
   if (headBtn) headBtn.addEventListener("click", toggle);
   if (toolBtn) toolBtn.addEventListener("click", toggle);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "[" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      var t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      toggle();
+    }
+  });
 })();
 </script>
 {% endblock %}
