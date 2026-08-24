@@ -2868,7 +2868,10 @@ body.vdlg-open{ overflow:hidden; }
 }
 .diary-chip.on .n{ color:var(--v-gold); background:rgba(217,185,120,0.15); }
 
-/* Modern custom select (replaces native OS dropdown chrome) */
+/* Modern custom select — replaces native OS dropdowns project-wide via vault-pick.js */
+#v-pick-portal{ position:fixed; inset:0; width:0; height:0; overflow:visible; z-index:2100; pointer-events:none; }
+#v-pick-portal .v-pick-menu{ pointer-events:auto; }
+
 .v-pick{ position:relative; width:100%; min-width:0; }
 .v-pick-native{
   position:absolute !important;
@@ -2880,24 +2883,29 @@ body.vdlg-open{ overflow:hidden; }
 }
 .v-pick-btn{
   width:100%; display:flex; align-items:center; gap:.5rem;
-  min-height:44px; padding:.5rem .75rem;
-  border-radius:var(--v-r-md, 12px);
-  border:1px solid var(--v-line);
-  background:var(--v-surface-2, rgba(255,255,255,.04));
-  color:var(--v-ink); font-size:.875rem; font-weight:550;
+  min-height:44px; padding:.625rem .8125rem;
+  border-radius:10px;
+  border:1px solid var(--v-line-2);
+  background:var(--v-bg-2);
+  color:var(--v-ink); font-size:1rem; font-weight:500;
   text-align:left; cursor:pointer;
-  transition:border-color var(--v-fast) var(--v-ease), background var(--v-fast) var(--v-ease);
+  box-shadow:inset 0 1px 2px rgba(0,0,0,0.28);
+  transition:border-color var(--v-fast) var(--v-ease), box-shadow var(--v-fast) var(--v-ease), background-color var(--v-fast) var(--v-ease);
 }
+@media (min-width:992px){ .v-pick-btn{ font-size:.9375rem; } }
 .v-pick-sm .v-pick-btn{ min-height:34px; padding:.35rem .65rem; font-size:.8125rem; }
-.v-pick-btn:hover{ border-color:rgba(255,255,255,.18); background:var(--v-hover); }
-.v-pick.open .v-pick-btn{
+.v-pick-btn:hover{ border-color:rgba(255,255,255,.18); }
+.v-pick.open .v-pick-btn,
+.v-pick-btn:focus-visible{
+  outline:none;
   border-color:var(--v-gold-line);
-  background:var(--v-gold-soft);
-  box-shadow:0 0 0 3px rgba(217,185,120,.12);
+  background:var(--v-bg-2);
+  box-shadow:0 0 0 3px rgba(217,185,120,0.16), inset 0 1px 2px rgba(0,0,0,0.28);
 }
 .v-pick.is-disabled .v-pick-btn,
 .v-pick-btn:disabled{
-  opacity:.55; cursor:not-allowed; background:rgba(255,255,255,.03);
+  opacity:1; cursor:not-allowed;
+  background:rgba(255,255,255,.03); color:var(--v-ink-3);
 }
 .v-pick-btn .bi-chevron-down{
   margin-left:auto; font-size:.75rem; color:var(--v-ink-3); flex-shrink:0;
@@ -2915,6 +2923,7 @@ body.vdlg-open{ overflow:hidden; }
   box-shadow:none;
 }
 .v-pick-menu{
+  display:none;
   position:absolute; z-index:1085; top:calc(100% + .35rem); left:0; right:0;
   width:auto; min-width:0; max-height:min(18rem, 55vh); overflow:auto;
   padding:.35rem;
@@ -2922,10 +2931,9 @@ body.vdlg-open{ overflow:hidden; }
   border:1px solid var(--v-line);
   background:#141820;
   box-shadow:0 16px 40px rgba(0,0,0,.5);
+  -webkit-overflow-scrolling:touch;
 }
-.v-pick-menu.is-fixed{
-  right:auto;
-}
+.v-pick-menu.is-open{ display:block; }
 .v-pick-group{
   padding:.45rem .65rem .2rem;
   font-size:.65rem; font-weight:700; letter-spacing:.08em;
@@ -2957,17 +2965,25 @@ body.vdlg-open{ overflow:hidden; }
 .v-pick-opt.on em{ color:var(--v-gold); background:rgba(217,185,120,.15); }
 
 /* Keep layout helpers that targeted .form-select working on the wrapper */
+.diary-toolbar .v-pick{ flex:0 1 200px; min-width:9.5rem; }
 .diary-toolbar .v-pick,
 .filter-bar .v-pick,
 .toolbar .v-pick{ width:auto; flex:0 1 200px; min-width:9.5rem; }
 .filter-bar .v-pick.grow,
 .toolbar .v-pick.grow{ flex:1 1 220px; min-width:12rem; }
-.input-group > .v-pick{ flex:1 1 auto; }
+.toolbar .v-pick{ min-width:180px; }
+.input-group > .v-pick{ flex:1 1 auto; width:auto; }
 .input-group > .v-pick .v-pick-btn{ border-radius:inherit; }
 .row > [class*="col"] > .v-pick{ width:100%; }
 .mb-3 > .v-pick,
 .form-floating + .v-pick,
 label + .v-pick{ width:100%; }
+.lk-folder-pick .v-pick-btn{ min-height:34px; font-size:.8125rem; padding:.35rem .65rem; }
+
+/* Native select fallback (before JS / no-JS) still looks vault-styled */
+select.form-select:not(.v-pick-native){
+  appearance:none; -webkit-appearance:none;
+}
 
 .dx-props-list{
   display:grid; gap:.55rem;
