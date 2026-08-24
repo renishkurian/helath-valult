@@ -8471,13 +8471,52 @@ def diary_category_add(
     return RedirectResponse("/admin/diary/manage?notice=folder", status_code=302)
 
 
-@router.post("/diary/categories/{category_id}/delete")
-def diary_category_delete(category_id: str, request: Request, db: Session = Depends(get_db)):
+@router.post("/diary/categories/{category_id}/rename")
+def diary_category_rename(
+    category_id: str,
+    request: Request,
+    name: str = Form(...),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers import diary as dy
-    user = _dy_user(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    dy.delete_category(category_id, db=db, current_user=user)
+    from app import schemas as sc
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/diary") and "://" not in dest):
+        dest = "/admin/diary/explorer"
+    try:
+        dy.update_category(
+            category_id,
+            sc.DiaryCategoryIn(name=name),
+            db=db,
+            current_user=user,
+        )
+    except HTTPException:
+        pass
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/diary/categories/{category_id}/delete")
+def diary_category_delete(
+    category_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        dy.delete_category(category_id, db=db, current_user=user)
+    except HTTPException:
+        pass
+    dest = (next or "").strip()
+    if dest.startswith("/admin/diary") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/diary/manage", status_code=302)
 
 
@@ -8543,6 +8582,34 @@ def diary_image_delete(entry_id: str, image_id: str, request: Request, db: Sessi
         return RedirectResponse("/admin/login", status_code=302)
     dy.delete_image(entry_id, image_id, db=db, current_user=user)
     return RedirectResponse(f"/admin/diary/{entry_id}", status_code=302)
+
+
+@router.post("/diary/{entry_id}/rename")
+def diary_entry_rename(
+    entry_id: str,
+    request: Request,
+    title: str = Form(...),
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    from app import schemas as sc
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    dest = (next or "").strip()
+    if not (dest.startswith("/admin/diary") and "://" not in dest):
+        dest = "/admin/diary/explorer"
+    try:
+        dy.update_entry(
+            entry_id,
+            sc.DiaryEntryUpdate(title=title),
+            db=db,
+            current_user=user,
+        )
+    except HTTPException:
+        pass
+    return RedirectResponse(dest, status_code=302)
 
 
 @router.post("/diary/{entry_id}/delete")

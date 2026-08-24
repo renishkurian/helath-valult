@@ -341,8 +341,35 @@
 
 <div class="fx-menu" id="dx-menu" hidden role="menu">
   <button type="button" class="fx-menu-item" data-action="open" role="menuitem"><i class="bi bi-box-arrow-up-right"></i> Open</button>
+  <button type="button" class="fx-menu-item" data-action="rename" role="menuitem"><i class="bi bi-pencil"></i> Rename…</button>
   <button type="button" class="fx-menu-item" data-action="properties" role="menuitem"><i class="bi bi-info-circle"></i> Properties</button>
+  <div class="fx-menu-sep" data-for="trash"></div>
+  <button type="button" class="fx-menu-item" data-action="restore" role="menuitem"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+  <button type="button" class="fx-menu-item danger" data-action="permanent" role="menuitem"><i class="bi bi-x-lg"></i> Delete forever</button>
+  <div class="fx-menu-sep" data-for="danger"></div>
+  <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Move to trash</button>
 </div>
+
+<form id="dx-form-rename-entry" method="post" action="" class="d-none">
+  <input type="hidden" name="title" id="dx-rename-entry-title" value="">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="dx-form-rename-folder" method="post" action="" class="d-none">
+  <input type="hidden" name="name" id="dx-rename-folder-name" value="">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="dx-form-delete-entry" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="dx-form-delete-folder" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="/admin/diary/explorer{{ '?view=icons' if view == 'icons' else '' }}">
+</form>
+<form id="dx-form-restore" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="dx-form-permanent" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
 
 <div class="modal fade" id="dx-props" tabindex="-1" aria-labelledby="dx-props-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -414,7 +441,9 @@
   var menu = document.getElementById("dx-menu");
   var pane = document.getElementById("fx-pane");
   var tree = document.getElementById("fx-folder-tree");
+  var shell = document.getElementById("fx-shell");
   var target = null;
+  var inTrash = shell && shell.getAttribute("data-place") === "trash";
 
   function hideMenu() {
     if (!menu) return;
@@ -425,9 +454,25 @@
   function showMenu(x, y, row) {
     if (!menu || !row) return;
     target = row;
+    var kind = row.getAttribute("data-kind") || "";
+    menu.querySelectorAll(".fx-menu-item, .fx-menu-sep").forEach(function (el) {
+      var action = el.getAttribute("data-action");
+      var forKind = el.getAttribute("data-for");
+      var show = false;
+      if (inTrash && kind === "entry") {
+        show = ["restore", "permanent", "properties"].indexOf(action) >= 0 || forKind === "trash";
+      } else if (kind === "folder") {
+        show = ["open", "rename", "delete", "properties"].indexOf(action) >= 0 || forKind === "danger";
+      } else if (kind === "entry") {
+        show = ["open", "rename", "delete", "properties"].indexOf(action) >= 0 || forKind === "danger";
+      }
+      if (forKind === "trash" && !(inTrash && kind === "entry")) show = false;
+      if (forKind === "danger" && inTrash) show = false;
+      el.hidden = !show;
+    });
     menu.hidden = false;
-    var mw = menu.offsetWidth || 180;
-    var mh = menu.offsetHeight || 80;
+    var mw = menu.offsetWidth || 200;
+    var mh = menu.offsetHeight || 160;
     var left = Math.min(x, window.innerWidth - mw - 8);
     var top = Math.min(y, window.innerHeight - mh - 8);
     menu.style.left = Math.max(8, left) + "px";
@@ -478,6 +523,26 @@
     };
   }
 
+  function askName(msg, value) {
+    var ask = window.vaultPrompt || function (m, opts) {
+      return Promise.resolve(window.prompt(m || "Name", (opts && opts.value) || ""));
+    };
+    return ask(msg, { value: value || "", title: msg });
+  }
+
+  function confirmDanger(msg, title) {
+    if (window.vaultConfirm) {
+      return window.vaultConfirm(msg, { title: title || "Confirm", danger: true });
+    }
+    return Promise.resolve(window.confirm(msg));
+  }
+
+  function submitForm(form, action) {
+    if (!form) return;
+    if (action) form.action = action;
+    form.submit();
+  }
+
   function showProperties(row) {
     var t = rowData(row);
     var body = document.getElementById("dx-props-body");
@@ -513,7 +578,10 @@
       add("Tags", t.tags);
     }
     body.innerHTML = rows.join("");
-    if (open) open.href = t.href;
+    if (open) {
+      open.href = t.href || "#";
+      open.hidden = !t.href || t.href === "#" || inTrash;
+    }
     var modalEl = document.getElementById("dx-props");
     if (window.bootstrap && modalEl) {
       bootstrap.Modal.getOrCreateInstance(modalEl).show();
@@ -564,12 +632,76 @@
       e.stopPropagation();
       var action = btn.getAttribute("data-action");
       var row = target;
+      var t = rowData(row);
       hideMenu();
+
       if (action === "open") {
-        window.location.href = row.getAttribute("href") || "#";
+        if (t.href && t.href !== "#") window.location.href = t.href;
         return;
       }
-      if (action === "properties") showProperties(row);
+      if (action === "properties") {
+        showProperties(row);
+        return;
+      }
+      if (action === "rename" && t.id) {
+        var label = t.kind === "folder" ? "Rename folder" : "Rename page";
+        askName(label, t.name).then(function (name) {
+          name = (name || "").trim();
+          if (!name || name === t.name) return;
+          if (t.kind === "folder") {
+            document.getElementById("dx-rename-folder-name").value = name;
+            submitForm(
+              document.getElementById("dx-form-rename-folder"),
+              "/admin/diary/categories/" + encodeURIComponent(t.id) + "/rename"
+            );
+          } else {
+            document.getElementById("dx-rename-entry-title").value = name;
+            submitForm(
+              document.getElementById("dx-form-rename-entry"),
+              "/admin/diary/" + encodeURIComponent(t.id) + "/rename"
+            );
+          }
+        });
+        return;
+      }
+      if (action === "delete" && t.id) {
+        var msg = t.kind === "folder"
+          ? "Delete folder “" + t.name + "”? Pages inside become unfiled."
+          : "Move “" + t.name + "” to trash?";
+        var title = t.kind === "folder" ? "Delete folder" : "Move to trash";
+        confirmDanger(msg, title).then(function (ok) {
+          if (!ok) return;
+          if (t.kind === "folder") {
+            submitForm(
+              document.getElementById("dx-form-delete-folder"),
+              "/admin/diary/categories/" + encodeURIComponent(t.id) + "/delete"
+            );
+          } else {
+            submitForm(
+              document.getElementById("dx-form-delete-entry"),
+              "/admin/diary/" + encodeURIComponent(t.id) + "/delete"
+            );
+          }
+        });
+        return;
+      }
+      if (action === "restore" && t.id) {
+        submitForm(
+          document.getElementById("dx-form-restore"),
+          "/admin/diary/" + encodeURIComponent(t.id) + "/restore"
+        );
+        return;
+      }
+      if (action === "permanent" && t.id) {
+        confirmDanger("Permanently delete “" + t.name + "”? This cannot be undone.", "Delete forever")
+          .then(function (ok) {
+            if (!ok) return;
+            submitForm(
+              document.getElementById("dx-form-permanent"),
+              "/admin/diary/" + encodeURIComponent(t.id) + "/permanent"
+            );
+          });
+      }
     });
   }
 })();
