@@ -40,7 +40,7 @@
 </div>
 {% endif %}
 
-<div class="card table-card">
+<div class="card table-card ea-sync-log">
   <div class="card-header">
     <span class="card-ico info"><i class="bi bi-clock-history"></i></span>
     <div>
@@ -51,45 +51,34 @@
   </div>
   {% if sync_logs %}
   {% include "_pager.html" %}
-  <div class="table-responsive">
-    <table class="table table-hover mb-0">
-      <thead>
-        <tr>
-          <th>Finished</th>
-          <th>Trigger</th>
-          <th>Status</th>
-          <th class="num">Fetched</th>
-          <th class="num">New</th>
-          <th class="num">Skipped</th>
-          <th class="num">Matched</th>
-          <th class="num">Missed</th>
-          <th>Error</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for log in sync_logs %}
-        <tr>
-          <td class="mono">{{ log.finished_at.strftime('%Y-%m-%d %H:%M:%S') if log.finished_at else '—' }}</td>
-          <td><span class="badge badge-soft">{{ log.trigger | labelize }}</span></td>
-          <td>
-            {% if log.ok %}
-            <span class="badge badge-good">OK</span>
-            {% else %}
-            <span class="badge badge-bad">Failed</span>
-            {% endif %}
-          </td>
-          <td class="num">{{ log.fetched }}</td>
-          <td class="num">{{ log.created }}</td>
-          <td class="num">{{ log.skipped }}</td>
-          <td class="num">{{ log.matched }}</td>
-          <td class="num">{{ log.missed }}</td>
-          <td class="small {% if log.error %}text-danger{% else %}text-muted{% endif %}">
-            {{ log.error or '—' }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="ea-sync-list">
+    {% for log in sync_logs %}
+    <article class="ea-sync-row{% if not log.ok %} is-fail{% endif %}">
+      <div class="ea-sync-top">
+        <time class="ea-sync-when mono" datetime="{{ log.finished_at.isoformat() if log.finished_at else '' }}">
+          {{ log.finished_at.strftime('%Y-%m-%d %H:%M:%S') if log.finished_at else '—' }}
+        </time>
+        <div class="ea-sync-badges">
+          <span class="badge badge-soft">{{ log.trigger | labelize }}</span>
+          {% if log.ok %}
+          <span class="badge badge-good">OK</span>
+          {% else %}
+          <span class="badge badge-bad">Failed</span>
+          {% endif %}
+        </div>
+      </div>
+      <dl class="ea-sync-metrics">
+        <div><dt>Fetched</dt><dd class="num">{{ log.fetched }}</dd></div>
+        <div><dt>New</dt><dd class="num">{{ log.created }}</dd></div>
+        <div><dt>Skipped</dt><dd class="num">{{ log.skipped }}</dd></div>
+        <div><dt>Matched</dt><dd class="num">{{ log.matched }}</dd></div>
+        <div><dt>Missed</dt><dd class="num">{{ log.missed }}</dd></div>
+      </dl>
+      {% if log.error %}
+      <p class="ea-sync-err">{{ log.error }}</p>
+      {% endif %}
+    </article>
+    {% endfor %}
   </div>
   {% include "_pager.html" %}
   {% else %}

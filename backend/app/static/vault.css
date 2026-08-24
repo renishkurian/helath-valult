@@ -1409,6 +1409,67 @@ tr.js-locker-doc.is-dragging{ opacity:0.45; }
   .table-card .table th:nth-child(5),
   .table-card .table td:nth-child(5){ display:none; }
 }
+
+/* Expense Analyser — sync log (card rows; avoid crushed table Error column on mobile) */
+.ea-sync-list{ display:flex; flex-direction:column; }
+.ea-sync-row{
+  padding:0.875rem 1rem;
+  border-bottom:1px solid var(--v-line);
+}
+.ea-sync-row:last-child{ border-bottom:0; }
+.ea-sync-row.is-fail{ background:rgba(255,128,149,0.04); }
+.ea-sync-top{
+  display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
+  gap:0.5rem 0.75rem; margin-bottom:0.625rem;
+}
+.ea-sync-when{ font-size:0.8125rem; color:var(--v-ink-2); }
+.ea-sync-badges{ display:flex; flex-wrap:wrap; gap:0.375rem; align-items:center; }
+.ea-sync-metrics{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0, 1fr));
+  gap:0.375rem;
+  margin:0;
+}
+.ea-sync-metrics > div{
+  min-width:0;
+  padding:0.375rem 0.4rem;
+  border-radius:8px;
+  background:rgba(255,255,255,0.03);
+  border:1px solid rgba(255,255,255,0.05);
+  text-align:center;
+}
+.ea-sync-metrics dt{
+  margin:0;
+  font-size:0.5625rem;
+  font-weight:600;
+  letter-spacing:0.06em;
+  text-transform:uppercase;
+  color:var(--v-ink-3);
+}
+.ea-sync-metrics dd{
+  margin:0.125rem 0 0;
+  font-size:0.8125rem;
+  font-weight:650;
+  color:var(--v-ink);
+}
+.ea-sync-err{
+  margin:0.625rem 0 0;
+  padding:0.5rem 0.65rem;
+  border-radius:8px;
+  background:var(--v-bad-soft);
+  border:1px solid rgba(255,128,149,0.25);
+  color:#FF9DAD;
+  font-size:0.8125rem;
+  line-height:1.4;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+@media (max-width:520px){
+  .ea-sync-metrics{ grid-template-columns:repeat(3, minmax(0, 1fr)); }
+  .ea-sync-metrics > div:nth-child(4),
+  .ea-sync-metrics > div:nth-child(5){ grid-column:span 1; }
+}
 .folder-name{ display:flex; align-items:center; gap:.5rem; font-size:.8125rem; font-weight:600; letter-spacing:-0.01em; line-height:1.3; }
 .folder-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
 .folder .fcount{ font-size:1.125rem; font-weight:650; color:var(--v-ink-2); font-variant-numeric:tabular-nums; letter-spacing:-0.02em; }
