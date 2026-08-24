@@ -2017,7 +2017,8 @@ async def documents_lock(document_id: str, request: Request, db: Session = Depen
 @router.post("/documents/{document_id}/delete")
 def documents_delete(
     request: Request, document_id: str,
-    person_id: str = Form(...), category: str = Form(""),
+    person_id: str = Form(""), category: str = Form(""),
+    next: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user, denied = require_mutator(request, db)
@@ -2030,6 +2031,9 @@ def documents_delete(
     except HTTPException as exc:
         if exc.status_code not in (403, 404):
             raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     safe_person = person_id if vault_person(db, user, person_id) else ""
     if category and safe_person:
         return RedirectResponse(f"/admin/documents?person={safe_person}&category={category}&ok=trashed", status_code=302)
@@ -2058,17 +2062,29 @@ def health_trash_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/trash/empty")
-def health_trash_empty(request: Request, db: Session = Depends(get_db)):
+def health_trash_empty(
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers.documents import empty_trash
     user, denied = require_mutator(request, db)
     if denied:
         return denied
     empty_trash(db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/trash", status_code=302)
 
 
 @router.post("/documents/{document_id}/restore")
-def documents_restore(request: Request, document_id: str, db: Session = Depends(get_db)):
+def documents_restore(
+    request: Request,
+    document_id: str,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers.documents import restore_document
     user, denied = require_mutator(request, db)
     if denied:
@@ -2078,11 +2094,19 @@ def documents_restore(request: Request, document_id: str, db: Session = Depends(
     except HTTPException as exc:
         if exc.status_code not in (400, 403, 404):
             raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/trash", status_code=302)
 
 
 @router.post("/documents/{document_id}/permanent")
-def documents_permanent(request: Request, document_id: str, db: Session = Depends(get_db)):
+def documents_permanent(
+    request: Request,
+    document_id: str,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers.documents import delete_document_forever
     user, denied = require_mutator(request, db)
     if denied:
@@ -2092,7 +2116,684 @@ def documents_permanent(request: Request, document_id: str, db: Session = Depend
     except HTTPException as exc:
         if exc.status_code not in (400, 403, 404):
             raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/trash", status_code=302)
+
+
+# ---------- Health Vault Explorer ----------
+HX_CAT_LABELS = {
+    "hospital_card": "Card scans",
+    "prescription": "Prescriptions",
+    "lab_report": "Lab reports",
+    "insurance": "Insurance",
+    "vaccination": "Vaccination",
+    "bill": "Bills",
+    "medicine": "Medicines",
+    "other": "Other",
+}
+HX_CAT_COLORS = {
+    "hospital_card": "#3FE0C5",
+    "prescription": "#9C8CF0",
+    "lab_report": "#D4A657",
+    "insurance": "#5FA8D3",
+    "vaccination": "#6FCF8E",
+    "bill": "#E8615C",
+    "medicine": "#E091D0",
+    "other": "#9AA2B4",
+}
+HX_CAT_ICONS = {
+    "hospital_card": "bi-person-vcard",
+    "prescription": "bi-capsule",
+    "lab_report": "bi-clipboard2-pulse",
+    "insurance": "bi-shield-check",
+    "vaccination": "bi-shield-plus",
+    "bill": "bi-receipt",
+    "medicine": "bi-capsule-pill",
+    "other": "bi-file-earmark",
+}
+
+
+def _hx_safe_next(next_url: str, fallback: str = "/admin/explorer") -> str:
+    dest = (next_url or "").strip()
+    if dest.startswith("/admin/") and "://" not in dest:
+        return dest
+    return fallback
+
+
+def _hx_doc_row(doc: models.Document, person_name: str = "") -> dict:
+    out = doc_out(doc)
+    out["person_name"] = person_name or ""
+    out["category_label"] = HX_CAT_LABELS.get(out["category"], out["category"])
+    out["category_color"] = HX_CAT_COLORS.get(out["category"], "#9AA2B4")
+    out["category_icon"] = HX_CAT_ICONS.get(out["category"], "bi-file-earmark")
+    return out
+
+
+def _hx_explorer_browse(
+    *,
+    db: Session,
+    user: models.User,
+    person: str = "",
+    hospital: str = "",
+    category: str = "",
+    place: str = "",
+    q: str = "",
+    view: str = "list",
+    sort: str = "created",
+    dir: str = "desc",
+):
+    """Shared Health Explorer state for HTML page + AJAX browse.json."""
+    from urllib.parse import urlencode, quote
+    from datetime import datetime as dt
+
+    person_filter = (person or "").strip()
+    hospital_filter = (hospital or "").strip()
+    category_filter = (category or "").strip()
+    place_key = (place or "").strip() or "home"
+    if place_key not in ("home", "expiring", "unfiled", "trash"):
+        place_key = "home"
+    in_trash = place_key == "trash"
+    expiring = place_key == "expiring"
+    unfiled = place_key == "unfiled"
+    view_mode = "icons" if view == "icons" else "list"
+    sort_key = (sort or "created").strip().lower()
+    if sort_key not in ("name", "size", "created", "type", "date"):
+        sort_key = "created"
+    sort_dir = "asc" if (dir or "").strip().lower() == "asc" else "desc"
+    q_text = (q or "").strip() if not in_trash else ""
+
+    people = (
+        db.query(models.Person)
+        .filter(models.Person.user_id == vault_id(user))
+        .order_by(models.Person.created_at.asc())
+        .all()
+    )
+    person_ids = [p.id for p in people]
+    person_names = {p.id: p.name for p in people}
+    active_person = None
+    if person_filter:
+        active_person = next((p for p in people if p.id == person_filter), None)
+        if not active_person:
+            person_filter = ""
+
+    # Validate category
+    if category_filter:
+        try:
+            models.DocCategory(category_filter)
+        except ValueError:
+            category_filter = ""
+
+    # Base document query (owned vault)
+    if in_trash:
+        from app.routers.documents import list_trash
+        trash_items = list_trash(db=db, current_user=user)
+        docs = []
+        for t in trash_items:
+            # list_trash may return schema objects — normalize
+            doc = (
+                db.query(models.Document)
+                .filter(models.Document.id == getattr(t, "id", None))
+                .first()
+            )
+            if doc:
+                docs.append(doc)
+    else:
+        dq = (
+            db.query(models.Document)
+            .join(models.Person)
+            .filter(
+                models.Person.user_id == vault_id(user),
+                models.Document.deleted_at.is_(None),
+            )
+        )
+        if person_filter:
+            dq = dq.filter(models.Document.person_id == person_filter)
+        if category_filter:
+            dq = dq.filter(models.Document.category == models.DocCategory(category_filter))
+        if hospital_filter:
+            dq = dq.filter(models.Document.hospital_name.ilike(hospital_filter))
+        if expiring:
+            today = dt.utcnow().strftime("%Y-%m-%d")
+            soon = (dt.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+            dq = dq.filter(
+                models.Document.expiry_date.isnot(None),
+                models.Document.expiry_date >= today,
+                models.Document.expiry_date <= soon,
+            )
+        if unfiled:
+            # Hospital-scoped categories missing a hospital name
+            scoped = [c for c in models.DocCategory if models.category_requires_hospital(c)]
+            dq = dq.filter(
+                models.Document.category.in_(scoped),
+                (models.Document.hospital_name.is_(None)) | (models.Document.hospital_name == ""),
+            )
+        if q_text:
+            like = f"%{q_text}%"
+            dq = dq.filter(
+                models.Document.title.ilike(like)
+                | models.Document.tags.ilike(like)
+                | models.Document.hospital_name.ilike(like)
+                | models.Document.extracted_text.ilike(like)
+            )
+        docs = dq.all()
+
+    # Summary counts (active docs only)
+    all_active = (
+        db.query(models.Document)
+        .join(models.Person)
+        .filter(
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.is_(None),
+        )
+        .all()
+    )
+    today_s = dt.utcnow().strftime("%Y-%m-%d")
+    soon_s = (dt.utcnow() + timedelta(days=30)).strftime("%Y-%m-%d")
+    expiring_n = sum(
+        1
+        for d in all_active
+        if d.expiry_date and today_s <= d.expiry_date <= soon_s
+    )
+    scoped_cats = [c for c in models.DocCategory if models.category_requires_hospital(c)]
+    unfiled_n = sum(
+        1
+        for d in all_active
+        if d.category in scoped_cats and not (d.hospital_name or "").strip()
+    )
+    trash_n = (
+        db.query(models.Document)
+        .join(models.Person)
+        .filter(
+            models.Person.user_id == vault_id(user),
+            models.Document.deleted_at.isnot(None),
+        )
+        .count()
+    )
+
+    # People counts
+    people_out = []
+    for p in people:
+        cnt = sum(1 for d in all_active if d.person_id == p.id)
+        people_out.append({
+            "id": p.id,
+            "name": p.name,
+            "count": cnt,
+            "avatar_initials": (p.avatar_initials or (p.name or "?")[:1]).upper(),
+        })
+
+    # Hospital cards (optionally scoped to person)
+    card_q = db.query(models.HospitalCard).filter(models.HospitalCard.person_id.in_(person_ids or ["__none__"]))
+    if person_filter:
+        card_q = card_q.filter(models.HospitalCard.person_id == person_filter)
+    cards = card_q.order_by(models.HospitalCard.hospital_name.asc()).all()
+
+    # Count docs per hospital name (case-insensitive) within person scope
+    def _hosp_key(name: str | None) -> str:
+        return (name or "").strip().lower()
+
+    hosp_counts: dict[str, int] = {}
+    for d in all_active:
+        if person_filter and d.person_id != person_filter:
+            continue
+        key = _hosp_key(d.hospital_name)
+        if not key:
+            continue
+        hosp_counts[key] = hosp_counts.get(key, 0) + 1
+
+    hospitals_out = []
+    seen_hosp = set()
+    for c in cards:
+        key = _hosp_key(c.hospital_name)
+        if not key or key in seen_hosp:
+            continue
+        seen_hosp.add(key)
+        hospitals_out.append({
+            "id": c.id,
+            "name": c.hospital_name,
+            "person_id": c.person_id,
+            "count": hosp_counts.get(key, 0),
+        })
+    # Orphan hospital names on docs without a card
+    for d in all_active:
+        if person_filter and d.person_id != person_filter:
+            continue
+        key = _hosp_key(d.hospital_name)
+        if key and key not in seen_hosp:
+            seen_hosp.add(key)
+            hospitals_out.append({
+                "id": "",
+                "name": d.hospital_name.strip(),
+                "person_id": d.person_id,
+                "count": hosp_counts.get(key, 0),
+            })
+    hospitals_out.sort(key=lambda h: (h["name"] or "").lower())
+
+    # Category counts (scoped)
+    cat_counts = {c.value: 0 for c in models.DocCategory}
+    for d in all_active:
+        if person_filter and d.person_id != person_filter:
+            continue
+        if hospital_filter and _hosp_key(d.hospital_name) != _hosp_key(hospital_filter):
+            if d.category != models.DocCategory.insurance:
+                continue
+        cat = d.category.value if hasattr(d.category, "value") else str(d.category)
+        cat_counts[cat] = cat_counts.get(cat, 0) + 1
+    categories_out = [
+        {
+            "id": c.value,
+            "label": HX_CAT_LABELS.get(c.value, c.value),
+            "color": HX_CAT_COLORS.get(c.value, "#9AA2B4"),
+            "icon": HX_CAT_ICONS.get(c.value, "bi-file-earmark"),
+            "count": cat_counts.get(c.value, 0),
+            "requires_hospital": models.category_requires_hospital(c),
+        }
+        for c in models.DocCategory
+    ]
+
+    # Child folders for the main pane
+    child_folders: list[dict] = []
+    show_children = (
+        not in_trash and not expiring and not unfiled and not q_text
+    )
+    if show_children and not person_filter and not hospital_filter and not category_filter and place_key == "home":
+        # Home → people as folders
+        for p in people_out:
+            child_folders.append({
+                "id": p["id"],
+                "name": p["name"],
+                "kind": "person",
+                "count": p["count"],
+                "child_count": 0,
+                "href_params": {"person": p["id"]},
+                "color": "#43D9C4",
+                "icon": "bi-person-fill",
+            })
+    elif show_children and person_filter and not hospital_filter and not category_filter:
+        # Person → hospitals + Insurance shortcut
+        for h in hospitals_out:
+            child_folders.append({
+                "id": h["name"],
+                "name": h["name"],
+                "kind": "hospital",
+                "count": h["count"],
+                "child_count": 0,
+                "href_params": {"person": person_filter, "hospital": h["name"]},
+                "color": "#F0A94E",
+                "icon": "bi-hospital",
+            })
+        ins_n = cat_counts.get("insurance", 0)
+        child_folders.append({
+            "id": "insurance",
+            "name": "Insurance",
+            "kind": "category",
+            "count": ins_n,
+            "child_count": 0,
+            "href_params": {"person": person_filter, "category": "insurance"},
+            "color": HX_CAT_COLORS["insurance"],
+            "icon": HX_CAT_ICONS["insurance"],
+        })
+    elif show_children and hospital_filter and not category_filter:
+        # Hospital → hospital-scoped categories
+        for c in categories_out:
+            if not c["requires_hospital"]:
+                continue
+            params = {"hospital": hospital_filter, "category": c["id"]}
+            if person_filter:
+                params["person"] = person_filter
+            child_folders.append({
+                "id": c["id"],
+                "name": c["label"],
+                "kind": "category",
+                "count": c["count"],
+                "child_count": 0,
+                "href_params": params,
+                "color": c["color"],
+                "icon": c["icon"],
+            })
+
+    # When showing child folders at home/person/hospital roots, only list
+    # "leaf" docs that aren't better represented by those folders.
+    items_src = docs
+    if show_children and not category_filter and not hospital_filter and place_key == "home" and not person_filter:
+        items_src = []  # home shows people folders only
+    elif show_children and person_filter and not hospital_filter and not category_filter:
+        # Person home: only unfiled (no hospital) non-insurance docs
+        items_src = [
+            d for d in docs
+            if d.category != models.DocCategory.insurance
+            and not (d.hospital_name or "").strip()
+        ]
+    elif show_children and hospital_filter and not category_filter:
+        # Hospital open: folders only (categories); skip listing all docs
+        items_src = []
+
+    items = [_hx_doc_row(d, person_names.get(d.person_id, "")) for d in items_src]
+
+    reverse = sort_dir == "desc"
+    if sort_key == "name":
+        items = sorted(items, key=lambda i: (i.get("title") or "").lower(), reverse=reverse)
+        child_folders = sorted(child_folders, key=lambda f: (f.get("name") or "").lower(), reverse=reverse)
+    elif sort_key == "size":
+        items = sorted(items, key=lambda i: i.get("file_size") or 0, reverse=reverse)
+    elif sort_key == "type":
+        items = sorted(items, key=lambda i: (i.get("category_label") or "").lower(), reverse=reverse)
+    elif sort_key == "date":
+        items = sorted(items, key=lambda i: i.get("doc_date") or "", reverse=reverse)
+    else:
+        items = sorted(items, key=lambda i: i.get("created_at") or dt.min, reverse=reverse)
+
+    person_label = active_person.name if active_person else None
+    category_label = HX_CAT_LABELS.get(category_filter) if category_filter else None
+    hospital_label = hospital_filter or None
+
+    crumbs = []
+    if person_filter and person_label:
+        crumbs.append({"kind": "person", "id": person_filter, "name": person_label})
+    if hospital_filter:
+        crumbs.append({"kind": "hospital", "id": hospital_filter, "name": hospital_filter})
+    if category_filter and category_label:
+        crumbs.append({"kind": "category", "id": category_filter, "name": category_label})
+
+    qs: dict = {}
+    if in_trash:
+        qs["place"] = "trash"
+    else:
+        if place_key in ("expiring", "unfiled"):
+            qs["place"] = place_key
+        if person_filter:
+            qs["person"] = person_filter
+        if hospital_filter:
+            qs["hospital"] = hospital_filter
+        if category_filter:
+            qs["category"] = category_filter
+        if q_text:
+            qs["q"] = q_text
+    if view_mode == "icons":
+        qs["view"] = "icons"
+    if sort_key != "created" or sort_dir != "desc":
+        qs["sort"] = sort_key
+        qs["dir"] = sort_dir
+    here_href = "/admin/explorer" + (("?" + urlencode(qs)) if qs else "")
+
+    add_qs: dict = {}
+    if person_filter and not in_trash:
+        add_qs["person"] = person_filter
+    if hospital_filter and not in_trash:
+        add_qs["hospital"] = hospital_filter
+    if category_filter and not in_trash:
+        add_qs["category"] = category_filter
+    # Prefer documents folder view for full add
+    if person_filter and not in_trash:
+        add_href = "/admin/documents?person=" + quote(person_filter)
+        if category_filter:
+            add_href += "&category=" + quote(category_filter)
+        if hospital_filter:
+            add_href += "&hospital=" + quote(hospital_filter)
+    else:
+        add_href = "/admin" + (("?" + urlencode(add_qs)) if add_qs else "")
+
+    here_label = "Home"
+    if in_trash:
+        here_label = "Trash"
+    elif place_key == "expiring":
+        here_label = "Expiring"
+    elif place_key == "unfiled":
+        here_label = "Unfiled"
+    elif category_label:
+        here_label = category_label
+    elif hospital_label:
+        here_label = hospital_label
+    elif person_label:
+        here_label = person_label
+
+    summary = {
+        "total": len(all_active),
+        "expiring": expiring_n,
+        "unfiled": unfiled_n,
+        "trash": trash_n,
+    }
+
+    return {
+        "summary": summary,
+        "items": items,
+        "people": people_out,
+        "hospitals": hospitals_out,
+        "categories": categories_out,
+        "child_folders": child_folders,
+        "crumbs": crumbs,
+        "person": person_filter if not in_trash else "",
+        "person_label": person_label if not in_trash else None,
+        "hospital": hospital_filter if not in_trash else "",
+        "hospital_label": hospital_label if not in_trash else None,
+        "category": category_filter if not in_trash else "",
+        "category_label": category_label if not in_trash else None,
+        "place": place_key,
+        "q": q_text,
+        "view": view_mode,
+        "sort": sort_key,
+        "dir": sort_dir,
+        "expiring": expiring,
+        "unfiled": unfiled,
+        "in_trash": in_trash,
+        "here_href": here_href,
+        "add_href": add_href,
+        "here_label": here_label,
+        "active_person_id": person_filter if not in_trash else None,
+        "cat_colors": HX_CAT_COLORS,
+        "cat_labels": HX_CAT_LABELS,
+        "cat_icons": HX_CAT_ICONS,
+    }
+
+
+@router.get("/explorer", response_class=HTMLResponse)
+def health_explorer(
+    request: Request,
+    person: str = "",
+    hospital: str = "",
+    category: str = "",
+    place: str = "",
+    q: str = "",
+    view: str = "list",
+    sort: str = "created",
+    dir: str = "desc",
+    db: Session = Depends(get_db),
+):
+    """Linux/Windows-style explorer over Health Vault documents."""
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    state = _hx_explorer_browse(
+        db=db, user=user, person=person, hospital=hospital, category=category,
+        place=place, q=q, view=view, sort=sort, dir=dir,
+    )
+    return templates.TemplateResponse("health_explorer.html", {
+        "request": request,
+        "session_user": user,
+        "active_nav": "explorer",
+        "active_module": "health",
+        **state,
+    })
+
+
+@router.get("/explorer/browse.json")
+def health_explorer_browse_json(
+    request: Request,
+    person: str = "",
+    hospital: str = "",
+    category: str = "",
+    place: str = "",
+    q: str = "",
+    view: str = "list",
+    sort: str = "created",
+    dir: str = "desc",
+    db: Session = Depends(get_db),
+):
+    """AJAX browse for Health Explorer — no full page reload."""
+    from fastapi.encoders import jsonable_encoder
+    user = require_login(request, db)
+    if not user:
+        return JSONResponse({"error": "login"}, status_code=401)
+    state = _hx_explorer_browse(
+        db=db, user=user, person=person, hospital=hospital, category=category,
+        place=place, q=q, view=view, sort=sort, dir=dir,
+    )
+    payload = {
+        "place": state["place"],
+        "person": state["person"],
+        "person_label": state["person_label"],
+        "hospital": state["hospital"],
+        "hospital_label": state["hospital_label"],
+        "category": state["category"],
+        "category_label": state["category_label"],
+        "crumbs": state["crumbs"],
+        "child_folders": state["child_folders"],
+        "items": state["items"],
+        "hospitals": state["hospitals"],
+        "categories": state["categories"],
+        "people": state["people"],
+        "q": state["q"],
+        "view": state["view"],
+        "sort": state["sort"],
+        "dir": state["dir"],
+        "in_trash": state["in_trash"],
+        "here_href": state["here_href"],
+        "add_href": state["add_href"],
+        "here_label": state["here_label"],
+        "summary": state["summary"],
+        "cat_colors": state["cat_colors"],
+        "cat_labels": state["cat_labels"],
+        "cat_icons": state["cat_icons"],
+    }
+    return JSONResponse(jsonable_encoder(payload))
+
+
+@router.post("/explorer/upload")
+async def health_explorer_upload(
+    request: Request,
+    person_id: str = Form(""),
+    hospital_name: str = Form(""),
+    category: str = Form("other"),
+    next: str = Form(""),
+    files: list[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+):
+    """Quick-add: drop files into the current explorer place (one document per file)."""
+    from pathlib import Path as P
+    from app.routers.documents import attach_document_files
+    from app.extract import parse_lab_readings
+
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    dest = _hx_safe_next(next)
+    uploads = [f for f in (files or []) if f and f.filename]
+    pid = (person_id or "").strip()
+    person = vault_person(db, user, pid) if pid else None
+    if not person or not uploads:
+        return RedirectResponse(dest, status_code=302)
+
+    cat_raw = (category or "other").strip() or "other"
+    try:
+        cat = models.DocCategory(cat_raw)
+    except ValueError:
+        cat = models.DocCategory.other
+    hosp = (hospital_name or "").strip() or None
+    if cat == models.DocCategory.insurance:
+        hosp = None
+    elif models.category_requires_hospital(cat) and not hosp:
+        # Fall back to "other" without hospital so upload still lands
+        cat = models.DocCategory.other
+
+    person_dir = settings.STORAGE_DIR / vault_id(user) / person.id
+    person_dir.mkdir(parents=True, exist_ok=True)
+
+    for up in uploads:
+        raw = await up.read()
+        if not raw:
+            continue
+        stem = P(up.filename or "file").stem.strip() or "Document"
+        doc = models.Document(
+            person_id=person.id,
+            category=cat,
+            title=stem,
+            hospital_name=hosp,
+            notes_enc=crypto.encrypt_text(None),
+            file_path="",
+        )
+        db.add(doc)
+        db.flush()
+        try:
+            ocr_chunks, first_mime, first_size = attach_document_files(
+                db, doc=doc, file_parts=[(raw, up.filename or "file", up.content_type)],
+                person_dir=person_dir,
+            )
+        except HTTPException:
+            db.rollback()
+            continue
+        doc.file_type = first_mime
+        doc.file_size = first_size
+        combined = "\n".join(c for c in ocr_chunks if c).strip() or None
+        doc.extracted_text = combined
+        if combined:
+            for reading in parse_lab_readings(combined):
+                db.add(models.LabReading(
+                    person_id=person.id, document_id=doc.id,
+                    metric=reading["metric"], value=reading["value"], unit=reading["unit"],
+                    measured_at=None,
+                ))
+    db.commit()
+    return RedirectResponse(dest, status_code=302)
+
+
+@router.post("/explorer/move")
+async def health_explorer_move(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Move a document to another hospital / category / person from the explorer."""
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    form = await request.form()
+    document_id = str(form.get("document_id") or "").strip()
+    hospital_name = str(form.get("hospital_name") or "").strip()
+    category = str(form.get("category") or "").strip()
+    person_id = str(form.get("person_id") or "").strip()
+    next_url = str(form.get("next") or "").strip()
+    set_hospital = "hospital_name" in form
+    set_category = "category" in form
+    set_person = "person_id" in form
+
+    dest = _hx_safe_next(next_url)
+    doc = (
+        db.query(models.Document).join(models.Person)
+        .filter(models.Document.id == document_id, models.Person.user_id == vault_id(user))
+        .first()
+    )
+    if not doc or doc.deleted_at is not None:
+        return RedirectResponse(dest, status_code=302)
+
+    if set_person and person_id and person_id != doc.person_id:
+        person = vault_person(db, user, person_id)
+        if person:
+            doc.person_id = person.id
+
+    if set_category and category:
+        try:
+            doc.category = models.DocCategory(category)
+        except ValueError:
+            pass
+
+    if set_hospital:
+        if doc.category == models.DocCategory.insurance:
+            doc.hospital_name = None
+        else:
+            doc.hospital_name = hospital_name or None
+
+    db.commit()
+    return RedirectResponse(dest, status_code=302)
 
 
 # ---------- Reminders ----------

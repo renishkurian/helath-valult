@@ -1,0 +1,971 @@
+{% extends "base.html" %}
+{% block title %}Health Explorer{% endblock %}
+{% block content %}
+{% set place = place or 'home' %}
+{% set view = view or 'list' %}
+{% set pid = active_person_id or person or '' %}
+{% set qs_view = ('&view=icons') if view == 'icons' else '' %}
+{% set cat_colors = cat_colors or {} %}
+{% set cat_labels = cat_labels or {} %}
+{% set cat_icons = cat_icons or {} %}
+{% set here_base = here_href|replace('&view=icons','')|replace('?view=icons','')|replace('view=icons&','') %}
+{% if here_base.endswith('?') %}{% set here_base = here_base[:-1] %}{% endif %}
+{% if view == 'icons' %}
+  {% set list_href = here_base %}
+  {% set icons_href = here_href %}
+{% else %}
+  {% set list_href = here_href %}
+  {% set icons_href = here_href ~ ('&' if '?' in here_href else '?') ~ 'view=icons' %}
+{% endif %}
+
+<div class="page-head mb-3 fx-page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      <a href="/admin">Health Vault</a>
+      <i class="bi bi-chevron-right"></i>
+      Explorer
+    </div>
+    <h1 class="page-title">Health Explorer</h1>
+    <p class="page-lead mb-0">Browse like a file manager — people &amp; hospitals on the left, documents on the right. Right-click for actions.</p>
+  </div>
+  <div class="page-actions">
+    <button type="button" class="btn btn-outline-light" id="fx-toggle-nav" title="Hide left menu for full-screen explorer">
+      <i class="bi bi-arrows-fullscreen"></i> Full screen
+    </button>
+  </div>
+</div>
+
+<div class="fx-shell" id="fx-shell"
+     data-here="{{ here_href }}"
+     data-add="{{ add_href }}"
+     data-person="{{ person or '' }}"
+     data-hospital="{{ hospital or '' }}"
+     data-category="{{ category or '' }}"
+     data-place="{{ place }}"
+     data-sort="{{ sort|default('created') }}"
+     data-dir="{{ dir|default('desc') }}">
+
+  <aside class="fx-tree" aria-label="Places">
+    <div class="fx-tree-head">Places</div>
+    <nav class="fx-tree-nav">
+      <a class="fx-tree-item {% if place == 'home' and not person and not hospital and not category %}on{% endif %}"
+         href="/admin/explorer{{ '?view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-house-door"></i><span>Home</span>
+        <em>{{ '%02d'|format(summary.total) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'expiring' %}on{% endif %}"
+         href="/admin/explorer?place=expiring{% if pid %}&person={{ pid }}{% endif %}{{ qs_view }}">
+        <i class="bi bi-clock-history"></i><span>Expiring</span>
+        <em>{{ '%02d'|format(summary.expiring) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'unfiled' %}on{% endif %}"
+         href="/admin/explorer?place=unfiled{% if pid %}&person={{ pid }}{% endif %}{{ qs_view }}">
+        <i class="bi bi-file-earmark"></i><span>Unfiled</span>
+        <em>{{ '%02d'|format(summary.unfiled) }}</em>
+      </a>
+      <a class="fx-tree-item {% if place == 'trash' %}on{% endif %}"
+         href="/admin/explorer?place=trash{{ '&view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-trash3"></i><span>Trash</span>
+        <em>{{ '%02d'|format(summary.trash or 0) }}</em>
+      </a>
+    </nav>
+
+    <div class="fx-tree-head">Family</div>
+    <nav class="fx-tree-nav" id="fx-people-tree">
+      {% for p in people %}
+      <a class="fx-tree-item js-fx-folder {% if person == p.id and not hospital and not category and place == 'home' %}on{% endif %}"
+         href="/admin/explorer?person={{ p.id }}{{ qs_view }}"
+         data-kind="person"
+         data-id="{{ p.id }}"
+         data-name="{{ p.name }}">
+        <span class="avatar" style="width:1.25rem;height:1.25rem;font-size:.6rem">{{ p.avatar_initials }}</span>
+        <span>{{ p.name | nice }}</span>
+        <em>{{ '%02d'|format(p.count) }}</em>
+      </a>
+      {% else %}
+      <div class="fx-tree-empty">No family profiles yet.</div>
+      {% endfor %}
+      <a class="fx-tree-item" href="/admin/family">
+        <i class="bi bi-plus-lg"></i><span>Add member</span>
+      </a>
+    </nav>
+
+    <div class="fx-tree-head">Hospitals</div>
+    <nav class="fx-tree-nav" id="fx-hospital-tree">
+      {% for h in hospitals %}
+      <a class="fx-tree-item js-fx-folder {% if hospital == h.name %}on{% endif %}"
+         href="/admin/explorer?{% if pid %}person={{ pid }}&{% endif %}hospital={{ h.name | urlencode }}{{ qs_view }}"
+         data-kind="hospital"
+         data-id="{{ h.name }}"
+         data-name="{{ h.name }}"
+         data-count="{{ h.count }}">
+        <i class="bi bi-hospital" style="color:#F0A94E"></i>
+        <span>{{ h.name }}</span>
+        <em>{{ '%02d'|format(h.count) }}</em>
+      </a>
+      {% else %}
+      <div class="fx-tree-empty">{% if pid %}No hospitals for this profile.{% else %}Pick a family member, or add a hospital on Overview.{% endif %}</div>
+      {% endfor %}
+    </nav>
+
+    <details class="fx-tree-details" {% if category %}open{% endif %}>
+      <summary class="fx-tree-head" style="cursor:pointer;list-style:none">Categories <i class="bi bi-chevron-down small"></i></summary>
+      <nav class="fx-tree-nav" id="fx-category-tree">
+        {% for c in categories %}
+        <a class="fx-tree-item {% if category == c.id %}on{% endif %}"
+           href="/admin/explorer?{% if pid %}person={{ pid }}&{% endif %}{% if hospital %}hospital={{ hospital | urlencode }}&{% endif %}category={{ c.id }}{{ qs_view }}">
+          <span class="fx-dot" style="background:{{ c.color }}"></span>
+          <span>{{ c.label }}</span>
+          <em>{{ '%02d'|format(c.count) }}</em>
+        </a>
+        {% endfor %}
+      </nav>
+    </details>
+  </aside>
+
+  <section class="fx-main">
+    <div class="fx-toolbar">
+      <nav class="fx-crumbs" id="fx-crumbs" aria-label="Breadcrumb">
+        <a href="/admin/explorer{{ '?view=icons' if view == 'icons' else '' }}"><i class="bi bi-hdd"></i> Home</a>
+        {% for c in crumbs %}
+          <i class="bi bi-chevron-right"></i>
+          {% if not loop.last %}
+            {% if c.kind == 'person' %}
+            <a href="/admin/explorer?person={{ c.id }}{{ qs_view }}">{{ c.name | nice }}</a>
+            {% elif c.kind == 'hospital' %}
+            <a href="/admin/explorer?{% if pid %}person={{ pid }}&{% endif %}hospital={{ c.id | urlencode }}{{ qs_view }}">{{ c.name }}</a>
+            {% else %}
+            <a href="/admin/explorer?{% if pid %}person={{ pid }}&{% endif %}category={{ c.id }}{{ qs_view }}">{{ c.name }}</a>
+            {% endif %}
+          {% else %}
+          <span>{% if c.kind == 'person' %}{{ c.name | nice }}{% else %}{{ c.name }}{% endif %}</span>
+          {% endif %}
+        {% endfor %}
+        {% if place in ('expiring', 'unfiled', 'trash') and not crumbs %}
+          <i class="bi bi-chevron-right"></i>
+          <span>{{ here_label }}</span>
+        {% endif %}
+      </nav>
+      <form class="fx-search" method="get" action="/admin/explorer">
+        {% if person %}<input type="hidden" name="person" value="{{ person }}">{% endif %}
+        {% if hospital %}<input type="hidden" name="hospital" value="{{ hospital }}">{% endif %}
+        {% if category %}<input type="hidden" name="category" value="{{ category }}">{% endif %}
+        {% if place and place not in ('home',) and not person and not hospital and not category %}
+        <input type="hidden" name="place" value="{{ place }}">
+        {% elif place in ('expiring', 'unfiled') %}
+        <input type="hidden" name="place" value="{{ place }}">
+        {% endif %}
+        {% if view == 'icons' %}<input type="hidden" name="view" value="icons">{% endif %}
+        <i class="bi bi-search"></i>
+        <input type="search" name="q" value="{{ q }}" placeholder="Search…" aria-label="Search documents"{% if place == 'trash' %} disabled{% endif %}>
+      </form>
+      <div class="fx-toolbar-actions" id="fx-toolbar-actions">
+        <button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar"
+                title="Toggle left menu / full screen">
+          <i class="bi bi-layout-sidebar-inset" id="fx-toggle-nav-icon"></i>
+          <span class="d-none d-xl-inline" id="fx-toggle-nav-label">Hide menu</span>
+        </button>
+        <div class="btn-group" role="group" aria-label="View">
+          <a class="btn btn-sm btn-outline-light {% if view == 'list' %}active{% endif %}"
+             href="{{ list_href }}"
+             id="fx-view-list" title="List view"><i class="bi bi-list-ul"></i></a>
+          <a class="btn btn-sm btn-outline-light {% if view == 'icons' %}active{% endif %}"
+             href="{{ icons_href }}"
+             id="fx-view-icons" title="Icons view"><i class="bi bi-grid"></i></a>
+        </div>
+        {% if place == 'trash' %}
+          {% if items %}
+          <form method="post" action="/admin/trash/empty" class="d-inline"
+                data-confirm="Permanently delete everything in trash? This cannot be undone.">
+            <input type="hidden" name="next" value="{{ here_href }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash3"></i> Empty trash
+            </button>
+          </form>
+          {% endif %}
+        {% else %}
+          <label class="btn btn-sm btn-primary mb-0 {% if not pid %}disabled{% endif %}"
+                 for="fx-upload-input" title="{% if pid %}Upload into this place{% else %}Select a family member first{% endif %}">
+            <i class="bi bi-upload"></i> Upload
+          </label>
+          <a class="btn btn-sm btn-outline-light" href="{{ add_href }}" title="Open documents folder">
+            <i class="bi bi-plus-lg"></i>
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <form id="fx-upload-form" method="post" action="/admin/explorer/upload" enctype="multipart/form-data" class="d-none">
+      <input type="hidden" name="person_id" value="{{ pid }}">
+      <input type="hidden" name="hospital_name" value="{{ hospital or '' }}">
+      <input type="hidden" name="category" value="{{ category or 'other' }}">
+      <input type="hidden" name="next" value="{{ here_href }}">
+      <input type="file" name="files" id="fx-upload-input" multiple {% if not pid %}disabled{% endif %}>
+    </form>
+
+    <div class="fx-pane {% if view == 'icons' %}fx-icons{% else %}fx-list{% endif %}" id="fx-pane" tabindex="0">
+      {% if view == 'list' %}
+      {% set sort = sort|default('created') %}
+      {% set dir = dir|default('desc') %}
+      <div class="fx-list-head" role="row">
+        <span class="fx-sort-spacer" aria-hidden="true"></span>
+        <button type="button" class="fx-col-name fx-sort{% if sort=='name' %} on{% endif %}" data-sort="name">Name{% if sort=='name' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
+        <button type="button" class="fx-col-type fx-sort{% if sort=='type' %} on{% endif %}" data-sort="type">Category{% if sort=='type' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
+        <span class="fx-col-meta">Details</span>
+        <button type="button" class="fx-col-size fx-sort{% if sort=='size' %} on{% endif %}" data-sort="size">Size{% if sort=='size' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
+        <button type="button" class="fx-col-date fx-sort{% if sort=='created' %} on{% endif %}" data-sort="created">Created{% if sort=='created' %} <i class="bi bi-caret-{{ 'up' if dir=='asc' else 'down' }}"></i>{% endif %}</button>
+      </div>
+      {% endif %}
+
+      {% for f in child_folders %}
+      {% set ns = namespace(parts=[]) %}
+      {% for k, v in f.href_params.items() %}
+        {% set _ = ns.parts.append(k ~ '=' ~ (v | string | urlencode)) %}
+      {% endfor %}
+      {% if view == 'icons' %}{% set _ = ns.parts.append('view=icons') %}{% endif %}
+      <a class="fx-row js-fx-folder"
+         href="/admin/explorer?{{ ns.parts | join('&') }}"
+         data-kind="{{ f.kind }}"
+         data-id="{{ f.id }}"
+         data-name="{{ f.name }}"
+         data-count="{{ f.count }}">
+        <span class="fx-ico" style="color:{{ f.color or '#F0A94E' }}"><i class="bi {{ f.icon or 'bi-folder-fill' }}"></i></span>
+        <span class="fx-col-name truncate">{{ f.name | nice if f.kind == 'person' else f.name }}</span>
+        {% if view == 'list' %}
+        <span class="fx-col-type text-faint">{{ f.kind | title }}</span>
+        <span class="fx-col-meta text-faint">{{ f.count }} document{{ 's' if f.count != 1 else '' }}</span>
+        <span class="fx-col-size mono text-faint">—</span>
+        <span class="fx-col-date text-faint">—</span>
+        {% else %}
+        <span class="fx-icon-meta">{{ f.count }} items</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+
+      {% for item in items %}
+      <a class="fx-row js-fx-doc"
+         href="/admin/documents/{{ item.id }}/viewer"
+         data-kind="doc"
+         data-id="{{ item.id }}"
+         data-name="{{ item.title }}"
+         data-type="{{ item.category_label }}"
+         data-category="{{ item.category }}"
+         data-hospital="{{ item.hospital_name or '' }}"
+         data-person="{{ item.person_id }}"
+         data-files="{{ item.file_count }}"
+         data-size="{{ item.file_size or 0 }}"
+         data-require-2fa="{{ '1' if item.require_2fa else '0' }}">
+        <span class="fx-ico doc-icon" style="background:{{ item.category_color }}">
+          <i class="bi {{ item.category_icon }}"></i>
+        </span>
+        <span class="fx-col-name truncate">
+          {{ item.title }}
+          {% if item.require_2fa %}<i class="bi bi-shield-lock text-warning ms-1" title="Locked with 2FA"></i>{% endif %}
+        </span>
+        {% if view == 'list' %}
+        <span class="fx-col-type">{{ item.category_label }}</span>
+        <span class="fx-col-meta text-faint">
+          {% if item.person_name %}{{ item.person_name | nice }}{% endif %}
+          {% if item.hospital_name %}{% if item.person_name %} · {% endif %}{{ item.hospital_name }}{% endif %}
+          {% if not item.person_name and not item.hospital_name %}{{ item.file_count }} file{{ 's' if item.file_count != 1 else '' }}{% endif %}
+        </span>
+        <span class="fx-col-size mono text-faint">{{ item.file_size | bytes }}</span>
+        <span class="fx-col-date mono text-faint">{% if item.created_at %}{{ item.created_at.strftime('%d %b %Y') }}{% else %}—{% endif %}</span>
+        {% else %}
+        <span class="fx-icon-meta">{{ item.category_label }} · {{ item.file_size | bytes }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+
+      {% if not child_folders and not items %}
+        {% if place == 'trash' %}
+        <div class="fx-empty">
+          <i class="bi bi-trash3"></i>
+          <p class="mb-1">Trash is empty</p>
+          <p class="text-faint small mb-0">Deleted documents wait here until you restore them or empty trash.</p>
+        </div>
+        {% else %}
+        <div class="fx-empty fx-dropzone" id="fx-dropzone">
+          <i class="bi bi-cloud-arrow-up"></i>
+          {% if q %}
+          <p class="mb-1">Nothing matches</p>
+          <p class="text-faint small mb-3">Try another search.</p>
+          {% elif not pid and place == 'home' %}
+          <p class="mb-1">Pick a family member</p>
+          <p class="text-faint small mb-3">Open a profile on the left to browse hospitals and documents.</p>
+          {% else %}
+          <p class="mb-1">This place is empty</p>
+          <p class="text-faint small mb-3">{% if pid %}Drop files here to upload{% if hospital %} under {{ hospital }}{% endif %}.{% else %}Select a family member to upload.{% endif %}</p>
+          {% endif %}
+          {% if pid and place != 'trash' %}
+          <label class="btn btn-primary btn-sm mb-0" for="fx-upload-input">
+            <i class="bi bi-upload"></i> Upload files
+          </label>
+          {% endif %}
+        </div>
+        {% endif %}
+      {% elif place != 'trash' and pid %}
+        <div class="fx-drop-hint no-print" id="fx-dropzone">Drop files anywhere to upload here</div>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+<form id="fx-form-delete-doc" method="post" action="" class="d-none">
+  <input type="hidden" name="person_id" id="fx-delete-person" value="{{ pid }}">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-restore-doc" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-permanent-doc" method="post" action="" class="d-none">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-move" method="post" action="/admin/explorer/move" class="d-none">
+  <input type="hidden" name="document_id" id="fx-move-doc-id" value="">
+  <input type="hidden" name="hospital_name" id="fx-move-hospital" value="">
+  <input type="hidden" name="category" id="fx-move-category" value="">
+  <input type="hidden" name="person_id" id="fx-move-person" value="">
+  <input type="hidden" name="next" value="{{ here_href }}">
+</form>
+<form id="fx-form-lock" method="post" action="" class="d-none">
+  <input type="hidden" name="next" id="fx-lock-next" value="{{ here_href }}">
+  <input type="hidden" name="enabled" id="fx-lock-enabled" value="1">
+</form>
+
+<div class="fx-menu" id="fx-menu" hidden role="menu">
+  <button type="button" class="fx-menu-item" data-action="open" role="menuitem"><i class="bi bi-box-arrow-up-right"></i> Open</button>
+  <button type="button" class="fx-menu-item" data-action="download" role="menuitem"><i class="bi bi-download"></i> Download</button>
+  <button type="button" class="fx-menu-item" data-action="edit" role="menuitem"><i class="bi bi-pencil"></i> Edit…</button>
+  <button type="button" class="fx-menu-item" data-action="share" role="menuitem"><i class="bi bi-share"></i> Share…</button>
+  <button type="button" class="fx-menu-item" data-action="lock" role="menuitem"><i class="bi bi-lock"></i> Lock with 2FA</button>
+  <button type="button" class="fx-menu-item" data-action="unlock" role="menuitem"><i class="bi bi-unlock"></i> Remove 2FA lock</button>
+  <div class="fx-menu-sep" data-for="doc"></div>
+  <button type="button" class="fx-menu-item" data-action="move" role="menuitem"><i class="bi bi-hospital"></i> Move to hospital…</button>
+  <button type="button" class="fx-menu-item" data-action="unfile" role="menuitem"><i class="bi bi-folder-minus"></i> Clear hospital</button>
+  <div class="fx-menu-sep" data-for="empty"></div>
+  <button type="button" class="fx-menu-item" data-action="add" role="menuitem"><i class="bi bi-upload"></i> Upload files…</button>
+  <button type="button" class="fx-menu-item" data-action="refresh" role="menuitem"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+  <div class="fx-menu-sep" data-for="trash"></div>
+  <button type="button" class="fx-menu-item" data-action="restore" role="menuitem"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+  <button type="button" class="fx-menu-item danger" data-action="permanent" role="menuitem"><i class="bi bi-x-lg"></i> Delete forever</button>
+  <div class="fx-menu-sep" data-for="danger"></div>
+  <button type="button" class="fx-menu-item danger" data-action="delete" role="menuitem"><i class="bi bi-trash3"></i> Move to trash</button>
+  <button type="button" class="fx-menu-item" data-action="properties" role="menuitem"><i class="bi bi-info-circle"></i> Properties</button>
+</div>
+
+<div class="modal fade" id="fx-move-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5 mb-0">Move to hospital</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body stack">
+        <label class="form-label" for="fx-move-select">Hospital</label>
+        <select class="form-select" id="fx-move-select">
+          <option value="">— Unfiled —</option>
+          {% for h in hospitals %}
+          <option value="{{ h.name }}">{{ h.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="fx-move-confirm">Move</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="fx-props" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="fx-props-title">Properties</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <dl class="dx-props-list mb-0" id="fx-props-body"></dl>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+        <a class="btn btn-primary" id="fx-props-open" href="#"><i class="bi bi-box-arrow-up-right"></i> Open</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var KEY = "health-fx-nav-collapsed";
+  var body = document.body;
+  var headBtn = document.getElementById("fx-toggle-nav");
+  var toolBtn = document.getElementById("fx-toggle-nav-toolbar");
+  var icon = document.getElementById("fx-toggle-nav-icon");
+  var label = document.getElementById("fx-toggle-nav-label");
+
+  function apply(collapsed) {
+    body.classList.toggle("nav-collapsed", collapsed);
+    body.classList.toggle("fx-focus", collapsed);
+    try { localStorage.setItem(KEY, collapsed ? "1" : "0"); } catch (e) {}
+    if (icon) icon.className = collapsed ? "bi bi-layout-sidebar" : "bi bi-layout-sidebar-inset";
+    if (label) label.textContent = collapsed ? "Show menu" : "Hide menu";
+    if (headBtn) {
+      headBtn.innerHTML = collapsed
+        ? '<i class="bi bi-layout-sidebar"></i> Show menu'
+        : '<i class="bi bi-arrows-fullscreen"></i> Full screen';
+    }
+  }
+  function toggle() { apply(!body.classList.contains("nav-collapsed")); }
+
+  var saved = false;
+  try { saved = localStorage.getItem(KEY) === "1"; } catch (e) {}
+  try {
+    if (localStorage.getItem(KEY) === null && window.matchMedia("(min-width:992px)").matches) saved = true;
+  } catch (e) {}
+  apply(saved);
+  if (headBtn) headBtn.addEventListener("click", toggle);
+  if (toolBtn) toolBtn.addEventListener("click", toggle);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "[" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      var t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      toggle();
+    }
+  });
+})();
+</script>
+<script>
+(function () {
+  var shell = document.getElementById("fx-shell");
+  var pane = document.getElementById("fx-pane");
+  var menu = document.getElementById("fx-menu");
+  if (!shell || !pane || !menu) return;
+
+  var target = null;
+  var moveDocId = null;
+  var uploadForm = document.getElementById("fx-upload-form");
+  var uploadInput = document.getElementById("fx-upload-input");
+
+  function hideMenu() { menu.hidden = true; target = null; }
+
+  function showMenu(x, y, kind) {
+    var inTrash = shell.getAttribute("data-place") === "trash";
+    menu.querySelectorAll(".fx-menu-item, .fx-menu-sep").forEach(function (el) {
+      var action = el.getAttribute("data-action");
+      var forKind = el.getAttribute("data-for");
+      var show = false;
+      if (inTrash && kind === "doc") {
+        show = ["open", "download", "restore", "permanent", "properties"].indexOf(action) >= 0 || forKind === "trash";
+      } else if (inTrash && kind === "empty") {
+        show = action === "refresh";
+      } else if (kind === "empty") {
+        show = ["add", "refresh"].indexOf(action) >= 0 || forKind === "empty";
+      } else if (kind === "person" || kind === "hospital" || kind === "category" || kind === "folder") {
+        show = ["open", "refresh", "properties"].indexOf(action) >= 0;
+      } else if (kind === "doc") {
+        show = ["open", "download", "edit", "share", "lock", "unlock", "move", "unfile", "delete", "properties"].indexOf(action) >= 0
+          || forKind === "doc" || forKind === "danger";
+      }
+      if (action === "unfile" && kind === "doc" && target && !target.hospital) show = false;
+      if ((action === "lock" || action === "unlock") && kind === "doc" && target) {
+        var locked = target.require2fa === "1" || target.require2fa === true;
+        if (action === "lock" && locked) show = false;
+        if (action === "unlock" && !locked) show = false;
+      }
+      if (forKind === "empty" && kind !== "empty") show = false;
+      if (forKind === "doc" && kind !== "doc") show = false;
+      if (forKind === "trash" && !(inTrash && kind === "doc")) show = false;
+      if (forKind === "danger" && (kind === "empty" || inTrash)) show = false;
+      el.hidden = !show;
+    });
+    menu.hidden = false;
+    var pad = 8, mw = menu.offsetWidth || 220, mh = menu.offsetHeight || 280;
+    menu.style.left = Math.max(pad, Math.min(x, window.innerWidth - mw - pad)) + "px";
+    menu.style.top = Math.max(pad, Math.min(y, window.innerHeight - mh - pad)) + "px";
+  }
+
+  function readTarget(el) {
+    if (!el) return null;
+    return {
+      kind: el.getAttribute("data-kind"),
+      el: el,
+      id: el.getAttribute("data-id") || "",
+      name: el.getAttribute("data-name") || "",
+      type: el.getAttribute("data-type") || "",
+      category: el.getAttribute("data-category") || "",
+      hospital: el.getAttribute("data-hospital") || "",
+      person: el.getAttribute("data-person") || "",
+      files: el.getAttribute("data-files") || "0",
+      size: el.getAttribute("data-size") || "0",
+      href: el.getAttribute("href") || "",
+      require2fa: el.getAttribute("data-require-2fa") || "0",
+      count: el.getAttribute("data-count") || "0"
+    };
+  }
+
+  pane.addEventListener("contextmenu", function (e) {
+    var row = e.target.closest(".js-fx-doc, .js-fx-folder");
+    e.preventDefault();
+    if (row) { target = readTarget(row); showMenu(e.clientX, e.clientY, target.kind); }
+    else { target = { kind: "empty" }; showMenu(e.clientX, e.clientY, "empty"); }
+  });
+
+  document.getElementById("fx-hospital-tree")?.addEventListener("contextmenu", function (e) {
+    var row = e.target.closest(".js-fx-folder");
+    if (!row) return;
+    e.preventDefault();
+    target = readTarget(row);
+    showMenu(e.clientX, e.clientY, target.kind);
+  });
+
+  document.addEventListener("click", hideMenu);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") hideMenu(); });
+  window.addEventListener("resize", hideMenu);
+  window.addEventListener("scroll", hideMenu, true);
+
+  function submitForm(form, action) {
+    if (!form) return;
+    if (action) form.action = action;
+    form.submit();
+  }
+
+  function showProperties(t) {
+    var body = document.getElementById("fx-props-body");
+    var open = document.getElementById("fx-props-open");
+    var title = document.getElementById("fx-props-title");
+    if (!body) return;
+    var rows = [];
+    function add(label, value) {
+      if (value === "" || value == null) return;
+      rows.push("<div><dt>" + label + "</dt><dd>" + String(value)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</dd></div>");
+    }
+    if (t.kind === "doc") {
+      if (title) title.textContent = "Document properties";
+      add("Title", t.name);
+      add("Category", t.type || t.category);
+      add("Hospital", t.hospital || "—");
+      add("Files", t.files);
+      add("2FA lock", t.require2fa === "1" ? "Yes" : "No");
+    } else {
+      if (title) title.textContent = (t.kind || "Item") + " properties";
+      add("Name", t.name);
+      add("Type", t.kind);
+      add("Documents", t.count);
+    }
+    body.innerHTML = rows.join("");
+    if (open) open.href = t.href || "#";
+    var modalEl = document.getElementById("fx-props");
+    if (window.bootstrap && modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  menu.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-action]");
+    if (!btn || !target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var action = btn.getAttribute("data-action");
+    var t = target;
+    hideMenu();
+    if (action === "open") { location.href = t.href || "#"; return; }
+    if (action === "refresh") { location.reload(); return; }
+    if (action === "add") { if (uploadInput && !uploadInput.disabled) uploadInput.click(); return; }
+    if (action === "download" && t.id) { location.href = "/admin/documents/" + t.id + "/download"; return; }
+    if (action === "edit" && t.id) { location.href = "/admin/documents/" + t.id + "/edit"; return; }
+    if (action === "share" && t.id) { location.href = "/admin/documents/" + t.id + "/viewer#share"; return; }
+    if (action === "properties") { showProperties(t); return; }
+    if (action === "delete" && t.id) {
+      var ok = window.vaultConfirm
+        ? null
+        : confirm("Move “" + t.name + "” to trash?");
+      function go() {
+        var f = document.getElementById("fx-form-delete-doc");
+        var p = document.getElementById("fx-delete-person");
+        if (p) p.value = t.person || shell.getAttribute("data-person") || "";
+        submitForm(f, "/admin/documents/" + t.id + "/delete");
+      }
+      if (window.vaultConfirm) {
+        window.vaultConfirm("Move “" + t.name + "” to trash?", { title: "Move to trash", danger: true }).then(function (y) { if (y) go(); });
+      } else if (ok) go();
+      return;
+    }
+    if (action === "restore" && t.id) {
+      submitForm(document.getElementById("fx-form-restore-doc"), "/admin/documents/" + t.id + "/restore");
+      return;
+    }
+    if (action === "permanent" && t.id) {
+      function goPerm() {
+        submitForm(document.getElementById("fx-form-permanent-doc"), "/admin/documents/" + t.id + "/permanent");
+      }
+      if (window.vaultConfirm) {
+        window.vaultConfirm("Permanently delete “" + t.name + "”? This cannot be undone.", { title: "Delete forever", danger: true }).then(function (y) { if (y) goPerm(); });
+      } else if (confirm("Permanently delete “" + t.name + "”?")) goPerm();
+      return;
+    }
+    if (action === "unfile" && t.id) {
+      document.getElementById("fx-move-doc-id").value = t.id;
+      document.getElementById("fx-move-hospital").value = "";
+      document.getElementById("fx-move-category").value = "";
+      document.getElementById("fx-move-person").value = "";
+      document.getElementById("fx-form-move").submit();
+      return;
+    }
+    if (action === "move" && t.id) {
+      moveDocId = t.id;
+      var sel = document.getElementById("fx-move-select");
+      if (sel && t.hospital) sel.value = t.hospital;
+      var modalEl = document.getElementById("fx-move-modal");
+      if (window.bootstrap && modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      return;
+    }
+    if ((action === "lock" || action === "unlock") && t.id) {
+      var f = document.getElementById("fx-form-lock");
+      document.getElementById("fx-lock-enabled").value = action === "lock" ? "1" : "0";
+      submitForm(f, "/admin/documents/" + t.id + "/lock");
+    }
+  });
+
+  document.getElementById("fx-move-confirm")?.addEventListener("click", function () {
+    if (!moveDocId) return;
+    var sel = document.getElementById("fx-move-select");
+    document.getElementById("fx-move-doc-id").value = moveDocId;
+    document.getElementById("fx-move-hospital").value = sel ? sel.value : "";
+    document.getElementById("fx-move-category").value = "";
+    document.getElementById("fx-move-person").value = "";
+    var modalEl = document.getElementById("fx-move-modal");
+    if (window.bootstrap && modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    document.getElementById("fx-form-move").submit();
+  });
+
+  if (uploadInput && uploadForm) {
+    uploadInput.addEventListener("change", function () {
+      if (uploadInput.files && uploadInput.files.length) uploadForm.submit();
+    });
+  }
+
+  // Drag-drop upload
+  function canUpload() {
+    return shell.getAttribute("data-place") !== "trash" && !!shell.getAttribute("data-person");
+  }
+  ["dragenter", "dragover"].forEach(function (ev) {
+    pane.addEventListener(ev, function (e) {
+      if (!canUpload()) return;
+      e.preventDefault();
+      pane.classList.add("fx-drag-over");
+    });
+  });
+  pane.addEventListener("dragleave", function () { pane.classList.remove("fx-drag-over"); });
+  pane.addEventListener("drop", function (e) {
+    pane.classList.remove("fx-drag-over");
+    if (!canUpload() || !uploadForm || !uploadInput) return;
+    e.preventDefault();
+    // Doc drag onto hospital?
+    var docId = e.dataTransfer.getData("text/plain");
+    var hospRow = e.target.closest(".js-fx-folder[data-kind='hospital']");
+    if (docId && hospRow && !e.dataTransfer.files.length) {
+      document.getElementById("fx-move-doc-id").value = docId;
+      document.getElementById("fx-move-hospital").value = hospRow.getAttribute("data-id") || "";
+      document.getElementById("fx-form-move").submit();
+      return;
+    }
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      try {
+        var dt = new DataTransfer();
+        for (var i = 0; i < e.dataTransfer.files.length; i++) dt.items.add(e.dataTransfer.files[i]);
+        uploadInput.files = dt.files;
+      } catch (err) {
+        return;
+      }
+      uploadForm.submit();
+    }
+  });
+
+  // Make docs draggable; hospitals drop targets
+  function bindDocDrag() {
+    pane.querySelectorAll(".js-fx-doc").forEach(function (row) {
+      row.setAttribute("draggable", "true");
+      row.addEventListener("dragstart", function (e) {
+        e.dataTransfer.setData("text/plain", row.getAttribute("data-id"));
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+      row.addEventListener("dragend", function () { row.classList.remove("dragging"); });
+    });
+  }
+  bindDocDrag();
+
+  document.querySelectorAll("#fx-hospital-tree .js-fx-folder").forEach(function (row) {
+    row.addEventListener("dragover", function (e) { e.preventDefault(); row.classList.add("fx-drop-target"); });
+    row.addEventListener("dragleave", function () { row.classList.remove("fx-drop-target"); });
+    row.addEventListener("drop", function (e) {
+      e.preventDefault();
+      row.classList.remove("fx-drop-target");
+      var docId = e.dataTransfer.getData("text/plain");
+      if (!docId) return;
+      document.getElementById("fx-move-doc-id").value = docId;
+      document.getElementById("fx-move-hospital").value = row.getAttribute("data-id") || "";
+      document.getElementById("fx-form-move").submit();
+    });
+  });
+})();
+</script>
+<script>
+(function () {
+  var shell = document.getElementById("fx-shell");
+  var pane = document.getElementById("fx-pane");
+  if (!shell || !pane) return;
+  var busy = false, seq = 0;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function fmtDate(iso) {
+    if (!iso) return "—";
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  }
+  function fmtSize(n) {
+    n = Number(n || 0);
+    if (!n || n < 0) return "—";
+    var u = ["B", "KB", "MB", "GB"], s = n;
+    for (var i = 0; i < u.length; i++) {
+      if (s < 1024 || i === u.length - 1) {
+        return (u[i] === "B" ? Math.round(s) : (s >= 100 ? Math.round(s) : s.toFixed(1))) + " " + u[i];
+      }
+      s /= 1024;
+    }
+    return Math.round(n) + " B";
+  }
+
+  function parseUrl(href) {
+    var u = new URL(href, location.origin);
+    return {
+      person: u.searchParams.get("person") || "",
+      hospital: u.searchParams.get("hospital") || "",
+      category: u.searchParams.get("category") || "",
+      place: u.searchParams.get("place") || "",
+      view: u.searchParams.get("view") || "",
+      q: u.searchParams.get("q") || "",
+      sort: u.searchParams.get("sort") || shell.getAttribute("data-sort") || "created",
+      dir: u.searchParams.get("dir") || shell.getAttribute("data-dir") || "desc"
+    };
+  }
+
+  function qsFromState(st) {
+    var p = new URLSearchParams();
+    if (st.place === "trash") p.set("place", "trash");
+    else {
+      if (st.place === "expiring" || st.place === "unfiled") p.set("place", st.place);
+      if (st.person) p.set("person", st.person);
+      if (st.hospital) p.set("hospital", st.hospital);
+      if (st.category) p.set("category", st.category);
+    }
+    if (st.view === "icons") p.set("view", "icons");
+    if (st.q && st.place !== "trash") p.set("q", st.q);
+    if (st.sort && (st.sort !== "created" || st.dir !== "desc")) {
+      p.set("sort", st.sort); p.set("dir", st.dir || "desc");
+    }
+    var s = p.toString();
+    return "/admin/explorer" + (s ? "?" + s : "");
+  }
+
+  function folderHref(f, data) {
+    var p = new URLSearchParams(f.href_params || {});
+    if (data.view === "icons") p.set("view", "icons");
+    return "/admin/explorer?" + p.toString();
+  }
+
+  function renderCrumbs(data) {
+    var nav = document.getElementById("fx-crumbs");
+    if (!nav) return;
+    var viewQ = data.view === "icons" ? "&view=icons" : "";
+    var html = '<a href="/admin/explorer' + (data.view === "icons" ? "?view=icons" : "") + '"><i class="bi bi-hdd"></i> Home</a>';
+    (data.crumbs || []).forEach(function (c, i, arr) {
+      html += ' <i class="bi bi-chevron-right"></i> ';
+      var last = i === arr.length - 1;
+      var label = esc(c.name);
+      if (last) html += "<span>" + label + "</span>";
+      else if (c.kind === "person") html += '<a href="/admin/explorer?person=' + encodeURIComponent(c.id) + viewQ + '">' + label + "</a>";
+      else if (c.kind === "hospital") html += '<a href="/admin/explorer?' + (data.person ? "person=" + encodeURIComponent(data.person) + "&" : "") + "hospital=" + encodeURIComponent(c.id) + viewQ + '">' + label + "</a>";
+      else html += '<a href="/admin/explorer?' + (data.person ? "person=" + encodeURIComponent(data.person) + "&" : "") + "category=" + encodeURIComponent(c.id) + viewQ + '">' + label + "</a>";
+    });
+    if ((!data.crumbs || !data.crumbs.length) && (data.place === "expiring" || data.place === "unfiled" || data.place === "trash")) {
+      html += ' <i class="bi bi-chevron-right"></i> <span>' + esc(data.here_label || "") + "</span>";
+    }
+    nav.innerHTML = html;
+  }
+
+  function renderPane(data) {
+    var icons = data.view === "icons";
+    pane.className = "fx-pane " + (icons ? "fx-icons" : "fx-list");
+    var html = "";
+    if (!icons) {
+      var sk = data.sort || "created", sd = data.dir || "desc";
+      function sortBtn(key, label, cls) {
+        var on = sk === key ? " on" : "";
+        var caret = sk === key ? ' <i class="bi bi-caret-' + (sd === "asc" ? "up" : "down") + '"></i>' : "";
+        return '<button type="button" class="' + cls + ' fx-sort' + on + '" data-sort="' + key + '">' + label + caret + "</button>";
+      }
+      html += '<div class="fx-list-head" role="row"><span class="fx-sort-spacer" aria-hidden="true"></span>' +
+        sortBtn("name", "Name", "fx-col-name") + sortBtn("type", "Category", "fx-col-type") +
+        '<span class="fx-col-meta">Details</span>' +
+        sortBtn("size", "Size", "fx-col-size") + sortBtn("created", "Created", "fx-col-date") + "</div>";
+    }
+    (data.child_folders || []).forEach(function (f) {
+      html += '<a class="fx-row js-fx-folder" href="' + esc(folderHref(f, data)) + '" data-kind="' + esc(f.kind) +
+        '" data-id="' + esc(f.id) + '" data-name="' + esc(f.name) + '" data-count="' + (f.count || 0) + '">' +
+        '<span class="fx-ico" style="color:' + esc(f.color || "#F0A94E") + '"><i class="bi ' + esc(f.icon || "bi-folder-fill") + '"></i></span>' +
+        '<span class="fx-col-name truncate">' + esc(f.name) + "</span>";
+      if (!icons) {
+        html += '<span class="fx-col-type text-faint">' + esc((f.kind || "").replace(/^./, function (c) { return c.toUpperCase(); })) + "</span>" +
+          '<span class="fx-col-meta text-faint">' + (f.count || 0) + " document" + ((f.count || 0) !== 1 ? "s" : "") + "</span>" +
+          '<span class="fx-col-size mono text-faint">—</span><span class="fx-col-date text-faint">—</span>';
+      } else html += '<span class="fx-icon-meta">' + (f.count || 0) + " items</span>";
+      html += "</a>";
+    });
+    (data.items || []).forEach(function (item) {
+      var color = (data.cat_colors && data.cat_colors[item.category]) || item.category_color || "#9AA2B4";
+      var icon = (data.cat_icons && data.cat_icons[item.category]) || item.category_icon || "bi-file-earmark";
+      var label = item.category_label || ((data.cat_labels && data.cat_labels[item.category]) || item.category || "");
+      html += '<a class="fx-row js-fx-doc" href="/admin/documents/' + esc(item.id) + '/viewer" data-kind="doc" data-id="' + esc(item.id) +
+        '" data-name="' + esc(item.title) + '" data-type="' + esc(label) + '" data-category="' + esc(item.category) +
+        '" data-hospital="' + esc(item.hospital_name || "") + '" data-person="' + esc(item.person_id || "") +
+        '" data-files="' + (item.file_count || 0) + '" data-size="' + (item.file_size || 0) +
+        '" data-require-2fa="' + (item.require_2fa ? "1" : "0") + '">' +
+        '<span class="fx-ico doc-icon" style="background:' + esc(color) + '"><i class="bi ' + esc(icon) + '"></i></span>' +
+        '<span class="fx-col-name truncate">' + esc(item.title) +
+        (item.require_2fa ? ' <i class="bi bi-shield-lock text-warning ms-1"></i>' : "") + "</span>";
+      if (!icons) {
+        var meta = [];
+        if (item.person_name) meta.push(item.person_name);
+        if (item.hospital_name) meta.push(item.hospital_name);
+        html += '<span class="fx-col-type">' + esc(label) + "</span>" +
+          '<span class="fx-col-meta text-faint">' + esc(meta.join(" · ") || ((item.file_count || 0) + " files")) + "</span>" +
+          '<span class="fx-col-size mono text-faint">' + fmtSize(item.file_size) + "</span>" +
+          '<span class="fx-col-date mono text-faint">' + fmtDate(item.created_at) + "</span>";
+      } else html += '<span class="fx-icon-meta">' + esc(label) + " · " + fmtSize(item.file_size) + "</span>";
+      html += "</a>";
+    });
+    if (!(data.child_folders || []).length && !(data.items || []).length) {
+      if (data.in_trash) {
+        html += '<div class="fx-empty"><i class="bi bi-trash3"></i><p class="mb-1">Trash is empty</p></div>';
+      } else {
+        html += '<div class="fx-empty fx-dropzone"><i class="bi bi-cloud-arrow-up"></i><p class="mb-1">This place is empty</p></div>';
+      }
+    } else if (!data.in_trash && data.person) {
+      html += '<div class="fx-drop-hint no-print" id="fx-dropzone">Drop files anywhere to upload here</div>';
+    }
+    pane.innerHTML = html;
+  }
+
+  function markTree(data) {
+    document.querySelectorAll(".fx-tree-item").forEach(function (a) {
+      a.classList.remove("on");
+    });
+    var want = qsFromState(data);
+    document.querySelectorAll(".fx-tree-item[href]").forEach(function (a) {
+      try {
+        var ha = parseUrl(a.getAttribute("href"));
+        var same =
+          (ha.place || "home") === (data.place || "home") &&
+          (ha.person || "") === (data.person || "") &&
+          (ha.hospital || "") === (data.hospital || "") &&
+          (ha.category || "") === (data.category || "");
+        // Home special-case
+        if ((data.place || "home") === "home" && !data.person && !data.hospital && !data.category) {
+          same = a.getAttribute("href").indexOf("place=") < 0 &&
+            a.getAttribute("href").indexOf("person=") < 0 &&
+            a.getAttribute("href").indexOf("hospital=") < 0 &&
+            a.getAttribute("href").indexOf("category=") < 0 &&
+            a.getAttribute("href").indexOf("/admin/explorer") === 0;
+        }
+        if (same) a.classList.add("on");
+      } catch (e) {}
+    });
+  }
+
+  function applyState(data, push) {
+    shell.setAttribute("data-here", data.here_href || "/admin/explorer");
+    shell.setAttribute("data-add", data.add_href || "/admin");
+    shell.setAttribute("data-person", data.person || "");
+    shell.setAttribute("data-hospital", data.hospital || "");
+    shell.setAttribute("data-category", data.category || "");
+    shell.setAttribute("data-place", data.place || "home");
+    shell.setAttribute("data-sort", data.sort || "created");
+    shell.setAttribute("data-dir", data.dir || "desc");
+    var uf = document.getElementById("fx-upload-form");
+    if (uf) {
+      var set = function (n, v) { var el = uf.querySelector('[name="' + n + '"]'); if (el) el.value = v || ""; };
+      set("person_id", data.person);
+      set("hospital_name", data.hospital);
+      set("category", data.category || "other");
+      set("next", data.here_href);
+      var inp = document.getElementById("fx-upload-input");
+      if (inp) inp.disabled = !data.person || data.in_trash;
+    }
+    renderCrumbs(data);
+    renderPane(data);
+    markTree(data);
+    if (push) history.pushState({ hx: true }, "", data.here_href || "/admin/explorer");
+  }
+
+  function browse(href, push) {
+    var st = parseUrl(href);
+    var my = ++seq;
+    busy = true;
+    pane.classList.add("fx-loading");
+    var api = "/admin/explorer/browse.json?" + new URLSearchParams({
+      person: st.person, hospital: st.hospital, category: st.category,
+      place: st.place, view: st.view, q: st.q, sort: st.sort, dir: st.dir
+    }).toString();
+    fetch(api, { headers: { "Accept": "application/json" }, credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("browse"); return r.json(); })
+      .then(function (data) {
+        if (my !== seq) return;
+        applyState(data, push !== false);
+      })
+      .catch(function () { location.href = href; })
+      .finally(function () { busy = false; pane.classList.remove("fx-loading"); });
+  }
+
+  function intercept(e) {
+    var a = e.target.closest("a[href]");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var href = a.getAttribute("href") || "";
+    if (href.indexOf("/admin/explorer") !== 0) return;
+    if (href.indexOf("/admin/explorer/") === 0 && href.indexOf("/admin/explorer?") !== 0 && href !== "/admin/explorer") return;
+    e.preventDefault();
+    browse(href, true);
+  }
+
+  shell.addEventListener("click", intercept);
+  document.getElementById("fx-crumbs")?.addEventListener("click", intercept);
+
+  pane.addEventListener("click", function (e) {
+    var btn = e.target.closest(".fx-sort");
+    if (!btn) return;
+    e.preventDefault();
+    var key = btn.getAttribute("data-sort");
+    var cur = shell.getAttribute("data-sort") || "created";
+    var dir = shell.getAttribute("data-dir") || "desc";
+    if (cur === key) dir = dir === "asc" ? "desc" : "asc";
+    else { cur = key; dir = key === "name" || key === "type" ? "asc" : "desc"; }
+    var st = parseUrl(shell.getAttribute("data-here") || location.href);
+    st.sort = cur; st.dir = dir;
+    browse(qsFromState(st), true);
+  });
+
+  window.addEventListener("popstate", function () {
+    browse(location.pathname + location.search, false);
+  });
+})();
+</script>
+{% endblock %}
