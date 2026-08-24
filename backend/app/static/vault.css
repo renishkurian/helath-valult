@@ -1385,29 +1385,30 @@ tr.js-locker-doc.is-dragging{ opacity:0.45; }
 .lk-row-actions{ flex-wrap:nowrap; }
 .lk-row-actions form{ margin:0; display:inline-flex; }
 .lk-row-actions .hv-icon-btn.locked{ color:var(--v-gold); border-color:rgba(240,169,78,.35); }
-.table-card .table{ table-layout:fixed; width:100%; }
-.table-card .table th:nth-child(1),
-.table-card .table td:nth-child(1){ width:28%; }
-.table-card .table th:nth-child(2),
-.table-card .table td:nth-child(2){ width:14%; }
-.table-card .table th:nth-child(3),
-.table-card .table td:nth-child(3){ width:12%; }
-.table-card .table th:nth-child(4),
-.table-card .table td:nth-child(4){ width:12%; }
-.table-card .table th:nth-child(5),
-.table-card .table td:nth-child(5){ width:12%; }
-.table-card .table th:nth-child(6),
-.table-card .table td:nth-child(6){ width:6%; }
-.table-card .table th.table-actions,
-.table-card .table td.table-actions{ width:16%; min-width:10rem; }
-.table-card .table td .truncate{ max-width:100%; }
+/* Locker docs table only — do not apply to other .table-card pages (SA users, etc.) */
+.table-card .lk-docs-table{ table-layout:fixed; width:100%; }
+.table-card .lk-docs-table th:nth-child(1),
+.table-card .lk-docs-table td:nth-child(1){ width:28%; }
+.table-card .lk-docs-table th:nth-child(2),
+.table-card .lk-docs-table td:nth-child(2){ width:14%; }
+.table-card .lk-docs-table th:nth-child(3),
+.table-card .lk-docs-table td:nth-child(3){ width:12%; }
+.table-card .lk-docs-table th:nth-child(4),
+.table-card .lk-docs-table td:nth-child(4){ width:12%; }
+.table-card .lk-docs-table th:nth-child(5),
+.table-card .lk-docs-table td:nth-child(5){ width:12%; }
+.table-card .lk-docs-table th:nth-child(6),
+.table-card .lk-docs-table td:nth-child(6){ width:6%; }
+.table-card .lk-docs-table th.table-actions,
+.table-card .lk-docs-table td.table-actions{ width:16%; min-width:10rem; }
+.table-card .lk-docs-table td .truncate{ max-width:100%; }
 @media (max-width:1100px){
-  .table-card .table th:nth-child(4),
-  .table-card .table td:nth-child(4){ display:none; }
+  .table-card .lk-docs-table th:nth-child(4),
+  .table-card .lk-docs-table td:nth-child(4){ display:none; }
 }
 @media (max-width:900px){
-  .table-card .table th:nth-child(5),
-  .table-card .table td:nth-child(5){ display:none; }
+  .table-card .lk-docs-table th:nth-child(5),
+  .table-card .lk-docs-table td:nth-child(5){ display:none; }
 }
 
 /* Expense Analyser — sync log (card rows; avoid crushed table Error column on mobile) */
@@ -2869,7 +2870,10 @@ body.vdlg-open{ overflow:hidden; }
 .diary-chip.on .n{ color:var(--v-gold); background:rgba(217,185,120,0.15); }
 
 /* Modern custom select — replaces native OS dropdowns project-wide via vault-pick.js */
-#v-pick-portal{ position:fixed; inset:0; width:0; height:0; overflow:visible; z-index:2100; pointer-events:none; }
+#v-pick-portal{
+  position:absolute; left:0; top:0; width:0; height:0;
+  overflow:visible; z-index:2100; pointer-events:none;
+}
 #v-pick-portal .v-pick-menu{ pointer-events:auto; }
 
 .v-pick{ position:relative; width:100%; min-width:0; }
