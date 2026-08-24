@@ -3233,10 +3233,17 @@ def storage_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/admin/login", status_code=302)
     people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
     from app import quota as q
-    from app.drive_backup import get_or_create, status_dict
+    from app.drive_backup import get_or_create, list_remote_backups, status_dict
     snap = q.quota_snapshot(db, user)
     drive = status_dict(get_or_create(db, user), db)
     redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
+    drive_files: list[dict] = []
+    drive_list_error = None
+    if drive.get("connected"):
+        try:
+            drive_files = list_remote_backups(db, user)
+        except Exception as exc:
+            drive_list_error = str(exc)[:300]
     return templates.TemplateResponse("storage.html", {
         "request": request, "session_user": user, "active_nav": "storage",
         "people": people, "active_person": people[0] if people else None,
@@ -3246,7 +3253,9 @@ def storage_page(request: Request, db: Session = Depends(get_db)):
         "quota_mb": snap["quota_mb"], "used_mb": snap["used_mb"], "quota_pct": snap["pct"],
         "backup_dir": str(settings.BACKUP_DIR) if settings.BACKUP_DIR else None,
         "drive": drive, "redirect_uri": redirect_uri,
+        "drive_files": drive_files, "drive_list_error": drive_list_error,
         "ok": request.query_params.get("ok"), "err": request.query_params.get("err"),
+        "restore_detail": request.query_params.get("detail"),
     })
 
 
@@ -3376,6 +3385,32 @@ def storage_google_disconnect(request: Request, db: Session = Depends(get_db)):
     row.enabled = False
     db.commit()
     return RedirectResponse("/admin/storage", status_code=302)
+
+
+@router.post("/storage/google/restore")
+def storage_google_restore(
+    request: Request,
+    file_id: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from urllib.parse import quote
+    from app.drive_backup import restore_from_drive
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        result = restore_from_drive(db, user, file_id, password)
+        name = quote(str(result.get("file") or "backup")[:120])
+        return RedirectResponse(f"/admin/storage?ok=restored&detail={name}", status_code=302)
+    except Exception as exc:
+        msg = str(exc).lower()
+        if "password" in msg or "decrypt" in msg:
+            return RedirectResponse("/admin/storage?err=restore_password", status_code=302)
+        return RedirectResponse(
+            f"/admin/storage?err=restore&detail={quote(str(exc)[:200])}",
+            status_code=302,
+        )
 
 
 # ---------- Password Vault ----------

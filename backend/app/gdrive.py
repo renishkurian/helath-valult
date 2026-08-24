@@ -149,12 +149,47 @@ def upload_bytes(access_token: str, folder_id: str, name: str, blob: bytes, mime
 def list_backups(access_token: str, folder_id: str) -> list[dict[str, Any]]:
     q = urllib.parse.urlencode({
         "q": f"'{folder_id}' in parents and trashed=false",
-        "fields": "files(id,name,createdTime)",
+        "fields": "files(id,name,createdTime,size)",
         "orderBy": "createdTime desc",
         "pageSize": "100",
     })
     listing = _request_json(f"{DRIVE_FILES}?{q}", access_token)
     return listing.get("files") or []
+
+
+def get_file(access_token: str, file_id: str) -> dict[str, Any]:
+    fields = "id,name,createdTime,size,parents,trashed"
+    return _request_json(
+        f"{DRIVE_FILES}/{urllib.parse.quote(file_id)}?fields={fields}",
+        access_token,
+    )
+
+
+def download_bytes(access_token: str, file_id: str, *, max_bytes: int = 512 * 1024 * 1024) -> bytes:
+    """Download a Drive file's content (alt=media). Caps size to avoid DoS."""
+    meta = get_file(access_token, file_id)
+    if meta.get("trashed"):
+        raise RuntimeError("Backup file is in Drive trash")
+    try:
+        size = int(meta.get("size") or 0)
+    except (TypeError, ValueError):
+        size = 0
+    if size and size > max_bytes:
+        raise RuntimeError(f"Backup is too large to restore ({size} bytes)")
+    url = f"{DRIVE_FILES}/{urllib.parse.quote(file_id)}?alt=media"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {access_token}"})
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        chunks: list[bytes] = []
+        total = 0
+        while True:
+            chunk = resp.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            if total > max_bytes:
+                raise RuntimeError("Backup is too large to restore")
+            chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def delete_file(access_token: str, file_id: str) -> None:

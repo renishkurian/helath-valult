@@ -88,11 +88,14 @@
       <div class="card-body">
         {% if ok=='connected' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Google Drive connected.</span></div>{% endif %}
         {% if ok=='backedup' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Backup uploaded to Drive.</span></div>{% endif %}
+        {% if ok=='restored' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Restored from{% if restore_detail %} <strong class="mono">{{ restore_detail }}</strong>{% else %} Drive backup{% endif %}. Data is merged into this vault — check for duplicates if you restore the same snapshot twice.</span></div>{% endif %}
         {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google Drive is not set up yet. Ask a super admin to save the Google app under Server settings.</span></div>{% endif %}
         {% if err=='denied' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google access was denied.</span></div>{% endif %}
         {% if err=='state' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Login expired — try Connect again.</span></div>{% endif %}
         {% if err=='token' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Could not get a Drive token. Check the redirect URI and that Drive API is enabled.</span></div>{% endif %}
         {% if err=='run' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Backup failed. {{ drive.last_error or 'Check the password and Drive connection.' }}</span></div>{% endif %}
+        {% if err=='restore_password' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Could not decrypt that backup — check the backup password.</span></div>{% endif %}
+        {% if err=='restore' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Restore failed{% if restore_detail %}: {{ restore_detail }}{% else %}. Try again or reconnect Drive.{% endif %}</span></div>{% endif %}
 
         {% if drive.connected %}
           <div class="surface surface-2 mb-4">
@@ -196,6 +199,50 @@
             <button class="btn btn-outline-danger" type="submit"><i class="bi bi-plug"></i> Disconnect</button>
           </form>
         </div>
+
+        <div class="divider"></div>
+        <div class="section-head mb-2">
+          <h3 class="h6 mb-0">Backups on Drive</h3>
+          <a class="btn btn-ghost btn-sm" href="/admin/storage" title="Refresh list"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
+        </div>
+        {% if drive_list_error %}
+        <div class="alert alert-danger" role="alert">
+          <i class="bi bi-exclamation-triangle"></i>
+          <span>Could not list Drive backups: {{ drive_list_error }}</span>
+        </div>
+        {% elif drive_files %}
+        <div class="list-rows drive-backup-list">
+          {% for f in drive_files %}
+          <div class="list-row">
+            <span class="avatar"><i class="bi bi-file-earmark-zip"></i></span>
+            <div class="row-body">
+              <div class="row-title truncate mono">{{ f.name }}</div>
+              <div class="row-meta">
+                {% if f.created_time %}{{ f.created_time[:19]|replace('T', ' ') }}{% else %}—{% endif %}
+                {% if f.size %} · {{ f.size | bytes }}{% endif %}
+              </div>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn btn-sm btn-outline-light js-drive-restore"
+                      data-file-id="{{ f.id }}"
+                      data-file-name="{{ f.name }}">
+                <i class="bi bi-arrow-counterclockwise"></i> Restore
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <p class="text-faint small mt-2 mb-0">
+          Restore merges the snapshot into this vault (it does not wipe current data).
+          Use the same backup password you set when uploading.
+        </p>
+        {% else %}
+        <div class="empty-state py-4">
+          <div class="empty-ico"><i class="bi bi-cloud"></i></div>
+          <div class="empty-title">No backups on Drive yet</div>
+          <p class="mb-0">Run <strong>Backup now</strong> to upload the first encrypted snapshot.</p>
+        </div>
+        {% endif %}
         {% endif %}
 
         <p class="text-faint small mt-3 mb-0">
@@ -206,4 +253,97 @@
     </div>
   </div>
 </div>
+
+{% if drive.connected %}
+<form id="drive-restore-form" method="post" action="/admin/storage/google/restore" class="d-none">
+  <input type="hidden" name="file_id" id="drive-restore-file-id" value="">
+  <input type="hidden" name="password" id="drive-restore-password" value="">
+</form>
+
+<div class="modal fade" id="drive-restore-modal" tabindex="-1" aria-labelledby="drive-restore-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="drive-restore-title">Restore from Drive</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body stack">
+        <p class="mb-0">Restore <strong class="mono" id="drive-restore-name">backup</strong> into this vault?</p>
+        <p class="text-faint small mb-0">
+          Data is <strong>merged</strong> — existing documents are kept. Restoring the same backup twice can create duplicates.
+        </p>
+        <div>
+          <label class="form-label" for="drive-restore-pw">Backup password</label>
+          <input class="form-control" type="password" id="drive-restore-pw" autocomplete="current-password"
+                 placeholder="Password used when this backup was created" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="drive-restore-confirm">
+          <i class="bi bi-arrow-counterclockwise"></i> Restore
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if drive.connected %}
+<script>
+(function () {
+  var modalEl = document.getElementById("drive-restore-modal");
+  var form = document.getElementById("drive-restore-form");
+  var fileIdInput = document.getElementById("drive-restore-file-id");
+  var pwHidden = document.getElementById("drive-restore-password");
+  var pwField = document.getElementById("drive-restore-pw");
+  var nameEl = document.getElementById("drive-restore-name");
+  var confirmBtn = document.getElementById("drive-restore-confirm");
+  var pendingId = "";
+
+  document.querySelectorAll(".js-drive-restore").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      pendingId = btn.getAttribute("data-file-id") || "";
+      var fname = btn.getAttribute("data-file-name") || "backup";
+      if (nameEl) nameEl.textContent = fname;
+      if (pwField) pwField.value = "";
+      if (window.bootstrap && modalEl) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        setTimeout(function () { if (pwField) pwField.focus(); }, 200);
+      } else if (pwField) {
+        var pw = window.prompt("Backup password for " + fname);
+        if (!pw) return;
+        fileIdInput.value = pendingId;
+        pwHidden.value = pw;
+        form.submit();
+      }
+    });
+  });
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", function () {
+      var pw = (pwField && pwField.value || "").trim();
+      if (!pw || !pendingId) {
+        if (pwField) pwField.focus();
+        return;
+      }
+      confirmBtn.disabled = true;
+      fileIdInput.value = pendingId;
+      pwHidden.value = pw;
+      form.submit();
+    });
+  }
+  if (pwField) {
+    pwField.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (confirmBtn) confirmBtn.click();
+      }
+    });
+  }
+})();
+</script>
+{% endif %}
 {% endblock %}

@@ -1443,3 +1443,31 @@ def google_disconnect(
     row.enabled = False
     db.commit()
     return status_dict(row, db)
+
+
+@router.get("/google/files")
+def google_list_files(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.drive_backup import list_remote_backups
+    require_owner(current_user)
+    try:
+        return {"files": list_remote_backups(db, current_user)}
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/google/restore")
+def google_restore_file(
+    file_id: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    from app.drive_backup import restore_from_drive
+    require_owner(current_user)
+    try:
+        return restore_from_drive(db, current_user, file_id, password)
+    except Exception as exc:
+        raise HTTPException(400, str(exc)) from exc

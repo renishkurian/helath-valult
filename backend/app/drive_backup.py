@@ -164,3 +164,96 @@ def run_due_backups() -> None:
                 log.exception("Drive backup failed for %s", user.email)
     finally:
         db.close()
+
+
+def _access_token(db: Session, user: models.User) -> tuple[models.GoogleDriveBackup, str, str]:
+    """Return (row, access_token, folder_id). Raises RuntimeError if not connected."""
+    row = get_or_create(db, user)
+    if not row.refresh_token_enc:
+        raise RuntimeError("Google Drive is not connected")
+    client_id, client_secret = oauth_creds(db, row)
+    if not client_id or not client_secret:
+        raise RuntimeError("Google Drive is not configured on this server")
+    refresh = crypto.decrypt_text(row.refresh_token_enc) or ""
+    token = gdrive.refresh_access_token(client_id, client_secret, refresh)
+    folder_id = gdrive.ensure_folder(token, row.folder_id)
+    if folder_id != row.folder_id:
+        row.folder_id = folder_id
+        db.commit()
+    return row, token, folder_id
+
+
+def list_remote_backups(db: Session, user: models.User) -> list[dict]:
+    """List .hvbak (and other) files in this vault's Drive backup folder."""
+    _row, token, folder_id = _access_token(db, user)
+    out = []
+    for item in gdrive.list_backups(token, folder_id):
+        name = item.get("name") or ""
+        try:
+            size = int(item.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        out.append({
+            "id": item.get("id") or "",
+            "name": name,
+            "created_time": item.get("createdTime") or "",
+            "size": size,
+        })
+    return [f for f in out if f["id"]]
+
+
+def restore_from_drive(db: Session, user: models.User, file_id: str, password: str) -> dict:
+    """Download a Drive backup by id and merge-restore into this vault."""
+    import io
+    import json
+    import zipfile
+
+    from app.routers.backup import _restore_modules
+
+    fid = (file_id or "").strip()
+    if not fid:
+        raise RuntimeError("No backup file selected")
+    pwd = (password or "").strip()
+    if not pwd:
+        raise RuntimeError("Backup password is required to restore")
+
+    _row, token, folder_id = _access_token(db, user)
+    listing = gdrive.list_backups(token, folder_id)
+    allowed = {f.get("id"): f for f in listing if f.get("id")}
+    meta = allowed.get(fid)
+    if not meta:
+        try:
+            info = gdrive.get_file(token, fid)
+        except Exception as exc:
+            raise RuntimeError("Backup file not found on Drive") from exc
+        parents = info.get("parents") or []
+        if folder_id not in parents or info.get("trashed"):
+            raise RuntimeError("That file is not in your Health Vault Backups folder")
+        name = info.get("name") or fid
+    else:
+        name = meta.get("name") or fid
+
+    blob = gdrive.download_bytes(token, fid)
+    try:
+        if blob.startswith(b"HV1\0"):
+            zip_bytes = crypto.decrypt_backup(blob, pwd)
+        else:
+            zip_bytes = blob
+    except Exception as exc:
+        raise RuntimeError("Could not decrypt backup — check the password") from exc
+
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
+    except zipfile.BadZipFile as exc:
+        raise RuntimeError("Not a valid backup archive") from exc
+
+    try:
+        manifest = json.loads(zf.read("manifest.json"))
+    except KeyError as exc:
+        raise RuntimeError("Backup is missing manifest.json") from exc
+    except Exception as exc:
+        raise RuntimeError("Could not read backup manifest") from exc
+
+    restored = _restore_modules(db, vault_id(user), zf, manifest)
+    log.info("Drive restore ok for %s from %s", getattr(user, "email", "?"), name)
+    return {"ok": True, "file": name, "modules": manifest.get("modules") or [], **restored}
