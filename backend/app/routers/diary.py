@@ -51,15 +51,40 @@ def _norm_color(color: Optional[str], fallback: str) -> str:
     return fallback
 
 
-def _owned_entry(entry_id: str, db: Session, user: models.User) -> models.DiaryEntry:
-    entry = (
-        db.query(models.DiaryEntry)
-        .filter(models.DiaryEntry.id == entry_id, models.DiaryEntry.user_id == vault_id(user))
-        .first()
+def _owned_entry(
+    entry_id: str,
+    db: Session,
+    user: models.User,
+    *,
+    include_deleted: bool = False,
+) -> models.DiaryEntry:
+    q = db.query(models.DiaryEntry).filter(
+        models.DiaryEntry.id == entry_id,
+        models.DiaryEntry.user_id == vault_id(user),
     )
+    if not include_deleted:
+        q = q.filter(models.DiaryEntry.deleted_at.is_(None))
+    entry = q.first()
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
     return entry
+
+
+def _active_entry_query(db: Session, user: models.User):
+    return db.query(models.DiaryEntry).filter(
+        models.DiaryEntry.user_id == vault_id(user),
+        models.DiaryEntry.deleted_at.is_(None),
+    )
+
+
+def _purge_entry(db: Session, entry: models.DiaryEntry) -> None:
+    """Hard-delete entry and unlink image files from disk."""
+    for img in list(entry.images or []):
+        path = settings.STORAGE_DIR / img.file_path
+        if path.exists():
+            path.unlink()
+        db.delete(img)
+    db.delete(entry)
 
 
 def _owned_category(category_id: str, db: Session, user: models.User) -> models.DiaryCategory:
@@ -114,6 +139,7 @@ def _to_out(entry: models.DiaryEntry, include_images: bool = False) -> schemas.D
         images=[_image_out(i) for i in images] if include_images else [],
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+        deleted_at=entry.deleted_at,
     )
 
 
@@ -133,6 +159,7 @@ def _entry_counts(db: Session, user: models.User) -> dict[str, int]:
         .filter(
             models.DiaryEntry.user_id == vault_id(user),
             models.DiaryEntry.category_id.isnot(None),
+            models.DiaryEntry.deleted_at.is_(None),
         )
         .all()
     ):
@@ -294,11 +321,27 @@ def diary_summary(
 ):
     ensure_defaults(db, current_user)
     uid = vault_id(current_user)
-    entries = db.query(models.DiaryEntry).filter(models.DiaryEntry.user_id == uid).all()
+    entries = (
+        db.query(models.DiaryEntry)
+        .filter(
+            models.DiaryEntry.user_id == uid,
+            models.DiaryEntry.deleted_at.is_(None),
+        )
+        .all()
+    )
+    trash = (
+        db.query(models.DiaryEntry)
+        .filter(
+            models.DiaryEntry.user_id == uid,
+            models.DiaryEntry.deleted_at.isnot(None),
+        )
+        .count()
+    )
     cats = folder_tree(db, current_user)
     return schemas.DiarySummaryOut(
         total=len(entries),
         pinned=sum(1 for e in entries if e.pinned),
+        trash=trash,
         categories=cats,
     )
 
@@ -410,7 +453,7 @@ def list_entries(
     current_user: models.User = Depends(get_current_user),
 ):
     ensure_defaults(db, current_user)
-    query = db.query(models.DiaryEntry).filter(models.DiaryEntry.user_id == vault_id(current_user))
+    query = _active_entry_query(db, current_user)
     if unfiled:
         query = query.filter(models.DiaryEntry.category_id.is_(None))
     elif category_id:
@@ -481,6 +524,44 @@ async def create_entry(
     return _to_out(entry, include_images=True)
 
 
+@router.get("/trash", response_model=list[schemas.DiaryEntryOut])
+def list_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    rows = (
+        db.query(models.DiaryEntry)
+        .filter(
+            models.DiaryEntry.user_id == vault_id(current_user),
+            models.DiaryEntry.deleted_at.isnot(None),
+        )
+        .order_by(models.DiaryEntry.deleted_at.desc())
+        .all()
+    )
+    return [_to_out(e) for e in rows]
+
+
+@router.post("/trash/empty")
+def empty_trash(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    rows = (
+        db.query(models.DiaryEntry)
+        .filter(
+            models.DiaryEntry.user_id == vault_id(current_user),
+            models.DiaryEntry.deleted_at.isnot(None),
+        )
+        .all()
+    )
+    n = len(rows)
+    for entry in rows:
+        _purge_entry(db, entry)
+    db.commit()
+    return {"ok": True, "deleted": n}
+
+
 @router.get("/{entry_id}", response_model=schemas.DiaryEntryOut)
 def get_entry(
     entry_id: str,
@@ -523,13 +604,42 @@ def delete_entry(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
+    """Soft-delete: move entry to trash (images kept until permanent delete)."""
     require_owner(current_user)
     entry = _owned_entry(entry_id, db, current_user)
-    for img in list(entry.images or []):
-        path = settings.STORAGE_DIR / img.file_path
-        if path.exists():
-            path.unlink()
-    db.delete(entry)
+    entry.deleted_at = datetime.utcnow()
+    entry.updated_at = datetime.utcnow()
+    db.commit()
+
+
+@router.post("/{entry_id}/restore", response_model=schemas.DiaryEntryOut)
+def restore_entry(
+    entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    entry = _owned_entry(entry_id, db, current_user, include_deleted=True)
+    if entry.deleted_at is None:
+        raise HTTPException(status_code=400, detail="Entry is not in trash")
+    entry.deleted_at = None
+    entry.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(entry)
+    return _to_out(entry, include_images=True)
+
+
+@router.delete("/{entry_id}/permanent", status_code=204)
+def permanent_delete_entry(
+    entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    entry = _owned_entry(entry_id, db, current_user, include_deleted=True)
+    if entry.deleted_at is None:
+        raise HTTPException(status_code=400, detail="Move to trash before permanent delete")
+    _purge_entry(db, entry)
     db.commit()
 
 

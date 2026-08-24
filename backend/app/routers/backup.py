@@ -368,7 +368,10 @@ def _export_urls(db: Session, owner: str) -> dict:
 
 def _export_diary(db: Session, owner: str, zf: zipfile.ZipFile) -> dict:
     cats = db.query(models.DiaryCategory).filter(models.DiaryCategory.user_id == owner).all()
-    entries = db.query(models.DiaryEntry).filter(models.DiaryEntry.user_id == owner).all()
+    entries = db.query(models.DiaryEntry).filter(
+        models.DiaryEntry.user_id == owner,
+        models.DiaryEntry.deleted_at.is_(None),
+    ).all()
     cat_name = {c.id: c.name for c in cats}
     out_entries = []
     for e in entries:

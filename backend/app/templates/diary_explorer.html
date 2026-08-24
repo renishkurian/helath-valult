@@ -20,6 +20,10 @@
   {% set here_label = 'Unfiled' %}
   {% set here_base = '/admin/diary/explorer?place=unfiled' %}
   {% set add_href = '/admin/diary/add?next=' ~ (here_base | urlencode) %}
+{% elif place == 'trash' %}
+  {% set here_label = 'Trash' %}
+  {% set here_base = '/admin/diary/explorer?place=trash' %}
+  {% set add_href = '/admin/diary/add' %}
 {% else %}
   {% set here_label = 'All entries' %}
   {% set here_base = '/admin/diary/explorer' %}
@@ -85,6 +89,11 @@
         <i class="bi bi-file-earmark"></i><span>Unfiled</span>
         <em>{{ '%02d'|format(unfiled_count) }}</em>
       </a>
+      <a class="fx-tree-item {% if place == 'trash' %}on{% endif %}"
+         href="/admin/diary/explorer?place=trash{{ '&view=icons' if view == 'icons' else '' }}">
+        <i class="bi bi-trash3"></i><span>Trash</span>
+        <em>{{ '%02d'|format(summary.trash or 0) }}</em>
+      </a>
     </nav>
 
     <div class="fx-tree-head">Folders</div>
@@ -110,7 +119,7 @@
       {% endfor %}
     </nav>
 
-    <form class="fx-new-folder" method="post" action="/admin/diary/categories">
+    <form class="fx-new-folder" method="post" action="/admin/diary/categories"{% if place == 'trash' %} hidden{% endif %}>
       <input type="hidden" name="next" value="{{ here_href }}">
       <input type="hidden" name="parent_id" value="{{ folder or '' }}">
       <label class="visually-hidden" for="dx-folder-name">New folder name</label>
@@ -136,17 +145,17 @@
           <span>{{ c.name }}</span>
           {% endif %}
           {% endfor %}
-        {% elif place in ('pinned', 'unfiled') %}
+        {% elif place in ('pinned', 'unfiled', 'trash') %}
         <i class="bi bi-chevron-right"></i>
         <span>{{ here_label }}</span>
         {% endif %}
       </nav>
       <form class="fx-search" method="get" action="/admin/diary/explorer">
         {% if folder %}<input type="hidden" name="folder" value="{{ folder }}">{% endif %}
-        {% if place in ('pinned', 'unfiled') and not folder %}<input type="hidden" name="place" value="{{ place }}">{% endif %}
+        {% if place in ('pinned', 'unfiled', 'trash') and not folder %}<input type="hidden" name="place" value="{{ place }}">{% endif %}
         {% if view == 'icons' %}<input type="hidden" name="view" value="icons">{% endif %}
         <i class="bi bi-search"></i>
-        <input type="search" name="q" value="{{ q }}" placeholder="Search pages…" aria-label="Search diary">
+        <input type="search" name="q" value="{{ q }}" placeholder="Search pages…" aria-label="Search diary"{% if place == 'trash' %} disabled{% endif %}>
       </form>
       <div class="fx-toolbar-actions">
         <button type="button" class="btn btn-sm btn-outline-light" id="fx-toggle-nav-toolbar"
@@ -162,12 +171,24 @@
             <i class="bi bi-grid"></i>
           </a>
         </div>
+        {% if place == 'trash' %}
+          {% if entries %}
+          <form method="post" action="/admin/diary/trash/empty" class="d-inline"
+                data-confirm="Permanently delete everything in trash? This cannot be undone.">
+            <input type="hidden" name="next" value="{{ here_href }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">
+              <i class="bi bi-trash3"></i> Empty trash
+            </button>
+          </form>
+          {% endif %}
+        {% else %}
         <a class="btn btn-sm btn-outline-light" href="/admin/diary/manage" title="Manage folders">
           <i class="bi bi-folder"></i>
         </a>
         <a class="btn btn-sm btn-primary" href="{{ add_href }}" title="New entry in this place">
           <i class="bi bi-plus-lg"></i> New entry
         </a>
+        {% endif %}
       </div>
     </div>
 
@@ -213,6 +234,48 @@
       {% for e in entries %}
       {% set d = e.entry_date or '' %}
       {% set mon = months.get(d[5:7], '') if d|length >= 7 else '' %}
+      {% if place == 'trash' %}
+      <div class="fx-row"
+           data-kind="entry"
+           data-id="{{ e.id }}"
+           data-name="{{ e.title }}"
+           data-folder="{{ e.category_name or '' }}"
+           data-entry-date="{{ e.entry_date or '' }}"
+           data-created="{{ e.created_at.isoformat() if e.created_at else '' }}"
+           data-updated="{{ e.updated_at.isoformat() if e.updated_at else '' }}"
+           data-photos="{{ e.image_count or 0 }}"
+           data-mood="{{ e.mood or '' }}"
+           data-tags="{{ e.tags or '' }}"
+           data-pinned="{{ '1' if e.pinned else '0' }}">
+        <span class="fx-ico" style="color:#8B95A8">
+          <i class="bi bi-journal-x"></i>
+        </span>
+        <span class="fx-col-name truncate">{{ e.title }}</span>
+        {% if view == 'list' %}
+        <span class="fx-col-type truncate">{{ e.category_name or '—' }}</span>
+        <span class="fx-col-meta text-faint truncate">
+          {% if e.deleted_at %}Deleted {{ e.deleted_at.strftime('%d %b %Y') }}{% else %}In trash{% endif %}
+        </span>
+        <span class="fx-col-size mono text-faint">{{ e.image_count or '—' }}</span>
+        <span class="fx-col-date text-faint">
+          {% if d|length >= 10 %}{{ d[8:10] }} {{ mon }} {{ d[0:4] }}{% else %}—{% endif %}
+        </span>
+        {% else %}
+        <span class="fx-icon-meta">In trash</span>
+        {% endif %}
+        <span class="fx-row-actions ms-auto d-flex gap-1" onclick="event.stopPropagation()">
+          <form method="post" action="/admin/diary/{{ e.id }}/restore">
+            <input type="hidden" name="next" value="{{ here_href }}">
+            <button class="btn btn-sm btn-outline-light" type="submit" title="Restore"><i class="bi bi-arrow-counterclockwise"></i></button>
+          </form>
+          <form method="post" action="/admin/diary/{{ e.id }}/permanent"
+                data-confirm="Delete forever? This cannot be undone.">
+            <input type="hidden" name="next" value="{{ here_href }}">
+            <button class="btn btn-sm btn-outline-danger" type="submit" title="Delete forever"><i class="bi bi-x-lg"></i></button>
+          </form>
+        </span>
+      </div>
+      {% else %}
       <a class="fx-row"
          href="/admin/diary/{{ e.id }}"
          data-kind="entry"
@@ -251,9 +314,15 @@
         </span>
         {% endif %}
       </a>
+      {% endif %}
       {% else %}
       {% if not child_folders %}
       <div class="fx-empty">
+        {% if place == 'trash' %}
+        <div class="empty-ico"><i class="bi bi-trash3"></i></div>
+        <div class="empty-title">Trash is empty</div>
+        <p class="text-muted mb-0">Deleted pages wait here until you restore them or empty trash.</p>
+        {% else %}
         <div class="empty-ico"><i class="bi bi-journal"></i></div>
         <div class="empty-title">{% if q %}Nothing matches{% elif folder %}This folder is empty{% else %}No pages here{% endif %}</div>
         <p class="text-muted mb-3">
@@ -262,6 +331,7 @@
           {% else %}Write a page to fill this place.{% endif %}
         </p>
         <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> New entry</a>
+        {% endif %}
       </div>
       {% endif %}
       {% endfor %}

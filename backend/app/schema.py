@@ -144,6 +144,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "diary_categories": [
         ("parent_id", "VARCHAR(32)"),
     ],
+    "diary_entries": [
+        ("deleted_at", "DATETIME"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [
@@ -189,6 +192,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_locker_items_deleted_at", "locker_items", "deleted_at"),
     ("ix_locker_folders_user_id", "locker_folders", "user_id"),
     ("ix_diary_categories_parent_id", "diary_categories", "parent_id"),
+    ("ix_diary_entries_deleted_at", "diary_entries", "deleted_at"),
     ("ix_people_linked_user_id", "people", "linked_user_id"),
     ("ix_vault_items_owner_user_id", "vault_items", "owner_user_id"),
     ("ix_vault_items_person_id", "vault_items", "person_id"),

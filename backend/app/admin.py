@@ -8289,13 +8289,17 @@ def diary_explorer(
     summary = dy.diary_summary(db=db, current_user=user)
     folder_tree = dy.folder_tree(db, user)
     place = (place or "home").strip().lower()
-    if place not in ("home", "pinned", "unfiled"):
+    if place not in ("home", "pinned", "unfiled", "trash"):
         place = "home"
     folder_id = (folder or "").strip()
     folder_name = None
     folder_crumbs = []
     child_folders = []
-    if folder_id:
+    if place == "trash":
+        entries = dy.list_trash(db=db, current_user=user)
+        child_folders = []
+        folder_id = ""
+    elif folder_id:
         match = next((c for c in folder_tree if c.id == folder_id), None)
         if not match:
             return RedirectResponse("/admin/diary/explorer", status_code=302)
@@ -8326,6 +8330,35 @@ def diary_explorer(
         q=q or "", view=view, unfiled_count=unfiled_count,
         notice=notice, err=err,
     ))
+
+
+@router.get("/diary/trash", response_class=HTMLResponse)
+def diary_trash_page(request: Request, db: Session = Depends(get_db)):
+    from app.routers import diary as dy
+    user = _dy_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    items = dy.list_trash(db=db, current_user=user)
+    return templates.TemplateResponse("diary_trash.html", _dy_ctx(
+        request, user, "dy_trash", items=items,
+    ))
+
+
+@router.post("/diary/trash/empty")
+def diary_trash_empty(
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    dy.empty_trash(db=db, current_user=user)
+    dest = (next or "").strip()
+    if dest.startswith("/admin/diary") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse("/admin/diary/trash", status_code=302)
 
 
 @router.get("/diary/add", response_class=HTMLResponse)
@@ -8454,7 +8487,10 @@ def diary_entry_page(entry_id: str, request: Request, db: Session = Depends(get_
     user = _dy_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    entry = dy.get_entry(entry_id, db=db, current_user=user)
+    try:
+        entry = dy.get_entry(entry_id, db=db, current_user=user)
+    except HTTPException:
+        return RedirectResponse("/admin/diary/trash", status_code=302)
     cats = dy.list_categories(db=db, current_user=user)
     return templates.TemplateResponse("diary_entry.html", _dy_ctx(
         request, user, "dy_home", entry=entry, categories=cats,
@@ -8510,13 +8546,69 @@ def diary_image_delete(entry_id: str, image_id: str, request: Request, db: Sessi
 
 
 @router.post("/diary/{entry_id}/delete")
-def diary_delete(entry_id: str, request: Request, db: Session = Depends(get_db)):
+def diary_delete(
+    entry_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
     from app.routers import diary as dy
-    user = _dy_user(request, db)
-    if not user:
-        return RedirectResponse("/admin/login", status_code=302)
-    dy.delete_entry(entry_id, db=db, current_user=user)
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        dy.delete_entry(entry_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (403, 404):
+            raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/diary") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
     return RedirectResponse("/admin/diary", status_code=302)
+
+
+@router.post("/diary/{entry_id}/restore")
+def diary_restore(
+    entry_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        dy.restore_entry(entry_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 403, 404):
+            raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/diary") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse("/admin/diary/trash", status_code=302)
+
+
+@router.post("/diary/{entry_id}/permanent")
+def diary_permanent(
+    entry_id: str,
+    request: Request,
+    next: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app.routers import diary as dy
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    try:
+        dy.permanent_delete_entry(entry_id, db=db, current_user=user)
+    except HTTPException as exc:
+        if exc.status_code not in (400, 403, 404):
+            raise
+    dest = (next or "").strip()
+    if dest.startswith("/admin/diary") and "://" not in dest:
+        return RedirectResponse(dest, status_code=302)
+    return RedirectResponse("/admin/diary/trash", status_code=302)
 
 
 # ---------- Secret Share ----------

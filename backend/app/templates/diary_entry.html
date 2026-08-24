@@ -88,8 +88,8 @@
   {% endif %}
 
   <form method="post" action="/admin/diary/{{ entry.id }}/delete"
-        data-confirm="Delete this diary entry and its photos?">
-    <button class="btn btn-ghost text-danger" type="submit"><i class="bi bi-trash3"></i> Delete entry</button>
+        data-confirm="Move this diary entry to trash?">
+    <button class="btn btn-ghost text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
   </form>
 </div>
 {% endblock %}

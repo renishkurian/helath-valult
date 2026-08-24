@@ -1615,11 +1615,13 @@ class DiaryEntryOut(BaseModel):
     images: List[DiaryImageOut] = []
     created_at: datetime
     updated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
 
 class DiarySummaryOut(BaseModel):
     total: int = 0
     pinned: int = 0
+    trash: int = 0
     categories: List[DiaryCategoryOut] = []
 
 

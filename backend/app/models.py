@@ -1064,6 +1064,7 @@ class DiaryEntry(Base):
     tags = Column(String(500), nullable=True)  # comma-separated
     mood = Column(String(40), nullable=True)
     pinned = Column(Boolean, default=False, nullable=False, index=True)
+    deleted_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

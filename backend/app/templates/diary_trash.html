@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Trash — Digital Diary{% endblock %}
+{% block content %}
+{% set months = {
+  '01':'Jan','02':'Feb','03':'Mar','04':'Apr','05':'May','06':'Jun',
+  '07':'Jul','08':'Aug','09':'Sep','10':'Oct','11':'Nov','12':'Dec'
+} %}
+
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/diary">Digital Diary</a>
+      <i class="bi bi-chevron-right"></i>
+      Trash
+    </div>
+    <h1 class="page-title">Trash</h1>
+    <p class="page-lead">Deleted pages stay here until you restore them or empty the trash.</p>
+  </div>
+  {% if items %}
+  <div class="page-actions">
+    <form method="post" action="/admin/diary/trash/empty"
+          data-confirm="Permanently delete everything in trash? This cannot be undone.">
+      <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Empty trash</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  {% if items %}
+  <div class="card-header">
+    <span class="card-ico bad"><i class="bi bi-trash3"></i></span>
+    <div><h2>Deleted pages</h2></div>
+    <span class="badge badge-soft ms-auto">{{ items|length }}</span>
+  </div>
+  {% endif %}
+  <div class="list-rows">
+    {% for item in items %}
+    {% set d = item.entry_date or '' %}
+    {% set mon = months.get(d[5:7], '') if d|length >= 7 else '' %}
+    <div class="list-row">
+      <span class="avatar avatar-lg" style="background:{{ item.category_color or '#F06BA8' }}22;color:{{ item.category_color or '#F06BA8' }}">
+        <i class="bi bi-journal-text"></i>
+      </span>
+      <div class="row-body">
+        <div class="row-title truncate">{{ item.title }}</div>
+        <div class="row-meta">
+          {% if d|length >= 10 %}{{ d[8:10] }} {{ mon }} {{ d[0:4] }}{% endif %}
+          {% if item.category_name %} · {{ item.category_name }}{% endif %}
+          {% if item.image_count %} · {{ item.image_count }} photo{{ 's' if item.image_count != 1 else '' }}{% endif %}
+          {% if item.deleted_at %} · deleted {{ item.deleted_at.strftime('%Y-%m-%d %H:%M') }}{% endif %}
+        </div>
+      </div>
+      <div class="row-actions">
+        <form method="post" action="/admin/diary/{{ item.id }}/restore">
+          <button class="btn btn-outline-light btn-sm" type="submit"><i class="bi bi-arrow-counterclockwise"></i> Restore</button>
+        </form>
+        <form method="post" action="/admin/diary/{{ item.id }}/permanent"
+              data-confirm="Delete forever? This cannot be undone.">
+          <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-x-lg"></i> Delete</button>
+        </form>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div class="empty-ico"><i class="bi bi-trash3"></i></div>
+      <div class="empty-title">Trash is empty</div>
+      <p>Pages you delete from Digital Diary will wait here before they are gone for good.</p>
+      <a class="btn btn-primary" href="/admin/diary"><i class="bi bi-journal-richtext"></i> Back to diary</a>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
