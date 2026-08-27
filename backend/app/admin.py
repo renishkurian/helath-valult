@@ -7219,6 +7219,7 @@ def expense_analyser_home(
     status: str = "",
     method: str = "",
     q: str = "",
+    category: str = "",
     date_from: str = "",
     date_to: str = "",
     direction: str = "",
@@ -7236,12 +7237,14 @@ def expense_analyser_home(
     filter_status = status if status in ("pending", "missed", "matched", "posted", "ignored", "corrected") else ""
     filter_method = method if method in ea.METHOD_FILTERS else ""
     filter_q = (q or "").strip()[:80]
+    filter_category = (category or "").strip()[:80]
     filter_from = ea._clean_day(date_from) or ""
     filter_to = ea._clean_day(date_to) or ""
     filter_dir = direction if direction in ("debit", "credit") else ""
     open_statuses = ("pending", "missed", "matched", "corrected")
     list_kw = dict(
         method=filter_method or None, q=filter_q or None,
+        category=filter_category or None,
         date_from=filter_from or None, date_to=filter_to or None,
         direction=filter_dir or None,
     )
@@ -7287,6 +7290,7 @@ def expense_analyser_home(
         status=filter_status or None,
         method=filter_method or None,
         q=filter_q or None,
+        category=filter_category or None,
         date_from=filter_from or None,
         date_to=filter_to or None,
         direction=filter_dir or None,
@@ -7295,6 +7299,7 @@ def expense_analyser_home(
         request, user, "ea_inbox",
         status=st, items=items, accounts=accounts,
         filter_status=filter_status, filter_method=filter_method, filter_q=filter_q,
+        filter_category=filter_category,
         filter_from=filter_from, filter_to=filter_to, filter_dir=filter_dir, period=period,
         inr=inr,
         pager=pager, pager_prev=pager_prev, pager_next=pager_next,

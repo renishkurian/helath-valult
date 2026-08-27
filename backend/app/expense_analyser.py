@@ -1350,6 +1350,7 @@ def _items_query(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    category: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     direction: str | None = None,
@@ -1371,6 +1372,9 @@ def _items_query(
     elif flow == "debit":
         # Exact match only — "unknown" must not appear under Debit.
         qry = qry.filter(models.ExpenseAnalyserItem.direction == "debit")
+    cat = (category or "").strip()
+    if cat:
+        qry = qry.filter(models.ExpenseAnalyserItem.suggested_category.ilike(cat))
     needle = (q or "").strip()
     if needle:
         like = f"%{needle}%"
@@ -1408,6 +1412,7 @@ def list_items(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    category: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     direction: str | None = None,
@@ -1416,7 +1421,7 @@ def list_items(
 ) -> list[models.ExpenseAnalyserItem]:
     qry = _items_query(
         db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
-        date_from=date_from, date_to=date_to, direction=direction,
+        category=category, date_from=date_from, date_to=date_to, direction=direction,
     )
     date_key = _item_date_expr()
     return (
@@ -1436,13 +1441,14 @@ def count_items(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    category: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     direction: str | None = None,
 ) -> int:
     qry = _items_query(
         db, user, status=status, statuses=statuses, kind=kind, method=method, q=q,
-        date_from=date_from, date_to=date_to, direction=direction,
+        category=category, date_from=date_from, date_to=date_to, direction=direction,
     )
     return int(qry.count() or 0)
 

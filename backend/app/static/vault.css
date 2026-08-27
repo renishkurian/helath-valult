@@ -1884,6 +1884,14 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 .mmx-payee{ display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
 .mmx-payee:first-child{ padding-top:0; }
 .mmx-payee:last-child{ border-bottom:none; padding-bottom:0; }
+a.mmx-link, a.mmx-payee, a.mmx-bar, a.mmx-pill, a.mmx-cell{
+  text-decoration:none; color:inherit; transition:background .15s ease, opacity .15s ease;
+}
+a.mmx-payee:hover, a.mmx-bar.mmx-link:hover{
+  background:rgba(255,255,255,0.04); border-radius:10px; margin-left:-8px; margin-right:-8px; padding-left:8px; padding-right:8px;
+}
+a.mmx-pill:hover{ opacity:.92; }
+a.mmx-cell{ display:grid; place-items:center; }
 .mmx-av{
   width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
   font-size:.8rem; font-weight:600; flex-shrink:0;

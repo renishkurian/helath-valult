@@ -119,16 +119,18 @@
 {% set qs_status = ('status=' ~ filter_status ~ '&') if filter_status else '' %}
 {% set qs_method = ('method=' ~ filter_method ~ '&') if filter_method else '' %}
 {% set qs_q = ('q=' ~ filter_q|urlencode ~ '&') if filter_q else '' %}
+{% set qs_cat = ('category=' ~ filter_category|urlencode ~ '&') if filter_category else '' %}
 {% set qs_from = ('date_from=' ~ filter_from ~ '&') if filter_from else '' %}
 {% set qs_to = ('date_to=' ~ filter_to ~ '&') if filter_to else '' %}
 {% set qs_dir = ('direction=' ~ filter_dir ~ '&') if filter_dir else '' %}
-{% set qs_rest = (qs_method ~ qs_q ~ qs_from ~ qs_to ~ qs_dir) %}
+{% set qs_rest = (qs_method ~ qs_q ~ qs_cat ~ qs_from ~ qs_to ~ qs_dir) %}
 <div class="section-head d-flex flex-wrap gap-2 align-items-center justify-content-between">
   <h2>Inbox</h2>
   <form method="get" action="/admin/expense-analyser" class="d-flex flex-wrap gap-2 align-items-end">
     {% if filter_status %}<input type="hidden" name="status" value="{{ filter_status }}">{% endif %}
     {% if filter_method %}<input type="hidden" name="method" value="{{ filter_method }}">{% endif %}
     {% if filter_dir %}<input type="hidden" name="direction" value="{{ filter_dir }}">{% endif %}
+    {% if filter_category %}<input type="hidden" name="category" value="{{ filter_category }}">{% endif %}
     <div>
       <label class="form-label small mb-0" for="ea-from">From</label>
       <input class="form-control form-control-sm" id="ea-from" type="date" name="date_from" value="{{ filter_from }}">
@@ -142,11 +144,17 @@
       <input class="form-control form-control-sm" id="ea-q" type="search" name="q" value="{{ filter_q }}" placeholder="Amount, payee…" style="min-width:10rem;">
     </div>
     <button class="btn btn-sm btn-outline-secondary" type="submit">Apply</button>
-    {% if filter_from or filter_to or filter_q %}
-    <a class="btn btn-sm btn-ghost" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method.rstrip('&') }}">Clear dates</a>
+    {% if filter_from or filter_to or filter_q or filter_category %}
+    <a class="btn btn-sm btn-ghost" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method.rstrip('&') }}">Clear filters</a>
     {% endif %}
   </form>
 </div>
+{% if filter_category %}
+<div class="mb-2">
+  <span class="badge text-bg-secondary">Category: {{ filter_category }}</span>
+  <a class="small ms-2" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}{{ qs_dir.rstrip('&') }}">Clear category</a>
+</div>
+{% endif %}
 <div class="d-flex gap-2 flex-wrap mb-2">
   <a class="btn btn-sm {% if not filter_status %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_rest.rstrip('&') }}">All open</a>
   <a class="btn btn-sm {% if filter_status == 'pending' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?status=pending&{{ qs_rest }}">Pending</a>
@@ -156,14 +164,14 @@
 </div>
 <div class="d-flex gap-2 flex-wrap align-items-center mb-3">
   <span class="small text-muted">Type</span>
-  <a class="btn btn-sm {% if not filter_method %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_q }}{{ qs_from }}{{ qs_to }}{{ qs_dir.rstrip('&') }}">All</a>
-  <a class="btn btn-sm {% if filter_method == 'upi' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=upi&{{ qs_q }}{{ qs_from }}{{ qs_to }}{{ qs_dir }}">UPI</a>
-  <a class="btn btn-sm {% if filter_method == 'atm' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=atm&{{ qs_q }}{{ qs_from }}{{ qs_to }}{{ qs_dir }}">ATM</a>
-  <a class="btn btn-sm {% if filter_method == 'card' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=card&{{ qs_q }}{{ qs_from }}{{ qs_to }}{{ qs_dir }}">Card</a>
+  <a class="btn btn-sm {% if not filter_method %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}{{ qs_dir.rstrip('&') }}">All</a>
+  <a class="btn btn-sm {% if filter_method == 'upi' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=upi&{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}{{ qs_dir }}">UPI</a>
+  <a class="btn btn-sm {% if filter_method == 'atm' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=atm&{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}{{ qs_dir }}">ATM</a>
+  <a class="btn btn-sm {% if filter_method == 'card' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}method=card&{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}{{ qs_dir }}">Card</a>
   <span class="small text-muted ms-2">Flow</span>
-  <a class="btn btn-sm {% if not filter_dir %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to.rstrip('&') }}">All</a>
-  <a class="btn btn-sm {% if filter_dir == 'debit' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}direction=debit">Debit</a>
-  <a class="btn btn-sm {% if filter_dir == 'credit' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}direction=credit">Credit</a>
+  <a class="btn btn-sm {% if not filter_dir %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to.rstrip('&') }}">All</a>
+  <a class="btn btn-sm {% if filter_dir == 'debit' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}direction=debit">Debit</a>
+  <a class="btn btn-sm {% if filter_dir == 'credit' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}direction=credit">Credit</a>
   <span class="small text-muted ms-1">Sorted by date, newest first</span>
 </div>
 {% if period %}
@@ -171,14 +179,14 @@
   <div class="col-6 col-lg-4">
     <div class="stat">
       <div class="lbl"><i class="bi bi-arrow-up-right"></i> Debit</div>
-      <div class="val mm-expense"><a class="text-reset text-decoration-none" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}direction=debit">{{ inr(period.debit) }}</a></div>
+      <div class="val mm-expense"><a class="text-reset text-decoration-none" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}direction=debit">{{ inr(period.debit) }}</a></div>
       <div class="sub">{% if filter_from or filter_to %}{{ filter_from or '…' }} → {{ filter_to or '…' }}{% else %}this filter{% endif %} · {{ period.debit_count }} items</div>
     </div>
   </div>
   <div class="col-6 col-lg-4">
     <div class="stat">
       <div class="lbl"><i class="bi bi-arrow-down-left"></i> Credit</div>
-      <div class="val mm-income"><a class="text-reset text-decoration-none" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}direction=credit">{{ inr(period.credit) }}</a></div>
+      <div class="val mm-income"><a class="text-reset text-decoration-none" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_cat }}{{ qs_from }}{{ qs_to }}direction=credit">{{ inr(period.credit) }}</a></div>
       <div class="sub">money in · {{ period.credit_count }} items</div>
     </div>
   </div>
@@ -194,7 +202,7 @@
 
 {% if not items %}
 <p class="text-muted">
-  {% if filter_method or filter_q or filter_status or filter_from or filter_to or filter_dir %}
+  {% if filter_method or filter_q or filter_status or filter_from or filter_to or filter_dir or filter_category %}
   No matching items. Clear the type filter or search, or Sync Gmail if a new alert is missing.
   {% else %}
   No items yet. Connect Gmail and sync, or widen the search query in settings.

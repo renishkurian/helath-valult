@@ -53,6 +53,7 @@ def list_items(
     kind: str | None = None,
     method: str | None = None,
     q: str | None = None,
+    category: str | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
     direction: str | None = None,
@@ -66,7 +67,7 @@ def list_items(
     rows = ea.list_items(
         db, current_user,
         status=status or None, statuses=status_list, kind=kind or None,
-        method=method or None, q=q or None,
+        method=method or None, q=q or None, category=category or None,
         date_from=date_from or None, date_to=date_to or None,
         direction=direction or None,
         limit=limit, offset=offset,
