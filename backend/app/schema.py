@@ -113,6 +113,8 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "expense_analyser_connections": [
         ("enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("hour", "INTEGER NOT NULL DEFAULT 6"),
+        ("exclude_subjects", "TEXT"),
+        ("exclude_from_emails", "TEXT"),
     ],
     "ai_usage_logs": [
         ("request_text", "TEXT"),

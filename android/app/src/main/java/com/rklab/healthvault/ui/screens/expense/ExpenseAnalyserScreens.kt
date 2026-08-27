@@ -585,6 +585,8 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
     val scope = rememberCoroutineScope()
     var status by remember { mutableStateOf<ExpenseAnalyserStatusOut?>(null) }
     var query by remember { mutableStateOf("") }
+    var excludeSubjects by remember { mutableStateOf("") }
+    var excludeFrom by remember { mutableStateOf("") }
     var hourOpen by remember { mutableStateOf(false) }
     var passwords by remember { mutableStateOf<List<ShopPdfPasswordOut>>(emptyList()) }
     var mailPdfs by remember { mutableStateOf<List<ShopStatementPdfOut>>(emptyList()) }
@@ -599,6 +601,8 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                 .onSuccess {
                     status = it
                     query = it.sync_query.orEmpty()
+                    excludeSubjects = it.exclude_subjects.joinToString("\n")
+                    excludeFrom = it.exclude_from_emails.joinToString("\n")
                 }
                 .onFailure { Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show() }
             runCatching { repository.listShopPdfPasswords() }
@@ -774,6 +778,59 @@ fun ExpenseAnalyserSettingsScreen(repository: HealthVaultRepository, onOpenModul
                     colors = ButtonDefaults.buttonColors(containerColor = Navy),
                     modifier = Modifier.padding(top = 8.dp)
                 ) { Text("Save query") }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(CardShape)
+                .background(HubGlass)
+                .border(1.dp, LineColor, CardShape)
+                .padding(16.dp)
+        ) {
+            Column {
+                Text("Exclude mail", color = Ink, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Skip noise by subject phrase or sender. One rule per line. Applies on the next sync.",
+                    color = InkSoft,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+                OutlinedTextField(
+                    value = excludeSubjects,
+                    onValueChange = { excludeSubjects = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    minLines = 3,
+                    label = { Text("Subject contains") },
+                    placeholder = { Text("Great benefits\nPre-approved") }
+                )
+                OutlinedTextField(
+                    value = excludeFrom,
+                    onValueChange = { excludeFrom = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    minLines = 3,
+                    label = { Text("From email / domain") },
+                    placeholder = { Text("offers@icicibank.com\namazon.in") }
+                )
+                Button(
+                    onClick = {
+                        scope.launch {
+                            runCatching {
+                                repository.saveExpenseAnalyserExcludes(excludeSubjects, excludeFrom)
+                            }
+                                .onSuccess {
+                                    status = it
+                                    excludeSubjects = it.exclude_subjects.joinToString("\n")
+                                    excludeFrom = it.exclude_from_emails.joinToString("\n")
+                                    Toast.makeText(context, "Excludes saved", Toast.LENGTH_SHORT).show()
+                                }
+                                .onFailure { Toast.makeText(context, errMessage(it), Toast.LENGTH_SHORT).show() }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Navy),
+                    modifier = Modifier.padding(top = 8.dp)
+                ) { Text("Save excludes") }
             }
         }
         Spacer(Modifier.height(12.dp))

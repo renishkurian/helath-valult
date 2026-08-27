@@ -879,6 +879,9 @@ interface ApiService {
     @PUT("expense-analyser/query")
     suspend fun saveExpenseAnalyserQuery(@Body body: ExpenseAnalyserQueryIn): ExpenseAnalyserStatusOut
 
+    @PUT("expense-analyser/excludes")
+    suspend fun saveExpenseAnalyserExcludes(@Body body: ExpenseAnalyserExcludesIn): ExpenseAnalyserStatusOut
+
     @PUT("expense-analyser/schedule")
     suspend fun saveExpenseAnalyserSchedule(@Body body: ExpenseAnalyserScheduleIn): ExpenseAnalyserStatusOut
 

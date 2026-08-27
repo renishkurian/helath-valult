@@ -19,6 +19,8 @@
 <div class="alert alert-success" role="alert">Daily sync schedule saved.</div>
 {% elif request.query_params.get('ok') == 'password' %}
 <div class="alert alert-success" role="alert">Bank password saved. Locked Gmail PDFs will retry automatically.</div>
+{% elif request.query_params.get('ok') == 'excludes' %}
+<div class="alert alert-success" role="alert">Mail exclude rules saved. They apply on the next sync.</div>
 {% elif request.query_params.get('err') == 'client' %}
 <div class="alert alert-danger" role="alert">Google OAuth client is not configured. Ask Super Admin to set it under Server settings (same client as Drive backup).</div>
 {% elif request.query_params.get('err') %}
@@ -116,6 +118,28 @@
     </div>
 
     <div class="card mt-3">
+      <div class="card-header">
+        <span class="card-ico warn"><i class="bi bi-slash-circle"></i></span>
+        <div>
+          <h2>Exclude mail</h2>
+          <div class="card-sub">Skip noise by subject or sender on sync</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/expense-analyser/excludes">
+          <label class="form-label" for="exclude-subjects">Subject contains</label>
+          <textarea class="form-control font-monospace" id="exclude-subjects" name="exclude_subjects" rows="4" placeholder="Great benefits&#10;Pre-approved&#10;OTP for your online transaction">{{ status.exclude_subjects | join('\n') }}</textarea>
+          <div class="form-text">One phrase per line. Case-insensitive substring match on the email title.</div>
+
+          <label class="form-label mt-3" for="exclude-from">From email / domain</label>
+          <textarea class="form-control font-monospace" id="exclude-from" name="exclude_from_emails" rows="4" placeholder="offers@icicibank.com&#10;@amazon.in&#10;marketing">{{ status.exclude_from_emails | join('\n') }}</textarea>
+          <div class="form-text">One address, name, or domain per line (e.g. <code>offers@bank.com</code> or <code>amazon.in</code>).</div>
+          <button class="btn btn-primary mt-3" type="submit">Save excludes</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card mt-3">
       {% include "_ea_bank_passwords.html" %}
     </div>
   </div>
@@ -125,6 +149,7 @@
   <div class="card-body">
     <h2 class="h5">How it stays separate</h2>
     <ul class="mb-0 text-muted">
+      <li>Use <em>Exclude mail</em> to skip promo subjects or senders (e.g. pre-approved loan offers) without changing the Gmail search query.</li>
       <li>Encrypted bank PDFs from Gmail use the passwords saved under <em>Bank PDF passwords</em> — add SBI, HDFC, and so on once.</li>
       <li>Expense Analyser stores its own inbox rows — Money Manager is unchanged until you press <em>Post</em>.</li>
       <li>Matched items mean a similar amount/date already exists in the ledger (no double entry).</li>

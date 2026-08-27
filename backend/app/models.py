@@ -1171,6 +1171,9 @@ class ExpenseAnalyserConnection(Base):
     refresh_token_enc = Column(Text, nullable=True)
     connected_email = Column(String(255), nullable=True)
     sync_query = Column(Text, nullable=True)
+    # JSON string lists: subject substrings / from-address patterns to skip on sync.
+    exclude_subjects = Column(Text, nullable=True)
+    exclude_from_emails = Column(Text, nullable=True)
     enabled = Column(Boolean, default=False, nullable=False)  # daily auto-sync
     hour = Column(Integer, default=6, nullable=False)  # local hour 0-23
     last_sync_at = Column(DateTime, nullable=True)

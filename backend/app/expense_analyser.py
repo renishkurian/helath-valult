@@ -5,6 +5,7 @@ reconciles against the ledger, and posts only when the user accepts.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import threading
@@ -23,6 +24,105 @@ from app.deps import vault_id
 from app.drive_backup import oauth_creds, oauth_ready
 
 log = logging.getLogger("vault.expense_analyser")
+
+_EXCLUDE_ITEM_MAX = 80
+_EXCLUDE_LINE_MAX = 200
+_FROM_EMAIL_RE = re.compile(r"<([^>]+)>")
+
+
+def _load_exclude_list(raw: str | None) -> list[str]:
+    text = (raw or "").strip()
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+        if isinstance(data, list):
+            return [
+                str(x).strip()[:_EXCLUDE_LINE_MAX]
+                for x in data
+                if str(x).strip()
+            ][:_EXCLUDE_ITEM_MAX]
+    except (TypeError, ValueError, json.JSONDecodeError):
+        pass
+    # Plain textarea fallback (one pattern per line).
+    out: list[str] = []
+    for line in text.splitlines():
+        item = line.strip()[:_EXCLUDE_LINE_MAX]
+        if item and item not in out:
+            out.append(item)
+        if len(out) >= _EXCLUDE_ITEM_MAX:
+            break
+    return out
+
+
+def _dump_exclude_list(items: list[str] | None) -> str | None:
+    cleaned: list[str] = []
+    for raw in items or []:
+        item = str(raw or "").strip()[:_EXCLUDE_LINE_MAX]
+        if item and item not in cleaned:
+            cleaned.append(item)
+        if len(cleaned) >= _EXCLUDE_ITEM_MAX:
+            break
+    return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
+
+
+def parse_exclude_textarea(raw: str | None) -> list[str]:
+    """Split a settings textarea into unique exclude patterns."""
+    out: list[str] = []
+    for line in (raw or "").splitlines():
+        item = line.strip()[:_EXCLUDE_LINE_MAX]
+        if not item or item.startswith("#"):
+            continue
+        if item not in out:
+            out.append(item)
+        if len(out) >= _EXCLUDE_ITEM_MAX:
+            break
+    return out
+
+
+def exclude_rules_for(row: models.ExpenseAnalyserConnection | None) -> dict[str, list[str]]:
+    if not row:
+        return {"subjects": [], "from_emails": []}
+    return {
+        "subjects": _load_exclude_list(getattr(row, "exclude_subjects", None)),
+        "from_emails": _load_exclude_list(getattr(row, "exclude_from_emails", None)),
+    }
+
+
+def mail_matches_exclude(
+    mail: dict[str, Any] | None,
+    *,
+    subjects: list[str] | None = None,
+    from_emails: list[str] | None = None,
+) -> bool:
+    """True when subject/from matches a user exclude rule (case-insensitive)."""
+    mail = mail or {}
+    subject = (mail.get("subject") or "").casefold()
+    from_raw = (mail.get("from_addr") or "").strip()
+    from_cf = from_raw.casefold()
+    email_only = from_cf
+    m = _FROM_EMAIL_RE.search(from_raw)
+    if m:
+        email_only = m.group(1).strip().casefold()
+
+    for rule in subjects or []:
+        needle = rule.casefold().strip()
+        if needle and needle in subject:
+            return True
+    for rule in from_emails or []:
+        needle = rule.casefold().strip()
+        if not needle:
+            continue
+        if needle in from_cf or needle == email_only or needle in email_only:
+            return True
+        # Domain shortcut: "@amazon.com" or "amazon.com"
+        domain = needle[1:] if needle.startswith("@") else needle
+        if "@" not in domain and domain and (
+            email_only.endswith("@" + domain) or email_only.endswith("." + domain)
+        ):
+            return True
+    return False
+
 
 STATUSES = ("pending", "matched", "corrected", "posted", "ignored", "missed")
 METHOD_FILTERS = {
@@ -238,6 +338,8 @@ def status_dict(db: Session, user: models.User) -> dict[str, Any]:
         "email": row.connected_email if row else None,
         "server_oauth": oauth_ready(db),
         "sync_query": (row.sync_query if row and row.sync_query else gmail.DEFAULT_SYNC_QUERY),
+        "exclude_subjects": exclude_rules_for(row)["subjects"],
+        "exclude_from_emails": exclude_rules_for(row)["from_emails"],
         "enabled": bool(row.enabled) if row else False,
         "hour": int(row.hour if row and row.hour is not None else 6),
         "timezone": settings.VAULT_TIMEZONE,
@@ -520,6 +622,7 @@ def sync_gmail(
             from app.ai_usage import attach_log_context
             ai_bundle = attach_log_context(get_default_bundle(db, user), db, user, "expense_analyser")
         processed = 0
+        excludes = exclude_rules_for(row)
         for mid in ids:
             if mid in known:
                 out["skipped"] += 1
@@ -538,6 +641,15 @@ def sync_gmail(
             except Exception as exc:  # noqa: BLE001 — per-message soft fail
                 log.warning("gmail message %s failed: %s", mid, exc)
                 out["skipped"] += 1
+                continue
+
+            if mail_matches_exclude(
+                mail,
+                subjects=excludes["subjects"],
+                from_emails=excludes["from_emails"],
+            ):
+                out["skipped"] += 1
+                known.add(mid)
                 continue
 
             text = mail.get("text") or ""
@@ -569,7 +681,7 @@ def sync_gmail(
             else:
                 parsed = _classify_alert(text, ai=ai_bundle)
                 if parsed.get("amount") is None and not (parsed.get("direction") in ("debit", "credit")):
-                    if _looks_like_bank_alert(mail):
+                    if _looks_like_bank_alert(mail) and not finance_ai.is_non_transaction_alert(text):
                         subj = (mail.get("subject") or "").lower()
                         direction = "credit" if ("credited" in subj or "received" in subj) else "debit"
                         parsed = {
@@ -919,6 +1031,7 @@ def import_gmail_pdfs(
         raise RuntimeError("Connect Gmail first")
     access = token or _access_token(db, row)
     ids = gmail.list_message_ids_paged(access, gmail.DEFAULT_PDF_QUERY, limit=limit)
+    excludes = exclude_rules_for(row)
     out = {
         "fetched": len(ids), "pdfs": 0, "created_rows": 0, "skipped": 0,
         "needs_password": 0, "failed": 0, "parsed": 0,
@@ -931,6 +1044,13 @@ def import_gmail_pdfs(
             raw_msg = None
         except Exception as exc:  # noqa: BLE001
             log.warning("gmail pdf message %s failed: %s", mid, exc)
+            out["skipped"] += 1
+            continue
+        if mail_matches_exclude(
+            mail,
+            subjects=excludes["subjects"],
+            from_emails=excludes["from_emails"],
+        ):
             out["skipped"] += 1
             continue
         if not parts:
@@ -1327,6 +1447,15 @@ def count_items(
     return int(qry.count() or 0)
 
 
+def _item_alert_text(item: models.ExpenseAnalyserItem) -> str:
+    parts = [item.subject or "", item.raw_snippet or ""]
+    if item.raw_text_enc:
+        dec = crypto.decrypt_text(item.raw_text_enc)
+        if dec:
+            parts.append(dec)
+    return " ".join(p for p in parts if p)
+
+
 def filter_totals(
     db: Session,
     user: models.User,
@@ -1334,23 +1463,26 @@ def filter_totals(
 ) -> dict[str, Any]:
     """Debit/credit sums for the current inbox filter (all matching rows, not one page).
 
-    Only rows with an explicit debit/credit direction are included. ``unknown``
-    (and bill shells / null amounts) are excluded so they cannot inflate Debit.
+    Re-parses each alert from stored mail text so marketing/limit amounts cannot
+    inflate Debit or Credit (e.g. pre-approved loan Rs.22,00,000).
     """
     qry = _items_query(db, user, **kwargs)
     debit = 0.0
     credit = 0.0
     debit_n = 0
     credit_n = 0
-    for direction, amount, kind in qry.with_entities(
-        models.ExpenseAnalyserItem.direction,
-        models.ExpenseAnalyserItem.amount,
-        models.ExpenseAnalyserItem.kind,
-    ).all():
-        if kind == "bill" or amount is None:
+    for item in qry.all():
+        if item.kind == "bill":
             continue
-        amt = abs(float(amount))
-        flow = (direction or "").strip().lower()
+        parsed = finance_ai.totals_from_alert(_item_alert_text(item))
+        if not parsed and item.amount is not None:
+            # Legacy/test rows without stored mail body — trust explicit direction only.
+            flow = (item.direction or "").strip().lower()
+            if flow in ("debit", "credit"):
+                parsed = (flow, abs(float(item.amount)))
+        if not parsed:
+            continue
+        flow, amt = parsed
         if flow == "credit":
             credit += amt
             credit_n += 1
@@ -1746,6 +1878,22 @@ def save_schedule(
     return row
 
 
+def save_excludes(
+    db: Session,
+    user: models.User,
+    *,
+    subjects: list[str] | None = None,
+    from_emails: list[str] | None = None,
+) -> models.ExpenseAnalyserConnection:
+    """Persist subject/from exclude patterns used during Gmail sync."""
+    row = get_or_create(db, user)
+    row.exclude_subjects = _dump_exclude_list(subjects)
+    row.exclude_from_emails = _dump_exclude_list(from_emails)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 def should_run_now(row: models.ExpenseAnalyserConnection, now: datetime | None = None) -> bool:
     if not row.enabled or not row.refresh_token_enc:
         return False
@@ -1871,6 +2019,10 @@ def _item_day(item: models.ExpenseAnalyserItem) -> str | None:
     return None
 
 
+def _validated_txn(item: models.ExpenseAnalyserItem) -> tuple[str, float] | None:
+    return finance_ai.totals_from_alert(_item_alert_text(item))
+
+
 def insights(db: Session, user: models.User, year_month: str | None = None) -> dict[str, Any]:
     """Chart-ready spend summary from analyser inbox (not Money Manager ledger)."""
     ym = year_month or datetime.utcnow().strftime("%Y-%m")
@@ -1904,13 +2056,13 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
     status_count: dict[str, int] = {}
 
     for item in month_rows:
-        amt = float(item.amount or 0)
+        validated = _validated_txn(item)
+        if not validated:
+            continue
+        flow, amt = validated
         status_count[item.status] = status_count.get(item.status, 0) + 1
-        flow = (item.direction or "").strip().lower()
         if flow == "credit":
             credit_total += amt
-            continue
-        if flow != "debit":
             continue
         debit_total += amt
         cat = (item.suggested_category or "Other").strip() or "Other"
@@ -1964,14 +2116,14 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
     )
     hist_bounds = (100, 500, 1000, 2000, 5000, 10000, None)
     for item in month_rows:
+        validated = _validated_txn(item)
+        if not validated:
+            continue
+        flow, amt = validated
         day = _item_day(item) or f"{ym}-01"
         count_by_day[day] = count_by_day.get(day, 0) + 1
-        amt = float(item.amount or 0)
-        flow = (item.direction or "").strip().lower()
         if flow == "credit":
             credit_by_day[day] = credit_by_day.get(day, 0) + amt
-            continue
-        if flow != "debit":
             continue
         try:
             wd = datetime.strptime(day, "%Y-%m-%d").weekday()
@@ -2054,8 +2206,10 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
             day = _item_day(item)
             if not day or not day.startswith(t_ym):
                 continue
-            amt = float(item.amount or 0)
-            flow = (item.direction or "").strip().lower()
+            validated = _validated_txn(item)
+            if not validated:
+                continue
+            flow, amt = validated
             if flow == "credit":
                 t_cred += amt
             elif flow == "debit":

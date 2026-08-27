@@ -882,6 +882,13 @@ class HealthVaultRepository(
     suspend fun reconcileExpenseAnalyser() = api.reconcileExpenseAnalyser()
     suspend fun saveExpenseAnalyserQuery(query: String?) =
         api.saveExpenseAnalyserQuery(ExpenseAnalyserQueryIn(query))
+    suspend fun saveExpenseAnalyserExcludes(subjectsText: String, fromEmailsText: String) =
+        api.saveExpenseAnalyserExcludes(
+            ExpenseAnalyserExcludesIn(
+                subjects_text = subjectsText,
+                from_emails_text = fromEmailsText,
+            )
+        )
     suspend fun saveExpenseAnalyserSchedule(enabled: Boolean, hour: Int) =
         api.saveExpenseAnalyserSchedule(ExpenseAnalyserScheduleIn(enabled, hour))
     suspend fun expenseAnalyserInsights(month: String? = null) = api.expenseAnalyserInsights(month)

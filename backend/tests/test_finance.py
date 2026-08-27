@@ -722,3 +722,43 @@ def test_transaction_optional_image():
     img = client.get(f"/finance/transactions/{txn['id']}/image", headers=headers)
     assert img.status_code == 200
     assert img.content
+
+
+def test_parse_amount_skips_preapproved_loan_and_limit_updates():
+    from app.finance_ai import _parse_amount, totals_from_alert, is_non_transaction_alert
+
+    loan = (
+        "Make the most of your Amazon Pay ICICI Bank Credit Card XX2006. "
+        "You can now avail your Pre-approved Home Loan up to ₹ 2200000. Apply today."
+    )
+    assert _parse_amount(loan) is None
+    assert is_non_transaction_alert(loan)
+    assert totals_from_alert(loan) is None
+
+    limit = (
+        "Thank you for banking with HDFC Bank. We have successfully received and "
+        "processed your request to increase in Third Party Transfer Limit. "
+        "The new limit applicable for your Customer Id is Rs. 519000."
+    )
+    assert _parse_amount(limit) is None
+    assert totals_from_alert(limit) is None
+
+    txn = (
+        "Dear Customer, Your ICICI Bank Credit Card XX2006 has been used for a transaction "
+        "of INR 299.00 on Aug 11, 2026. The Available Credit Limit on your card is INR 50000."
+    )
+    assert _parse_amount(txn) == 299.0
+
+
+def test_sbi_card_merchant_payee_not_footer():
+    from app.finance_ai import classify_heuristic
+
+    sbi = (
+        "Dear Cardholder, This is to inform you that, Rs.38197.00 spent on your "
+        "SBI Credit Card ending 5824 at MAKEMYTRIPINDIAPVT on 26/08/26. "
+        "Trxn. not done by you? forward this SMS to 9223440000. Be A Bank Employee"
+    )
+    out = classify_heuristic(sbi)
+    assert out["direction"] == "debit"
+    assert out["amount"] == 38197.0
+    assert out["payee"].upper() == "MAKEMYTRIPINDIAPVT"

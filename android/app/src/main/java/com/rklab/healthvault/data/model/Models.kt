@@ -1351,6 +1351,8 @@ data class ExpenseAnalyserStatusOut(
     val email: String? = null,
     val server_oauth: Boolean = false,
     val sync_query: String? = null,
+    val exclude_subjects: List<String> = emptyList(),
+    val exclude_from_emails: List<String> = emptyList(),
     val enabled: Boolean = false,
     val hour: Int = 6,
     val timezone: String = "Asia/Kolkata",
@@ -1488,6 +1490,13 @@ data class ExpenseAnalyserScheduleIn(
 
 data class ExpenseAnalyserQueryIn(
     val sync_query: String? = null
+)
+
+data class ExpenseAnalyserExcludesIn(
+    val exclude_subjects: List<String>? = null,
+    val exclude_from_emails: List<String>? = null,
+    val subjects_text: String? = null,
+    val from_emails_text: String? = null
 )
 
 data class ExpenseAnalyserClearOut(

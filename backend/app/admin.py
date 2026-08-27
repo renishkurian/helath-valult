@@ -7582,6 +7582,21 @@ async def expense_analyser_query(request: Request, db: Session = Depends(get_db)
     return RedirectResponse("/admin/expense-analyser/settings", status_code=302)
 
 
+@router.post("/expense-analyser/excludes")
+async def expense_analyser_excludes(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    ea.save_excludes(
+        db, user,
+        subjects=ea.parse_exclude_textarea(str(form.get("exclude_subjects") or "")),
+        from_emails=ea.parse_exclude_textarea(str(form.get("exclude_from_emails") or "")),
+    )
+    return RedirectResponse("/admin/expense-analyser/settings?ok=excludes", status_code=302)
+
+
 @router.post("/expense-analyser/items/{item_id}/post")
 async def expense_analyser_post_item(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app import expense_analyser as ea

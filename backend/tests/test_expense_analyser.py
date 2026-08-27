@@ -988,3 +988,53 @@ def test_import_pdfs_requires_gmail():
     empty = client.get("/expense-analyser/mail-pdfs", headers=headers)
     assert empty.status_code == 200
     assert empty.json() == []
+
+
+def test_mail_exclude_rules_match_subject_and_from():
+    from app.expense_analyser import mail_matches_exclude, parse_exclude_textarea
+
+    assert parse_exclude_textarea("Great benefits\n# comment\nPre-approved\n") == [
+        "Great benefits", "Pre-approved",
+    ]
+    mail = {
+        "subject": "Great benefits - Amazon Pay ICICI Bank Credit Card",
+        "from_addr": "Amazon Pay <offers@icicibank.com>",
+    }
+    assert mail_matches_exclude(mail, subjects=["great benefits"], from_emails=[])
+    assert mail_matches_exclude(mail, subjects=[], from_emails=["offers@icicibank.com"])
+    assert mail_matches_exclude(mail, subjects=[], from_emails=["icicibank.com"])
+    assert mail_matches_exclude(mail, subjects=[], from_emails=["@icicibank.com"])
+    assert not mail_matches_exclude(
+        {"subject": "Debit Alert From SIB", "from_addr": "alerts@sib.co.in"},
+        subjects=["pre-approved"],
+        from_emails=["amazon.in"],
+    )
+
+
+def test_save_excludes_api_and_status():
+    headers, email = _headers()
+    st = client.get("/expense-analyser/status", headers=headers)
+    assert st.status_code == 200
+    assert st.json()["exclude_subjects"] == []
+    assert st.json()["exclude_from_emails"] == []
+
+    saved = client.put("/expense-analyser/excludes", headers=headers, json={
+        "subjects_text": "Pre-approved\nOTP for your online",
+        "from_emails_text": "offers@icicibank.com\namazon.in",
+    })
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["exclude_subjects"] == ["Pre-approved", "OTP for your online"]
+    assert body["exclude_from_emails"] == ["offers@icicibank.com", "amazon.in"]
+
+    again = client.get("/expense-analyser/status", headers=headers).json()
+    assert again["exclude_subjects"] == body["exclude_subjects"]
+    assert again["exclude_from_emails"] == body["exclude_from_emails"]
+
+    cleared = client.put("/expense-analyser/excludes", headers=headers, json={
+        "exclude_subjects": [],
+        "exclude_from_emails": [],
+    })
+    assert cleared.status_code == 200
+    assert cleared.json()["exclude_subjects"] == []
+    assert cleared.json()["exclude_from_emails"] == []

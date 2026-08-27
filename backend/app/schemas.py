@@ -1739,6 +1739,8 @@ class ExpenseAnalyserStatusOut(BaseModel):
     email: Optional[str] = None
     server_oauth: bool = False
     sync_query: Optional[str] = None
+    exclude_subjects: List[str] = []
+    exclude_from_emails: List[str] = []
     enabled: bool = False
     hour: int = 6
     timezone: str = "Asia/Kolkata"
@@ -1758,6 +1760,14 @@ class ExpenseAnalyserStatusOut(BaseModel):
 class ExpenseAnalyserScheduleIn(BaseModel):
     enabled: bool = False
     hour: int = Field(default=6, ge=0, le=23)
+
+
+class ExpenseAnalyserExcludesIn(BaseModel):
+    exclude_subjects: Optional[List[str]] = None
+    exclude_from_emails: Optional[List[str]] = None
+    # Optional textarea-friendly fields (newline-separated) for admin/clients.
+    subjects_text: Optional[str] = Field(default=None, max_length=8000)
+    from_emails_text: Optional[str] = Field(default=None, max_length=8000)
 
 
 class ExpenseAnalyserItemOut(BaseModel):

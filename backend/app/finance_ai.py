@@ -118,6 +118,38 @@ _AMOUNT_ALT_RE = re.compile(
     r"\b([0-9]{1,3}(?:,[0-9]{2,3})+(?:\.[0-9]{1,2})?|[0-9]+\.[0-9]{2})\s*(?:rs|inr|debited|credited)",
     re.I,
 )
+# Amounts in these contexts are limits/offers/OTP — not ledger movements.
+_SKIP_AMOUNT_CTX_RE = re.compile(
+    r"(?:pre[\s-]?approved|home\s+loan(?:\s+up\s+to|\s+of)?|instant\s+home\s+loan|"
+    r"(?:new|third\s+party)\s+(?:transfer\s+)?limit|limit\s+(?:increase|applicable|is)|"
+    r"(?:available\s+)?credit\s+limit|credit\s+balanc|benefits?\s+worth|"
+    r"enjoy\s+benefits|apply\s+now|one\s+time\s+password|\botp\b|"
+    r"view\s+the\s+web\s+version|access\s+your\s+statement|"
+    r"successfully\s+received\s+and\s+processed\s+your\s+request)",
+    re.I,
+)
+_TXN_AMOUNT_CTX_RE = re.compile(
+    r"(?:debited|credited|spent|paid|purchase|withdrawn|transaction\s+of|txn\s+of|"
+    r"has\s+been\s+used\s+for\s+a\s+transaction|payment\s+received|neft|imps|"
+    r"was\s+spent\s+from|received\s+(?:inr|rs|₹|a\s+payment))",
+    re.I,
+)
+_MARKETING_RE = re.compile(
+    r"(?:pre[\s-]?approved|instant\s+home\s+loan|apply\s+now|great\s+benefits|"
+    r"view\s+the\s+web\s+version|access\s+your\s+statement|"
+    r"while\s+you\s+continue\s+to\s+make\s+the\s+most\s+of\s+your\s+card|"
+    r"benefits?\s+worth|home\s+loan\s+up\s+to)",
+    re.I,
+)
+_LIMIT_UPDATE_RE = re.compile(
+    r"(?:transfer\s+limit|limit\s+increase|new\s+limit\s+applicable|"
+    r"increase\s+in\s+third\s+party\s+transfer\s+limit)",
+    re.I,
+)
+_CC_MERCHANT_RE = re.compile(
+    r"spent\s+on\s+your\s+.{0,100}?\s+at\s+([A-Z0-9][A-Za-z0-9 .&/_-]{2,40})\s+on\s+",
+    re.I,
+)
 _DEBIT_RE = re.compile(
     r"\b(debited|debit(?:\s+alert)?|spent|paid|purchase|withdrawn|dr\b|sent to|transferred to|"
     r"used for a (?:transaction|purchase|payment)|"
@@ -217,13 +249,78 @@ def split_messages(raw: str) -> list[str]:
 
 
 def _parse_amount(text: str) -> float | None:
-    m = _AMOUNT_RE.search(text) or _AMOUNT_ALT_RE.search(text)
-    if not m:
+    """Pick the amount most likely to be an actual txn, not a limit/loan/offer."""
+    if not (text or "").strip():
         return None
-    try:
-        return float(m.group(1).replace(",", ""))
-    except ValueError:
+    candidates: list[tuple[int, str]] = []
+    for m in _AMOUNT_RE.finditer(text):
+        candidates.append((m.start(1), m.group(1)))
+    for m in _AMOUNT_ALT_RE.finditer(text):
+        candidates.append((m.start(1), m.group(1)))
+    if not candidates:
         return None
+    best_val: float | None = None
+    best_score = -999
+    for pos, raw in candidates:
+        try:
+            val = float(raw.replace(",", ""))
+        except ValueError:
+            continue
+        near_before = text[max(0, pos - 70):pos]
+        near_after = text[pos + len(raw): min(len(text), pos + len(raw) + 30)]
+        near = near_before + near_after
+        wide = text[max(0, pos - 90): min(len(text), pos + len(raw) + 90)]
+        score = 0
+        if _TXN_AMOUNT_CTX_RE.search(wide):
+            score += 12
+        if _DEBIT_RE.search(wide) or _CC_SPEND_RE.search(wide):
+            score += 8
+        if re.search(r"\b(credited|deposited|refund(?:ed)?)\b", wide, re.I):
+            score += 8
+        if _SKIP_AMOUNT_CTX_RE.search(near):
+            score -= 25
+        if _CREDIT_LIMIT_RE.search(near) and not _TXN_AMOUNT_CTX_RE.search(wide):
+            score -= 20
+        if _LIMIT_UPDATE_RE.search(near):
+            score -= 20
+        if best_val is None or score > best_score:
+            best_score = score
+            best_val = val
+    if best_val is None or best_score < 1:
+        return None
+    return best_val
+
+
+def is_non_transaction_alert(text: str) -> bool:
+    """True for marketing, limit updates, OTP, and other non-ledger bank mail."""
+    blob = text or ""
+    if not blob.strip():
+        return True
+    if _MARKETING_RE.search(blob):
+        return True
+    if _LIMIT_UPDATE_RE.search(blob) and not _TXN_AMOUNT_CTX_RE.search(blob):
+        return True
+    if re.search(r"\bone\s+time\s+password\b|\botp\b", blob, re.I) and not _DEBIT_RE.search(blob):
+        return True
+    if re.search(r"access\s+your\s+statement", blob, re.I) and not _DEBIT_RE.search(blob):
+        return True
+    if re.search(r"successfully\s+received\s+and\s+processed\s+your\s+request", blob, re.I):
+        return True
+    if re.search(r"registration\s+success:\s*e-?mandate", blob, re.I) and not _DEBIT_RE.search(blob):
+        return True
+    return False
+
+
+def totals_from_alert(text: str) -> tuple[str, float] | None:
+    """Re-classify alert text for inbox debit/credit totals."""
+    if is_non_transaction_alert(text):
+        return None
+    result = hard_correct(text, classify_heuristic(text))
+    direction = (result.get("direction") or "").strip().lower()
+    amount = result.get("amount")
+    if direction not in ("debit", "credit") or amount is None:
+        return None
+    return direction, abs(float(amount))
 
 
 def _parse_date(text: str) -> str | None:
@@ -342,6 +439,11 @@ def normalize_payee(payee: str | None) -> str | None:
 
 
 def _guess_payee(text: str) -> str | None:
+    m = _CC_MERCHANT_RE.search(text or "")
+    if m:
+        payee = normalize_payee(m.group(1))
+        if payee:
+            return payee
     m = _UPI_SLASH_PAYEE_RE.search(text or "")
     if m:
         payee = normalize_payee(m.group(1))
@@ -466,12 +568,29 @@ def _looks_personal_upi(text: str, payee: str | None = None) -> bool:
 
 
 def classify_heuristic(text: str) -> dict[str, Any]:
+    if is_non_transaction_alert(text):
+        return {
+            "direction": "unknown",
+            "amount": None,
+            "payee": _guess_payee(text),
+            "date": _parse_txn_date(text),
+            "category": "Other",
+            "payment_method": detect_payment_method(text)[0],
+            "confidence": 0.2,
+            "notes": None,
+            "description": None,
+            "provider": "heuristic",
+        }
     debit = bool(_DEBIT_RE.search(text))
     credit = bool(_CREDIT_RE.search(text))
     # Ignore "Available Credit Limit" style wording for income detection.
     if _CREDIT_LIMIT_RE.search(text) and not re.search(
         r"\b(credited|received|refund(?:ed)?|deposited)\b", text or "", re.I
     ):
+        credit = False
+    if re.search(r"successfully\s+received\s+and\s+processed\s+your\s+request", text or "", re.I):
+        credit = False
+    if _LIMIT_UPDATE_RE.search(text):
         credit = False
     if _CC_SPEND_RE.search(text):
         debit = True
@@ -540,10 +659,17 @@ def hard_correct(text: str, result: dict[str, Any]) -> dict[str, Any]:
         out["payment_method"] = "atm"
     lower = (text or "").lower()
     if "amazon" in lower and out.get("payment_method") == "credit_card":
-        out["category"] = "Shopping"
-        out["payee"] = out.get("payee") or _guess_payee(text) or "Amazon"
-        out["direction"] = "debit"
-        out["confidence"] = max(float(out.get("confidence") or 0), 0.9)
+        if not is_non_transaction_alert(text) and (
+            _CC_SPEND_RE.search(text) or _DEBIT_RE.search(text)
+        ):
+            out["category"] = "Shopping"
+            out["payee"] = out.get("payee") or _guess_payee(text) or "Amazon"
+            out["direction"] = "debit"
+            out["confidence"] = max(float(out.get("confidence") or 0), 0.9)
+    if is_non_transaction_alert(text):
+        out["direction"] = "unknown"
+        out["amount"] = None
+        out["confidence"] = min(float(out.get("confidence") or 0.5), 0.25)
     cleaned = normalize_payee(out.get("payee"))
     if cleaned:
         out["payee"] = cleaned

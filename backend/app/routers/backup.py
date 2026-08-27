@@ -491,6 +491,8 @@ def _export_expense_analyser(db: Session, owner: str) -> dict:
             "connected_email": conn.connected_email,
             "enabled": bool(conn.enabled),
             "sync_query": getattr(conn, "sync_query", None),
+            "exclude_subjects": getattr(conn, "exclude_subjects", None),
+            "exclude_from_emails": getattr(conn, "exclude_from_emails", None),
         } if conn else None),
         "items": [{
             "gmail_message_id": it.gmail_message_id,

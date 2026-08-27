@@ -244,6 +244,27 @@ def save_schedule(
     return schemas.ExpenseAnalyserStatusOut(**ea.status_dict(db, current_user))
 
 
+@router.put("/excludes", response_model=schemas.ExpenseAnalyserStatusOut)
+def save_excludes(
+    body: schemas.ExpenseAnalyserExcludesIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    subjects = body.exclude_subjects
+    from_emails = body.exclude_from_emails
+    if body.subjects_text is not None:
+        subjects = ea.parse_exclude_textarea(body.subjects_text)
+    if body.from_emails_text is not None:
+        from_emails = ea.parse_exclude_textarea(body.from_emails_text)
+    ea.save_excludes(
+        db, current_user,
+        subjects=subjects or [],
+        from_emails=from_emails or [],
+    )
+    return schemas.ExpenseAnalyserStatusOut(**ea.status_dict(db, current_user))
+
+
 @router.get("/insights")
 def insights(
     month: str | None = None,
