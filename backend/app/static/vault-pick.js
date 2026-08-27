@@ -77,7 +77,8 @@
       top = Math.max(8, Math.round(r.top - 6 - Math.min(maxH, menu.scrollHeight || 180)));
     }
 
-    portalHost().appendChild(menu);
+    var host = portalHost();
+    if (menu.parentElement !== host) host.appendChild(menu);
     menu.hidden = false;
     menu.classList.add("is-open");
     menu.style.position = "fixed";
@@ -309,11 +310,17 @@
     Array.prototype.forEach.call(scope.querySelectorAll("select"), enhance);
   }
 
-  function onScrollOrResize() {
+  function onScrollOrResize(ev) {
     if (!OPEN) return;
     var btn = OPEN._vPickBtn;
     var menu = OPEN._vPickMenu;
-    if (btn && menu && !menu.hidden) placeMenu(btn, menu);
+    if (!btn || !menu || menu.hidden) return;
+    // Ignore scrolls inside the open menu so wheel/touch can move the list.
+    // Capture-phase window scroll otherwise re-runs placeMenu() and kills nested scroll.
+    if (ev && ev.type === "scroll" && ev.target) {
+      if (ev.target === menu || (menu.contains && menu.contains(ev.target))) return;
+    }
+    placeMenu(btn, menu);
   }
 
   function boot() {
