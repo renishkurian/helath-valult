@@ -1249,7 +1249,8 @@ def _items_query(
     if flow == "credit":
         qry = qry.filter(models.ExpenseAnalyserItem.direction == "credit")
     elif flow == "debit":
-        qry = qry.filter(models.ExpenseAnalyserItem.direction != "credit")
+        # Exact match only — "unknown" must not appear under Debit.
+        qry = qry.filter(models.ExpenseAnalyserItem.direction == "debit")
     needle = (q or "").strip()
     if needle:
         like = f"%{needle}%"
@@ -1331,11 +1332,16 @@ def filter_totals(
     user: models.User,
     **kwargs,
 ) -> dict[str, Any]:
-    """Debit/credit sums for the current inbox filter (all matching rows, not one page)."""
+    """Debit/credit sums for the current inbox filter (all matching rows, not one page).
+
+    Only rows with an explicit debit/credit direction are included. ``unknown``
+    (and bill shells / null amounts) are excluded so they cannot inflate Debit.
+    """
     qry = _items_query(db, user, **kwargs)
     debit = 0.0
     credit = 0.0
-    n = 0
+    debit_n = 0
+    credit_n = 0
     for direction, amount, kind in qry.with_entities(
         models.ExpenseAnalyserItem.direction,
         models.ExpenseAnalyserItem.amount,
@@ -1343,17 +1349,21 @@ def filter_totals(
     ).all():
         if kind == "bill" or amount is None:
             continue
-        n += 1
         amt = abs(float(amount))
-        if (direction or "") == "credit":
+        flow = (direction or "").strip().lower()
+        if flow == "credit":
             credit += amt
-        else:
+            credit_n += 1
+        elif flow == "debit":
             debit += amt
+            debit_n += 1
     return {
         "debit": round(debit, 2),
         "credit": round(credit, 2),
         "net": round(credit - debit, 2),
-        "count": n,
+        "count": debit_n + credit_n,
+        "debit_count": debit_n,
+        "credit_count": credit_n,
     }
 
 
@@ -1896,8 +1906,11 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
     for item in month_rows:
         amt = float(item.amount or 0)
         status_count[item.status] = status_count.get(item.status, 0) + 1
-        if item.direction == "credit":
+        flow = (item.direction or "").strip().lower()
+        if flow == "credit":
             credit_total += amt
+            continue
+        if flow != "debit":
             continue
         debit_total += amt
         cat = (item.suggested_category or "Other").strip() or "Other"
@@ -1954,8 +1967,11 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
         day = _item_day(item) or f"{ym}-01"
         count_by_day[day] = count_by_day.get(day, 0) + 1
         amt = float(item.amount or 0)
-        if item.direction == "credit":
+        flow = (item.direction or "").strip().lower()
+        if flow == "credit":
             credit_by_day[day] = credit_by_day.get(day, 0) + amt
+            continue
+        if flow != "debit":
             continue
         try:
             wd = datetime.strptime(day, "%Y-%m-%d").weekday()
@@ -2039,9 +2055,10 @@ def insights(db: Session, user: models.User, year_month: str | None = None) -> d
             if not day or not day.startswith(t_ym):
                 continue
             amt = float(item.amount or 0)
-            if item.direction == "credit":
+            flow = (item.direction or "").strip().lower()
+            if flow == "credit":
                 t_cred += amt
-            else:
+            elif flow == "debit":
                 t_deb += amt
         trend.append({
             "year_month": t_ym,

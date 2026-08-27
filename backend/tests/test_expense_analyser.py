@@ -98,6 +98,23 @@ def test_list_items_filters_method_and_sorts_by_date():
         )
         assert tot["debit"] == 5817.0
         assert tot["credit"] == 0
+        assert tot["debit_count"] == 2
+        assert tot["credit_count"] == 0
+        db.add(models.ExpenseAnalyserItem(
+            user_id=uid, gmail_message_id="m-unk", kind="alert",
+            amount=Decimal("99999.00"), payee="Mystery UPI", txn_date="2026-08-17",
+            payment_method="upi", status="pending", direction="unknown",
+        ))
+        db.commit()
+        tot2 = filter_totals(
+            db, user, method="upi", date_from="2026-08-10", date_to="2026-08-17",
+        )
+        assert tot2["debit"] == 5817.0
+        assert tot2["credit"] == 0
+        assert tot2["debit_count"] == 2
+        unk_debits = list_items(db, user, method="upi", direction="debit")
+        assert all(i.direction == "debit" for i in unk_debits)
+        assert "Mystery UPI" not in [i.payee for i in unk_debits]
         db.add(models.ExpenseAnalyserItem(
             user_id=uid, gmail_message_id="m-cr", kind="alert",
             amount=Decimal("15000.00"), payee="Salary UPI", txn_date="2026-08-17",
@@ -108,6 +125,12 @@ def test_list_items_filters_method_and_sorts_by_date():
         assert [i.payee for i in credits] == ["Salary UPI"]
         debits = list_items(db, user, method="upi", direction="debit")
         assert "Salary UPI" not in [i.payee for i in debits]
+        tot3 = filter_totals(
+            db, user, method="upi", date_from="2026-08-10", date_to="2026-08-17",
+        )
+        assert tot3["credit"] == 15000.0
+        assert tot3["credit_count"] == 1
+        assert tot3["net"] == round(15000.0 - 5817.0, 2)
         api = client.get("/expense-analyser/items", headers=headers, params={"method": "upi"})
         assert api.status_code == 200
         assert any(abs(float(r["amount"]) - 5775) < 0.01 for r in api.json())

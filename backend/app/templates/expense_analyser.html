@@ -172,14 +172,14 @@
     <div class="stat">
       <div class="lbl"><i class="bi bi-arrow-up-right"></i> Debit</div>
       <div class="val mm-expense"><a class="text-reset text-decoration-none" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}direction=debit">{{ inr(period.debit) }}</a></div>
-      <div class="sub">{% if filter_from or filter_to %}{{ filter_from or '…' }} → {{ filter_to or '…' }}{% else %}this filter{% endif %} · {{ period.count }} items</div>
+      <div class="sub">{% if filter_from or filter_to %}{{ filter_from or '…' }} → {{ filter_to or '…' }}{% else %}this filter{% endif %} · {{ period.debit_count }} items</div>
     </div>
   </div>
   <div class="col-6 col-lg-4">
     <div class="stat">
       <div class="lbl"><i class="bi bi-arrow-down-left"></i> Credit</div>
       <div class="val mm-income"><a class="text-reset text-decoration-none" href="/admin/expense-analyser?{{ qs_status }}{{ qs_method }}{{ qs_q }}{{ qs_from }}{{ qs_to }}direction=credit">{{ inr(period.credit) }}</a></div>
-      <div class="sub">money in</div>
+      <div class="sub">money in · {{ period.credit_count }} items</div>
     </div>
   </div>
   <div class="col-12 col-lg-4">
