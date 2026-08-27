@@ -1474,9 +1474,10 @@ def filter_totals(
     for item in qry.all():
         if item.kind == "bill":
             continue
-        parsed = finance_ai.totals_from_alert(_item_alert_text(item))
-        if not parsed and item.amount is not None:
-            # Legacy/test rows without stored mail body — trust explicit direction only.
+        text = _item_alert_text(item)
+        parsed = finance_ai.totals_from_alert(text)
+        if not parsed and item.amount is not None and not text.strip():
+            # Only trust stored amount when we have no mail text to re-validate.
             flow = (item.direction or "").strip().lower()
             if flow in ("debit", "credit"):
                 parsed = (flow, abs(float(item.amount)))
