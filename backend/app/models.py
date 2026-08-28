@@ -1419,3 +1419,18 @@ class ShopCatalogItem(Base):
     seed_key = Column(String(120), nullable=True, index=True)  # e.g. vegetables:potato — overrides built-in chip
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AutomationAuditLog(Base):
+    """Audit log for all automated / OpenClaw / AI / external agent actions in Family Vault."""
+    __tablename__ = "automation_audit_logs"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
+    actor = Column(String(50), default="openclaw", nullable=False, index=True)  # openclaw | picoclaw | cron | api
+    action = Column(String(100), nullable=False, index=True)  # e.g. shopping_add, shopping_delete, family_view, reminder_view
+    resource_type = Column(String(50), nullable=False, index=True)  # shopping | health | reminder | document | family
+    resource_id = Column(String(64), nullable=True, index=True)
+    details = Column(Text, nullable=True)  # JSON or text summary of what was done
+    status = Column(String(20), default="success", nullable=False)  # success | error | blocked
+    ip = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

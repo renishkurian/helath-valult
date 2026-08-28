@@ -1,0 +1,9 @@
+*.db
+*.db-shm
+*.db-wal
+.pytest_cache/
+storage/
+test_ci.db
+test_ci.db-shm
+test_ci.db-wal
+backend/smoke_storage/

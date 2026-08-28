@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Automation Audit Log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      Automation Audit Log
+    </div>
+    <h1 class="page-title">Automation & OpenClaw Activity</h1>
+    <p class="page-lead">Complete audit trail of all actions executed by OpenClaw, PicoClaw, AI assistants, and automated tasks.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/automation"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-robot"></i> Total Actions</div>
+      <div class="val">{{ total_count }}</div>
+      <div class="sub">recorded operations</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-cpu"></i> OpenClaw Events</div>
+      <div class="val">{{ openclaw_count }}</div>
+      <div class="sub">from agent</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-cart3"></i> Shopping List Ops</div>
+      <div class="val">{{ shopping_count }}</div>
+      <div class="sub">items & lists changed</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl"><i class="bi bi-shield-check"></i> Sensitive Access</div>
+      <div class="val">0</div>
+      <div class="sub text-success">passwords protected</div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body py-2">
+    <form class="row g-2 align-items-center" method="get" action="/admin/automation">
+      <div class="col-auto">
+        <label class="col-form-label small text-muted"><i class="bi bi-funnel"></i> Filter:</label>
+      </div>
+      <div class="col-auto">
+        <select class="form-select form-select-sm" name="actor" onchange="this.form.submit()">
+          <option value="">All Actors</option>
+          <option value="openclaw" {% if active_actor == 'openclaw' %}selected{% endif %}>OpenClaw</option>
+          <option value="picoclaw" {% if active_actor == 'picoclaw' %}selected{% endif %}>PicoClaw</option>
+          <option value="cron" {% if active_actor == 'cron' %}selected{% endif %}>Cron / Scheduler</option>
+        </select>
+      </div>
+      <div class="col-auto">
+        <select class="form-select form-select-sm" name="resource" onchange="this.form.submit()">
+          <option value="">All Resources</option>
+          <option value="shopping" {% if active_resource == 'shopping' %}selected{% endif %}>Shopping Lists</option>
+          <option value="family" {% if active_resource == 'family' %}selected{% endif %}>Family Profiles</option>
+          <option value="health" {% if active_resource == 'health' %}selected{% endif %}>Health / Reminders</option>
+          <option value="document" {% if active_resource == 'document' %}selected{% endif %}>Documents</option>
+        </select>
+      </div>
+      {% if active_actor or active_resource %}
+      <div class="col-auto">
+        <a class="btn btn-sm btn-link text-muted" href="/admin/automation">Clear filters</a>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-2">
+      <span class="card-ico info"><i class="bi bi-journal-text"></i></span>
+      <div>
+        <h2 class="h6 mb-0">Audit Trail</h2>
+        <div class="card-sub small text-muted">Showing latest {{ logs | length }} entries</div>
+      </div>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th style="width: 170px;">Timestamp</th>
+          <th style="width: 120px;">Actor</th>
+          <th style="width: 140px;">Resource</th>
+          <th style="width: 160px;">Action</th>
+          <th>Details</th>
+          <th style="width: 100px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not logs %}
+        <tr>
+          <td colspan="6" class="text-center py-5 text-muted">
+            <i class="bi bi-robot fs-1 d-block mb-2"></i>
+            No automation activity recorded yet.
+          </td>
+        </tr>
+        {% endif %}
+        {% for log in logs %}
+        <tr>
+          <td class="small text-muted font-monospace">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '—' }}</td>
+          <td>
+            <span class="badge bg-secondary-subtle text-light border border-secondary">
+              <i class="bi bi-robot"></i> {{ log.actor }}
+            </span>
+          </td>
+          <td>
+            <span class="badge bg-info-subtle text-info">
+              {{ log.resource_type }}
+            </span>
+          </td>
+          <td><code class="text-light">{{ log.action }}</code></td>
+          <td class="small text-break">{{ log.details or '—' }}</td>
+          <td>
+            {% if log.status == 'success' %}
+              <span class="badge bg-success-subtle text-success"><i class="bi bi-check-circle"></i> success</span>
+            {% elif log.status == 'blocked' %}
+              <span class="badge bg-warning-subtle text-warning"><i class="bi bi-shield-x"></i> blocked</span>
+            {% else %}
+              <span class="badge bg-danger-subtle text-danger"><i class="bi bi-x-circle"></i> {{ log.status }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

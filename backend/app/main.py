@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.database import engine, SessionLocal
 from app.config import settings
 from app.schema import ensure_schema
-from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker, diary, family, secrets
+from app.routers import auth, people, cards, documents, reminders, search, share, audit, backup, labs, health, storage, vault, finance, locker, urls, expense_analyser, ai, tracker, diary, family, secrets, automation
 from app.scheduler import lifespan
 from app import admin, admin_sa, models
 from app.templating import setup_templates
@@ -99,6 +99,7 @@ app.include_router(urls.router)
 app.include_router(diary.router)
 app.include_router(secrets.router)
 app.include_router(family.router)
+app.include_router(automation.router)
 app.include_router(admin.router)
 app.include_router(admin_sa.router)
 

@@ -2097,6 +2097,34 @@ class ShopGroceryItemOut(BaseModel):
     matched: bool = False
 
 
+# ---------- Automation Audit Log ----------
+class AutomationAuditLogCreate(BaseModel):
+    actor: str = Field(default="openclaw", max_length=50)
+    action: str = Field(min_length=1, max_length=100)
+    resource_type: str = Field(min_length=1, max_length=50)
+    resource_id: Optional[str] = Field(default=None, max_length=64)
+    details: Optional[str] = None
+    status: str = Field(default="success", max_length=20)
+    ip: Optional[str] = Field(default=None, max_length=64)
+
+
+class AutomationAuditLogOut(BaseModel):
+    id: str
+    user_id: Optional[str] = None
+    actor: str
+    action: str
+    resource_type: str
+    resource_id: Optional[str] = None
+    details: Optional[str] = None
+    status: str
+    ip: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+
 class ShopSummaryOut(BaseModel):
     lists: int = 0
     open_lists: int = 0

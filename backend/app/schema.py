@@ -207,6 +207,11 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_family_shares_vault_id", "family_shares", "vault_id"),
     ("ix_family_shares_resource", "family_shares", "resource_type"),
     ("ix_family_shares_to_user", "family_shares", "to_user_id"),
+    ("ix_automation_audit_user", "automation_audit_logs", "user_id"),
+    ("ix_automation_audit_actor", "automation_audit_logs", "actor"),
+    ("ix_automation_audit_action", "automation_audit_logs", "action"),
+    ("ix_automation_audit_resource", "automation_audit_logs", "resource_type"),
+    ("ix_automation_audit_created", "automation_audit_logs", "created_at"),
 ]
 
 

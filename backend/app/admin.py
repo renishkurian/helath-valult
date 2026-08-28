@@ -8968,3 +8968,55 @@ def secrets_revoke(send_id: str, request: Request, db: Session = Depends(get_db)
     except HTTPException:
         pass
     return RedirectResponse("/admin/secrets", status_code=302)
+
+
+# ---------- Automation Audit Log HTML ----------
+@router.get("/automation", response_class=HTMLResponse)
+def automation_logs_page(
+    request: Request,
+    actor: Optional[str] = None,
+    resource: Optional[str] = None,
+    action: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    user, redir = require_module(request, db, "automation")
+    if redir:
+        return redir
+
+    v_id = vault_id(user)
+    q = db.query(models.AutomationAuditLog).filter(
+        (models.AutomationAuditLog.user_id == v_id) | (models.AutomationAuditLog.user_id.is_(None))
+    )
+    if actor:
+        q = q.filter(models.AutomationAuditLog.actor == actor)
+    if resource:
+        q = q.filter(models.AutomationAuditLog.resource_type == resource)
+    if action:
+        q = q.filter(models.AutomationAuditLog.action == action)
+
+    logs = q.order_by(models.AutomationAuditLog.created_at.desc()).limit(200).all()
+
+    # Stats
+    all_user_logs = db.query(models.AutomationAuditLog).filter(
+        (models.AutomationAuditLog.user_id == v_id) | (models.AutomationAuditLog.user_id.is_(None))
+    ).all()
+    total_count = len(all_user_logs)
+    openclaw_count = sum(1 for l in all_user_logs if l.actor in ("openclaw", "picoclaw"))
+    shopping_count = sum(1 for l in all_user_logs if l.resource_type == "shopping")
+
+    return templates.TemplateResponse(
+        "automation.html",
+        {
+            "request": request,
+            "session_user": user,
+            "active_module": "automation",
+            "logs": logs,
+            "total_count": total_count,
+            "openclaw_count": openclaw_count,
+            "shopping_count": shopping_count,
+            "active_actor": actor or "",
+            "active_resource": resource or "",
+            "active_action": action or "",
+        },
+    )
+
