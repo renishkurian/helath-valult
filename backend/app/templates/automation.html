@@ -11,8 +11,17 @@
     <h1 class="page-title">Automation & OpenClaw Activity</h1>
     <p class="page-lead">Complete audit trail and Personal API Token management for OpenClaw, PicoClaw, AI assistants, and automated tasks.</p>
   </div>
-  <div class="page-actions">
+  <div class="page-actions d-flex align-items-center gap-2">
     <a class="btn btn-outline-light" href="/admin/automation"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
+    {% if total_count > 0 %}
+    <form method="post" action="/admin/automation/logs/clear" onsubmit="return confirm('Are you sure you want to clear audit logs?{% if active_actor or active_resource %} This will clear logs matching current filters.{% else %} This will clear all recorded activity.{% endif %}');">
+      {% if active_actor %}<input type="hidden" name="actor" value="{{ active_actor }}">{% endif %}
+      {% if active_resource %}<input type="hidden" name="resource" value="{{ active_resource }}">{% endif %}
+      <button type="submit" class="btn btn-outline-danger btn-sm">
+        <i class="bi bi-trash3"></i> Clear Logs
+      </button>
+    </form>
+    {% endif %}
   </div>
 </div>
 

@@ -151,6 +151,13 @@ def test_admin_automation_logs_pagination():
             assert page3.status_code == 200
             assert "Showing 41" in page3.text and "45" in page3.text
             assert "Page 3 / 3" in page3.text
+
+            # Test Clear logs form
+            clear_res = session.post("/admin/automation/logs/clear", follow_redirects=True)
+            assert clear_res.status_code == 200
+            # Should have 1 record left (the audit record of the clear action itself)
+            assert "Showing 1" in clear_res.text and "1 entries" in clear_res.text
+            assert "audit_logs_clear" in clear_res.text
         finally:
             app.dependency_overrides.clear()
     finally:

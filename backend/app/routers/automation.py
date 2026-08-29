@@ -156,6 +156,38 @@ def create_user_api_token(
     )
 
 
+@router.delete("/logs/clear")
+def clear_automation_logs_api(
+    actor: Optional[str] = None,
+    resource: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Clear automation audit logs for current vault."""
+    v_id = vault_id(current_user)
+    q = db.query(models.AutomationAuditLog).filter(
+        (models.AutomationAuditLog.user_id == v_id) | (models.AutomationAuditLog.user_id.is_(None))
+    )
+    if actor:
+        q = q.filter(models.AutomationAuditLog.actor == actor)
+    if resource:
+        q = q.filter(models.AutomationAuditLog.resource_type == resource)
+
+    deleted_count = q.delete(synchronize_session=False)
+    db.commit()
+
+    record_automation_audit(
+        action="audit_logs_clear",
+        resource_type="automation",
+        details=f"Cleared {deleted_count} automation audit log entries",
+        user_id=v_id,
+        actor="api",
+        db=db,
+    )
+    return {"ok": True, "deleted": deleted_count}
+
+
+
 @router.delete("/tokens/{token_id}")
 def revoke_user_api_token(
     token_id: str,

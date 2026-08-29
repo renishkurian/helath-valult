@@ -9133,3 +9133,41 @@ async def revoke_api_token_form(
     return RedirectResponse("/admin/automation", status_code=302)
 
 
+@router.post("/automation/logs/clear")
+async def clear_automation_logs_form(
+    request: Request,
+    actor: Optional[str] = Form(None),
+    resource: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    from app.routers.automation import record_automation_audit
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    v_id = vault_id(user)
+    q = db.query(models.AutomationAuditLog).filter(
+        (models.AutomationAuditLog.user_id == v_id) | (models.AutomationAuditLog.user_id.is_(None))
+    )
+    if actor:
+        q = q.filter(models.AutomationAuditLog.actor == actor)
+    if resource:
+        q = q.filter(models.AutomationAuditLog.resource_type == resource)
+
+    deleted_count = q.delete(synchronize_session=False)
+    db.commit()
+
+    record_automation_audit(
+        action="audit_logs_clear",
+        resource_type="automation",
+        details=f"Cleared {deleted_count} automation audit log entries" + (f" (filtered by actor='{actor}', resource='{resource}')" if (actor or resource) else ""),
+        user_id=v_id,
+        actor="web",
+        db=db,
+    )
+
+    return RedirectResponse("/admin/automation", status_code=302)
+
+
+
