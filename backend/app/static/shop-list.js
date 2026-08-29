@@ -258,6 +258,15 @@
     var open = form.hidden;
     form.hidden = !open;
     btn.setAttribute("aria-expanded", open ? "true" : "false");
+    var block = btn.closest(".shop-swipe");
+    if (block) {
+      block.classList.toggle("editing", open);
+      if (open) {
+        block.classList.remove("swiped-left", "swiped-right");
+        var front = block.querySelector(".shop-swipe-front");
+        if (front) front.style.transform = "";
+      }
+    }
     if (open) {
       var first = form.querySelector("input");
       if (first) first.focus();
@@ -444,6 +453,7 @@
     }
 
     function onStart(el, x, y) {
+      if (el.classList.contains("editing") || el.querySelector(".shop-edit-form:not([hidden])")) return;
       closeOpen(el);
       el._sx = x;
       el._sy = y;

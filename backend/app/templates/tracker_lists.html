@@ -87,12 +87,12 @@
   {% set n = lst.item_count or 0 %}
   {% set c = lst.checked_count or 0 %}
   {% set pct = ((c / n * 100)|round(0, 'floor')|int) if n else 0 %}
-  <div class="list-row">
+  <div class="list-row shop-list-row">
     <a class="row-body text-decoration-none text-reset d-flex align-items-center gap-3 flex-grow-1 min-w-0" href="/admin/tracker/lists/{{ lst.id }}">
       <span class="shop-emoji">🛒</span>
       <span class="min-w-0">
-        <span class="row-title d-block">{{ lst.name }}</span>
-        <span class="row-meta">
+        <span class="row-title d-block truncate">{{ lst.name }}</span>
+        <span class="row-meta d-block truncate">
           {{ c }}/{{ n }} items
           {% if lst.finance_category_name %} · {{ lst.finance_category_name }}{% endif %}
           {% if lst.owner_name %} · {{ lst.owner_name }}{% endif %}
@@ -103,22 +103,24 @@
         </span>
       </span>
     </a>
-    <span class="row-side text-end">
-      {% if lst.completed %}
-      <span class="shop-status done">Done</span>
-      {% elif c %}
-      <span class="shop-status shopping">Shopping</span>
-      {% else %}
-      <span class="shop-status planning">Planning</span>
-      {% endif %}
-      <div class="small text-muted mt-1">
-        {% if lst.total_amount %}{{ inr(lst.total_amount) }} · {% endif %}{{ pct }}%
+    <div class="shop-list-side">
+      <span class="row-side text-end">
+        {% if lst.completed %}
+        <span class="shop-status done">Done</span>
+        {% elif c %}
+        <span class="shop-status shopping">Shopping</span>
+        {% else %}
+        <span class="shop-status planning">Planning</span>
+        {% endif %}
+        <div class="small text-muted mt-1">
+          {% if lst.total_amount %}{{ inr(lst.total_amount) }} · {% endif %}{{ pct }}%
+        </div>
+      </span>
+      <div class="row-actions">
+        <form method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" data-confirm="Move this list to trash?">
+          <button class="btn btn-ghost" type="submit" aria-label="Move to trash" title="Move to trash"><i class="bi bi-trash3"></i></button>
+        </form>
       </div>
-    </span>
-    <div class="row-actions">
-      <form method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" data-confirm="Move this list to trash?">
-        <button class="btn btn-ghost" type="submit" aria-label="Move to trash" title="Move to trash"><i class="bi bi-trash3"></i></button>
-      </form>
     </div>
   </div>
   {% endfor %}

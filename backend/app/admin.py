@@ -7652,7 +7652,14 @@ def _tr_ctx(request, user, active_nav, **extra):
 
 
 def _tr_user(request, db):
-    return require_login(request, db)
+    user = require_login(request, db)
+    if user:
+        return user
+    from app.deps import get_current_user
+    try:
+        return get_current_user(request, db=db)
+    except Exception:
+        return None
 
 
 @router.get("/tracker", response_class=HTMLResponse)

@@ -519,6 +519,7 @@ def test_tracker_catalog_enable_disable_item_and_category():
     toggle_res = session.post(
         "/admin/tracker/catalog/builtin/toggle",
         data={"seed_key": onion_item["seed_key"]},
+        headers=headers,
         follow_redirects=True,
     )
     assert toggle_res.status_code == 200
@@ -533,6 +534,7 @@ def test_tracker_catalog_enable_disable_item_and_category():
     cat_toggle_res = session.post(
         "/admin/tracker/catalog/category/toggle",
         data={"category": "vegetables", "enabled": "0"},
+        headers=headers,
         follow_redirects=True,
     )
     assert cat_toggle_res.status_code == 200
@@ -546,6 +548,7 @@ def test_tracker_catalog_enable_disable_item_and_category():
     cat_toggle_on = session.post(
         "/admin/tracker/catalog/category/toggle",
         data={"category": "vegetables", "enabled": "1"},
+        headers=headers,
         follow_redirects=True,
     )
     assert cat_toggle_on.status_code == 200
@@ -561,6 +564,7 @@ def test_tracker_catalog_enable_disable_item_and_category():
     toggle_onion_back = session.post(
         "/admin/tracker/catalog/builtin/toggle",
         data={"seed_key": onion_item["seed_key"]},
+        headers=headers,
         follow_redirects=True,
     )
     assert toggle_onion_back.status_code == 200
@@ -571,13 +575,13 @@ def test_tracker_catalog_enable_disable_item_and_category():
 
     # 6. Verify suggest & recognize ignore disabled item and category
     # Disable Onion again
-    session.post("/admin/tracker/catalog/builtin/toggle", data={"seed_key": onion_item["seed_key"]})
+    session.post("/admin/tracker/catalog/builtin/toggle", data={"seed_key": onion_item["seed_key"]}, headers=headers)
     sug_res = session.get("/tracker/suggest", headers=headers, params={"q": "onion"})
     assert sug_res.status_code == 200
     assert not any(i["english"].lower() == "onion" for i in sug_res.json())
 
     # Re-enable Onion
-    session.post("/admin/tracker/catalog/builtin/toggle", data={"seed_key": onion_item["seed_key"]})
+    session.post("/admin/tracker/catalog/builtin/toggle", data={"seed_key": onion_item["seed_key"]}, headers=headers)
     sug_res_on = session.get("/tracker/suggest", headers=headers, params={"q": "onion"})
     assert any(i["english"].lower() == "onion" for i in sug_res_on.json())
 
