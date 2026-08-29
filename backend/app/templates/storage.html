@@ -88,6 +88,7 @@
       <div class="card-body">
         {% if ok=='connected' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Google Drive connected.</span></div>{% endif %}
         {% if ok=='backedup' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Backup uploaded to Drive.</span></div>{% endif %}
+        {% if ok=='no_change' %}<div class="alert alert-info" role="alert"><i class="bi bi-info-circle"></i><span>No changes detected since last backup. Drive backup is already up to date.</span></div>{% endif %}
         {% if ok=='restored' %}<div class="alert alert-success" role="alert"><i class="bi bi-check2-circle"></i><span>Restored from{% if restore_detail %} <strong class="mono">{{ restore_detail }}</strong>{% else %} Drive backup{% endif %}. Data is merged into this vault — check for duplicates if you restore the same snapshot twice.</span></div>{% endif %}
         {% if err=='client' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google Drive is not set up yet. Ask a super admin to save the Google app under Server settings.</span></div>{% endif %}
         {% if err=='denied' %}<div class="alert alert-danger" role="alert"><i class="bi bi-exclamation-triangle"></i><span>Google access was denied.</span></div>{% endif %}

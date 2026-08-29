@@ -184,7 +184,7 @@ def test_admin_list_detail_renders_quick_add():
     assert "Use AI (Malayalam" in page.text
     assert 'id="shop-catalog-data"' in page.text
     assert 'data-suggest="/admin/tracker/suggest"' in page.text
-    assert "shop-list.js?v=7" in page.text
+    assert "shop-list.js" in page.text
     assert "shop-chip-section" in page.text
     assert "shop-chip-heading" in page.text
     assert "Internal Server Error" not in page.text

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import json
+import hashlib
 import zipfile
 from datetime import datetime, date
 from decimal import Decimal
@@ -40,7 +41,12 @@ def _dec(val) -> float | None:
         return None
 
 
-def _write_enc_file(zf: zipfile.ZipFile, arcname: str, rel_path: str | None) -> str | None:
+def _write_enc_file(
+    zf: zipfile.ZipFile,
+    arcname: str,
+    rel_path: str | None,
+    file_hashes: dict[str, str] | None = None,
+) -> str | None:
     if not rel_path:
         return None
     enc_path = settings.STORAGE_DIR / rel_path
@@ -48,16 +54,38 @@ def _write_enc_file(zf: zipfile.ZipFile, arcname: str, rel_path: str | None) -> 
         return None
     plain = crypto.decrypt_bytes(enc_path.read_bytes())
     zf.writestr(arcname, plain)
+    if file_hashes is not None:
+        file_hashes[arcname] = hashlib.sha256(plain).hexdigest()
     return arcname
 
 
-def build_vault_backup(
+def compute_vault_content_hash(
+    manifest: dict[str, Any],
+    file_hashes: dict[str, str] | None = None,
+) -> str:
+    """Compute a deterministic SHA-256 fingerprint of the vault's meaningful data and files."""
+    data = json.loads(json.dumps(manifest, default=_json_default))
+    data.pop("exported_at", None)
+    if "expense_analyser" in data and isinstance(data["expense_analyser"], dict):
+        data["expense_analyser"].pop("sync_logs", None)
+
+    canonical_json = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    h = hashlib.sha256()
+    h.update(canonical_json.encode("utf-8"))
+    if file_hashes:
+        for arcname in sorted(file_hashes.keys()):
+            h.update(arcname.encode("utf-8"))
+            h.update(file_hashes[arcname].encode("utf-8"))
+    return h.hexdigest()
+
+
+def build_vault_backup_bundle(
     db: Session,
     user: models.User,
     *,
     person_id: str | None = None,
-) -> bytes:
-    """Zip every module for this vault (or one person's health data only)."""
+) -> tuple[bytes, str]:
+    """Zip every module for this vault (or one person's health data only) with max compression and content hash."""
     owner = vault_id(user)
     full = not person_id
     manifest: dict[str, Any] = {
@@ -74,14 +102,15 @@ def build_vault_backup(
         "ai": {},
         "diary": {},
     }
+    file_hashes: dict[str, str] = {}
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         q = db.query(models.Person).filter(models.Person.user_id == owner)
         if person_id:
             q = q.filter(models.Person.id == person_id)
         people = q.all()
         for person in people:
-            manifest["people"].append(_export_person(db, zf, person))
+            manifest["people"].append(_export_person(db, zf, person, file_hashes=file_hashes))
 
         if full:
             locker_items = (
@@ -90,7 +119,7 @@ def build_vault_backup(
                 .all()
             )
             for item in locker_items:
-                manifest["locker"].append(_export_locker_item(zf, item))
+                manifest["locker"].append(_export_locker_item(zf, item, file_hashes=file_hashes))
             if locker_items:
                 manifest["modules"].append("locker")
 
@@ -106,7 +135,7 @@ def build_vault_backup(
             if any(manifest["urls"].values()):
                 manifest["modules"].append("urls")
 
-            manifest["shopping"] = _export_shopping(db, zf, owner)
+            manifest["shopping"] = _export_shopping(db, zf, owner, file_hashes=file_hashes)
             if any(manifest["shopping"].values()):
                 manifest["modules"].append("shopping")
 
@@ -118,12 +147,25 @@ def build_vault_backup(
             if any(manifest["ai"].values()):
                 manifest["modules"].append("ai")
 
-            manifest["diary"] = _export_diary(db, owner, zf)
+            manifest["diary"] = _export_diary(db, owner, zf, file_hashes=file_hashes)
             if any(manifest["diary"].values()):
                 manifest["modules"].append("diary")
 
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, default=_json_default))
-    return buf.getvalue()
+
+    content_hash = compute_vault_content_hash(manifest, file_hashes)
+    return buf.getvalue(), content_hash
+
+
+def build_vault_backup(
+    db: Session,
+    user: models.User,
+    *,
+    person_id: str | None = None,
+) -> bytes:
+    """Zip every module for this vault (or one person's health data only)."""
+    zip_bytes, _ = build_vault_backup_bundle(db, user, person_id=person_id)
+    return zip_bytes
 
 
 def _build_zip(people, locker_items=None, db: Session | None = None, user: models.User | None = None) -> bytes:
@@ -137,7 +179,7 @@ def _build_zip(people, locker_items=None, db: Session | None = None, user: model
         "locker": [],
     }
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for person in people or []:
             # Legacy path has no Session — skip care tables that need queries
             manifest["people"].append(_export_person(None, zf, person))
@@ -147,7 +189,12 @@ def _build_zip(people, locker_items=None, db: Session | None = None, user: model
     return buf.getvalue()
 
 
-def _export_person(db: Session | None, zf: zipfile.ZipFile, person: models.Person) -> dict:
+def _export_person(
+    db: Session | None,
+    zf: zipfile.ZipFile,
+    person: models.Person,
+    file_hashes: dict[str, str] | None = None,
+) -> dict:
     person_entry: dict[str, Any] = {
         "name": person.name,
         "relation": person.relation.value if person.relation else None,
@@ -177,7 +224,7 @@ def _export_person(db: Session | None, zf: zipfile.ZipFile, person: models.Perso
         doc_folder = f"{person.name}/{doc.category.value}/{doc.id}"
         file_names = []
         for f in doc.files or []:
-            arc = _write_enc_file(zf, f"{doc_folder}/{f.original_filename}", f.file_path)
+            arc = _write_enc_file(zf, f"{doc_folder}/{f.original_filename}", f.file_path, file_hashes=file_hashes)
             if arc:
                 file_names.append(arc)
         person_entry["documents"].append({
@@ -229,11 +276,15 @@ def _export_person(db: Session | None, zf: zipfile.ZipFile, person: models.Perso
     return person_entry
 
 
-def _export_locker_item(zf: zipfile.ZipFile, item: models.LockerItem) -> dict:
+def _export_locker_item(
+    zf: zipfile.ZipFile,
+    item: models.LockerItem,
+    file_hashes: dict[str, str] | None = None,
+) -> dict:
     folder = f"locker/{item.doc_type}/{item.id}"
     file_names = []
     for f in item.files or []:
-        arc = _write_enc_file(zf, f"{folder}/{f.original_filename}", f.file_path)
+        arc = _write_enc_file(zf, f"{folder}/{f.original_filename}", f.file_path, file_hashes=file_hashes)
         if arc:
             file_names.append(arc)
     return {
@@ -369,7 +420,12 @@ def _export_urls(db: Session, owner: str) -> dict:
     }
 
 
-def _export_diary(db: Session, owner: str, zf: zipfile.ZipFile) -> dict:
+def _export_diary(
+    db: Session,
+    owner: str,
+    zf: zipfile.ZipFile,
+    file_hashes: dict[str, str] | None = None,
+) -> dict:
     cats = db.query(models.DiaryCategory).filter(models.DiaryCategory.user_id == owner).all()
     entries = db.query(models.DiaryEntry).filter(
         models.DiaryEntry.user_id == owner,
@@ -381,7 +437,7 @@ def _export_diary(db: Session, owner: str, zf: zipfile.ZipFile) -> dict:
         folder = f"diary/{e.id}"
         images = []
         for img in e.images or []:
-            arc = _write_enc_file(zf, f"{folder}/{img.original_filename}", img.file_path)
+            arc = _write_enc_file(zf, f"{folder}/{img.original_filename}", img.file_path, file_hashes=file_hashes)
             if arc:
                 images.append({"filename": img.original_filename, "file_type": img.file_type, "arc": arc})
         out_entries.append({
@@ -400,7 +456,12 @@ def _export_diary(db: Session, owner: str, zf: zipfile.ZipFile) -> dict:
     }
 
 
-def _export_shopping(db: Session, zf: zipfile.ZipFile, owner: str) -> dict:
+def _export_shopping(
+    db: Session,
+    zf: zipfile.ZipFile,
+    owner: str,
+    file_hashes: dict[str, str] | None = None,
+) -> dict:
     lists = db.query(models.ShopList).filter(models.ShopList.user_id == owner).all()
     contacts = db.query(models.ShopContact).filter(models.ShopContact.user_id == owner).all()
     pdf_pw = db.query(models.ShopPdfPassword).filter(models.ShopPdfPassword.user_id == owner).all()
@@ -420,7 +481,7 @@ def _export_shopping(db: Session, zf: zipfile.ZipFile, owner: str) -> dict:
         for rec in lst.receipts or []:
             safe = (rec.original_name or "receipt").replace("/", "_")
             arc = f"shopping/{lst.id}/receipts/{rec.id}_{safe}"
-            written = _write_enc_file(zf, arc, rec.image_path)
+            written = _write_enc_file(zf, arc, rec.image_path, file_hashes=file_hashes)
             receipts.append({
                 "original_name": rec.original_name,
                 "image_mime": rec.image_mime,
@@ -1423,13 +1484,14 @@ def google_settings(
 
 @router.post("/google/run")
 def google_run_now(
+    force: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     from app.drive_backup import run_backup
     require_owner(current_user)
     try:
-        return run_backup(db, current_user)
+        return run_backup(db, current_user, force=force)
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
 

@@ -956,6 +956,7 @@ class GoogleDriveBackup(Base):
     last_ok = Column(Boolean, nullable=True)
     last_error = Column(Text, nullable=True)
     last_file_name = Column(String(255), nullable=True)
+    last_content_hash = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

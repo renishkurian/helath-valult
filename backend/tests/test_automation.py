@@ -89,4 +89,72 @@ def test_user_api_token_generation_and_auth():
         db.close()
 
 
+def test_admin_automation_logs_pagination():
+    import uuid
+    from datetime import datetime, timedelta
+    from app import security
+
+    db = TestingSessionLocal()
+    try:
+        u_id = uuid.uuid4().hex
+        email = f"auto_{u_id[:8]}@test.com"
+        user = models.User(
+            id=u_id,
+            email=email,
+            hashed_password=security.hash_password("testpass123"),
+            full_name="Auto User",
+            role="owner",
+            enabled_modules=None,
+        )
+        db.add(user)
+        db.commit()
+
+        # Insert 45 audit logs
+        base_time = datetime.utcnow()
+        for i in range(45):
+            db.add(models.AutomationAuditLog(
+                user_id=u_id,
+                action=f"action_{i}",
+                resource_type="shopping",
+                details=f"Item {i}",
+                actor="openclaw",
+                status="success",
+                created_at=base_time - timedelta(minutes=i),
+            ))
+        db.commit()
+
+        app.dependency_overrides[get_db] = lambda: db
+        try:
+            session = TestClient(app)
+            login = session.post(
+                "/admin/login",
+                data={"email": email, "password": "testpass123"},
+                follow_redirects=False,
+            )
+            assert login.status_code in (302, 303)
+
+            # Page 1 (20 items per page)
+            page1 = session.get("/admin/automation")
+            assert page1.status_code == 200, page1.text[:500]
+            assert "Showing 1" in page1.text and "45" in page1.text
+            assert "Page 1 / 3" in page1.text
+            assert "action_0" in page1.text
+
+            # Page 2
+            page2 = session.get("/admin/automation?page=2")
+            assert page2.status_code == 200
+            assert "Showing 21" in page2.text and "45" in page2.text
+            assert "Page 2 / 3" in page2.text
+
+            # Page 3
+            page3 = session.get("/admin/automation?page=3")
+            assert page3.status_code == 200
+            assert "Showing 41" in page3.text and "45" in page3.text
+            assert "Page 3 / 3" in page3.text
+        finally:
+            app.dependency_overrides.clear()
+    finally:
+        db.close()
+
+
 

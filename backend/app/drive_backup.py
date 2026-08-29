@@ -66,6 +66,7 @@ def status_dict(row: models.GoogleDriveBackup | None, db: Session | None = None)
             "connected": False, "email": None, "enabled": False, "hour": 3, "keep_days": 14,
             "has_password": False, "has_client": False, "server_oauth": server,
             "last_run_at": None, "last_ok": None, "last_error": None, "last_file_name": None,
+            "last_content_hash": None,
         }
     return {
         "connected": bool(row.refresh_token_enc),
@@ -80,6 +81,7 @@ def status_dict(row: models.GoogleDriveBackup | None, db: Session | None = None)
         "last_ok": None if row.last_ok is None else bool(row.last_ok),
         "last_error": row.last_error,
         "last_file_name": row.last_file_name,
+        "last_content_hash": getattr(row, "last_content_hash", None),
     }
 
 
@@ -96,7 +98,7 @@ def should_run_now(row: models.GoogleDriveBackup, now: datetime | None = None) -
     return True
 
 
-def run_backup(db: Session, user: models.User) -> dict:
+def run_backup(db: Session, user: models.User, force: bool = False) -> dict:
     row = get_or_create(db, user)
     if not row.refresh_token_enc:
         raise RuntimeError("Google Drive is not connected")
@@ -107,8 +109,22 @@ def run_backup(db: Session, user: models.User) -> dict:
     if not client_id or not client_secret:
         raise RuntimeError("Google Drive is not configured on this server")
     refresh = crypto.decrypt_text(row.refresh_token_enc) or ""
-    from app.routers.backup import build_vault_backup
-    blob = crypto.encrypt_backup(build_vault_backup(db, user), password)
+    from app.routers.backup import build_vault_backup_bundle
+    zip_bytes, content_hash = build_vault_backup_bundle(db, user)
+
+    if not force and row.last_content_hash and row.last_content_hash == content_hash and row.last_ok:
+        row.last_run_at = datetime.utcnow()
+        db.commit()
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "no_change",
+            "file": row.last_file_name,
+            "bytes": 0,
+            "content_hash": content_hash,
+        }
+
+    blob = crypto.encrypt_backup(zip_bytes, password)
     name = f"healthvault-{datetime.now().strftime('%Y%m%d-%H%M')}.hvbak"
     try:
         token = gdrive.refresh_access_token(client_id, client_secret, refresh)
@@ -132,8 +148,9 @@ def run_backup(db: Session, user: models.User) -> dict:
         row.last_ok = True
         row.last_error = None
         row.last_file_name = name
+        row.last_content_hash = content_hash
         db.commit()
-        return {"ok": True, "file": name, "bytes": len(blob)}
+        return {"ok": True, "file": name, "bytes": len(blob), "content_hash": content_hash}
     except Exception as exc:
         row.last_run_at = datetime.utcnow()
         row.last_ok = False
@@ -158,8 +175,11 @@ def run_due_backups() -> None:
             if not user:
                 continue
             try:
-                run_backup(db, user)
-                log.info("Drive backup ok for %s → %s", user.email, row.last_file_name)
+                res = run_backup(db, user, force=False)
+                if res.get("skipped"):
+                    log.info("Drive backup skipped for %s (no changes since %s)", user.email, row.last_file_name)
+                else:
+                    log.info("Drive backup ok for %s → %s", user.email, row.last_file_name)
             except Exception:
                 log.exception("Drive backup failed for %s", user.email)
     finally:

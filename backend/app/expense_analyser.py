@@ -2027,7 +2027,17 @@ def _item_day(item: models.ExpenseAnalyserItem) -> str | None:
 
 
 def _validated_txn(item: models.ExpenseAnalyserItem) -> tuple[str, float] | None:
-    return finance_ai.totals_from_alert(_item_alert_text(item))
+    text = _item_alert_text(item)
+    if text:
+        val = finance_ai.totals_from_alert(text)
+        if val is not None:
+            return val
+    if item.direction in ("debit", "credit") and item.amount is not None:
+        try:
+            return item.direction, float(item.amount)
+        except (ValueError, TypeError):
+            return None
+    return None
 
 
 def insights(db: Session, user: models.User, year_month: str | None = None) -> dict[str, Any]:

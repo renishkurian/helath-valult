@@ -152,6 +152,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "url_items": [
         ("deleted_at", "DATETIME"),
     ],
+    "google_drive_backup": [
+        ("last_content_hash", "VARCHAR(64)"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [

@@ -627,6 +627,7 @@ class GoogleDriveStatus(BaseModel):
     last_ok: Optional[bool] = None
     last_error: Optional[str] = None
     last_file_name: Optional[str] = None
+    last_content_hash: Optional[str] = None
 
 
 class GoogleDriveSettingsIn(BaseModel):

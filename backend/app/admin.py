@@ -3366,7 +3366,9 @@ def storage_google_run(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     try:
-        run_backup(db, user)
+        res = run_backup(db, user, force=False)
+        if res.get("skipped"):
+            return RedirectResponse("/admin/storage?ok=no_change", status_code=302)
         return RedirectResponse("/admin/storage?ok=backedup", status_code=302)
     except Exception:
         return RedirectResponse("/admin/storage?err=run", status_code=302)
@@ -8977,8 +8979,11 @@ def automation_logs_page(
     actor: Optional[str] = None,
     resource: Optional[str] = None,
     action: Optional[str] = None,
+    page: int = 1,
     db: Session = Depends(get_db),
 ):
+    from app.paging import paginate
+
     user, redir = require_module(request, db, "automation")
     if redir:
         return redir
@@ -8994,7 +8999,22 @@ def automation_logs_page(
     if action:
         q = q.filter(models.AutomationAuditLog.action == action)
 
-    logs = q.order_by(models.AutomationAuditLog.created_at.desc()).limit(200).all()
+    filtered_total = q.count()
+    pager = paginate(page=page, per_page=20, total=filtered_total)
+    logs = (
+        q.order_by(models.AutomationAuditLog.created_at.desc())
+        .offset(pager["offset"])
+        .limit(pager["per_page"])
+        .all()
+    )
+
+    pager_prev, pager_next = _pager_urls(
+        "/admin/automation",
+        pager,
+        actor=actor or None,
+        resource=resource or None,
+        action=action or None,
+    )
 
     # Stats
     all_user_logs = db.query(models.AutomationAuditLog).filter(
@@ -9029,6 +9049,9 @@ def automation_logs_page(
             "active_actor": actor or "",
             "active_resource": resource or "",
             "active_action": action or "",
+            "pager": pager,
+            "pager_prev": pager_prev,
+            "pager_next": pager_next,
         },
     )
 

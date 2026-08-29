@@ -163,7 +163,13 @@
       <span class="card-ico info"><i class="bi bi-journal-text"></i></span>
       <div>
         <h2 class="h6 mb-0">Audit Trail</h2>
-        <div class="card-sub small text-muted">Showing latest {{ logs | length }} entries</div>
+        <div class="card-sub small text-muted">
+          {% if pager and pager.total %}
+            Showing {{ pager.start }}–{{ pager.end }} of {{ "{:,}".format(pager.total) }} entries
+          {% else %}
+            Showing 0 entries
+          {% endif %}
+        </div>
       </div>
     </div>
   </div>
@@ -216,6 +222,9 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div class="card-footer bg-transparent border-top-0 pt-0 pb-3 px-3">
+    {% include "_pager.html" %}
   </div>
 </div>
 {% endblock %}
