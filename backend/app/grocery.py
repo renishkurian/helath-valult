@@ -176,39 +176,47 @@ FREQUENT = {
 
 # Transliteration keys → catalog item (from the original expense tracker).
 SEED_KEYS = {
-    "mutta": "Egg", "paal": "Milk", "pal": "Milk", "thair": "Curd", "thayir": "Curd",
+    "mutta": "Egg", "egg": "Egg", "eggs": "Egg", "motta": "Egg",
+    "paal": "Milk", "pal": "Milk", "thair": "Curd", "thayir": "Curd",
     "ney": "Ghee", "neyyi": "Ghee",
     "venna": "Butter", "ari": "Rice", "gothambu": "Wheat", "aripodi": "Rice Flour",
-    "ulli": "Onion", "ullii": "Onion", "savola": "Shallots", "sabola": "Shallots",
-    "cheruulli": "Shallots",
+    "ulli": "Onion", "ullii": "Onion", "savola": "Big Onion", "sabola": "Big Onion",
+    "savala": "Big Onion", "savalaulli": "Big Onion",
+    "cheruulli": "Shallots", "cheriyaulli": "Shallots", "cheroyaulli": "Shallots",
+    "chuvannulli": "Shallots", "cheriya ulli": "Shallots", "chinnaulli": "Shallots",
     "valiyaulli": "Big Onion", "bigonion": "Big Onion",
-    "veluthulli": "Garlic", "veluthulli": "Garlic", "inji": "Ginger",
+    "veluthulli": "Garlic", "vellulli": "Garlic", "inji": "Ginger", "ingi": "Ginger",
     "thakali": "Tomato", "thakkali": "Tomato", "urulakizhangu": "Potato",
-    "kizhangu": "Potato", "urula": "Potato",
+    "kizhangu": "Potato", "urula": "Potato", "potato": "Potato",
     "vendakka": "Lady's Finger", "venda": "Lady's Finger", "vendaka": "Lady's Finger",
-    "vazhuthananga": "Brinjal", "vazhuthanga": "Brinjal", "vazhuthananga": "Brinjal",
-    "vazhuth": "Brinjal", "vaazhuthananga": "Brinjal", "baingan": "Brinjal",
+    "vazhuthananga": "Brinjal", "vazhuthanga": "Brinjal", "baingan": "Brinjal",
     "eggplant": "Brinjal", "kathirikka": "Brinjal",
     "kumbalam": "Ash Gourd", "kumbalanga": "Ash Gourd", "ashgourd": "Ash Gourd",
     "vazhapoo": "Banana Flower", "vazhappoo": "Banana Flower", "bananaflower": "Banana Flower",
-    "payar": "Beans", "mulaku": "Green Chilli", "pachamulaku": "Green Chilli",
+    "payar": "Beans", "vanpayar": "Beans", "mulaku": "Green Chilli", "pachamulaku": "Green Chilli",
     "cheera": "Spinach", "kappa": "Tapioca", "chembu": "Taro", "chena": "Yam",
-    "thenga": "Coconut", "pazham": "Banana", "vazha": "Banana", "manga": "Mango",
-    "chakka": "Jackfruit", "ilaneer": "Tender Coconut", "ilaneer": "Tender Coconut",
+    "thenga": "Coconut", "thenka": "Coconut", "thengai": "Coconut", "tenga": "Coconut",
+    "pazham": "Banana", "vazha": "Banana", "manga": "Mango",
+    "chakka": "Jackfruit", "ilaneer": "Tender Coconut",
     "kozhi": "Chicken",
     "meen": "Fish", "chemmeen": "Prawns", "aadu": "Mutton", "panni": "Pork",
     "irachi": "Meat", "manjal": "Turmeric", "mulakupodi": "Chilli Powder",
     "mallipodi": "Coriander Powder", "kurumulaku": "Pepper", "jeerakam": "Cumin",
     "kaduku": "Mustard Seeds", "grambu": "Cloves", "elakka": "Cardamom",
     "karuva": "Cinnamon", "kariveppila": "Curry Leaves", "puli": "Tamarind",
-    "uluva": "Fenugreek", "uppu": "Salt", "panjasara": "Sugar", "chakkara": "Jaggery",
-    "sharkara": "Jaggery", "sharkkara": "Jaggery", "sarkara": "Jaggery",
-    "then": "Honey", "velichenna": "Coconut Oil", "enna": "Coconut Oil", "pappadam": "Pappadam",
-    "parippu": "Toor Dal", "kadala": "Chickpeas", "uzhunnu": "Urad Dal",
-    "chaya": "Tea Powder", "chaaya": "Tea Powder", "kappi": "Coffee Powder",
+    "uluva": "Fenugreek", "uppu": "Salt", "panjasara": "Sugar", "panchasara": "Sugar",
+    "panchasari": "Sugar", "panjasaara": "Sugar", "sugar": "Sugar",
+    "chakkara": "Jaggery", "sharkara": "Jaggery", "sharkkara": "Jaggery", "sarkara": "Jaggery",
+    "then": "Honey", "velichenna": "Coconut Oil", "enna": "Coconut Oil",
+    "pappadam": "Pappadam", "pappdm": "Pappadam", "papdm": "Pappadam", "papad": "Pappadam", "appalam": "Pappadam",
+    "parippu": "Toor Dal", "kadala": "Chickpeas", "currykadala": "Chickpeas", "uzhunnu": "Urad Dal",
+    "chaya": "Tea Powder", "chaaya": "Tea Powder", "kappi": "Coffee Powder", "kapipodi": "Coffee Powder",
+    "kaapipodi": "Coffee Powder", "kappipodi": "Coffee Powder", "coffeepodi": "Coffee Powder",
     "mathi": "Sardine", "ayala": "Mackerel", "karimeen": "Pearl Spot",
-    "atta": "Wheat Flour (Atta)", "attapodi": "Wheat Flour (Atta)", "gothambupodi": "Wheat Flour (Atta)",
-    "mav": "Wheat Flour (Atta)", "mavpodi": "Wheat Flour (Atta)", "maavpodi": "Wheat Flour (Atta)",
+    "atta": "Wheat Flour (Atta)", "ata": "Wheat Flour (Atta)", "aatta": "Wheat Flour (Atta)",
+    "attapodi": "Wheat Flour (Atta)", "atapodi": "Wheat Flour (Atta)", "gothambupodi": "Wheat Flour (Atta)",
+    "mav": "Dosa Batter", "mavu": "Dosa Batter", "maav": "Dosa Batter", "maavu": "Dosa Batter",
+    "dosamav": "Dosa Batter", "dosamavu": "Dosa Batter",
     "coconutoil": "Coconut Oil", "velichennai": "Coconut Oil",
 }
 
@@ -331,6 +339,17 @@ def _parse_aliases(raw: str | None) -> list[str]:
     return parts
 
 
+def _load_disabled_categories(db: Session | None, user_id: str | None) -> set[str]:
+    if db is None or not user_id:
+        return set()
+    rows = (
+        db.query(models.ShopCategorySetting)
+        .filter(models.ShopCategorySetting.user_id == user_id, models.ShopCategorySetting.enabled.is_(False))
+        .all()
+    )
+    return {r.category.strip().lower() for r in rows if r.category}
+
+
 def _catalog_row_from_db(row: models.ShopCatalogItem) -> dict:
     aliases = _parse_aliases(row.aliases)
     cat = (row.category or "custom").strip().lower()
@@ -345,6 +364,7 @@ def _catalog_row_from_db(row: models.ShopCatalogItem) -> dict:
         "catalog_id": row.id,
         "seed_key": (row.seed_key or "").strip() or None,
         "scope": row.scope or "personal",
+        "enabled": getattr(row, "enabled", True) if getattr(row, "enabled", True) is not None else True,
         "custom": True,
     }
     base["aliases"] = _entry_keys(base)  # folded keys for chip search
@@ -363,6 +383,7 @@ def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> 
     by_cat["custom"] = []
     seen: set[tuple[str, str]] = set()
     seed_overrides: dict[str, dict] = {}
+    disabled_cats = _load_disabled_categories(db, user_id)
     db_rows = load_user_catalog(db, user_id)
     for row in db_rows:
         sk = (row.get("seed_key") or "").strip()
@@ -370,12 +391,18 @@ def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> 
             seed_overrides[sk] = row
 
     for key, items in QUICK_ADD.items():
+        if key in disabled_cats:
+            continue
         for it in items:
             en = (it.get("english") or "").strip()
             seed = builtin_seed_key(key, en)
             if seed in seed_overrides:
                 ov = seed_overrides[seed]
+                if not ov.get("enabled", True):
+                    continue
                 cat = ov.get("category") or key
+                if cat in disabled_cats:
+                    continue
                 by_cat.setdefault(cat, []).append({
                     **ov,
                     "star": en.lower() in FREQUENT,
@@ -390,6 +417,7 @@ def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> 
                 "star": en.lower() in FREQUENT,
                 "custom": False,
                 "seed_key": seed,
+                "enabled": True,
             }
             by_cat[key].append(entry)
             seen.add((key, en.lower()))
@@ -397,7 +425,11 @@ def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> 
     for row in db_rows:
         if (row.get("seed_key") or "").strip():
             continue
+        if not row.get("enabled", True):
+            continue
         cat = row["category"]
+        if cat in disabled_cats:
+            continue
         en = (row.get("english") or "").strip()
         if not en:
             continue
@@ -414,6 +446,8 @@ def grouped_quick_add(db: Session | None = None, user_id: str | None = None) -> 
     groups = []
     order = list(QUICK_ADD.keys()) + (["custom"] if by_cat.get("custom") else [])
     for key in order:
+        if key in disabled_cats:
+            continue
         entries = by_cat.get(key) or []
         if not entries:
             continue
@@ -437,10 +471,12 @@ def admin_catalog_groups(db: Session, owner: str) -> list[dict]:
             by_seed[sk] = row
         by_slot[((row.category or "custom").lower(), (row.english or "").lower())] = row
 
+    disabled_cats = _load_disabled_categories(db, owner)
     used_ids: set[str] = set()
     groups: list[dict] = []
 
     def _entry_from_row(row: models.ShopCatalogItem, *, is_builtin: bool, seed_key: str | None) -> dict:
+        is_enab = row.enabled if row.enabled is not None else True
         return {
             "id": row.id,
             "seed_key": seed_key or row.seed_key,
@@ -452,6 +488,7 @@ def admin_catalog_groups(db: Session, owner: str) -> list[dict]:
             "category": row.category or "custom",
             "scope": row.scope or "personal",
             "aliases": row.aliases,
+            "enabled": is_enab,
             "mine": row.user_id == owner,
         }
 
@@ -476,12 +513,14 @@ def admin_catalog_groups(db: Session, owner: str) -> list[dict]:
                     "category": cat,
                     "scope": "builtin",
                     "aliases": None,
+                    "enabled": True,
                     "mine": True,
                 })
         groups.append({
             "key": cat,
             "label": GROUP_LABELS.get(cat, cat.title()),
             "icon": GROUP_ICONS.get(cat, "🛒"),
+            "enabled": cat not in disabled_cats,
             "entries": entries,
         })
 
@@ -497,9 +536,11 @@ def admin_catalog_groups(db: Session, owner: str) -> list[dict]:
             "key": "custom",
             "label": GROUP_LABELS.get("custom", "Custom"),
             "icon": GROUP_ICONS.get("custom", "⭐"),
+            "enabled": "custom" not in disabled_cats,
             "entries": custom_entries,
         })
     return groups
+
 
 
 def catalog_payload(db: Session | None = None, user_id: str | None = None) -> dict:
@@ -565,8 +606,12 @@ def seed_dictionary(db: Session) -> None:
 
 def _candidate_rows(db: Session, user_id: str | None = None) -> list[dict]:
     seed_dictionary(db)
+    disabled_cats = _load_disabled_categories(db, user_id)
     by_en: dict[str, dict] = {}
     for row in _all_catalog():
+        cat = (row.get("category") or "custom").lower()
+        if cat in disabled_cats:
+            continue
         by_en[(row["english"] or "").lower()] = {
             "english": row["english"],
             "malayalam": row.get("malayalam"),
@@ -575,6 +620,9 @@ def _candidate_rows(db: Session, user_id: str | None = None) -> list[dict]:
             "keys": _entry_keys(row),
         }
     for row in db.query(models.ShopDictItem).all():
+        cat = (row.category or "custom").lower()
+        if cat in disabled_cats:
+            continue
         en = (row.english or "").strip()
         if not en:
             continue
@@ -591,6 +639,14 @@ def _candidate_rows(db: Session, user_id: str | None = None) -> list[dict]:
         if row.malayalam and not slot.get("malayalam"):
             slot["malayalam"] = row.malayalam
     for row in load_user_catalog(db, user_id):
+        if not row.get("enabled", True):
+            # If overridden to disabled, remove from candidates
+            by_en.pop((row.get("english") or "").lower(), None)
+            continue
+        cat = (row.get("category") or "custom").lower()
+        if cat in disabled_cats:
+            by_en.pop((row.get("english") or "").lower(), None)
+            continue
         en = (row.get("english") or "").strip()
         if not en:
             continue
@@ -689,11 +745,11 @@ def suggest(db: Session, name: str, limit: int = 12, user_id: str | None = None)
     return out
 
 
-def recognize(db: Session, name: str) -> dict:
+def recognize(db: Session, name: str, user_id: str | None = None) -> dict:
     raw = (name or "").strip()
     if not raw:
         return {"english": "", "malayalam": None, "emoji": "🛒", "category": None, "matched": False}
-    hits = suggest(db, raw, limit=1)
+    hits = suggest(db, raw, limit=1, user_id=user_id)
     if hits and hits[0].get("score", 0) >= 70:
         hit = hits[0]
         return {

@@ -1418,8 +1418,21 @@ class ShopCatalogItem(Base):
     category = Column(String(80), nullable=False, default="essentials", index=True)
     aliases = Column(Text, nullable=True)  # comma-separated extra match keys
     seed_key = Column(String(120), nullable=True, index=True)  # e.g. vegetables:potato — overrides built-in chip
+    enabled = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ShopCategorySetting(Base):
+    """Per-user/vault enable/disable toggle for catalog categories."""
+    __tablename__ = "shop_category_settings"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String(80), nullable=False, index=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
 
 class AutomationAuditLog(Base):

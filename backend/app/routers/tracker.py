@@ -817,10 +817,10 @@ def delete_receipt(
 
 # ---------- Items ----------
 
-def _item_match_key(db: Session, name: str) -> str:
+def _item_match_key(db: Session, name: str, user_id: str | None = None) -> str:
     from app.grocery import _fold, recognize
 
-    hint = recognize(db, name or "")
+    hint = recognize(db, name or "", user_id=user_id)
     if hint.get("matched") and hint.get("english"):
         return _fold(str(hint["english"]))
     return _fold(name or "")
@@ -829,14 +829,14 @@ def _item_match_key(db: Session, name: str) -> str:
 def _add_item_row(
     db: Session, lst: models.ShopList, body: schemas.ShopItemIn, *, added_by: str, status: str,
 ) -> tuple[models.ShopItem, bool]:
-    hint = recognize(db, body.name)
+    hint = recognize(db, body.name, user_id=lst.user_id)
     if hint.get("matched"):
         display = format_item_name(hint.get("english") or "", hint.get("malayalam"))
     else:
         display = (body.name or hint.get("english") or "").strip()
     qty = Decimal(str(body.quantity if body.quantity not in (None, 0) else 1))
     unit = (body.unit or "").strip() or None
-    want_key = _item_match_key(db, body.name) or _item_match_key(db, display)
+    want_key = _item_match_key(db, body.name, user_id=lst.user_id) or _item_match_key(db, display, user_id=lst.user_id)
     unit_key = (unit or "").strip().casefold()
 
     for existing in list(lst.items or []):
@@ -847,7 +847,7 @@ def _add_item_row(
         existing_unit = (existing.unit or "").strip().casefold()
         if existing_unit != unit_key:
             continue
-        existing_key = _item_match_key(db, existing.name or "")
+        existing_key = _item_match_key(db, existing.name or "", user_id=lst.user_id)
         if not want_key or existing_key != want_key:
             continue
         existing.quantity = Decimal(str(existing.quantity or 0)) + qty
@@ -1261,6 +1261,7 @@ def _catalog_out(row: models.ShopCatalogItem, owner: str) -> schemas.ShopCatalog
         scope=row.scope or "personal",
         aliases=row.aliases,
         seed_key=row.seed_key,
+        enabled=getattr(row, "enabled", True) if getattr(row, "enabled", True) is not None else True,
         is_builtin=bool(row.seed_key),
         has_override=bool(row.seed_key),
         mine=row.user_id == owner,
@@ -1277,6 +1278,7 @@ def _normalize_catalog_fields(
     scope: str,
     aliases: Optional[str],
     seed_key: Optional[str] = None,
+    enabled: Optional[bool] = True,
 ) -> dict:
     en = (english or "").strip()
     if not en:
@@ -1289,6 +1291,7 @@ def _normalize_catalog_fields(
         sc = "personal"
     al = (aliases or "").strip() or None
     sk = (seed_key or "").strip() or None
+    enab = True if enabled is None else bool(enabled)
     return {
         "english": en[:255],
         "malayalam": ((malayalam or "").strip() or None),
@@ -1297,6 +1300,7 @@ def _normalize_catalog_fields(
         "scope": sc,
         "aliases": al[:500] if al else None,
         "seed_key": sk[:120] if sk else None,
+        "enabled": enab,
     }
 
 
@@ -1363,7 +1367,7 @@ def add_catalog_item(
     require_owner(current_user)
     owner = _uid(current_user)
     fields = _normalize_catalog_fields(
-        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases, body.seed_key,
+        body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases, body.seed_key, body.enabled,
     )
     row = models.ShopCatalogItem(user_id=owner, **fields)
     db.add(row)
@@ -1408,7 +1412,7 @@ def update_catalog_item(
         raise HTTPException(404, "Catalog item not found")
     fields = _normalize_catalog_fields(
         body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases,
-        body.seed_key or row.seed_key,
+        body.seed_key or row.seed_key, body.enabled if body.enabled is not None else row.enabled,
     )
     for k, v in fields.items():
         setattr(row, k, v)
@@ -1417,6 +1421,53 @@ def update_catalog_item(
     db.commit()
     db.refresh(row)
     return _catalog_out(row, owner)
+
+
+@router.post("/catalog/{item_id}/toggle", response_model=schemas.ShopCatalogItemOut)
+def toggle_catalog_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    owner = _uid(current_user)
+    row = (
+        db.query(models.ShopCatalogItem)
+        .filter(models.ShopCatalogItem.id == item_id, models.ShopCatalogItem.user_id == owner)
+        .first()
+    )
+    if not row:
+        raise HTTPException(404, "Catalog item not found")
+    row.enabled = not bool(row.enabled)
+    row.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(row)
+    return _catalog_out(row, owner)
+
+
+@router.post("/catalog/category/toggle")
+def toggle_catalog_category(
+    body: schemas.ShopCategoryToggleIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    owner = _uid(current_user)
+    cat = (body.category or "custom").strip().lower()
+    row = (
+        db.query(models.ShopCategorySetting)
+        .filter(models.ShopCategorySetting.user_id == owner, models.ShopCategorySetting.category == cat)
+        .first()
+    )
+    if not row:
+        row = models.ShopCategorySetting(user_id=owner, category=cat, enabled=body.enabled)
+        db.add(row)
+    else:
+        row.enabled = body.enabled
+        row.updated_at = datetime.utcnow()
+    db.commit()
+    return {"category": cat, "enabled": row.enabled}
+
 
 
 @router.delete("/catalog/{item_id}", status_code=204)
@@ -1460,6 +1511,7 @@ def upsert_builtin_catalog(
     )
     fields = _normalize_catalog_fields(
         body.english, body.malayalam, body.emoji, body.category, body.scope, body.aliases, seed,
+        body.enabled if body.enabled is not None else (row.enabled if row else True),
     )
     if row:
         for k, v in fields.items():
@@ -1473,6 +1525,59 @@ def upsert_builtin_catalog(
     db.commit()
     db.refresh(row)
     return _catalog_out(row, owner)
+
+
+def toggle_builtin_catalog_seed(
+    seed_key: str,
+    db: Session,
+    current_user: models.User,
+) -> schemas.ShopCatalogItemOut:
+    """Toggle enabled status for a built-in chip seed key."""
+    require_owner(current_user)
+    owner = _uid(current_user)
+    seed = (seed_key or "").strip()
+    if not seed:
+        raise HTTPException(400, "seed_key is required")
+
+    row = (
+        db.query(models.ShopCatalogItem)
+        .filter(
+            models.ShopCatalogItem.seed_key == seed,
+            models.ShopCatalogItem.user_id == owner,
+        )
+        .first()
+    )
+    if row:
+        row.enabled = not bool(row.enabled)
+        row.updated_at = datetime.utcnow()
+    else:
+        # Look up built-in default to create override row
+        parts = seed.split(":", 1)
+        cat = parts[0] if len(parts) == 2 else "custom"
+        en = parts[1] if len(parts) == 2 else seed
+        ml = None
+        emoji = "🛒"
+        for item in QUICK_ADD.get(cat, []):
+            if (item.get("english") or "").strip().lower() == en.lower():
+                en = item.get("english")
+                ml = item.get("malayalam")
+                emoji = item.get("emoji") or "🛒"
+                break
+        row = models.ShopCatalogItem(
+            user_id=owner,
+            english=en,
+            malayalam=ml,
+            emoji=emoji,
+            category=cat,
+            scope="personal",
+            seed_key=seed,
+            enabled=False,  # toggled from default True -> False
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _catalog_out(row, owner)
+
 
 
 @router.get("/quick-add")
@@ -1490,7 +1595,7 @@ def recognize_item(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    return schemas.ShopGroceryItemOut(**recognize(db, body.name))
+    return schemas.ShopGroceryItemOut(**recognize(db, body.name, user_id=_uid(current_user)))
 
 
 @router.get("/suggest", response_model=list[schemas.ShopGroceryItemOut])

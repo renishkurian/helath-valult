@@ -488,3 +488,97 @@ def test_post_completed_list_to_finance():
     match = next(t for t in txns.json() if t["id"] == body["finance_txn_id"])
     assert match["category_id"] == groceries["id"]
     assert match["account_id"] == account_id
+
+
+def test_tracker_catalog_enable_disable_item_and_category():
+    import uuid
+    email = f"catalog-toggle-{uuid.uuid4().hex[:8]}@example.com"
+    session = TestClient(app)
+    r = session.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Catalog User",
+    })
+    assert r.status_code == 201, r.text
+    token = r.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (302, 303)
+
+    # 1. Check default quick-add items
+    res = session.get("/tracker/quick-add", headers=headers)
+    assert res.status_code == 200
+    groups = res.json()["groups"]
+    veg_group = next(g for g in groups if g["key"] == "vegetables")
+    onion_item = next((i for i in veg_group["entries"] if i["english"].lower() == "onion"), None)
+    assert onion_item is not None
+
+    # 2. Disable Onion item (built-in seed toggle)
+    toggle_res = session.post(
+        "/admin/tracker/catalog/builtin/toggle",
+        data={"seed_key": onion_item["seed_key"]},
+        follow_redirects=True,
+    )
+    assert toggle_res.status_code == 200
+
+    # Verify Onion is now omitted from quick-add
+    res2 = session.get("/tracker/quick-add", headers=headers)
+    groups2 = res2.json()["groups"]
+    veg_group2 = next(g for g in groups2 if g["key"] == "vegetables")
+    assert not any(i["english"].lower() == "onion" for i in veg_group2["entries"])
+
+    # 3. Disable whole vegetables category
+    cat_toggle_res = session.post(
+        "/admin/tracker/catalog/category/toggle",
+        data={"category": "vegetables", "enabled": "0"},
+        follow_redirects=True,
+    )
+    assert cat_toggle_res.status_code == 200
+
+    # Verify vegetables category is not shown in quick-add
+    res3 = session.get("/tracker/quick-add", headers=headers)
+    groups3 = res3.json()["groups"]
+    assert not any(g["key"] == "vegetables" for g in groups3)
+
+    # 4. Re-enable vegetables category
+    cat_toggle_on = session.post(
+        "/admin/tracker/catalog/category/toggle",
+        data={"category": "vegetables", "enabled": "1"},
+        follow_redirects=True,
+    )
+    assert cat_toggle_on.status_code == 200
+
+    # Verify vegetables group returns, but disabled Onion is still omitted
+    res4 = session.get("/tracker/quick-add", headers=headers)
+    groups4 = res4.json()["groups"]
+    veg_group4 = next((g for g in groups4 if g["key"] == "vegetables"), None)
+    assert veg_group4 is not None
+    assert not any(i["english"].lower() == "onion" for i in veg_group4["entries"])
+
+    # 5. Re-enable Onion
+    toggle_onion_back = session.post(
+        "/admin/tracker/catalog/builtin/toggle",
+        data={"seed_key": onion_item["seed_key"]},
+        follow_redirects=True,
+    )
+    assert toggle_onion_back.status_code == 200
+    res5 = session.get("/tracker/quick-add", headers=headers)
+    groups5 = res5.json()["groups"]
+    veg_group5 = next(g for g in groups5 if g["key"] == "vegetables")
+    assert any(i["english"].lower() == "onion" for i in veg_group5["entries"])
+
+    # 6. Verify suggest & recognize ignore disabled item and category
+    # Disable Onion again
+    session.post("/admin/tracker/catalog/builtin/toggle", data={"seed_key": onion_item["seed_key"]})
+    sug_res = session.get("/tracker/suggest", headers=headers, params={"q": "onion"})
+    assert sug_res.status_code == 200
+    assert not any(i["english"].lower() == "onion" for i in sug_res.json())
+
+    # Re-enable Onion
+    session.post("/admin/tracker/catalog/builtin/toggle", data={"seed_key": onion_item["seed_key"]})
+    sug_res_on = session.get("/tracker/suggest", headers=headers, params={"q": "onion"})
+    assert any(i["english"].lower() == "onion" for i in sug_res_on.json())
+
+

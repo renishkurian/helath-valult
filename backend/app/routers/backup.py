@@ -521,8 +521,14 @@ def _export_shopping(
         "catalog": [{
             "english": c.english, "malayalam": c.malayalam, "emoji": c.emoji,
             "category": c.category, "scope": c.scope, "aliases": c.aliases,
+            "seed_key": c.seed_key, "enabled": bool(c.enabled),
         } for c in db.query(models.ShopCatalogItem).filter(
             models.ShopCatalogItem.user_id == owner
+        ).all()],
+        "category_settings": [{
+            "category": cs.category, "enabled": bool(cs.enabled),
+        } for cs in db.query(models.ShopCategorySetting).filter(
+            models.ShopCategorySetting.user_id == owner
         ).all()],
     }
 
@@ -1209,8 +1215,26 @@ def _restore_shopping(db: Session, owner: str, zf: zipfile.ZipFile, shop: dict, 
             category=c.get("category") or "custom",
             scope=scope,
             aliases=c.get("aliases"),
+            seed_key=c.get("seed_key"),
+            enabled=bool(c.get("enabled", True)),
         ))
         restored["shop_catalog"] = restored.get("shop_catalog", 0) + 1
+
+    for cs in shop.get("category_settings") or []:
+        cat_name = (cs.get("category") or "").strip().lower()
+        if not cat_name:
+            continue
+        c_setting = (
+            db.query(models.ShopCategorySetting)
+            .filter(models.ShopCategorySetting.user_id == owner, models.ShopCategorySetting.category == cat_name)
+            .first()
+        )
+        if not c_setting:
+            db.add(models.ShopCategorySetting(
+                user_id=owner, category=cat_name, enabled=bool(cs.get("enabled", True))
+            ))
+        else:
+            c_setting.enabled = bool(cs.get("enabled", True))
 
     dest_dir = settings.STORAGE_DIR / owner / "shop"
     dest_dir.mkdir(parents=True, exist_ok=True)

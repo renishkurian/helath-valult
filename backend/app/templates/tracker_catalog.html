@@ -76,17 +76,29 @@
 </div>
 
 {% for group in groups %}
-<div class="card mb-3 catalog-group" data-group="{{ group.key }}">
-  <div class="card-header">
-    <span class="card-ico"><span aria-hidden="true">{{ group.icon }}</span></span>
+<div class="card mb-3 catalog-group {% if not group.enabled %}opacity-75{% endif %}" data-group="{{ group.key }}">
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-2">
+      <span class="card-ico"><span aria-hidden="true">{{ group.icon }}</span></span>
+      <div>
+        <h2 class="mb-0">{{ group.label }}</h2>
+        <div class="card-sub">{{ group.entries | length }} item{% if group.entries | length != 1 %}s{% endif %}{% if not group.enabled %} · <span class="badge badge-warning text-dark">Category Disabled</span>{% endif %}</div>
+      </div>
+    </div>
     <div>
-      <h2>{{ group.label }}</h2>
-      <div class="card-sub">{{ group.entries | length }} item{% if group.entries | length != 1 %}s{% endif %}</div>
+      <form method="post" action="/admin/tracker/catalog/category/toggle" class="d-inline">
+        <input type="hidden" name="category" value="{{ group.key }}">
+        <input type="hidden" name="enabled" value="{% if group.enabled %}0{% else %}1{% endif %}">
+        <button class="btn btn-sm {% if group.enabled %}btn-outline-success{% else %}btn-outline-secondary{% endif %}" type="submit" title="{% if group.enabled %}Click to disable category{% else %}Click to enable category{% endif %}">
+          <i class="bi {% if group.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+          <span>{% if group.enabled %}Category Enabled{% else %}Category Disabled{% endif %}</span>
+        </button>
+      </form>
     </div>
   </div>
   <div class="list-rows">
     {% for it in group.entries %}
-    <div class="list-row catalog-item align-items-center flex-wrap gap-2"
+    <div class="list-row catalog-item align-items-center flex-wrap gap-2 {% if not it.enabled %}opacity-50{% endif %}"
          data-search="{{ (it.english ~ ' ' ~ (it.malayalam or '') ~ ' ' ~ group.label) | lower }}">
       <span class="avatar" aria-hidden="true">{{ it.emoji or '🛒' }}</span>
       <div class="row-body flex-grow-1">
@@ -98,13 +110,30 @@
           {% if it.id and it.is_builtin %} · <span class="badge badge-info">Edited</span>{% endif %}
           {% if it.id and not it.is_builtin %} · <span class="badge">Custom</span>{% endif %}
           {% if it.scope == 'global' %} · <span class="badge badge-info">Global</span>{% elif it.id %} · Personal{% endif %}
+          {% if not it.enabled %} · <span class="badge badge-warning text-dark">Disabled</span>{% endif %}
           {% if it.aliases %} · aliases: {{ it.aliases }}{% endif %}
         </div>
       </div>
-      <div class="row-actions">
+      <div class="row-actions d-flex align-items-center gap-1">
         {% if it.id and not it.mine %}
         <span class="text-muted small">View only</span>
         {% else %}
+        {% if it.id %}
+        <form method="post" action="/admin/tracker/catalog/{{ it.id }}/toggle" class="d-inline">
+          <button class="btn btn-sm {% if it.enabled %}btn-outline-success{% else %}btn-outline-secondary{% endif %}" type="submit" title="{% if it.enabled %}Disable item{% else %}Enable item{% endif %}">
+            <i class="bi {% if it.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+            <span>{% if it.enabled %}Enabled{% else %}Disabled{% endif %}</span>
+          </button>
+        </form>
+        {% elif it.is_builtin and it.seed_key %}
+        <form method="post" action="/admin/tracker/catalog/builtin/toggle" class="d-inline">
+          <input type="hidden" name="seed_key" value="{{ it.seed_key }}">
+          <button class="btn btn-sm {% if it.enabled %}btn-outline-success{% else %}btn-outline-secondary{% endif %}" type="submit" title="{% if it.enabled %}Disable item{% else %}Enable item{% endif %}">
+            <i class="bi {% if it.enabled %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+            <span>{% if it.enabled %}Enabled{% else %}Disabled{% endif %}</span>
+          </button>
+        </form>
+        {% endif %}
         <button class="btn btn-sm btn-outline-light js-edit-catalog" type="button"
                 data-bs-toggle="modal" data-bs-target="#edit-catalog"
                 data-item-id="{{ it.id or '' }}"
@@ -115,6 +144,7 @@
                 data-category="{{ it.category }}"
                 data-scope="{{ it.scope if it.scope != 'builtin' else 'personal' }}"
                 data-aliases="{{ it.aliases or '' }}"
+                data-enabled="{{ '1' if it.enabled else '0' }}"
                 data-is-builtin="{{ '1' if it.is_builtin else '0' }}">
           <i class="bi bi-pencil"></i> Edit
         </button>
@@ -174,6 +204,12 @@
               <input class="form-control" id="edit-aliases" name="aliases" maxlength="500"
                      placeholder="Manglish spellings for search">
             </div>
+            <div class="col-12">
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="edit-enabled" name="enabled" value="1" checked>
+                <label class="form-check-label" for="edit-enabled">Enabled (show under Quick add chips)</label>
+              </div>
+            </div>
           </div>
           <p class="small text-muted mt-3 mb-0" id="edit-catalog-hint"></p>
         </div>
@@ -220,6 +256,8 @@
       document.getElementById("edit-cat").value = btn.getAttribute("data-category") || "custom";
       document.getElementById("edit-scope").value = btn.getAttribute("data-scope") || "personal";
       document.getElementById("edit-aliases").value = btn.getAttribute("data-aliases") || "";
+      var enab = btn.getAttribute("data-enabled");
+      document.getElementById("edit-enabled").checked = enab === null || enab === "" || enab === "1" || enab === "true";
       form.action = id
         ? ("/admin/tracker/catalog/" + encodeURIComponent(id) + "/update")
         : "/admin/tracker/catalog/builtin/save";

@@ -2001,6 +2001,7 @@ class ShopCatalogItemIn(BaseModel):
     scope: str = Field(default="personal", max_length=20)  # personal | global
     aliases: Optional[str] = Field(default=None, max_length=500)
     seed_key: Optional[str] = Field(default=None, max_length=120)
+    enabled: Optional[bool] = True
 
 
 class ShopCatalogTranslateIn(BaseModel):
@@ -2027,11 +2028,18 @@ class ShopCatalogItemOut(BaseModel):
     scope: str
     aliases: Optional[str] = None
     seed_key: Optional[str] = None
+    enabled: bool = True
     is_builtin: bool = False
     has_override: bool = False
     mine: bool = True
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+
+
+class ShopCategoryToggleIn(BaseModel):
+    category: str = Field(min_length=1, max_length=80)
+    enabled: bool = True
+
 
 
 class ShopSendIn(BaseModel):

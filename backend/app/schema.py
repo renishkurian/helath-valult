@@ -127,6 +127,10 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "shop_catalog_items": [
         ("seed_key", "VARCHAR(120)"),
+        ("enabled", "BOOLEAN NOT NULL DEFAULT 1"),
+    ],
+    "shop_category_settings": [
+        ("enabled", "BOOLEAN NOT NULL DEFAULT 1"),
     ],
     "locker_items": [
         ("person_id", "VARCHAR(32)"),
@@ -218,6 +222,8 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_user_api_tokens_user_id", "user_api_tokens", "user_id"),
     ("ix_user_api_tokens_token_hash", "user_api_tokens", "token_hash"),
     ("ix_user_api_tokens_revoked_at", "user_api_tokens", "revoked_at"),
+    ("ix_shop_category_settings_user_id", "shop_category_settings", "user_id"),
+    ("ix_shop_category_settings_category", "shop_category_settings", "category"),
 ]
 
 

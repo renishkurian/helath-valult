@@ -8343,6 +8343,7 @@ def tracker_update_catalog(
     scope: str = Form("personal"),
     aliases: str = Form(""),
     seed_key: str = Form(""),
+    enabled: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     from app.routers import tracker as tr
@@ -8352,10 +8353,11 @@ def tracker_update_catalog(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     try:
+        is_en = enabled in ("1", "true", "True", "on", "yes") if enabled is not None else False
         tr.update_catalog_item(item_id, sc.ShopCatalogItemIn(
             english=english, malayalam=malayalam or None, emoji=emoji or "🛒",
             category=category, scope=scope, aliases=aliases or None,
-            seed_key=seed_key or None,
+            seed_key=seed_key or None, enabled=is_en,
         ), db=db, current_user=user)
     except Exception as e:
         msg = getattr(e, "detail", None) or str(e) or "Could not update"
@@ -8373,6 +8375,7 @@ def tracker_save_builtin_catalog(
     category: str = Form("custom"),
     scope: str = Form("personal"),
     aliases: str = Form(""),
+    enabled: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     from app.routers import tracker as tr
@@ -8382,9 +8385,11 @@ def tracker_save_builtin_catalog(
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     try:
+        is_en = enabled in ("1", "true", "True", "on", "yes") if enabled is not None else False
         tr.upsert_builtin_catalog(sc.ShopCatalogItemIn(
             english=english, malayalam=malayalam or None, emoji=emoji or "🛒",
             category=category, scope=scope, aliases=aliases or None, seed_key=seed_key,
+            enabled=is_en,
         ), db=db, current_user=user)
     except Exception as e:
         msg = getattr(e, "detail", None) or str(e) or "Could not save"
@@ -8403,6 +8408,63 @@ def tracker_delete_catalog(item_id: str, request: Request, db: Session = Depends
     except Exception:
         return RedirectResponse("/admin/tracker/catalog?err=not+found", status_code=302)
     return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
+
+@router.post("/tracker/catalog/{item_id}/toggle")
+def tracker_toggle_catalog(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.toggle_catalog_item(item_id, db=db, current_user=user)
+    except Exception as e:
+        from urllib.parse import quote
+        msg = getattr(e, "detail", None) or str(e) or "Could not toggle"
+        return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
+
+@router.post("/tracker/catalog/builtin/toggle")
+def tracker_toggle_builtin_seed(
+    request: Request,
+    seed_key: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        tr.toggle_builtin_catalog_seed(seed_key, db=db, current_user=user)
+    except Exception as e:
+        from urllib.parse import quote
+        msg = getattr(e, "detail", None) or str(e) or "Could not toggle"
+        return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
+
+@router.post("/tracker/catalog/category/toggle")
+def tracker_toggle_catalog_category(
+    request: Request,
+    category: str = Form(...),
+    enabled: str = Form("1"),
+    db: Session = Depends(get_db),
+):
+    from app.routers import tracker as tr
+    from app import schemas as sc
+    user = _tr_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        is_en = enabled in ("1", "true", "True", "on", "yes")
+        tr.toggle_catalog_category(sc.ShopCategoryToggleIn(category=category, enabled=is_en), db=db, current_user=user)
+    except Exception as e:
+        from urllib.parse import quote
+        msg = getattr(e, "detail", None) or str(e) or "Could not toggle category"
+        return RedirectResponse(f"/admin/tracker/catalog?err={quote(str(msg))}", status_code=302)
+    return RedirectResponse("/admin/tracker/catalog?ok=1", status_code=302)
+
 
 
 @router.get("/tracker/more", response_class=HTMLResponse)
