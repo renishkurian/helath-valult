@@ -1434,3 +1434,19 @@ class AutomationAuditLog(Base):
     status = Column(String(20), default="success", nullable=False)  # success | error | blocked
     ip = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class UserApiToken(Base):
+    """Personal API / Automation access token for OpenClaw / PicoClaw / external integrations."""
+    __tablename__ = "user_api_tokens"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False, default="OpenClaw Token")
+    token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    prefix = Column(String(16), nullable=False)  # e.g. "hv_pat_9a8b..."
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+

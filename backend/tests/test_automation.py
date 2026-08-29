@@ -35,3 +35,58 @@ def test_record_automation_audit():
         assert fetched.details == "Added 2L milk"
     finally:
         db.close()
+
+
+def test_user_api_token_generation_and_auth():
+    import uuid
+    from app import security
+    db = TestingSessionLocal()
+    try:
+        u_id = uuid.uuid4().hex
+        email = f"pat_{u_id[:8]}@test.com"
+        # Create a test user
+        user = models.User(
+            id=u_id,
+            email=email,
+            hashed_password=security.hash_password("testpass123"),
+            full_name="PAT Tester",
+            role="owner",
+        )
+        db.add(user)
+        db.commit()
+
+        token, token_hash, prefix = security.generate_api_token()
+        assert token.startswith("hv_pat_")
+        assert prefix.startswith("hv_pat_")
+
+        tok_id = uuid.uuid4().hex
+        tok_obj = models.UserApiToken(
+            id=tok_id,
+            user_id=user.id,
+            name="OpenClaw Test Token",
+            token_hash=token_hash,
+            prefix=prefix,
+        )
+        db.add(tok_obj)
+        db.commit()
+
+        # Lookup by hash
+        found = db.query(models.UserApiToken).filter_by(token_hash=security.hash_api_token(token)).first()
+        assert found is not None
+        assert found.user_id == user.id
+        assert found.name == "OpenClaw Test Token"
+
+        # Test FastAPI endpoint authentication using the Bearer token with app db override
+        app.dependency_overrides[get_db] = lambda: db
+        try:
+            client = TestClient(app)
+            res = client.get("/automation/logs", headers={"Authorization": f"Bearer {token}"})
+            assert res.status_code == 200
+            assert isinstance(res.json(), list)
+        finally:
+            app.dependency_overrides.clear()
+    finally:
+        db.close()
+
+
+

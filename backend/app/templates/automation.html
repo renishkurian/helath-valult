@@ -9,12 +9,90 @@
       Automation Audit Log
     </div>
     <h1 class="page-title">Automation & OpenClaw Activity</h1>
-    <p class="page-lead">Complete audit trail of all actions executed by OpenClaw, PicoClaw, AI assistants, and automated tasks.</p>
+    <p class="page-lead">Complete audit trail and Personal API Token management for OpenClaw, PicoClaw, AI assistants, and automated tasks.</p>
   </div>
   <div class="page-actions">
     <a class="btn btn-outline-light" href="/admin/automation"><i class="bi bi-arrow-clockwise"></i> Refresh</a>
   </div>
 </div>
+
+{% if new_token %}
+<div class="alert alert-success d-flex flex-column gap-2 mb-4" role="alert">
+  <div class="d-flex align-items-center gap-2">
+    <i class="bi bi-key-fill fs-5"></i>
+    <strong class="fs-6">New Personal Access Token Generated for '{{ new_token.name }}'!</strong>
+  </div>
+  <p class="mb-1 small">Please copy your token now. For security reasons, it will not be shown again:</p>
+  <div class="input-group">
+    <input type="text" class="form-control font-monospace bg-dark text-warning border-success" id="newTokenVal" value="{{ new_token.token }}" readonly>
+    <button class="btn btn-success" type="button" onclick="navigator.clipboard.writeText(document.getElementById('newTokenVal').value); this.innerText='Copied!';"><i class="bi bi-clipboard"></i> Copy Token</button>
+  </div>
+</div>
+{% endif %}
+
+<!-- API Tokens Section -->
+<div class="card mb-4 border-primary">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-2">
+      <span class="card-ico gold"><i class="bi bi-key"></i></span>
+      <div>
+        <h2 class="h6 mb-0">Personal API & Automation Tokens</h2>
+        <div class="card-sub small text-muted">Bind external tools & OpenClaw to your user profile without hardcoded credentials</div>
+      </div>
+    </div>
+    <button class="btn btn-sm btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#createTokenCollapse">
+      <i class="bi bi-plus-lg"></i> Generate New Token
+    </button>
+  </div>
+  <div class="collapse" id="createTokenCollapse">
+    <div class="card-body border-bottom bg-dark-subtle">
+      <form method="post" action="/admin/automation/tokens/create" class="row g-2 align-items-center">
+        <div class="col-sm-6 col-md-4">
+          <input type="text" class="form-control form-control-sm" name="name" placeholder="Token Name (e.g. OpenClaw Pi)" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg"></i> Create Token</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-hover align-middle mb-0">
+      <thead class="table-dark">
+        <tr>
+          <th>Token Name</th>
+          <th>Prefix</th>
+          <th>Created</th>
+          <th>Last Used</th>
+          <th style="width: 100px;">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if not tokens %}
+        <tr>
+          <td colspan="5" class="text-center py-3 text-muted small">
+            No API tokens generated yet. Click "Generate New Token" to create one for OpenClaw.
+          </td>
+        </tr>
+        {% endif %}
+        {% for tok in tokens %}
+        <tr>
+          <td><strong class="text-light">{{ tok.name }}</strong></td>
+          <td><code class="text-info">{{ tok.prefix }}</code></td>
+          <td class="small text-muted">{{ tok.created_at.strftime('%Y-%m-%d %H:%M') if tok.created_at else '—' }}</td>
+          <td class="small text-muted">{{ tok.last_used_at.strftime('%Y-%m-%d %H:%M') if tok.last_used_at else 'Never' }}</td>
+          <td>
+            <form method="post" action="/admin/automation/tokens/{{ tok.id }}/revoke" onsubmit="return confirm('Are you sure you want to revoke this token? External agents using it will be blocked.');">
+              <button class="btn btn-sm btn-outline-danger py-0 px-2" type="submit">Revoke</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-3">

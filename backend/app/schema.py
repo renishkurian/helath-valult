@@ -212,6 +212,9 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_automation_audit_action", "automation_audit_logs", "action"),
     ("ix_automation_audit_resource", "automation_audit_logs", "resource_type"),
     ("ix_automation_audit_created", "automation_audit_logs", "created_at"),
+    ("ix_user_api_tokens_user_id", "user_api_tokens", "user_id"),
+    ("ix_user_api_tokens_token_hash", "user_api_tokens", "token_hash"),
+    ("ix_user_api_tokens_revoked_at", "user_api_tokens", "revoked_at"),
 ]
 
 

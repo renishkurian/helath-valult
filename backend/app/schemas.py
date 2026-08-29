@@ -2124,6 +2124,33 @@ class AutomationAuditLogOut(BaseModel):
         from_attributes = True
 
 
+# ---------- User API Tokens ----------
+class UserApiTokenCreate(BaseModel):
+    name: str = Field(default="OpenClaw Token", min_length=1, max_length=100)
+
+
+class UserApiTokenCreatedOut(BaseModel):
+    id: str
+    name: str
+    prefix: str
+    token: str  # Plain token, returned only once upon creation
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UserApiTokenOut(BaseModel):
+    id: str
+    name: str
+    prefix: str
+    last_used_at: Optional[datetime] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 
 class ShopSummaryOut(BaseModel):
     lists: int = 0

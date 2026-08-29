@@ -68,3 +68,18 @@ def verify_totp(secret: str, code: str, window: int = 1) -> bool:
         if hmac.compare_digest(totp_code(secret, now + delta * 30), want):
             return True
     return False
+
+
+def generate_api_token() -> tuple[str, str, str]:
+    """Generate a personal API token: returns (plain_token, token_hash, prefix)."""
+    raw = secrets.token_hex(24)
+    token = f"hv_pat_{raw}"
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    prefix = f"hv_pat_{raw[:6]}..."
+    return token, token_hash, prefix
+
+
+def hash_api_token(token: str) -> str:
+    """Hash an incoming API token for database lookup."""
+    return hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+

@@ -1,3 +1,4 @@
+from datetime import datetime
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from app.database import get_db
 from app import models, security
 from app.login_guard import touch_last_seen
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 
 def vault_id(user: models.User) -> str:
@@ -57,7 +58,8 @@ def require_enabled_module(module_key: str):
 
 
 def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    request: Request,
+    token: str | None = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> models.User:
     credentials_error = HTTPException(
@@ -65,8 +67,45 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    # 1. Check Personal Access Token / API Token (hv_pat_...) in header or query or Bearer
+    raw_token = token
+    if not raw_token:
+        auth_header = request.headers.get("Authorization") or ""
+        if auth_header.startswith("Bearer "):
+            raw_token = auth_header[7:].strip()
+        elif auth_header.startswith("Token "):
+            raw_token = auth_header[6:].strip()
+    if not raw_token:
+        raw_token = request.headers.get("X-API-Token") or request.headers.get("X-Api-Key")
+
+    if raw_token and raw_token.startswith("hv_pat_"):
+        token_hash = security.hash_api_token(raw_token)
+        api_tok = (
+            db.query(models.UserApiToken)
+            .filter(
+                models.UserApiToken.token_hash == token_hash,
+                models.UserApiToken.revoked_at.is_(None),
+            )
+            .first()
+        )
+        if not api_tok or not api_tok.user:
+            raise credentials_error
+        api_tok.last_used_at = datetime.utcnow()
+        db.commit()
+        user = api_tok.user
+        from app.totp import is_blocked
+        if is_blocked(user):
+            raise HTTPException(status_code=403, detail="This account is blocked")
+        touch_last_seen(user)
+        return user
+
+    # 2. JWT Access Token verification
+    if not raw_token:
+        raise credentials_error
+
     try:
-        payload = security.decode_token(token)
+        payload = security.decode_token(raw_token)
         if payload.get("type") != "access":
             raise credentials_error
         user_id = payload.get("sub")
@@ -83,6 +122,7 @@ def get_current_user(
         raise HTTPException(status_code=403, detail="This account is blocked")
     touch_last_seen(user)
     return user
+
 
 
 def require_vault_unlock_if_needed(

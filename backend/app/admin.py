@@ -9004,6 +9004,16 @@ def automation_logs_page(
     openclaw_count = sum(1 for l in all_user_logs if l.actor in ("openclaw", "picoclaw"))
     shopping_count = sum(1 for l in all_user_logs if l.resource_type == "shopping")
 
+    # API Tokens
+    tokens = (
+        db.query(models.UserApiToken)
+        .filter(models.UserApiToken.user_id == user.id, models.UserApiToken.revoked_at.is_(None))
+        .order_by(models.UserApiToken.created_at.desc())
+        .all()
+    )
+
+    new_token = request.session.pop("new_api_token", None)
+
     return templates.TemplateResponse(
         "automation.html",
         {
@@ -9011,6 +9021,8 @@ def automation_logs_page(
             "session_user": user,
             "active_module": "automation",
             "logs": logs,
+            "tokens": tokens,
+            "new_token": new_token,
             "total_count": total_count,
             "openclaw_count": openclaw_count,
             "shopping_count": shopping_count,
@@ -9019,4 +9031,82 @@ def automation_logs_page(
             "active_action": action or "",
         },
     )
+
+
+@router.post("/automation/tokens/create")
+async def create_api_token_form(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    from app import security
+    from app.routers.automation import record_automation_audit
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    form = await request.form()
+    name = str(form.get("name") or "").strip() or "OpenClaw Token"
+
+    token, token_hash, prefix = security.generate_api_token()
+    token_obj = models.UserApiToken(
+        user_id=user.id,
+        name=name,
+        token_hash=token_hash,
+        prefix=prefix,
+        created_at=datetime.utcnow(),
+    )
+    db.add(token_obj)
+    db.commit()
+
+    record_automation_audit(
+        action="api_token_create",
+        resource_type="security",
+        resource_id=token_obj.id,
+        details=f"Created API token '{token_obj.name}' ({token_obj.prefix})",
+        user_id=vault_id(user),
+        actor="web",
+        db=db,
+    )
+
+    request.session["new_api_token"] = {
+        "name": token_obj.name,
+        "token": token,
+        "prefix": prefix,
+    }
+    return RedirectResponse("/admin/automation", status_code=302)
+
+
+@router.post("/automation/tokens/{token_id}/revoke")
+async def revoke_api_token_form(
+    request: Request,
+    token_id: str,
+    db: Session = Depends(get_db),
+):
+    from app.routers.automation import record_automation_audit
+
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+
+    tok = (
+        db.query(models.UserApiToken)
+        .filter(models.UserApiToken.id == token_id, models.UserApiToken.user_id == user.id)
+        .first()
+    )
+    if tok:
+        tok.revoked_at = datetime.utcnow()
+        db.commit()
+        record_automation_audit(
+            action="api_token_revoke",
+            resource_type="security",
+            resource_id=tok.id,
+            details=f"Revoked API token '{tok.name}' ({tok.prefix})",
+            user_id=vault_id(user),
+            actor="web",
+            db=db,
+        )
+
+    return RedirectResponse("/admin/automation", status_code=302)
+
 

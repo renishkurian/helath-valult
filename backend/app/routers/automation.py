@@ -1,13 +1,14 @@
 """Automation Audit Log Router & Recorder for OpenClaw / AI / Automated tasks."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db, SessionLocal
-from app import models, schemas
-from app.deps import get_current_user, require_enabled_module, vault_id
+from app import models, schemas, security
+from app.deps import get_current_user, require_enabled_module, vault_id, require_owner
 
 router = APIRouter(
     prefix="/automation",
@@ -96,3 +97,95 @@ def create_automation_log(
         ip=payload.ip,
         db=db,
     )
+
+
+# ---------- User API Tokens Management ----------
+
+@router.get("/tokens", response_model=list[schemas.UserApiTokenOut])
+def list_user_api_tokens(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """List all active API tokens for current user."""
+    return (
+        db.query(models.UserApiToken)
+        .filter(
+            models.UserApiToken.user_id == current_user.id,
+            models.UserApiToken.revoked_at.is_(None),
+        )
+        .order_by(models.UserApiToken.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/tokens", response_model=schemas.UserApiTokenCreatedOut, status_code=201)
+def create_user_api_token(
+    payload: schemas.UserApiTokenCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Create a new Personal API token for OpenClaw/PicoClaw/Automations."""
+    token, token_hash, prefix = security.generate_api_token()
+    token_obj = models.UserApiToken(
+        user_id=current_user.id,
+        name=payload.name.strip() or "OpenClaw Token",
+        token_hash=token_hash,
+        prefix=prefix,
+        created_at=datetime.utcnow(),
+    )
+    db.add(token_obj)
+    db.commit()
+    db.refresh(token_obj)
+
+    record_automation_audit(
+        action="api_token_create",
+        resource_type="security",
+        resource_id=token_obj.id,
+        details=f"Created API token '{token_obj.name}' ({token_obj.prefix})",
+        user_id=vault_id(current_user),
+        actor="web",
+        db=db,
+    )
+
+    return schemas.UserApiTokenCreatedOut(
+        id=token_obj.id,
+        name=token_obj.name,
+        prefix=token_obj.prefix,
+        token=token,
+        created_at=token_obj.created_at,
+    )
+
+
+@router.delete("/tokens/{token_id}")
+def revoke_user_api_token(
+    token_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Revoke an API token."""
+    tok = (
+        db.query(models.UserApiToken)
+        .filter(
+            models.UserApiToken.id == token_id,
+            models.UserApiToken.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not tok:
+        raise HTTPException(status_code=404, detail="API Token not found")
+
+    tok.revoked_at = datetime.utcnow()
+    db.commit()
+
+    record_automation_audit(
+        action="api_token_revoke",
+        resource_type="security",
+        resource_id=tok.id,
+        details=f"Revoked API token '{tok.name}' ({tok.prefix})",
+        user_id=vault_id(current_user),
+        actor="web",
+        db=db,
+    )
+
+    return {"status": "ok", "message": "API token revoked"}
+
