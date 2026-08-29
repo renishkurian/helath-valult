@@ -250,26 +250,66 @@
   }
   filterChips();
 
+  // Item edit bottom drawer
+  var editSheet = document.getElementById("shop-edit-sheet");
+  var editScrim = document.getElementById("shop-edit-scrim");
+  var editForm = document.getElementById("shop-edit-form");
+  var editName = document.getElementById("edit-item-name");
+  var editQty = document.getElementById("edit-item-qty");
+  var editUnit = document.getElementById("edit-item-unit");
+  var editPrice = document.getElementById("edit-item-price");
+  var editNotes = document.getElementById("edit-item-notes");
+
+  function closeEditDrawer() {
+    if (!editSheet) return;
+    editSheet.classList.remove("open");
+    editSheet.setAttribute("aria-hidden", "true");
+    if (editScrim) editScrim.classList.remove("open");
+  }
+
+  function openEditDrawer(btn) {
+    if (!editSheet || !editForm) return;
+    var action = btn.getAttribute("data-action") || "";
+    var name = btn.getAttribute("data-name") || "";
+    var qty = btn.getAttribute("data-quantity") || "1";
+    var unit = btn.getAttribute("data-unit") || "";
+    var price = btn.getAttribute("data-price") || "";
+    var notes = btn.getAttribute("data-notes") || "";
+
+    editForm.action = action;
+    if (editName) editName.value = name;
+    if (editQty) editQty.value = qty;
+    if (editUnit) editUnit.value = unit;
+    if (editPrice) editPrice.value = price;
+    if (editNotes) editNotes.value = notes;
+
+    editSheet.classList.add("open");
+    editSheet.setAttribute("aria-hidden", "false");
+    if (editScrim) editScrim.classList.add("open");
+    if (editName) {
+      setTimeout(function () {
+        editName.focus();
+        editName.select();
+      }, 150);
+    }
+  }
+
   root.addEventListener("click", function (e) {
     var btn = e.target.closest(".js-shop-edit");
-    if (!btn) return;
-    var form = document.getElementById(btn.getAttribute("aria-controls") || "");
-    if (!form) return;
-    var open = form.hidden;
-    form.hidden = !open;
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-    var block = btn.closest(".shop-swipe");
-    if (block) {
-      block.classList.toggle("editing", open);
-      if (open) {
-        block.classList.remove("swiped-left", "swiped-right");
-        var front = block.querySelector(".shop-swipe-front");
-        if (front) front.style.transform = "";
-      }
+    if (btn) {
+      e.preventDefault();
+      openEditDrawer(btn);
     }
-    if (open) {
-      var first = form.querySelector("input");
-      if (first) first.focus();
+  });
+
+  if (editScrim) editScrim.addEventListener("click", closeEditDrawer);
+  var editClose = document.getElementById("shop-edit-close");
+  if (editClose) editClose.addEventListener("click", closeEditDrawer);
+  var editCancel = document.getElementById("shop-edit-cancel");
+  if (editCancel) editCancel.addEventListener("click", closeEditDrawer);
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && editSheet && editSheet.classList.contains("open")) {
+      closeEditDrawer();
     }
   });
 
@@ -371,6 +411,7 @@
       if (toggleBusy) return;
       var active = document.activeElement;
       if (active && active.matches && active.matches("input, textarea, select")) return;
+      if (editSheet && editSheet.classList.contains("open")) return;
       if (root.querySelector(".shop-edit-form:not([hidden])")) return;
       fetch(liveUrl, { headers: { Accept: "application/json" } })
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -453,6 +494,7 @@
     }
 
     function onStart(el, x, y) {
+      if (editSheet && editSheet.classList.contains("open")) return;
       if (el.classList.contains("editing") || el.querySelector(".shop-edit-form:not([hidden])")) return;
       closeOpen(el);
       el._sx = x;

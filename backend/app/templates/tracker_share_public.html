@@ -79,17 +79,13 @@
             </span>
           </span>
           <div class="shop-row-actions">
-            <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit" aria-expanded="false" aria-controls="edit-{{ item.id }}"><i class="bi bi-pencil"></i></button>
+            <button class="btn btn-ghost js-shop-edit" type="button" aria-label="Edit"
+                    data-action="/tracker/public/{{ token }}/items/{{ item.id }}/edit"
+                    data-name="{{ item.name }}"
+                    data-quantity="{{ item.quantity }}"
+                    data-unit="{{ item.unit or '' }}"><i class="bi bi-pencil"></i></button>
           </div>
         </div>
-        <form class="shop-edit-form" id="edit-{{ item.id }}" hidden method="post" action="/tracker/public/{{ token }}/items/{{ item.id }}/edit">
-          <div class="row g-2 align-items-end">
-            <div class="col-6"><label class="form-label">Name</label><input class="form-control" name="name" value="{{ item.name }}" required></div>
-            <div class="col-3"><label class="form-label">Qty</label><input class="form-control" name="quantity" type="number" step="0.01" min="0" value="{{ item.quantity }}"></div>
-            <div class="col-3"><label class="form-label">Unit</label><input class="form-control" name="unit" value="{{ item.unit or '' }}"></div>
-            <div class="col-12"><button class="btn btn-primary w-100" type="submit">Save</button></div>
-          </div>
-        </form>
       </div>
       {% endfor %}
     </div>
@@ -120,7 +116,38 @@
     </form>
   </div>
 </div>
-<script src="/static/shop-list.js?v=10"></script>
+
+<div class="sheet-scrim" id="shop-edit-scrim"></div>
+<div class="sheet shop-edit-sheet" id="shop-edit-sheet" role="dialog" aria-modal="true" aria-labelledby="shop-edit-title" aria-hidden="true">
+  <div class="sheet-grip"></div>
+  <div class="sheet-head">
+    <strong id="shop-edit-title"><i class="bi bi-pencil-square me-1"></i> Edit item</strong>
+    <button class="btn btn-ghost btn-icon btn-sm sheet-x" type="button" id="shop-edit-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+  </div>
+  <div class="sheet-body">
+    <form id="shop-edit-form" method="post" action="">
+      <div class="mb-3">
+        <label class="form-label" for="edit-item-name">Item Name</label>
+        <input class="form-control" id="edit-item-name" name="name" required placeholder="Item name">
+      </div>
+      <div class="row g-2 mb-4">
+        <div class="col-6">
+          <label class="form-label" for="edit-item-qty">Quantity</label>
+          <input class="form-control" id="edit-item-qty" name="quantity" type="number" step="0.01" min="0" placeholder="1">
+        </div>
+        <div class="col-6">
+          <label class="form-label" for="edit-item-unit">Unit</label>
+          <input class="form-control" id="edit-item-unit" name="unit" placeholder="kg, pkts, pcs">
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-light w-50" type="button" id="shop-edit-cancel">Cancel</button>
+        <button class="btn btn-primary w-50" type="submit">Save changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script src="/static/shop-list.js?v=11"></script>
 <script>
 (function(){
   var guest = document.getElementById("guest");
