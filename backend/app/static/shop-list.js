@@ -250,6 +250,31 @@
   }
   filterChips();
 
+  // Add item bottom drawer
+  var addSheet = document.getElementById("shop-add-sheet");
+  var addScrim = document.getElementById("shop-add-scrim");
+
+  function closeAddDrawer() {
+    if (!addSheet) return;
+    addSheet.classList.remove("open");
+    addSheet.setAttribute("aria-hidden", "true");
+    if (addScrim) addScrim.classList.remove("open");
+    if (suggestBox) suggestBox.hidden = true;
+  }
+
+  function openAddDrawer() {
+    if (!addSheet) return;
+    closeEditDrawer();
+    addSheet.classList.add("open");
+    addSheet.setAttribute("aria-hidden", "false");
+    if (addScrim) addScrim.classList.add("open");
+    if (nameInput) {
+      setTimeout(function () {
+        nameInput.focus();
+      }, 150);
+    }
+  }
+
   // Item edit bottom drawer
   var editSheet = document.getElementById("shop-edit-sheet");
   var editScrim = document.getElementById("shop-edit-scrim");
@@ -269,6 +294,7 @@
 
   function openEditDrawer(btn) {
     if (!editSheet || !editForm) return;
+    closeAddDrawer();
     var action = btn.getAttribute("data-action") || "";
     var name = btn.getAttribute("data-name") || "";
     var qty = btn.getAttribute("data-quantity") || "1";
@@ -295,12 +321,33 @@
   }
 
   root.addEventListener("click", function (e) {
-    var btn = e.target.closest(".js-shop-edit");
-    if (btn) {
+    var editBtn = e.target.closest(".js-shop-edit");
+    if (editBtn) {
       e.preventDefault();
-      openEditDrawer(btn);
+      openEditDrawer(editBtn);
+      return;
+    }
+    var addBtn = e.target.closest(".js-shop-open-add");
+    if (addBtn) {
+      e.preventDefault();
+      openAddDrawer();
+      return;
     }
   });
+
+  document.addEventListener("click", function (e) {
+    var addBtn = e.target.closest(".js-shop-open-add");
+    if (addBtn && !root.contains(addBtn)) {
+      e.preventDefault();
+      openAddDrawer();
+    }
+  });
+
+  if (addScrim) addScrim.addEventListener("click", closeAddDrawer);
+  var addClose = document.getElementById("shop-add-close");
+  if (addClose) addClose.addEventListener("click", closeAddDrawer);
+  var addCancel = document.getElementById("shop-add-cancel");
+  if (addCancel) addCancel.addEventListener("click", closeAddDrawer);
 
   if (editScrim) editScrim.addEventListener("click", closeEditDrawer);
   var editClose = document.getElementById("shop-edit-close");
@@ -308,8 +355,9 @@
   var editCancel = document.getElementById("shop-edit-cancel");
   if (editCancel) editCancel.addEventListener("click", closeEditDrawer);
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && editSheet && editSheet.classList.contains("open")) {
-      closeEditDrawer();
+    if (e.key === "Escape") {
+      if (editSheet && editSheet.classList.contains("open")) closeEditDrawer();
+      if (addSheet && addSheet.classList.contains("open")) closeAddDrawer();
     }
   });
 
@@ -412,6 +460,7 @@
       var active = document.activeElement;
       if (active && active.matches && active.matches("input, textarea, select")) return;
       if (editSheet && editSheet.classList.contains("open")) return;
+      if (addSheet && addSheet.classList.contains("open")) return;
       if (root.querySelector(".shop-edit-form:not([hidden])")) return;
       fetch(liveUrl, { headers: { Accept: "application/json" } })
         .then(function (r) { return r.ok ? r.json() : null; })
@@ -495,6 +544,7 @@
 
     function onStart(el, x, y) {
       if (editSheet && editSheet.classList.contains("open")) return;
+      if (addSheet && addSheet.classList.contains("open")) return;
       if (el.classList.contains("editing") || el.querySelector(".shop-edit-form:not([hidden])")) return;
       closeOpen(el);
       el._sx = x;

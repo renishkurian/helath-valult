@@ -2539,7 +2539,8 @@ body.ask-ai .app-main{
     transform:translateY(0);
   }
 }
-#shop-edit-scrim{
+#shop-edit-scrim,
+#shop-add-scrim{
   z-index:1070;
 }
 .shop-edit-form{
@@ -2600,9 +2601,9 @@ body.ask-ai .app-main{
 }
 .shop-ai-toggle input{ margin:0; }
 .shop-suggest{
-  position:absolute; left:0; right:0; top:100%; z-index:40;
-  background:var(--v-surface); border:1px solid var(--v-line); border-radius:.75rem;
-  margin-top:.25rem; max-height:16rem; overflow:auto; box-shadow:0 12px 32px rgba(0,0,0,.35);
+  position:absolute; left:0; right:0; top:100%; z-index:1085;
+  background:var(--v-surface-2, #1b202c); border:1px solid var(--v-line-2); border-radius:.75rem;
+  margin-top:.25rem; max-height:16rem; overflow:auto; box-shadow:var(--v-sh-3);
 }
 .shop-suggest-row{
   display:flex; justify-content:space-between; gap:.75rem; width:100%;

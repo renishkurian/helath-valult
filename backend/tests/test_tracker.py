@@ -190,7 +190,7 @@ def test_admin_list_detail_renders_quick_add():
     assert "Internal Server Error" not in page.text
     assert "Live" in page.text
     assert "app-tabbar" in page.text
-    assert "has-composer" in page.text
+    assert "shop-add-sheet" in page.text
     assert "Add bill copy" in page.text
     assert "Open statements" not in page.text
     assert "Family on this list" not in page.text
