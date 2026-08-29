@@ -73,6 +73,19 @@ def delete_provider(db: Session, user: models.User, provider_id: str) -> bool:
     return True
 
 
+def set_default_provider(db: Session, user: models.User, provider_id: str) -> models.AiProvider | None:
+    uid = _uid(user)
+    row = get_provider(db, user, provider_id)
+    if not row:
+        return None
+    db.query(models.AiProvider).filter(models.AiProvider.user_id == uid).update({"is_default": False})
+    row.is_default = True
+    row.enabled = True
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 def provider_out(row: models.AiProvider) -> dict:
     return {
         "id": row.id,

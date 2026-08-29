@@ -49,6 +49,19 @@ def create_provider(
     return _out(row)
 
 
+@router.post("/providers/{provider_id}/default", response_model=schemas.AiProviderOut)
+def set_default_provider(
+    provider_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = ap.set_default_provider(db, current_user, provider_id)
+    if not row:
+        raise HTTPException(404, "Provider not found")
+    return _out(row)
+
+
 @router.delete("/providers/{provider_id}")
 def delete_provider(
     provider_id: str,

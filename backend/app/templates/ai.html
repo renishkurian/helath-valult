@@ -22,6 +22,8 @@
 
 {% if request.query_params.get('ok') == 'saved' %}
 <div class="alert alert-success" role="alert">Provider saved.</div>
+{% elif request.query_params.get('ok') == 'default_updated' %}
+<div class="alert alert-success" role="alert">Default AI provider updated.</div>
 {% elif request.query_params.get('ok') == 'tested' %}
 <div class="alert alert-success" role="alert">Connection ok: {{ request.query_params.get('sample') }}</div>
 {% elif request.query_params.get('err') %}
@@ -137,6 +139,11 @@
             {% endif %}
           </div>
           <div class="row-actions flex-wrap">
+            {% if not k.is_default %}
+            <form method="post" action="/admin/ai/providers/{{ k.id }}/default">
+              <button class="btn btn-sm btn-outline-warning" type="submit" title="Make this the default AI provider"><i class="bi bi-star"></i> Set default</button>
+            </form>
+            {% endif %}
             <form method="post" action="/admin/ai/providers/{{ k.id }}/test">
               <button class="btn btn-sm btn-outline-secondary" type="submit"><i class="bi bi-lightning"></i> Test</button>
             </form>

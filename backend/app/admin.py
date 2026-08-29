@@ -7173,6 +7173,16 @@ def ai_provider_add(
     return RedirectResponse("/admin/ai/providers?ok=saved", status_code=302)
 
 
+@router.post("/ai/providers/{provider_id}/default")
+def ai_provider_set_default(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import ai_providers as ap
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ap.set_default_provider(db, user, provider_id)
+    return RedirectResponse("/admin/ai/providers?ok=default_updated", status_code=302)
+
+
 @router.post("/ai/providers/{provider_id}/delete")
 def ai_provider_delete(provider_id: str, request: Request, db: Session = Depends(get_db)):
     from app import ai_providers as ap

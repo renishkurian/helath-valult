@@ -66,3 +66,28 @@ def test_create_via_finance_alias_writes_shared():
     assert r.status_code == 200, r.text
     shared = client.get("/ai/providers", headers=headers).json()
     assert any(p["name"] == "Via Finance" and p["has_key"] for p in shared)
+
+
+def test_set_default_provider():
+    headers, email = _headers()
+    p1 = client.post("/ai/providers", headers=headers, json={
+        "name": "Provider 1", "kind": "custom", "is_default": True,
+        "base_url": "http://192.168.1.10:8080/v1", "model": "gemma-4",
+    }).json()
+    p2 = client.post("/ai/providers", headers=headers, json={
+        "name": "Provider 2", "kind": "custom", "is_default": False,
+        "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini",
+    }).json()
+
+    assert p1["is_default"] is True
+    assert p2["is_default"] is False
+
+    # Switch default to Provider 2 via API
+    switched = client.post(f"/ai/providers/{p2['id']}/default", headers=headers)
+    assert switched.status_code == 200, switched.text
+    assert switched.json()["is_default"] is True
+
+    providers = client.get("/ai/providers", headers=headers).json()
+    by_id = {p["id"]: p for p in providers}
+    assert by_id[p1["id"]]["is_default"] is False
+    assert by_id[p2["id"]]["is_default"] is True
