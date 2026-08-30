@@ -2314,7 +2314,21 @@ body.ask-ai .app-main{
   background:var(--v-gold-soft); border-color:var(--v-gold-line);
   border-bottom-right-radius:6px;
 }
-.ask-turn.assistant .ask-bubble{ border-bottom-left-radius:6px; }
+.ask-time{
+  display:block;
+  font-size:.6875rem;
+  color:var(--v-ink-3);
+  margin-top:.35rem;
+  line-height:1;
+  user-select:none;
+}
+.ask-turn.user .ask-time{
+  text-align:right;
+  color:rgba(228,195,122,.7);
+}
+.ask-turn.assistant .ask-time{
+  text-align:left;
+}
 .ask-bubble p{ margin:0 0 .7em; }
 .ask-bubble p:last-child{ margin-bottom:0; }
 .ask-bubble h3{ font-size:1rem; margin:1em 0 .4em; }

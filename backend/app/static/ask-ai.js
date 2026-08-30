@@ -274,7 +274,27 @@
     return wrap;
   }
 
-  function bubble(role, content, typing) {
+  function fmtMsgTime(iso) {
+    if (!iso) {
+      var d = new Date();
+      return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    }
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    var now = new Date();
+    var startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    var startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    var dayMs = 86400000;
+    var dayDiff = Math.round((startToday - startThat) / dayMs);
+    var time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    if (dayDiff === 0) return time;
+    if (dayDiff === 1) return "Yesterday · " + time;
+    var dateOpts = { day: "numeric", month: "short" };
+    if (d.getFullYear() !== now.getFullYear()) dateOpts.year = "numeric";
+    return d.toLocaleDateString(undefined, dateOpts) + " · " + time;
+  }
+
+  function bubble(role, content, typing, createdAt) {
     var turn = document.createElement("div");
     turn.className = "ask-turn " + (role === "user" ? "user" : "assistant");
     var ico = role === "user" ? "bi-person" : "bi-stars";
@@ -286,8 +306,16 @@
       var parts = splitAction(content);
       bubbleEl.innerHTML = renderMd(parts.text);
       if (parts.action) bubbleEl.appendChild(actionCard(parts.action));
+      var timeEl = document.createElement("span");
+      timeEl.className = "ask-time";
+      timeEl.textContent = fmtMsgTime(createdAt);
+      bubbleEl.appendChild(timeEl);
     } else {
       bubbleEl.innerHTML = renderMd(content);
+      var timeEl = document.createElement("span");
+      timeEl.className = "ask-time";
+      timeEl.textContent = fmtMsgTime(createdAt);
+      bubbleEl.appendChild(timeEl);
     }
     turn.innerHTML = '<div class="ask-avatar" aria-hidden="true"><i class="bi ' + ico + '"></i></div>';
     turn.appendChild(bubbleEl);
@@ -308,7 +336,7 @@
   function renderMessages(messages) {
     msgsEl.innerHTML = "";
     (messages || []).forEach(function (m) {
-      msgsEl.appendChild(bubble(m.role, m.content, false));
+      msgsEl.appendChild(bubble(m.role, m.content, false, m.created_at));
     });
     showConversation((messages || []).length > 0);
     toBottom();
