@@ -7,6 +7,7 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+LOGIN_SCOPE = "openid email profile"
 DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email"
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -14,6 +15,32 @@ DRIVE_FILES = "https://www.googleapis.com/drive/v3/files"
 DRIVE_UPLOAD = "https://www.googleapis.com/upload/drive/v3/files"
 USERINFO = "https://www.googleapis.com/oauth2/v2/userinfo"
 FOLDER_NAME = "Health Vault Backups"
+
+
+def login_auth_url(client_id: str, redirect_uri: str, state: str) -> str:
+    q = urllib.parse.urlencode({
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": LOGIN_SCOPE,
+        "prompt": "select_account",
+        "state": state,
+    })
+    return f"{AUTH_URL}?{q}"
+
+
+def user_profile(access_token: str) -> dict[str, Any]:
+    """Fetch user profile (email, name, picture, verified_email) from Google userinfo endpoint."""
+    try:
+        info = _request_json(USERINFO, access_token)
+        return {
+            "email": (info.get("email") or "").strip().lower(),
+            "name": (info.get("name") or "").strip(),
+            "picture": info.get("picture"),
+            "verified_email": info.get("verified_email", True),
+        }
+    except Exception:
+        return {}
 
 
 def auth_url(client_id: str, redirect_uri: str, state: str) -> str:

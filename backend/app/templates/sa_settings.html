@@ -59,7 +59,11 @@
         <span class="badge {% if google_ready %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if google_ready %}Ready{% else %}Not set{% endif %}</span>
       </div>
       <div class="card-body">
-        <p class="text-muted mb-3">Create one Web client in Google Cloud, enable Drive API and Gmail API, then paste it here. Do not ask family members to do this.</p>
+        <p class="text-muted mb-3">Create one Web client in Google Cloud, enable Drive API and Gmail API, then paste it here. This enables Google Sign-in, Drive Backups, and Expense Analyser for all family members.</p>
+        <div class="mb-3">
+          <label class="form-label" for="login-redirect">Google Sign-In redirect URI</label>
+          <input class="form-control js-copyable" id="login-redirect" type="text" readonly value="{{ login_redirect_uri }}">
+        </div>
         <div class="mb-3">
           <label class="form-label" for="drive-redirect">Drive redirect URI</label>
           <input class="form-control js-copyable" id="drive-redirect" type="text" readonly value="{{ redirect_uri }}">
@@ -67,7 +71,7 @@
         <div class="mb-3">
           <label class="form-label" for="gmail-redirect">Expense Analyser (Gmail) redirect URI</label>
           <input class="form-control js-copyable" id="gmail-redirect" type="text" readonly value="{{ gmail_redirect_uri }}">
-          <div class="form-text">Add both exact URIs (and any other hostname you use) on the Google client.</div>
+          <div class="form-text">Add all three exact redirect URIs in your Google Cloud Console Web client.</div>
         </div>
         <form method="post" action="/admin/sa/settings/google" class="stack">
           <div>

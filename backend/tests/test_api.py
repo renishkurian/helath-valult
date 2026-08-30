@@ -840,3 +840,19 @@ def test_privacy_and_terms_pages():
     assert "Acceptance of Terms" in r_terms.text
 
 
+def test_google_login_routes():
+    # 1. Start route without setting returns 400 or redirect depending on setup
+    r = client.get("/admin/login/google", follow_redirects=False)
+    assert r.status_code in (302, 400)
+
+    # 2. Callback with missing or mismatched state
+    r_cb = client.get("/admin/login/google/callback?code=abc&state=badstate")
+    assert r_cb.status_code == 400
+    assert "expired" in r_cb.text or "mismatch" in r_cb.text
+
+    # 3. Callback with error parameter
+    r_err = client.get("/admin/login/google/callback?error=access_denied")
+    assert r_err.status_code == 400
+    assert "cancelled" in r_err.text or "Google sign-in was cancelled" in r_err.text
+
+

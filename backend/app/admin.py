@@ -223,31 +223,48 @@ def _admin_save_document_bytes(
 
 
 # ---------- Login / logout ----------
-def _login_ctx(request: Request, error=None):
+def _google_login_ready(db: Session) -> bool:
+    from app.drive_backup import oauth_ready
+    return oauth_ready(db)
+
+
+def _google_login_redirect_uri(request: Request) -> str:
+    return str(request.base_url).rstrip("/") + "/admin/login/google/callback"
+
+
+def _login_ctx(request: Request, error=None, db: Session | None = None):
     from app.login_guard import recaptcha_public_key
+    google_ready = False
+    if db is not None:
+        google_ready = _google_login_ready(db)
     return {
         "request": request,
         "error": error,
         "recaptcha_site_key": recaptcha_public_key(),
+        "google_login_ready": google_ready,
     }
 
 
-def _signup_ctx(request: Request, error=None, email="", full_name=""):
+def _signup_ctx(request: Request, error=None, email="", full_name="", db: Session | None = None):
     from app.login_guard import recaptcha_public_key
+    google_ready = False
+    if db is not None:
+        google_ready = _google_login_ready(db)
     return {
         "request": request,
         "error": error,
         "email": email or "",
         "full_name": full_name or "",
         "recaptcha_site_key": recaptcha_public_key(),
+        "google_login_ready": google_ready,
     }
 
 
 @router.get("/signup", response_class=HTMLResponse)
-def signup_form(request: Request):
+def signup_form(request: Request, db: Session = Depends(get_db)):
     if request.session.get("user_id"):
         return RedirectResponse("/admin/modules", status_code=302)
-    return templates.TemplateResponse("signup.html", _signup_ctx(request))
+    return templates.TemplateResponse("signup.html", _signup_ctx(request, db=db))
 
 
 @router.post("/signup", response_class=HTMLResponse)
@@ -268,7 +285,7 @@ async def signup_submit(request: Request, db: Session = Depends(get_db)):
     def _fail(msg: str, code: int = 400):
         return templates.TemplateResponse(
             "signup.html",
-            _signup_ctx(request, msg, email=email, full_name=full_name),
+            _signup_ctx(request, msg, email=email, full_name=full_name, db=db),
             status_code=code,
         )
 
@@ -293,14 +310,14 @@ async def signup_submit(request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login_form(request: Request):
+def login_form(request: Request, db: Session = Depends(get_db)):
     if request.session.get("user_id"):
         return RedirectResponse("/admin/modules", status_code=302)
     if request.session.get("totp_pending"):
         return RedirectResponse("/admin/login/2fa", status_code=302)
     if request.session.get("qr_email") or request.session.get("qr_payload"):
         return RedirectResponse("/admin/login/qr", status_code=302)
-    return templates.TemplateResponse("login.html", _login_ctx(request))
+    return templates.TemplateResponse("login.html", _login_ctx(request, db=db))
 
 
 @router.post("/login", response_class=HTMLResponse)
@@ -316,7 +333,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
         recaptcha_token=token, check_recaptcha=True,
     )
     if err or not user:
-        return templates.TemplateResponse("login.html", _login_ctx(request, err or "Incorrect email or password"), status_code=401)
+        return templates.TemplateResponse("login.html", _login_ctx(request, err or "Incorrect email or password", db=db), status_code=401)
     request.session.pop("totp_pending", None)
     request.session.pop("login_challenge_id", None)
     if totp_util.needs_step_up(user):
@@ -328,6 +345,134 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
         request.session["login_challenge_id"] = challenge.id
         notify_devices(db, user, challenge)
         return RedirectResponse("/admin/login/2fa", status_code=302)
+    request.session["user_id"] = user.id
+    return RedirectResponse("/admin/modules", status_code=302)
+
+
+@router.get("/login/google")
+def login_google_start(request: Request, db: Session = Depends(get_db)):
+    """Initiate Google OAuth login flow."""
+    from app.drive_backup import oauth_creds
+    from app import gdrive
+    if request.session.get("user_id"):
+        return RedirectResponse("/admin/modules", status_code=302)
+    if not _google_login_ready(db):
+        return templates.TemplateResponse(
+            "login.html",
+            _login_ctx(request, "Google login is not configured in Super Admin settings yet.", db=db),
+            status_code=400,
+        )
+    client_id, _secret = oauth_creds(db, None)
+    state = secrets.token_urlsafe(24)
+    request.session["google_login_state"] = state
+    redirect_uri = _google_login_redirect_uri(request)
+    url = gdrive.login_auth_url(client_id, redirect_uri, state)
+    return RedirectResponse(url, status_code=302)
+
+
+@router.get("/login/google/callback")
+def login_google_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    db: Session = Depends(get_db),
+):
+    """Handle Google OAuth redirect and sign in or create user account."""
+    from app.drive_backup import oauth_creds
+    from app.login_guard import client_ip, client_ua
+    from app.accounts import create_vault_user
+    from app import gdrive, totp as totp_util
+
+    if error:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_ctx(request, f"Google sign-in was cancelled ({error}).", db=db),
+            status_code=400,
+        )
+
+    expected_state = request.session.pop("google_login_state", None)
+    if not code or not state or state != expected_state:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_ctx(request, "Google sign-in session expired or state mismatch. Please try again.", db=db),
+            status_code=400,
+        )
+
+    if not _google_login_ready(db):
+        return templates.TemplateResponse(
+            "login.html",
+            _login_ctx(request, "Google login is not configured in Super Admin settings.", db=db),
+            status_code=400,
+        )
+
+    client_id, client_secret = oauth_creds(db, None)
+    redirect_uri = _google_login_redirect_uri(request)
+    try:
+        tokens = gdrive.exchange_code(client_id, client_secret, code, redirect_uri)
+        access = tokens.get("access_token")
+        if not access:
+            raise ValueError("Google did not return an access token")
+        profile = gdrive.user_profile(access)
+    except Exception as exc:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_ctx(request, f"Could not authenticate with Google: {exc}", db=db),
+            status_code=400,
+        )
+
+    google_email = (profile.get("email") or "").strip().lower()
+    if not google_email:
+        return templates.TemplateResponse(
+            "login.html",
+            _login_ctx(request, "Google did not provide a verified email address.", db=db),
+            status_code=400,
+        )
+
+    # Check if user already exists
+    user = db.query(models.User).filter(models.User.email == google_email).first()
+    if user:
+        if user.blocked:
+            from app.login_guard import record_attempt
+            record_attempt(db, google_email, client_ip(request), client_ua(request), False, "blocked")
+            return templates.TemplateResponse(
+                "login.html",
+                _login_ctx(request, "Your account has been blocked. Contact your super administrator.", db=db),
+                status_code=403,
+            )
+    else:
+        # Create user account for first-time Google sign in
+        full_name = profile.get("name") or google_email.split("@")[0]
+        # Generate random secure internal password since user logs in via Google OAuth
+        random_pw = secrets.token_urlsafe(32)
+        try:
+            user = create_vault_user(
+                db, email=google_email, password=random_pw, full_name=full_name,
+                role=models.UserRole.owner.value,
+            )
+        except Exception as exc:
+            return templates.TemplateResponse(
+                "login.html",
+                _login_ctx(request, f"Failed to create vault account for {google_email}: {exc}", db=db),
+                status_code=500,
+            )
+
+    # Log successful login attempt
+    from app.login_guard import record_attempt
+    record_attempt(db, google_email, client_ip(request), client_ua(request), True, "google_oauth")
+
+    # Handle 2FA / TOTP / Phone approval if enabled
+    request.session.pop("totp_pending", None)
+    request.session.pop("login_challenge_id", None)
+    if totp_util.needs_step_up(user):
+        from app.login_challenge import create_challenge, notify_devices
+        request.session.pop("user_id", None)
+        request.session["totp_pending"] = security.create_totp_pending_token(user.id)
+        challenge = create_challenge(db, user, client_ip(request), client_ua(request))
+        request.session["login_challenge_id"] = challenge.id
+        notify_devices(db, user, challenge)
+        return RedirectResponse("/admin/login/2fa", status_code=302)
+
     request.session["user_id"] = user.id
     return RedirectResponse("/admin/modules", status_code=302)
 
