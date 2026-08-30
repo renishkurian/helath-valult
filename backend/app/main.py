@@ -120,6 +120,18 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/privacy", response_class=HTMLResponse)
+def privacy_page(request: Request):
+    """Public privacy policy page for Google OAuth compliance and user transparency."""
+    return _templates.TemplateResponse(request, "privacy.html", {})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+def terms_page(request: Request):
+    """Public terms of service page."""
+    return _templates.TemplateResponse(request, "terms.html", {})
+
+
 @app.get("/s/{token}")
 def short_share(token: str):
     """Short URL for a hospital front-desk browser: /s/<token> → public HTML page."""

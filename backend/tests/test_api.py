@@ -826,3 +826,17 @@ def test_password_vault_login_totp_trash_send_health():
     assert client.get(f"/vault/items/{item_id}", headers=other_h).status_code == 404
     assert client.get("/vault/items", headers=other_h).json() == []
 
+
+def test_privacy_and_terms_pages():
+    r_priv = client.get("/privacy")
+    assert r_priv.status_code == 200
+    assert "Privacy Policy" in r_priv.text
+    assert "Google API Services User Data Policy" in r_priv.text
+    assert "gmail.readonly" in r_priv.text
+
+    r_terms = client.get("/terms")
+    assert r_terms.status_code == 200
+    assert "Terms of Service" in r_terms.text
+    assert "Acceptance of Terms" in r_terms.text
+
+
