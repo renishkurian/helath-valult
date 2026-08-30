@@ -147,7 +147,7 @@
             <div class="sa-access-actions">
               <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
               <form method="post" action="/admin/sa/users/{{ u.id }}/unblock">
-                <button class="btn btn-outline-light btn-sm" type="submit">Unblock</button>
+                <button class="btn btn-outline-success btn-sm" type="submit"><i class="bi bi-check-circle"></i> Unblock</button>
               </form>
             </div>
             {% else %}
@@ -155,7 +155,7 @@
               <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
               <form method="post" action="/admin/sa/users/{{ u.id }}/block"
                     data-confirm="Block this account? They will not be able to sign in.">
-                <button class="btn btn-ghost btn-sm" type="submit">Block</button>
+                <button class="btn btn-outline-danger btn-sm" type="submit"><i class="bi bi-slash-circle"></i> Block</button>
               </form>
             </div>
             {% endif %}
