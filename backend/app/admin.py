@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, security, crypto
 from app.config import settings
-from app.deps import vault_id, is_viewer
+from app.deps import vault_id, is_viewer, public_origin
 from app.templating import setup_templates
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -230,7 +230,7 @@ def _google_login_ready(db: Session) -> bool:
 
 
 def _google_login_redirect_uri(request: Request) -> str:
-    return str(request.base_url).rstrip("/") + "/admin/login/google/callback"
+    return public_origin(request) + "/admin/login/google/callback"
 
 
 def _login_ctx(request: Request, error=None, db: Session | None = None):
@@ -3417,7 +3417,7 @@ def storage_snapshot(request: Request, db: Session = Depends(get_db)):
 
 
 def _drive_redirect_uri(request: Request) -> str:
-    return str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
+    return public_origin(request) + "/admin/storage/google/callback"
 
 
 @router.post("/storage/google")
@@ -7397,7 +7397,7 @@ def _ea_user(request, db):
 
 
 def _ea_redirect_uri(request: Request) -> str:
-    return str(request.base_url).rstrip("/") + "/admin/expense-analyser/google/callback"
+    return public_origin(request) + "/admin/expense-analyser/google/callback"
 
 
 @router.get("/expense-analyser", response_class=HTMLResponse)

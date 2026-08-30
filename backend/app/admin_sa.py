@@ -13,7 +13,7 @@ from app.accounts import AccountExists, create_vault_user
 from app.admin import require_login, templates
 from app.config import settings
 from app.database import get_db
-from app.deps import is_superadmin
+from app.deps import is_superadmin, public_origin
 from app.login_guard import is_online, online_since
 
 router = APIRouter(prefix="/admin/sa", tags=["superadmin"])
@@ -368,9 +368,9 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
     user = _sa_user(request, db)
     if not user:
         return _deny(require_login(request, db))
-    redirect_uri = str(request.base_url).rstrip("/") + "/admin/storage/google/callback"
-    gmail_redirect_uri = str(request.base_url).rstrip("/") + "/admin/expense-analyser/google/callback"
-    login_redirect_uri = str(request.base_url).rstrip("/") + "/admin/login/google/callback"
+    redirect_uri = public_origin(request) + "/admin/storage/google/callback"
+    gmail_redirect_uri = public_origin(request) + "/admin/expense-analyser/google/callback"
+    login_redirect_uri = public_origin(request) + "/admin/login/google/callback"
     fcm = fcm_service_account(db)
     mail_cfg = mail_config(db)
     return templates.TemplateResponse("sa_settings.html", _sa_ctx(

@@ -177,3 +177,12 @@ def get_owned_person(
     if allowed is not None and person.id not in allowed:
         raise HTTPException(status_code=404, detail="Person not found")
     return person
+
+
+def public_origin(request: Request) -> str:
+    """Compute external/public origin (e.g. https://bucket.rklab.online) respecting reverse proxies."""
+    proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    if not proto:
+        proto = request.url.scheme or "http"
+    host = (request.headers.get("x-forwarded-host") or "").split(",")[0].strip() or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}".rstrip("/")
