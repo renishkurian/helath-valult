@@ -22,6 +22,8 @@
 
 {% if request.query_params.get('ok') == 'saved' %}
 <div class="alert alert-success" role="alert">Provider saved.</div>
+{% elif request.query_params.get('ok') == 'updated' %}
+<div class="alert alert-success" role="alert">Provider configuration updated.</div>
 {% elif request.query_params.get('ok') == 'default_updated' %}
 <div class="alert alert-success" role="alert">Default AI provider updated.</div>
 {% elif request.query_params.get('ok') == 'tested' %}
@@ -139,6 +141,7 @@
             {% endif %}
           </div>
           <div class="row-actions flex-wrap">
+            <button class="btn btn-sm btn-outline-light" type="button" data-bs-toggle="modal" data-bs-target="#edit-provider-{{ k.id }}" title="Edit configuration"><i class="bi bi-pencil"></i> Edit</button>
             {% if not k.is_default %}
             <form method="post" action="/admin/ai/providers/{{ k.id }}/default">
               <button class="btn btn-sm btn-outline-warning" type="submit" title="Make this the default AI provider"><i class="bi bi-star"></i> Set default</button>
@@ -150,6 +153,67 @@
             <form method="post" action="/admin/ai/providers/{{ k.id }}/delete" data-confirm="Remove this provider?">
               <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Remove</button>
             </form>
+          </div>
+        </div>
+
+        <!-- Edit Provider Modal -->
+        <div class="modal fade" id="edit-provider-{{ k.id }}" tabindex="-1" aria-labelledby="edit-provider-title-{{ k.id }}" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+              <div class="modal-header">
+                <span class="card-ico gold"><i class="bi bi-pencil"></i></span>
+                <h2 class="modal-title h5 mb-0" id="edit-provider-title-{{ k.id }}">Edit Provider — {{ k.name }}</h2>
+                <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <form method="post" action="/admin/ai/providers/{{ k.id }}/edit">
+                <div class="modal-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label class="form-label" for="edit-name-{{ k.id }}">Label <span class="req">*</span></label>
+                      <input class="form-control" id="edit-name-{{ k.id }}" name="name" required value="{{ k.name }}">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="edit-kind-{{ k.id }}">Provider</label>
+                      <select class="form-select" id="edit-kind-{{ k.id }}" name="kind">
+                        <option value="openai" {% if k.kind == 'openai' %}selected{% endif %}>ChatGPT / OpenAI</option>
+                        <option value="anthropic" {% if k.kind == 'anthropic' %}selected{% endif %}>Claude / Anthropic</option>
+                        <option value="openrouter" {% if k.kind == 'openrouter' %}selected{% endif %}>OpenRouter</option>
+                        <option value="kimi" {% if k.kind == 'kimi' %}selected{% endif %}>Kimi / Moonshot</option>
+                        <option value="groq" {% if k.kind == 'groq' %}selected{% endif %}>Groq</option>
+                        <option value="ollama" {% if k.kind == 'ollama' %}selected{% endif %}>Ollama (local)</option>
+                        <option value="custom" {% if k.kind == 'custom' %}selected{% endif %}>Custom OpenAI-compatible</option>
+                      </select>
+                    </div>
+                    <div class="col-12">
+                      <label class="form-label" for="edit-key-{{ k.id }}">API key</label>
+                      <input class="form-control js-secret" id="edit-key-{{ k.id }}" type="password" name="api_key" autocomplete="off" placeholder="{% if k.has_key %}Key saved (leave empty to keep unchanged){% else %}None / optional{% endif %}">
+                      {% if k.has_key %}
+                      <input type="hidden" name="keep_key" value="1">
+                      <div class="form-text small text-muted">A key is already securely encrypted. Leave empty to keep it, or type a new key to update.</div>
+                      {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="edit-model-{{ k.id }}">Model</label>
+                      <input class="form-control" id="edit-model-{{ k.id }}" name="model" value="{{ k.model or '' }}" placeholder="e.g. gemma-4-e2b or gpt-4o-mini">
+                    </div>
+                    <div class="col-md-6">
+                      <label class="form-label" for="edit-base-{{ k.id }}">Base URL</label>
+                      <input class="form-control" id="edit-base-{{ k.id }}" name="base_url" value="{{ k.base_url or '' }}" placeholder="http://192.168.0.XX:8000/v1">
+                    </div>
+                    <div class="col-12">
+                      <div class="form-check">
+                        <input class="form-check-input" id="edit-default-{{ k.id }}" type="checkbox" name="is_default" value="1" {% if k.is_default %}checked{% endif %}>
+                        <label class="form-check-label" for="edit-default-{{ k.id }}">Use as default for all modules</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+                  <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save changes</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
         {% endfor %}

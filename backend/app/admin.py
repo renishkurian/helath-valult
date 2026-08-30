@@ -7173,6 +7173,35 @@ def ai_provider_add(
     return RedirectResponse("/admin/ai/providers?ok=saved", status_code=302)
 
 
+@router.post("/ai/providers/{provider_id}/edit")
+def ai_provider_edit(
+    provider_id: str,
+    request: Request,
+    name: str = Form(...),
+    kind: str = Form(...),
+    api_key: str = Form(""),
+    keep_key: str = Form(""),
+    model: str = Form(""),
+    base_url: str = Form(""),
+    is_default: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app import ai_providers as ap
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    ap.update_provider(
+        db, user, provider_id,
+        name=name, kind=kind,
+        api_key=api_key or None,
+        keep_existing_key=bool(keep_key and not api_key),
+        model=model or None,
+        base_url=base_url or None,
+        is_default=bool(is_default),
+    )
+    return RedirectResponse("/admin/ai/providers?ok=updated", status_code=302)
+
+
 @router.post("/ai/providers/{provider_id}/default")
 def ai_provider_set_default(provider_id: str, request: Request, db: Session = Depends(get_db)):
     from app import ai_providers as ap

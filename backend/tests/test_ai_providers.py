@@ -91,3 +91,27 @@ def test_set_default_provider():
     by_id = {p["id"]: p for p in providers}
     assert by_id[p1["id"]]["is_default"] is False
     assert by_id[p2["id"]]["is_default"] is True
+
+
+def test_update_provider():
+    headers, _ = _headers()
+    created = client.post("/ai/providers", headers=headers, json={
+        "name": "Phone OlliteRT", "kind": "custom", "is_default": False,
+        "base_url": "http://192.168.0.55:8000/v1", "model": "gemma-4-e2b",
+    }).json()
+
+    # Update base_url and model
+    upd = client.put(f"/ai/providers/{created['id']}", headers=headers, json={
+        "name": "Phone OlliteRT Updated",
+        "kind": "custom",
+        "base_url": "http://192.168.0.99:8000/v1",
+        "model": "gemma-4-e4b",
+        "is_default": True,
+    })
+    assert upd.status_code == 200, upd.text
+    res = upd.json()
+    assert res["name"] == "Phone OlliteRT Updated"
+    assert res["base_url"] == "http://192.168.0.99:8000/v1"
+    assert res["model"] == "gemma-4-e4b"
+    assert res["is_default"] is True
+

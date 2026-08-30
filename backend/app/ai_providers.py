@@ -64,6 +64,48 @@ def create_provider(
     return row
 
 
+def update_provider(
+    db: Session,
+    user: models.User,
+    provider_id: str,
+    *,
+    name: str | None = None,
+    kind: str | None = None,
+    api_key: str | None = None,
+    keep_existing_key: bool = False,
+    base_url: str | None = None,
+    model: str | None = None,
+    is_default: bool | None = None,
+) -> models.AiProvider | None:
+    uid = _uid(user)
+    row = get_provider(db, user, provider_id)
+    if not row:
+        return None
+
+    if name is not None:
+        row.name = name.strip() or row.name
+    if kind is not None:
+        k = kind.strip().lower()
+        if k in PROVIDER_KINDS:
+            row.kind = k
+        else:
+            row.kind = "custom"
+    if not keep_existing_key:
+        row.api_key_enc = crypto.encrypt_text(api_key) if api_key else None
+    if base_url is not None:
+        row.base_url = base_url.strip() or None
+    if model is not None:
+        row.model = model.strip() or None
+
+    if is_default is not None and is_default:
+        db.query(models.AiProvider).filter(models.AiProvider.user_id == uid).update({"is_default": False})
+        row.is_default = True
+
+    db.commit()
+    db.refresh(row)
+    return row
+
+
 def delete_provider(db: Session, user: models.User, provider_id: str) -> bool:
     row = get_provider(db, user, provider_id)
     if not row:

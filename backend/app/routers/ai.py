@@ -62,6 +62,26 @@ def set_default_provider(
     return _out(row)
 
 
+@router.put("/providers/{provider_id}", response_model=schemas.AiProviderOut)
+@router.patch("/providers/{provider_id}", response_model=schemas.AiProviderOut)
+def update_provider(
+    provider_id: str,
+    body: schemas.AiProviderIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    row = ap.update_provider(
+        db, current_user, provider_id,
+        name=body.name, kind=body.kind, api_key=body.api_key,
+        keep_existing_key=(body.api_key is None),
+        base_url=body.base_url, model=body.model, is_default=body.is_default,
+    )
+    if not row:
+        raise HTTPException(404, "Provider not found")
+    return _out(row)
+
+
 @router.delete("/providers/{provider_id}")
 def delete_provider(
     provider_id: str,
