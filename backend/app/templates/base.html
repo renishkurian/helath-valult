@@ -150,13 +150,20 @@
 
 {% macro side_panel(modules, current_mod, mod_key, nav_items, active_nav, session_user, id_prefix) %}
 <div class="app-sidebar">
-  <a class="brand" href="/admin/modules">
-    <span class="brand-mark">V</span>
-    <span>
-      <span class="brand-name d-block">Family Vault</span>
-      <span class="brand-sub">Private household</span>
-    </span>
-  </a>
+  <div class="side-head">
+    <a class="brand" href="/admin/modules">
+      <span class="brand-mark">V</span>
+      <span>
+        <span class="brand-name d-block">Family Vault</span>
+        <span class="brand-sub">Private household</span>
+      </span>
+    </a>
+    {% if id_prefix == 'desk' %}
+    <button class="sidebar-toggle-btn d-none d-lg-inline-flex" type="button" data-sidebar-toggle title="Hide sidebar ( [ )" aria-label="Hide sidebar">
+      <i class="bi bi-layout-sidebar-inset"></i>
+    </button>
+    {% endif %}
+  </div>
 
   {% if session_user %}
   {% if mod_key != 'picker' %}
@@ -254,7 +261,17 @@
 <link rel="icon" href="/static/icon-192.png" type="image/png" sizes="192x192">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
-<link rel="stylesheet" href="/static/vault.css?v=74">
+<link rel="stylesheet" href="/static/vault.css?v=76">
+<script>
+(function(){
+  try {
+    var c = localStorage.getItem("vault_sidebar_collapsed");
+    if (c === "1" && window.matchMedia("(min-width: 992px)").matches) {
+      document.documentElement.classList.add("nav-collapsed");
+    }
+  } catch(e) {}
+})();
+</script>
 {% block head %}{% endblock %}
 </head>
 <body class="{% if session_user and nav_items %}has-tabbar {% endif %}{% if mod_key == 'health' %}mod-health {% endif %}{% block body_class %}{% endblock %}">
@@ -279,6 +296,11 @@
 </header>
 
 <div class="app">
+  <button class="sidebar-expand-btn d-none d-lg-inline-flex" type="button" data-sidebar-toggle title="Show sidebar ( [ )" aria-label="Show sidebar">
+    <i class="bi bi-layout-sidebar"></i>
+    <span>Menu</span>
+  </button>
+
   <div class="d-none d-lg-flex">
     {{ side_panel(modules, current_mod, mod_key, nav_items, active_nav, session_user, 'desk') }}
   </div>
@@ -752,6 +774,58 @@
     <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss"><i class="bi bi-x-lg"></i></button>
   </div>
 </div>
+<script>
+(function() {
+  var KEY = "vault_sidebar_collapsed";
+  var doc = document.documentElement;
+  var body = document.body;
+
+  function apply(collapsed) {
+    if (collapsed) {
+      doc.classList.add("nav-collapsed");
+      body.classList.add("nav-collapsed");
+    } else {
+      doc.classList.remove("nav-collapsed");
+      body.classList.remove("nav-collapsed");
+    }
+    try {
+      localStorage.setItem(KEY, collapsed ? "1" : "0");
+    } catch(e) {}
+    window.dispatchEvent(new CustomEvent("vault-sidebar-toggle", { detail: { collapsed: collapsed } }));
+  }
+
+  function toggle() {
+    var isCollapsed = body.classList.contains("nav-collapsed") || doc.classList.contains("nav-collapsed");
+    apply(!isCollapsed);
+  }
+
+  // Handle all elements with data-sidebar-toggle
+  document.addEventListener("click", function(e) {
+    var btn = e.target.closest("[data-sidebar-toggle]");
+    if (btn) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+
+  // Keyboard shortcut: [ (bracket)
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "[" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      var t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      toggle();
+    }
+  });
+
+  // Initial sync from localStorage
+  try {
+    var saved = localStorage.getItem(KEY);
+    if (saved === "1" && window.matchMedia("(min-width: 992px)").matches) {
+      apply(true);
+    }
+  } catch(e) {}
+})();
+</script>
 <script src="/static/pwa.js" defer></script>
 {% block scripts %}{% endblock %}
 </body>

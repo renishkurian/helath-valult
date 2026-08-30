@@ -4005,20 +4005,99 @@ a.fx-card:hover{
   .fx-col-type, .fx-col-meta{ display:none; }
 }
 
-/* ---------- Document Explorer: collapse app nav / full screen ---------- */
+/* ---------- Global Sidebar Toggle & Collapse (All Modules) ---------- */
+.side-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:.5rem;
+  margin-bottom:.25rem;
+}
+.sidebar-toggle-btn{
+  width:32px;
+  height:32px;
+  flex:0 0 32px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(255,255,255,0.04);
+  border:1px solid var(--v-line);
+  border-radius:8px;
+  color:var(--v-ink-3);
+  font-size:1.05rem;
+  cursor:pointer;
+  transition:all var(--v-fast) var(--v-ease);
+}
+.sidebar-toggle-btn:hover{
+  background:var(--v-surface-2);
+  border-color:var(--v-line-2);
+  color:var(--v-ink);
+  transform:scale(1.04);
+}
+
+.sidebar-expand-btn{
+  display:none !important;
+}
+
+html.nav-collapsed body .app-sidebar,
+html.nav-collapsed body .d-none.d-lg-flex > .app-sidebar,
+html.nav-collapsed body .app > .d-none.d-lg-flex,
 body.nav-collapsed .app-sidebar,
 body.nav-collapsed .d-none.d-lg-flex > .app-sidebar,
 body.nav-collapsed .app > .d-none.d-lg-flex{
   display:none !important;
 }
 @media (min-width:992px){
+  html.nav-collapsed body .app-main,
   body.nav-collapsed .app-main{
-    margin-left:0;
-    max-width:none;
-    padding-left:1rem;
-    padding-right:1rem;
+    margin-left:0 !important;
+    max-width:none !important;
+    padding-left:2rem;
+    padding-right:2rem;
+    padding-top:3.75rem;
+  }
+
+  html.nav-collapsed body .sidebar-expand-btn,
+  body.nav-collapsed .sidebar-expand-btn{
+    display:inline-flex !important;
+    align-items:center;
+    gap:.45rem;
+    position:fixed;
+    top:1rem;
+    left:1.25rem;
+    z-index:1040;
+    padding:.45rem .85rem;
+    background:rgba(15,19,26,0.92);
+    border:1px solid var(--v-line-2);
+    border-radius:10px;
+    color:var(--v-ink-2);
+    font-size:.8125rem;
+    font-weight:600;
+    letter-spacing:.01em;
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    box-shadow:0 4px 20px rgba(0,0,0,0.45);
+    cursor:pointer;
+    transition:all var(--v-fast) var(--v-ease);
+  }
+
+  html.nav-collapsed body .sidebar-expand-btn:hover,
+  body.nav-collapsed .sidebar-expand-btn:hover{
+    background:var(--v-surface-3);
+    border-color:var(--v-gold-line);
+    color:var(--v-gold);
+    transform:translateY(-1px);
+    box-shadow:0 6px 24px rgba(0,0,0,0.6);
+  }
+
+  html.nav-collapsed body .sidebar-expand-btn i,
+  body.nav-collapsed .sidebar-expand-btn i{
+    font-size:1.05rem;
+    color:var(--v-gold);
   }
 }
+
+/* ---------- Document Explorer: collapse app nav / full screen ---------- */
 body.fx-focus .fx-page-head .page-lead,
 body.fx-focus .fx-page-head .eyebrow,
 body.fx-focus .fx-page-head .page-title{
