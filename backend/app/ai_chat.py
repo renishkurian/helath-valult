@@ -108,6 +108,33 @@ kind must be fact, preference, alias, or habit. slug is a short kebab-case key. 
 Use Indian rupee amounts as written in the snapshot. Prefer compact markdown (short headings, bullets, tables). Be specific and concise. Today is in the snapshot header.
 """
 
+COMPACT_SYSTEM_PROMPT = """You are Ask AI for a private household vault (Health, Money Manager, Expense Analyser, Shopping List, Digital Diary, Document Vault, Passwords).
+Languages: English, Malayalam, Manglish (e.g. “kazhinja maasam enna vaangiya?”). Reply accurately and concisely based on the VAULT SNAPSHOT. Do not invent facts, accounts, or amounts.
+
+When the user wants to create an entry, append one fenced action block:
+- Shopping list: ```vault-action\n{"type":"create_shop_list","name":"Title","items":[{"name":"Item"}]}\n```
+- Diary entry: ```vault-action\n{"type":"create_diary_entry","title":"Title","body":"Notes"}\n```
+- Diary folder: ```vault-action\n{"type":"create_diary_folder","name":"Title"}\n```
+- Money Manager expense: ```vault-action\n{"type":"create_finance_txn","amount":100,"payee":"Store","category":"Shopping"}\n```
+- Teach fact ("remember..."): ```vault-memory\n{"memories":[{"kind":"fact","content":"Fact"}]}\n```
+"""
+
+
+def is_local_or_compact_provider(bundle: dict) -> bool:
+    """Detect if provider is running locally (e.g. OlliteRT on phone, Ollama) or is a smaller model with limited context window."""
+    kind = (bundle.get("kind") or "").lower()
+    base = (bundle.get("base_url") or "").lower()
+    model = (bundle.get("model") or "").lower()
+    name = (bundle.get("name") or "").lower()
+    if kind in ("ollama", "custom"):
+        if any(h in base for h in ("192.168.", "10.", "172.16.", "127.0.0.1", "localhost", ":8000", ":11434", ":8080")):
+            return True
+        if any(m in model for m in ("1.5b", "2b", "3b", "4b", "7b", "8b", "qwen", "gemma", "deepseek", "phi", "mini", "small", "litert")):
+            return True
+        if any(w in name for w in ("phone", "ollitert", "ollama", "local", "mobile", "test2")):
+            return True
+    return False
+
 _VAULT_ACTION_RE = re.compile(
     r"```vault-action\s*(\{.*?\})\s*```",
     re.DOTALL | re.IGNORECASE,
@@ -1323,7 +1350,7 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
     return hints[:4]
 
 
-def build_vault_context(db: Session, user: models.User, question: str = "") -> str:
+def build_vault_context(db: Session, user: models.User, question: str = "", max_chars: int = MAX_CONTEXT_CHARS) -> str:
     uid = _uid(user)
     today = vault_now()
     today_s = today.strftime("%Y-%m-%d")
@@ -1664,8 +1691,8 @@ def build_vault_context(db: Session, user: models.User, question: str = "") -> s
     )
 
     text = "\n".join(lines)
-    if len(text) > MAX_CONTEXT_CHARS:
-        text = text[: MAX_CONTEXT_CHARS - 20] + "\n… [truncated]"
+    if len(text) > max_chars:
+        text = text[: max(0, max_chars - 20)] + "\n… [truncated]"
     return text
 
 
@@ -2310,8 +2337,24 @@ def _openai_messages(
         with urllib.request.urlopen(req, timeout=CHAT_TIMEOUT) as resp:
             data = json.loads(resp.read().decode())
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")[:400]
-        raise ValueError(f"Provider HTTP {exc.code}: {detail}") from exc
+        raw = exc.read().decode("utf-8", errors="replace")
+        msg = ""
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                err = parsed.get("error")
+                if isinstance(err, dict):
+                    msg = err.get("message") or err.get("code") or ""
+                elif isinstance(err, str):
+                    msg = err
+                if not msg:
+                    msg = parsed.get("message") or parsed.get("detail") or ""
+        except Exception:
+            pass
+        if not msg:
+            msg = raw[:300]
+        clean_msg = msg.strip().replace("\n", " ")
+        raise ValueError(f"Provider HTTP {exc.code}: {clean_msg}") from exc
     except urllib.error.URLError as exc:
         raise ValueError(f"Provider unreachable: {exc.reason}") from exc
     content = (data.get("choices") or [{}])[0].get("message", {}).get("content") or ""
@@ -2557,12 +2600,19 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     if not bundle:
         raise LookupError("Add an AI provider first")
 
-    snapshot = build_vault_context(db, user, text)
-    system = SYSTEM_PROMPT + "\n\n" + snapshot
-    payload = [{"role": m["role"], "content": m["content"]} for m in history]
+    is_compact = is_local_or_compact_provider(bundle)
+    sys_prompt = COMPACT_SYSTEM_PROMPT if is_compact else SYSTEM_PROMPT
+    ctx_max_chars = 4000 if is_compact else MAX_CONTEXT_CHARS
+    hist_limit = 4 if is_compact else MAX_HISTORY
+
+    snapshot = build_vault_context(db, user, text, max_chars=ctx_max_chars)
+    system = sys_prompt + "\n\n" + snapshot
+    payload = [{"role": m["role"], "content": m["content"]} for m in history[-hist_limit:]]
     payload.append({"role": "user", "content": text})
 
     started = time.monotonic()
+    reply = ""
+    result = {}
     try:
         result = complete_chat(
             kind=bundle["kind"],
@@ -2588,34 +2638,68 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
             request_text=text,
             response_text=reply,
         )
-    except ValueError as exc:
-        latency = int((time.monotonic() - started) * 1000)
-        ai_usage.record(
-            db, user,
-            client="ask_ai",
-            provider_name=bundle.get("name"),
-            provider_kind=bundle.get("kind"),
-            model=bundle.get("model"),
-            latency_ms=latency,
-            ok=False,
-            error=str(exc)[:200],
-            request_text=text,
-        )
-        raise
     except Exception as exc:
-        latency = int((time.monotonic() - started) * 1000)
-        ai_usage.record(
-            db, user,
-            client="ask_ai",
-            provider_name=bundle.get("name"),
-            provider_kind=bundle.get("kind"),
-            model=bundle.get("model"),
-            latency_ms=latency,
-            ok=False,
-            error=str(exc)[:200],
-            request_text=text,
-        )
-        raise ValueError(f"Provider failed: {exc}") from exc
+        exc_str = str(exc)
+        # Check if error is context/token overflow
+        if not is_compact and any(k in exc_str.lower() for k in ("context_length_exceeded", "token ids are too long", "maximum number of tokens", "context length", "too long", "prompt is too large", "413")):
+            # Automatic retry with compact context and trimmed history
+            try:
+                compact_snap = build_vault_context(db, user, text, max_chars=3500)
+                compact_sys = COMPACT_SYSTEM_PROMPT + "\n\n" + compact_snap
+                compact_payload = [{"role": m["role"], "content": m["content"]} for m in history[-2:]]
+                compact_payload.append({"role": "user", "content": text})
+                result = complete_chat(
+                    kind=bundle["kind"],
+                    api_key=bundle.get("api_key"),
+                    model=bundle.get("model"),
+                    base_url=bundle.get("base_url"),
+                    system=compact_sys,
+                    messages=compact_payload,
+                )
+                latency = int((time.monotonic() - started) * 1000)
+                reply = (result.get("content") or "").strip()
+                ai_usage.record(
+                    db, user,
+                    client="ask_ai",
+                    provider_name=bundle.get("name"),
+                    provider_kind=bundle.get("kind"),
+                    model=result.get("model") or bundle.get("model"),
+                    prompt_tokens=result.get("prompt_tokens"),
+                    completion_tokens=result.get("completion_tokens"),
+                    total_tokens=result.get("total_tokens"),
+                    latency_ms=latency,
+                    ok=True,
+                    request_text=text,
+                    response_text=reply,
+                )
+            except Exception as retry_exc:
+                latency = int((time.monotonic() - started) * 1000)
+                ai_usage.record(
+                    db, user,
+                    client="ask_ai",
+                    provider_name=bundle.get("name"),
+                    provider_kind=bundle.get("kind"),
+                    model=bundle.get("model"),
+                    latency_ms=latency,
+                    ok=False,
+                    error=str(retry_exc)[:200],
+                    request_text=text,
+                )
+                raise ValueError(f"Provider error: {retry_exc}") from retry_exc
+        else:
+            latency = int((time.monotonic() - started) * 1000)
+            ai_usage.record(
+                db, user,
+                client="ask_ai",
+                provider_name=bundle.get("name"),
+                provider_kind=bundle.get("kind"),
+                model=bundle.get("model"),
+                latency_ms=latency,
+                ok=False,
+                error=str(exc)[:200],
+                request_text=text,
+            )
+            raise ValueError(f"{exc}") from exc
     if not reply:
         reply = "The provider returned an empty reply. Try again, or test the key on the Providers page."
 
