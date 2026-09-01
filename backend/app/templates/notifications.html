@@ -1,30 +1,38 @@
 {% extends "base.html" %}
-{% block title %}Reminders{% endblock %}
+{% block title %}Reminders & Alerts{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
     <div class="eyebrow">
       <a href="/admin/modules">All modules</a>
       <i class="bi bi-chevron-right"></i>
-      Health Vault
+      Reminders & Alerts
     </div>
     <h1 class="page-title">Reminders</h1>
-    <p class="page-lead">Appointments, refills, and follow-ups for everyone in the household. Your phone gets a notification at the chosen time when the Vault app is signed in.</p>
+    <p class="page-lead">Same household schedule as Health Vault. Turn on Telegram per reminder so every configured chat ID gets the alert.</p>
   </div>
   <div class="page-actions">
+    <a class="btn btn-outline-light" href="/admin/notifications/telegram"><i class="bi bi-telegram"></i> Telegram</a>
     <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder" aria-controls="add-reminder">
       <i class="bi bi-plus-lg"></i> Add reminder
     </button>
   </div>
 </div>
 
+{% if ok == 'saved' %}
+<div class="alert alert-success py-2" role="status">Reminder saved.</div>
+{% endif %}
+{% if err %}
+<div class="alert alert-warning py-2" role="alert">{{ err }}</div>
+{% endif %}
+
 <div class="chip-scroll">
+  <a class="chip {% if not active_person %}active{% endif %}" href="/admin/notifications">All</a>
   {% for p in people %}
-    <a class="chip {% if active_person and p.id == active_person.id %}active{% endif %}" href="/admin/reminders?person={{ p.id }}">
+    <a class="chip {% if active_person and p.id == active_person.id %}active{% endif %}" href="/admin/notifications?person={{ p.id }}">
       <span class="avatar">{{ p.avatar_initials or '?' }}</span>{{ p.name | nice }}
     </a>
   {% endfor %}
-  <a class="chip plain" href="/admin/family"><i class="bi bi-plus-lg"></i> Add member</a>
 </div>
 
 <div class="collapse mb-4" id="add-reminder">
@@ -33,16 +41,23 @@
       <span class="card-ico gold"><i class="bi bi-bell"></i></span>
       <div>
         <h2>Add reminder</h2>
-        <div class="card-sub">Filed under {{ (active_person.name | nice) if active_person else 'the selected person' }}</div>
+        <div class="card-sub">Appears in Health Vault and here</div>
       </div>
       <button class="btn btn-ghost btn-icon btn-sm ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder" aria-label="Close">
         <i class="bi bi-x-lg"></i>
       </button>
     </div>
     <div class="card-body">
-      <form method="post" action="/admin/reminders/add">
-        <input type="hidden" name="person_id" value="{{ active_person.id if active_person else '' }}">
+      <form method="post" action="/admin/notifications/add">
         <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="r-person">Person <span class="req">*</span></label>
+            <select class="form-select" id="r-person" name="person_id" required>
+              {% for p in people %}
+              <option value="{{ p.id }}" {% if active_person and p.id == active_person.id %}selected{% endif %}>{{ p.name | nice }}</option>
+              {% endfor %}
+            </select>
+          </div>
           <div class="col-md-6">
             <label class="form-label" for="r-title">Title <span class="req">*</span></label>
             <input class="form-control" id="r-title" type="text" name="title" required placeholder="e.g. Take BP medicine">
@@ -66,9 +81,10 @@
           </div>
           <div class="col-12">
             <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" role="switch" id="r-telegram" name="notify_telegram" value="1">
-              <label class="form-check-label" for="r-telegram">Also send Telegram when due</label>
+              <input class="form-check-input" type="checkbox" role="switch" id="r-telegram" name="notify_telegram" value="1" checked>
+              <label class="form-check-label" for="r-telegram">Send Telegram when due</label>
             </div>
+            <div class="text-faint small mt-1">Uses chat IDs from Telegram settings. Phone push still works when the Vault app is signed in.</div>
           </div>
         </div>
         <div class="d-flex gap-2 mt-4">
@@ -90,6 +106,7 @@
           <th>Person</th>
           <th>When</th>
           <th>Repeat</th>
+          <th>Telegram</th>
           <th class="table-actions">Action</th>
         </tr>
       </thead>
@@ -112,10 +129,21 @@
               <span class="text-faint">None</span>
             {% endif %}
           </td>
+          <td>
+            <form method="post" action="/admin/notifications/{{ r.id }}/telegram">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="tg-{{ r.id }}" name="notify_telegram" value="1"
+                       {% if r.notify_telegram %}checked{% endif %}
+                       onchange="this.form.submit()">
+                <label class="form-check-label small" for="tg-{{ r.id }}">{% if r.notify_telegram %}On{% else %}Off{% endif %}</label>
+              </div>
+            </form>
+          </td>
           <td class="table-actions">
             <div class="d-flex gap-2 justify-content-end">
-              <a class="btn btn-sm btn-outline-light" href="/admin/reminders/{{ r.id }}/edit"><i class="bi bi-pencil"></i> Edit</a>
-              <form method="post" action="/admin/reminders/{{ r.id }}/delete" data-confirm="Delete this reminder?">
+              <a class="btn btn-sm btn-outline-light" href="/admin/notifications/{{ r.id }}/edit"><i class="bi bi-pencil"></i> Edit</a>
+              <form method="post" action="/admin/notifications/{{ r.id }}/delete" data-confirm="Delete this reminder?">
                 <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i> Delete</button>
               </form>
             </div>
@@ -123,11 +151,11 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="5">
+          <td colspan="6">
             <div class="empty-state">
               <div class="empty-ico"><i class="bi bi-bell-slash"></i></div>
               <div class="empty-title">No reminders yet</div>
-              <p>Add a refill, appointment, or follow-up and it will show up here in date order.</p>
+              <p>Add a refill, appointment, or follow-up — it stays in sync with Health Vault.</p>
               <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-reminder">
                 <i class="bi bi-plus-lg"></i> Add the first reminder
               </button>

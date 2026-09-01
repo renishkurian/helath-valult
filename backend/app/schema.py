@@ -159,6 +159,9 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "google_drive_backup": [
         ("last_content_hash", "VARCHAR(64)"),
     ],
+    "reminders": [
+        ("notify_telegram", "BOOLEAN NOT NULL DEFAULT 0"),
+    ],
 }
 
 _INDEXES: list[tuple[str, str, str]] = [
@@ -197,6 +200,8 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_shop_lists_deleted_at", "shop_lists", "deleted_at"),
     ("ix_shop_lists_finance_txn_id", "shop_lists", "finance_txn_id"),
     ("ix_shop_lists_finance_category_id", "shop_lists", "finance_category_id"),
+    ("ix_vault_telegram_recipients_user_id", "vault_telegram_recipients", "user_id"),
+    ("ix_reminders_notify_telegram", "reminders", "notify_telegram"),
     ("ix_vault_send_chat_messages_request_id", "vault_send_chat_messages", "request_id"),
     ("ix_vault_send_chat_messages_created_at", "vault_send_chat_messages", "created_at"),
     ("ix_locker_items_person_id", "locker_items", "person_id"),

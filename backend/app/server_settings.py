@@ -11,6 +11,7 @@ from app import crypto, models
 GOOGLE_CLIENT_ID_KEY = "google_client_id"
 GOOGLE_CLIENT_SECRET_KEY = "google_client_secret"
 FCM_SERVICE_ACCOUNT_KEY = "fcm_service_account"
+TELEGRAM_BOT_TOKEN_KEY = "telegram_bot_token"
 RECAPTCHA_SITE_KEY_KEY = "recaptcha_site_key"
 RECAPTCHA_SECRET_KEY = "recaptcha_secret"
 RECAPTCHA_ENABLED_KEY = "recaptcha_enabled"

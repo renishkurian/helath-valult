@@ -332,10 +332,22 @@ class Reminder(Base):
     remind_at = Column(DateTime, nullable=False)
     repeat_rule = Column(Enum(RepeatRule), default=RepeatRule.none, nullable=False)
     is_active = Column(Boolean, default=True)
+    notify_telegram = Column(Boolean, default=False, nullable=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
 
     person = relationship("Person", back_populates="reminders")
+
+
+class VaultTelegramRecipient(Base):
+    """Telegram chat IDs that receive reminder notifications for a vault (family admin)."""
+    __tablename__ = "vault_telegram_recipients"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    chat_id = Column(String(64), nullable=False)
+    label = Column(String(120), nullable=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class LabReading(Base):

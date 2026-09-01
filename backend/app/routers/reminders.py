@@ -176,37 +176,33 @@ def delete_reminder(
     push_reminder_cancel(db, current_user, rid)
 
 
-@router.post("/dispatch")
-def dispatch_due_reminders(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
-):
-    """Push due reminders to registered Android devices (FCM). Call from a Pi cron,
-    e.g. every 5 minutes. If no Firebase service account is saved this still
-    returns the due list so a local scheduler can fire notifications without
-    polling the API from the phone every few seconds."""
+def process_due_reminders(db: Session, vault_user_id: Optional[str] = None) -> dict:
+    """Fire FCM + Telegram for due reminders, then advance/deactivate each once.
+
+    If vault_user_id is set, only that vault is processed (API dispatch).
+    If None, every vault is processed (in-process scheduler).
+    """
     from datetime import datetime
     from app.push import send_fcm
     from app.server_settings import fcm_service_account
-    account = fcm_service_account(db)
+    from app.telegram_notify import notify_reminder_telegram
 
+    account = fcm_service_account(db)
     now = datetime.utcnow()
-    due = (
+    q = (
         db.query(models.Reminder)
         .join(models.Person)
         .filter(
-            models.Person.user_id == vault_id(current_user),
             models.Reminder.is_active == True,  # noqa: E712
             models.Reminder.remind_at <= now,
         )
-        .all()
     )
-    tokens = (
-        db.query(models.DeviceToken)
-        .filter(models.DeviceToken.user_id.in_([current_user.id, vault_id(current_user)]))
-        .all()
-    )
+    if vault_user_id:
+        q = q.filter(models.Person.user_id == vault_user_id)
+    due = q.all()
+
     sent = 0
+    telegram_sent = 0
     payload = []
     for rem in due:
         remind_iso = rem.remind_at.isoformat() if hasattr(rem.remind_at, "isoformat") else str(rem.remind_at)
@@ -215,6 +211,20 @@ def dispatch_due_reminders(
             "remind_at": remind_iso,
             "repeat_rule": rem.repeat_rule.value,
         })
+        owner_id = rem.person.user_id if rem.person else None
+        owner = db.query(models.User).filter(models.User.id == owner_id).first() if owner_id else None
+        tokens = []
+        if owner_id:
+            member_ids = [
+                u.id for u in db.query(models.User).filter(
+                    (models.User.id == owner_id) | (models.User.vault_owner_id == owner_id)
+                ).all()
+            ]
+            tokens = (
+                db.query(models.DeviceToken)
+                .filter(models.DeviceToken.user_id.in_(member_ids or [owner_id]))
+                .all()
+            )
         for tok in tokens:
             if send_fcm(
                 tok.token,
@@ -231,14 +241,27 @@ def dispatch_due_reminders(
                 account=account,
             ):
                 sent += 1
-        # Advance / deactivate so we don't re-push every cron tick.
+        telegram_sent += notify_reminder_telegram(db, rem)
         nxt = _next_occurrence(rem.remind_at, rem.repeat_rule)
         if nxt is not None:
             rem.remind_at = nxt
             rem.is_active = True
-            push_reminder_schedule(db, current_user, rem)
+            if owner:
+                push_reminder_schedule(db, owner, rem)
         else:
             rem.is_active = False
-            push_reminder_cancel(db, current_user, rem.id)
-    db.commit()
-    return {"due": payload, "pushed": sent}
+            if owner:
+                push_reminder_cancel(db, owner, rem.id)
+    if due:
+        db.commit()
+    return {"due": payload, "pushed": sent, "telegram_sent": telegram_sent}
+
+
+@router.post("/dispatch")
+def dispatch_due_reminders(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Push due reminders (FCM + Telegram). Call from a Pi cron, e.g. every 5 minutes."""
+    return process_due_reminders(db, vault_id(current_user))
+

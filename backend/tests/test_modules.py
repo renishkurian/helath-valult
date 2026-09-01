@@ -38,3 +38,11 @@ def test_secrets_in_defaults():
     assert modules.MODULE_LABELS["secrets"] == "Secret Share"
     assert modules.admin_module_for_path("/admin/secrets") == "secrets"
     assert modules.api_module_for_path("/secrets/sends") == "secrets"
+
+
+def test_notifications_in_defaults():
+    assert "notifications" in modules.DEFAULT_MODULE_KEYS
+    assert modules.MODULE_LABELS["notifications"] == "Reminders & Alerts"
+    assert modules.admin_module_for_path("/admin/notifications") == "notifications"
+    assert modules.admin_module_for_path("/admin/notifications/telegram") == "notifications"
+    assert modules.api_module_for_path("/notifications") == "notifications"

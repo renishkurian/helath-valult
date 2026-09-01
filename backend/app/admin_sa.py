@@ -360,6 +360,7 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
         FCM_SERVICE_ACCOUNT_KEY, GOOGLE_CLIENT_ID_KEY, GOOGLE_CLIENT_SECRET_KEY,
         LOGIN_LOCKOUT_MINUTES_KEY, LOGIN_MAX_ATTEMPTS_KEY,
         SMTP_FROM_KEY, SMTP_HOST_KEY, SMTP_PASSWORD_KEY, SMTP_PORT_KEY, SMTP_TLS_KEY, SMTP_USER_KEY,
+        TELEGRAM_BOT_TOKEN_KEY,
         fcm_service_account, get_plain, get_secret,
         login_lockout_minutes, login_max_attempts, rate_limit_enabled,
         recaptcha_ready, recaptcha_secret, recaptcha_site_key, recaptcha_wanted,
@@ -373,6 +374,7 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
     login_redirect_uri = public_origin(request) + "/admin/login/google/callback"
     fcm = fcm_service_account(db)
     mail_cfg = mail_config(db)
+    telegram_token = get_secret(db, TELEGRAM_BOT_TOKEN_KEY) or (settings.TELEGRAM_BOT_TOKEN or "").strip()
     return templates.TemplateResponse("sa_settings.html", _sa_ctx(
         request, user, "sa_settings",
         google_client_id=get_plain(db, GOOGLE_CLIENT_ID_KEY),
@@ -389,6 +391,9 @@ def sa_settings(request: Request, db: Session = Depends(get_db), saved: str = ""
         fcm_project=(fcm or {}).get("project_id") or "",
         fcm_email=(fcm or {}).get("client_email") or "",
         fcm_env_fallback=bool((settings.FCM_SERVICE_ACCOUNT_JSON or "").strip()) and not get_secret(db, FCM_SERVICE_ACCOUNT_KEY),
+        telegram_ready=bool(telegram_token),
+        telegram_has_secret=bool(get_secret(db, TELEGRAM_BOT_TOKEN_KEY) or telegram_token),
+        telegram_env_fallback=bool((settings.TELEGRAM_BOT_TOKEN or "").strip()) and not get_secret(db, TELEGRAM_BOT_TOKEN_KEY),
         recaptcha_site_key=recaptcha_site_key(db),
         recaptcha_has_secret=bool(recaptcha_secret(db)),
         recaptcha_wanted=recaptcha_wanted(db),
@@ -444,6 +449,21 @@ async def sa_settings_fcm(request: Request, db: Session = Depends(get_db)):
     put_secret(db, FCM_SERVICE_ACCOUNT_KEY, raw)
     db.commit()
     return RedirectResponse("/admin/sa/settings?saved=fcm", status_code=302)
+
+
+@router.post("/settings/telegram")
+async def sa_settings_telegram(request: Request, db: Session = Depends(get_db)):
+    from app.server_settings import TELEGRAM_BOT_TOKEN_KEY, put_secret
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    form = await request.form()
+    raw = str(form.get("bot_token") or "").strip()
+    if not raw:
+        return RedirectResponse("/admin/sa/settings", status_code=302)
+    put_secret(db, TELEGRAM_BOT_TOKEN_KEY, raw)
+    db.commit()
+    return RedirectResponse("/admin/sa/settings?saved=telegram", status_code=302)
 
 
 @router.post("/settings/recaptcha")

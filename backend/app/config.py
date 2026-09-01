@@ -48,6 +48,8 @@ class Settings:
     # Optional Firebase service-account JSON (HTTP v1). Prefer Super Admin.
     # Leave empty to rely on on-device AlarmManager / in-app poll only.
     FCM_SERVICE_ACCOUNT_JSON: str = os.getenv("FCM_SERVICE_ACCOUNT_JSON", "")
+    # Optional Telegram bot token (prefer Super Admin → Server settings).
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 
     # One OAuth Web client for the whole server. Users only click Connect.
     # Create in Google Cloud → APIs & Services → Credentials (Drive API on).

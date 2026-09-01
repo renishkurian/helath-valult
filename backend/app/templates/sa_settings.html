@@ -5,7 +5,7 @@
   <div>
     <div class="eyebrow">Super Admin</div>
     <h1 class="page-title">Server settings</h1>
-    <p class="page-lead">Google Drive, Firebase, reCAPTCHA, and login lockout for this Pi. Vault owners never see these fields.</p>
+    <p class="page-lead">Google Drive, Firebase, Telegram, reCAPTCHA, and login lockout for this Pi. Vault owners never see these fields.</p>
   </div>
 </div>
 
@@ -18,6 +18,11 @@
 <div class="alert alert-success" role="alert">
   <i class="bi bi-check2-circle"></i>
   <span>Firebase service account saved. Login Allow can ping the phone.</span>
+</div>
+{% elif saved == 'telegram' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Telegram bot token saved. Family managers can add chat IDs under Reminders &amp; Alerts.</span>
 </div>
 {% elif saved == 'recaptcha' and err != 'recaptcha' %}
 <div class="alert alert-success" role="alert">
@@ -138,8 +143,40 @@
       <div class="card-body text-muted" style="font-size:.875rem;">
         <p>After you save Google, each vault owner opens <strong>Storage</strong> and taps <strong>Connect Google Drive</strong>. Backups land in their own Drive, encrypted with their backup password.</p>
         <p>FCM is optional. The app still polls while it is open. The service account only wakes the phone when a web login needs Allow.</p>
+        <p>Telegram bot token is optional. Family managers add chat IDs under Reminders & Alerts → Telegram; due reminders with Telegram on are sent to every enabled ID.</p>
         <p>reCAPTCHA and the login lockout only affect sign-in. Vault owners never see these keys or the attempt counters.</p>
         <p class="mb-0">While the Google app is in Testing, add each family Gmail as a test user or Google will block them.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico {% if telegram_ready %}good{% else %}gold{% endif %}"><i class="bi bi-telegram"></i></span>
+        <div>
+          <h2>Telegram bot</h2>
+          <div class="card-sub">One bot for reminder alerts across all vaults</div>
+        </div>
+        <span class="badge {% if telegram_ready %}badge-good{% else %}badge-soft{% endif %} ms-auto">{% if telegram_ready %}Ready{% else %}Off{% endif %}</span>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3">Create a bot with <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>, then paste the token. Family managers only store chat IDs — not the bot secret.</p>
+        <form method="post" action="/admin/sa/settings/telegram" class="stack">
+          <div>
+            <label class="form-label" for="telegram_bot_token">Bot token</label>
+            <input class="form-control font-monospace" id="telegram_bot_token" type="password" name="bot_token"
+                   autocomplete="new-password"
+                   placeholder="{{ 'unchanged — leave blank to keep' if telegram_has_secret else '123456:ABC…' }}">
+            <div class="form-text">Stored encrypted with MASTER_KEY.</div>
+          </div>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save Telegram</button>
+        </form>
+        {% if telegram_env_fallback %}
+        <p class="text-faint small mt-3 mb-0">A token is also set in the Pi <code>.env</code>. Saving here takes priority.</p>
+        {% endif %}
       </div>
     </div>
   </div>

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Telegram alerts{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/modules">All modules</a>
+      <i class="bi bi-chevron-right"></i>
+      <a href="/admin/notifications">Reminders & Alerts</a>
+      <i class="bi bi-chevron-right"></i>
+      Telegram
+    </div>
+    <h1 class="page-title">Telegram chat IDs</h1>
+    <p class="page-lead">Family manager adds every chat that should get reminder alerts. Each due reminder with Telegram on is sent to all enabled IDs.</p>
+  </div>
+  <div class="page-actions">
+    <a class="btn btn-ghost" href="/admin/notifications"><i class="bi bi-arrow-left"></i> Reminders</a>
+  </div>
+</div>
+
+{% if ok == 'added' %}
+<div class="alert alert-success py-2" role="status">Chat ID saved.</div>
+{% elif ok == 'test' %}
+<div class="alert alert-success py-2" role="status">Test message sent.</div>
+{% elif ok == 'updated' %}
+<div class="alert alert-success py-2" role="status">Updated.</div>
+{% endif %}
+{% if err == 'denied' %}
+<div class="alert alert-warning py-2" role="alert">Only the family manager can change Telegram chat IDs.</div>
+{% elif err == 'bot' %}
+<div class="alert alert-warning py-2" role="alert">No Telegram bot token yet. Ask Super Admin to save one under Server settings.</div>
+{% elif err == 'send' %}
+<div class="alert alert-warning py-2" role="alert">Could not send. Check the chat ID and that someone has started a chat with the bot.</div>
+{% elif err == 'missing' %}
+<div class="alert alert-warning py-2" role="alert">Chat ID is required.</div>
+{% elif err %}
+<div class="alert alert-warning py-2" role="alert">{{ err }}</div>
+{% endif %}
+
+{% if not bot_ready %}
+<div class="alert alert-info py-2" role="status">
+  Server bot token is not configured. Super Admin → Server settings → Telegram bot token.
+</div>
+{% endif %}
+
+{% if is_manager %}
+<div class="card mb-4">
+  <div class="card-header">
+    <span class="card-ico gold"><i class="bi bi-telegram"></i></span>
+    <div>
+      <h2>Add chat ID</h2>
+      <div class="card-sub">Personal chat or group — paste the numeric ID</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <form method="post" action="/admin/notifications/telegram/add" class="row g-3">
+      <div class="col-md-5">
+        <label class="form-label" for="tg-chat">Telegram chat ID <span class="req">*</span></label>
+        <input class="form-control mono" id="tg-chat" type="text" name="chat_id" required placeholder="e.g. 123456789">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label" for="tg-label">Label</label>
+        <input class="form-control" id="tg-label" type="text" name="label" placeholder="e.g. Renish phone">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button class="btn btn-primary w-100" type="submit"><i class="bi bi-plus-lg"></i> Add</button>
+      </div>
+    </form>
+    <p class="text-faint small mt-3 mb-0">
+      Message <span class="mono">@userinfobot</span> (or your vault bot) to find your chat ID. For groups, add the bot and use the group’s negative ID.
+    </p>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-secondary py-2" role="status">Only the family manager can add or remove Telegram chat IDs. You can still turn Telegram on/off per reminder.</div>
+{% endif %}
+
+<div class="section-head"><h2>Recipients</h2></div>
+<div class="table-card">
+  <div class="table-responsive">
+    <table class="table table-hover align-middle">
+      <thead>
+        <tr>
+          <th>Label</th>
+          <th>Chat ID</th>
+          <th>Enabled</th>
+          <th class="table-actions">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in recipients %}
+        <tr>
+          <td class="fw-semibold">{{ row.label or '—' }}</td>
+          <td class="mono text-muted">{{ row.chat_id }}</td>
+          <td>
+            {% if is_manager %}
+            <form method="post" action="/admin/notifications/telegram/{{ row.id }}/toggle">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="en-{{ row.id }}" {% if row.enabled %}checked{% endif %}
+                       onchange="this.form.submit()">
+                <label class="form-check-label small" for="en-{{ row.id }}">{% if row.enabled %}On{% else %}Off{% endif %}</label>
+              </div>
+            </form>
+            {% else %}
+              {% if row.enabled %}<span class="badge badge-info">On</span>{% else %}<span class="text-faint">Off</span>{% endif %}
+            {% endif %}
+          </td>
+          <td class="table-actions">
+            {% if is_manager %}
+            <div class="d-flex gap-2 justify-content-end">
+              <form method="post" action="/admin/notifications/telegram/{{ row.id }}/test">
+                <button class="btn btn-sm btn-outline-light" type="submit" {% if not bot_ready %}disabled{% endif %}>
+                  <i class="bi bi-send"></i> Test
+                </button>
+              </form>
+              <form method="post" action="/admin/notifications/telegram/{{ row.id }}/delete" data-confirm="Remove this chat ID?">
+                <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash3"></i></button>
+              </form>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="4">
+            <div class="empty-state">
+              <div class="empty-ico"><i class="bi bi-telegram"></i></div>
+              <div class="empty-title">No chat IDs yet</div>
+              <p>Add at least one Telegram chat so reminder alerts have somewhere to go.</p>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -29,6 +29,11 @@ async def _loop(stop: asyncio.Event) -> None:
         except Exception:
             log.exception("expense analyser sync job failed")
         try:
+            from app.telegram_notify import run_due_reminder_notifications
+            await asyncio.to_thread(run_due_reminder_notifications)
+        except Exception:
+            log.exception("reminder notification job failed")
+        try:
             await asyncio.wait_for(stop.wait(), timeout=60)
         except asyncio.TimeoutError:
             pass

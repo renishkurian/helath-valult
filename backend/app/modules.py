@@ -28,6 +28,7 @@ DEFAULT_MODULE_KEYS: tuple[str, ...] = (
     "diary",
     "secrets",
     "automation",
+    "notifications",
 )
 
 MODULE_LABELS: dict[str, str] = {
@@ -43,6 +44,7 @@ MODULE_LABELS: dict[str, str] = {
     "diary": "Digital Diary",
     "secrets": "Secret Share",
     "automation": "Automation Audit",
+    "notifications": "Reminders & Alerts",
 }
 
 # Admin HTML path prefix → module key (longest prefixes first).
@@ -57,6 +59,7 @@ ADMIN_PREFIX_MODULES: tuple[tuple[str, str], ...] = (
     ("/admin/secrets", "secrets"),
     ("/admin/ai", "ai"),
     ("/admin/automation", "automation"),
+    ("/admin/notifications", "notifications"),
     ("/admin/family", "family"),
     ("/admin/sa", "superadmin"),
 )
@@ -71,6 +74,7 @@ API_PREFIX_MODULES: tuple[tuple[str, str], ...] = (
     ("/diary", "diary"),
     ("/secrets", "secrets"),
     ("/automation", "automation"),
+    ("/notifications", "notifications"),
     ("/vault", "passwords"),
     ("/ai", "ai"),
     ("/family", "family"),

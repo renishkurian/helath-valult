@@ -3068,6 +3068,7 @@ def reminders_add(
     request: Request,
     person_id: str = Form(...), title: str = Form(...), remind_at: str = Form(...),
     repeat_rule: str = Form("none"), description: str = Form(""),
+    notify_telegram: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     user, denied = require_mutator(request, db)
@@ -3078,6 +3079,7 @@ def reminders_add(
         reminder = models.Reminder(
             person_id=person.id, title=title, description=description or None,
             remind_at=datetime.fromisoformat(remind_at), repeat_rule=models.RepeatRule(repeat_rule),
+            notify_telegram=bool(notify_telegram),
         )
         db.add(reminder)
         db.commit()
@@ -3112,6 +3114,7 @@ def reminders_edit(
     reminder_id: str,
     person_id: str = Form(...), title: str = Form(...), remind_at: str = Form(...),
     repeat_rule: str = Form("none"), description: str = Form(""),
+    notify_telegram: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     user, denied = require_mutator(request, db)
@@ -3131,6 +3134,7 @@ def reminders_edit(
         r.remind_at = datetime.fromisoformat(remind_at)
         r.repeat_rule = models.RepeatRule(repeat_rule)
         r.is_active = True
+        r.notify_telegram = bool(notify_telegram)
         db.commit()
         db.refresh(r)
         from app.routers.reminders import push_reminder_schedule
@@ -9477,4 +9481,311 @@ async def clear_automation_logs_form(
     return RedirectResponse("/admin/automation", status_code=302)
 
 
+# ---------- Reminders & Alerts (notifications module) ----------
+def _notif_ctx(request, user, active_nav, **extra):
+    ctx = {
+        "request": request, "session_user": user, "active_nav": active_nav,
+        "active_module": "notifications", "people": [], "active_person_id": None,
+    }
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("/notifications", response_class=HTMLResponse)
+def notifications_page(
+    request: Request,
+    person: Optional[str] = None,
+    ok: Optional[str] = None,
+    err: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    active_person = next((p for p in people if p.id == person), None)
+    person_names = {p.id: p.name for p in people}
+    q = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Person.user_id == vault_id(user))
+    )
+    if active_person:
+        q = q.filter(models.Reminder.person_id == active_person.id)
+    reminders = q.order_by(models.Reminder.remind_at.asc()).all()
+    return templates.TemplateResponse("notifications.html", _notif_ctx(
+        request, user, "nt_home",
+        people=people, active_person=active_person,
+        active_person_id=active_person.id if active_person else None,
+        reminders=reminders, person_names=person_names,
+        ok=ok, err=err,
+    ))
+
+
+@router.post("/notifications/add")
+def notifications_add(
+    request: Request,
+    person_id: str = Form(...), title: str = Form(...), remind_at: str = Form(...),
+    repeat_rule: str = Form("none"), description: str = Form(""),
+    notify_telegram: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    person = vault_person(db, user, person_id)
+    if person:
+        reminder = models.Reminder(
+            person_id=person.id, title=title, description=description or None,
+            remind_at=datetime.fromisoformat(remind_at), repeat_rule=models.RepeatRule(repeat_rule),
+            notify_telegram=bool(notify_telegram),
+        )
+        db.add(reminder)
+        db.commit()
+        db.refresh(reminder)
+        from app.routers.reminders import push_reminder_schedule
+        push_reminder_schedule(db, user, reminder)
+    return RedirectResponse(f"/admin/notifications?person={person_id}&ok=saved", status_code=302)
+
+
+@router.get("/notifications/telegram", response_class=HTMLResponse)
+def notifications_telegram_page(
+    request: Request,
+    ok: Optional[str] = None,
+    err: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    from app.telegram_notify import list_recipients, telegram_bot_token
+
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    return templates.TemplateResponse("notifications_telegram.html", _notif_ctx(
+        request, user, "nt_telegram",
+        recipients=list_recipients(db, user),
+        is_manager=faccess.is_family_admin(user),
+        bot_ready=bool(telegram_bot_token(db)),
+        ok=ok, err=err,
+    ))
+
+
+@router.post("/notifications/telegram/add")
+def notifications_telegram_add(
+    request: Request,
+    chat_id: str = Form(...),
+    label: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/notifications/telegram?err=denied", status_code=302)
+    cid = (chat_id or "").strip()
+    if not cid:
+        return RedirectResponse("/admin/notifications/telegram?err=missing", status_code=302)
+    db.add(models.VaultTelegramRecipient(
+        user_id=vault_id(user),
+        chat_id=cid,
+        label=(label or "").strip() or None,
+        enabled=True,
+    ))
+    db.commit()
+    return RedirectResponse("/admin/notifications/telegram?ok=added", status_code=302)
+
+
+@router.post("/notifications/telegram/{recipient_id}/toggle")
+def notifications_telegram_toggle(
+    request: Request, recipient_id: str, db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/notifications/telegram?err=denied", status_code=302)
+    row = (
+        db.query(models.VaultTelegramRecipient)
+        .filter(
+            models.VaultTelegramRecipient.id == recipient_id,
+            models.VaultTelegramRecipient.user_id == vault_id(user),
+        )
+        .first()
+    )
+    if row:
+        row.enabled = not bool(row.enabled)
+        db.commit()
+    return RedirectResponse("/admin/notifications/telegram?ok=updated", status_code=302)
+
+
+@router.post("/notifications/telegram/{recipient_id}/test")
+def notifications_telegram_test(
+    request: Request, recipient_id: str, db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+    from app.telegram_notify import send_telegram_message, telegram_bot_token
+
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/notifications/telegram?err=denied", status_code=302)
+    token = telegram_bot_token(db)
+    if not token:
+        return RedirectResponse("/admin/notifications/telegram?err=bot", status_code=302)
+    row = (
+        db.query(models.VaultTelegramRecipient)
+        .filter(
+            models.VaultTelegramRecipient.id == recipient_id,
+            models.VaultTelegramRecipient.user_id == vault_id(user),
+        )
+        .first()
+    )
+    if not row:
+        return RedirectResponse("/admin/notifications/telegram?err=missing", status_code=302)
+    ok = send_telegram_message(
+        token,
+        row.chat_id,
+        "<b>Family Vault</b>\nTelegram alerts are connected for this chat.",
+    )
+    if not ok:
+        return RedirectResponse("/admin/notifications/telegram?err=send", status_code=302)
+    return RedirectResponse("/admin/notifications/telegram?ok=test", status_code=302)
+
+
+@router.post("/notifications/telegram/{recipient_id}/delete")
+def notifications_telegram_delete(
+    request: Request, recipient_id: str, db: Session = Depends(get_db),
+):
+    from app import family_access as faccess
+
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/notifications/telegram?err=denied", status_code=302)
+    row = (
+        db.query(models.VaultTelegramRecipient)
+        .filter(
+            models.VaultTelegramRecipient.id == recipient_id,
+            models.VaultTelegramRecipient.user_id == vault_id(user),
+        )
+        .first()
+    )
+    if row:
+        db.delete(row)
+        db.commit()
+    return RedirectResponse("/admin/notifications/telegram?ok=updated", status_code=302)
+
+
+@router.get("/notifications/{reminder_id}/edit", response_class=HTMLResponse)
+def notifications_edit_page(request: Request, reminder_id: str, db: Session = Depends(get_db)):
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    r = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not r:
+        return RedirectResponse("/admin/notifications?err=Reminder+not+found", status_code=302)
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    active_person = next((p for p in people if p.id == r.person_id), None)
+    return templates.TemplateResponse("notification_edit.html", _notif_ctx(
+        request, user, "nt_home",
+        people=people, active_person=active_person, reminder=r,
+        active_person_id=active_person.id if active_person else None,
+    ))
+
+
+@router.post("/notifications/{reminder_id}/edit")
+def notifications_edit(
+    request: Request,
+    reminder_id: str,
+    person_id: str = Form(...), title: str = Form(...), remind_at: str = Form(...),
+    repeat_rule: str = Form("none"), description: str = Form(""),
+    notify_telegram: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    r = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not r:
+        return RedirectResponse("/admin/notifications?err=Reminder+not+found", status_code=302)
+    person = vault_person(db, user, person_id)
+    if person:
+        r.person_id = person.id
+        r.title = title
+        r.description = description or None
+        r.remind_at = datetime.fromisoformat(remind_at)
+        r.repeat_rule = models.RepeatRule(repeat_rule)
+        r.is_active = True
+        r.notify_telegram = bool(notify_telegram)
+        db.commit()
+        db.refresh(r)
+        from app.routers.reminders import push_reminder_schedule
+        push_reminder_schedule(db, user, r)
+    return RedirectResponse(f"/admin/notifications?person={person_id}&ok=saved", status_code=302)
+
+
+@router.post("/notifications/{reminder_id}/telegram")
+def notifications_toggle_telegram(
+    request: Request,
+    reminder_id: str,
+    notify_telegram: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    r = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if r:
+        r.notify_telegram = bool(notify_telegram)
+        db.commit()
+        return RedirectResponse(f"/admin/notifications?person={r.person_id}", status_code=302)
+    return RedirectResponse("/admin/notifications", status_code=302)
+
+
+@router.post("/notifications/{reminder_id}/delete")
+def notifications_delete(request: Request, reminder_id: str, db: Session = Depends(get_db)):
+    user, redir = require_module(request, db, "notifications")
+    if redir:
+        return redir
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    r = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
+    )
+    person_id = r.person_id if r else None
+    if r:
+        rid = r.id
+        db.delete(r)
+        db.commit()
+        from app.routers.reminders import push_reminder_cancel
+        push_reminder_cancel(db, user, rid)
+    return RedirectResponse(
+        f"/admin/notifications?person={person_id}" if person_id else "/admin/notifications",
+        status_code=302,
+    )
 

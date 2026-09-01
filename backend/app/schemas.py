@@ -349,6 +349,7 @@ class ReminderCreate(BaseModel):
     description: Optional[str] = None
     remind_at: datetime
     repeat_rule: RepeatRule = RepeatRule.none
+    notify_telegram: bool = False
 
 
 class ReminderUpdate(BaseModel):
@@ -357,6 +358,7 @@ class ReminderUpdate(BaseModel):
     remind_at: Optional[datetime] = None
     repeat_rule: Optional[RepeatRule] = None
     is_active: Optional[bool] = None
+    notify_telegram: Optional[bool] = None
 
 
 class ReminderOut(BaseModel):
@@ -368,6 +370,7 @@ class ReminderOut(BaseModel):
     remind_at: datetime
     repeat_rule: RepeatRule
     is_active: bool
+    notify_telegram: bool = False
 
     class Config:
         from_attributes = True

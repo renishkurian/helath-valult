@@ -15,6 +15,7 @@
   {'key':'tracker','name':'Shopping List','kicker':'Shared carts','href':'/admin/tracker','icon':'bi-cart3','accent':'#FF8A3D'},
   {'key':'urls','name':'URL Vault','kicker':'Bookmarks','href':'/admin/urls','icon':'bi-link-45deg','accent':'#7C8CF8'},
   {'key':'diary','name':'Digital Diary','kicker':'Notes & photos','href':'/admin/diary','icon':'bi-journal-richtext','accent':'#F06BA8'},
+  {'key':'notifications','name':'Reminders & Alerts','kicker':'Telegram & schedule','href':'/admin/notifications','icon':'bi-bell','accent':'#5B9BFF'},
   {'key':'automation','name':'Automation Audit','kicker':'OpenClaw & AI Log','href':'/admin/automation','icon':'bi-robot','accent':'#00D2D3'}
 ] %}
 {% if session_user is defined and session_user and session_user.role == 'superadmin' %}
@@ -103,6 +104,12 @@
   {% set mod_key = 'secrets' %}
   {% set nav_items = [
     {'key':'sec_home','label':'Share secrets','short':'Share','href':'/admin/secrets','icon':'bi-key'}
+  ] %}
+{% elif active_module == 'notifications' %}
+  {% set mod_key = 'notifications' %}
+  {% set nav_items = [
+    {'key':'nt_home','label':'Reminders','short':'Alerts','href':'/admin/notifications','icon':'bi-bell'},
+    {'key':'nt_telegram','label':'Telegram','short':'TG','href':'/admin/notifications/telegram','icon':'bi-telegram'}
   ] %}
 {% elif active_module == 'automation' %}
   {% set mod_key = 'automation' %}
