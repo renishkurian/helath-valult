@@ -3087,6 +3087,57 @@ def reminders_add(
     return RedirectResponse(f"/admin/reminders?person={person_id}", status_code=302)
 
 
+@router.get("/reminders/{reminder_id}/edit", response_class=HTMLResponse)
+def reminders_edit_page(request: Request, reminder_id: str, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    r = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not r:
+        return RedirectResponse("/admin/reminders?err=Reminder+not+found", status_code=302)
+    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    active_person = next((p for p in people if p.id == r.person_id), None)
+    return templates.TemplateResponse("reminder_edit.html", {
+        "request": request, "session_user": user, "active_nav": "reminders",
+        "people": people, "active_person": active_person, "reminder": r,
+    })
+
+
+@router.post("/reminders/{reminder_id}/edit")
+def reminders_edit(
+    request: Request,
+    reminder_id: str,
+    person_id: str = Form(...), title: str = Form(...), remind_at: str = Form(...),
+    repeat_rule: str = Form("none"), description: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    r = (
+        db.query(models.Reminder).join(models.Person)
+        .filter(models.Reminder.id == reminder_id, models.Person.user_id == vault_id(user)).first()
+    )
+    if not r:
+        return RedirectResponse("/admin/reminders?err=Reminder+not+found", status_code=302)
+    person = vault_person(db, user, person_id)
+    if person:
+        r.person_id = person.id
+        r.title = title
+        r.description = description or None
+        r.remind_at = datetime.fromisoformat(remind_at)
+        r.repeat_rule = models.RepeatRule(repeat_rule)
+        r.is_active = True
+        db.commit()
+        db.refresh(r)
+        from app.routers.reminders import push_reminder_schedule
+        push_reminder_schedule(db, user, r)
+    return RedirectResponse(f"/admin/reminders?person={person_id}", status_code=302)
+
+
 @router.post("/reminders/{reminder_id}/delete")
 def reminders_delete(request: Request, reminder_id: str, db: Session = Depends(get_db)):
     user, denied = require_mutator(request, db)
