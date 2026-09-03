@@ -1807,6 +1807,38 @@ class ExpenseAnalyserItemUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class MailSearchIn(BaseModel):
+    question: str
+    limit: Optional[int] = 25
+
+
+class MailItemOut(BaseModel):
+    id: Optional[str] = None
+    thread_id: Optional[str] = None
+    subject: Optional[str] = None
+    from_addr: Optional[str] = None
+    received_at: Optional[str] = None
+    snippet: Optional[str] = None
+
+
+class MailSearchOut(BaseModel):
+    items: list[MailItemOut]
+    next_page_token: Optional[str] = None
+    query: str
+    asked: str
+
+
+class MailReplyIn(BaseModel):
+    instructions: Optional[str] = None
+
+
+class MailReplyOut(BaseModel):
+    message_id: str
+    subject: Optional[str] = None
+    from_addr: Optional[str] = None
+    reply: str
+
+
 class ExpenseAnalyserSyncOut(BaseModel):
     fetched: int = 0
     created: int = 0

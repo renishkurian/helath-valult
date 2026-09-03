@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import expense_analyser as ea
+from app import mail_assistant as ma
 from app import models, schemas
 from app.database import get_db
 from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
@@ -374,3 +375,64 @@ def download_mail_pdf(
 ):
     require_owner(current_user)
     return _mail_pdf_file_response(pdf_id, db, current_user, inline=False)
+
+
+@router.get("/mail")
+def list_mail(
+    q: str | None = None,
+    limit: int = 25,
+    page_token: str | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Browse the connected Gmail inbox (not just bank-alert mail)."""
+    require_owner(current_user)
+    try:
+        return ma.list_mail(db, current_user, query=q, limit=limit, page_token=page_token)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/mail/{message_id}")
+def get_mail(
+    message_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    require_owner(current_user)
+    try:
+        return ma.get_mail_detail(db, current_user, message_id)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/mail-search", response_model=schemas.MailSearchOut)
+def search_mail(
+    body: schemas.MailSearchIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Natural-language mail search — an AI provider turns the ask into a Gmail query."""
+    require_owner(current_user)
+    try:
+        result = ma.search_mail(db, current_user, body.question, limit=body.limit or 25)
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.MailSearchOut(**result)
+
+
+@router.post("/mail/{message_id}/reply-draft", response_model=schemas.MailReplyOut)
+def draft_mail_reply(
+    message_id: str,
+    body: schemas.MailReplyIn | None = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """AI-generated reply draft. Gmail access is read-only, so nothing is ever sent."""
+    require_owner(current_user)
+    body = body or schemas.MailReplyIn()
+    try:
+        result = ma.draft_reply(db, current_user, message_id, instructions=body.instructions or "")
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return schemas.MailReplyOut(**result)

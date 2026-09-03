@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Expense Analyser mail{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/expense-analyser">Expense Analyser</a>
+      <i class="bi bi-chevron-right" style="font-size:.625rem;"></i>
+      Mail
+    </div>
+    <h1 class="page-title">Mail</h1>
+    <p class="page-lead">Browse your connected inbox and use AI to search in plain language or draft replies. Gmail access here is read-only — nothing is ever sent for you.</p>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-secondary" href="/admin/expense-analyser"><i class="bi bi-inbox"></i> Inbox</a>
+    <a class="btn btn-outline-secondary" href="/admin/expense-analyser/settings"><i class="bi bi-gear"></i> Settings</a>
+  </div>
+</div>
+
+{% if not status.connected %}
+<div class="alert alert-warning" role="alert">
+  Gmail isn't connected yet. <a href="/admin/expense-analyser/settings">Connect it under Gmail &amp; sync</a> first.
+</div>
+{% else %}
+
+<div class="card mb-3">
+  <div class="card-body">
+    <form id="ea-mail-search-form" class="d-flex gap-2 flex-wrap align-items-center">
+      <div class="flex-grow-1" style="min-width:240px;">
+        <input type="text" class="form-control" id="ea-mail-question" placeholder="Ask in plain language — e.g. &quot;unread mail from Swiggy this month&quot;">
+      </div>
+      <button class="btn btn-primary" type="submit">
+        <i class="bi bi-stars"></i> AI search
+      </button>
+      <button class="btn btn-outline-secondary" type="button" id="ea-mail-reset">
+        <i class="bi bi-arrow-counterclockwise"></i> Inbox
+      </button>
+    </form>
+    <p class="text-muted small mt-2 mb-0" id="ea-mail-query-hint"></p>
+  </div>
+</div>
+
+<div class="card table-card">
+  <div class="card-header">
+    <span class="card-ico info"><i class="bi bi-envelope-paper"></i></span>
+    <div>
+      <h2>Inbox</h2>
+      <div class="card-sub" id="ea-mail-sub">Loading…</div>
+    </div>
+  </div>
+  <div class="ea-mail-list" id="ea-mail-list">
+    <div class="p-4 text-muted">Loading mail…</div>
+  </div>
+  <div class="p-3 text-center">
+    <button class="btn btn-outline-secondary btn-sm" type="button" id="ea-mail-more" hidden>Load more</button>
+  </div>
+</div>
+
+<!-- Reply draft modal -->
+<div class="modal fade" id="ea-mail-reply-modal" tabindex="-1" aria-labelledby="ea-mail-reply-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="card-ico gold"><i class="bi bi-reply"></i></span>
+        <h2 class="modal-title h5 mb-0" id="ea-mail-reply-title">Draft a reply</h2>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2" id="ea-mail-reply-context">—</p>
+        <label class="form-label" for="ea-mail-reply-instructions">Instructions (optional)</label>
+        <input type="text" class="form-control mb-3" id="ea-mail-reply-instructions" placeholder="e.g. politely decline and ask for a refund">
+        <button class="btn btn-primary btn-sm mb-3" type="button" id="ea-mail-reply-generate">
+          <i class="bi bi-stars"></i> Generate draft
+        </button>
+        <div id="ea-mail-reply-status" class="text-muted small mb-2"></div>
+        <textarea class="form-control" id="ea-mail-reply-text" rows="10" placeholder="Your AI-drafted reply will appear here — copy it into Gmail to send."></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline-secondary" type="button" id="ea-mail-reply-copy">
+          <i class="bi bi-clipboard"></i> Copy
+        </button>
+        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var listEl = document.getElementById("ea-mail-list");
+  var subEl = document.getElementById("ea-mail-sub");
+  var moreBtn = document.getElementById("ea-mail-more");
+  var hintEl = document.getElementById("ea-mail-query-hint");
+  var currentQuery = "";
+  var nextPageToken = "";
+
+  function esc(s){
+    var d = document.createElement("div");
+    d.textContent = s || "";
+    return d.innerHTML;
+  }
+
+  function renderItems(items, append){
+    if (!append) listEl.innerHTML = "";
+    if (!items.length && !append) {
+      listEl.innerHTML = '<div class="p-4 text-muted">No mail found.</div>';
+      return;
+    }
+    items.forEach(function(m){
+      var row = document.createElement("article");
+      row.className = "ea-mail-row";
+      row.innerHTML =
+        '<div class="ea-mail-top">' +
+          '<div class="ea-mail-subject">' + esc(m.subject) + '</div>' +
+          '<time class="ea-mail-when mono">' + (m.received_at ? esc(m.received_at.slice(0,16).replace("T"," ")) : "") + '</time>' +
+        '</div>' +
+        '<div class="ea-mail-from text-muted small">' + esc(m.from_addr) + '</div>' +
+        '<p class="ea-mail-snippet mb-2">' + esc(m.snippet) + '</p>' +
+        '<button class="btn btn-outline-primary btn-sm ea-mail-reply-btn" type="button" data-id="' + esc(m.id) + '" data-subject="' + esc(m.subject) + '" data-from="' + esc(m.from_addr) + '">' +
+          '<i class="bi bi-reply"></i> Draft reply</button>';
+      listEl.appendChild(row);
+    });
+  }
+
+  function loadList(query, append){
+    var url = "/admin/expense-analyser/mail/list.json?limit=25";
+    if (query) url += "&q=" + encodeURIComponent(query);
+    if (append && nextPageToken) url += "&page_token=" + encodeURIComponent(nextPageToken);
+    subEl.textContent = "Loading…";
+    fetch(url, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" }
+    }).then(function(res){ return res.json().then(function(data){ return {ok: res.ok, data: data}; }); })
+      .then(function(r){
+        if (!r.ok) {
+          subEl.textContent = r.data.error || "Could not load mail.";
+          if (!append) listEl.innerHTML = '<div class="p-4 text-muted">' + esc(r.data.error || "Could not load mail.") + '</div>';
+          moreBtn.hidden = true;
+          return;
+        }
+        renderItems(r.data.items || [], !!append);
+        nextPageToken = r.data.next_page_token || "";
+        moreBtn.hidden = !nextPageToken;
+        subEl.textContent = (r.data.items || []).length + (append ? " more" : "") + " message(s)" + (query ? " — filtered" : "");
+      })
+      .catch(function(){ subEl.textContent = "Network error."; });
+  }
+
+  document.getElementById("ea-mail-search-form").addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var question = document.getElementById("ea-mail-question").value.trim();
+    if (!question) { loadList("", false); currentQuery = ""; hintEl.textContent = ""; return; }
+    hintEl.textContent = "Asking AI to build a Gmail search…";
+    fetch("/admin/expense-analyser/mail/search.json", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ question: question, limit: 25 }),
+    }).then(function(res){ return res.json().then(function(data){ return {ok: res.ok, data: data}; }); })
+      .then(function(r){
+        if (!r.ok) { hintEl.textContent = r.data.error || "Search failed."; return; }
+        currentQuery = r.data.query || "";
+        nextPageToken = r.data.next_page_token || "";
+        moreBtn.hidden = !nextPageToken;
+        hintEl.textContent = 'Gmail query: "' + currentQuery + '"';
+        renderItems(r.data.items || [], false);
+        subEl.textContent = (r.data.items || []).length + " message(s) — filtered";
+      })
+      .catch(function(){ hintEl.textContent = "Network error."; });
+  });
+
+  document.getElementById("ea-mail-reset").addEventListener("click", function(){
+    document.getElementById("ea-mail-question").value = "";
+    currentQuery = "";
+    nextPageToken = "";
+    hintEl.textContent = "";
+    loadList("", false);
+  });
+
+  moreBtn.addEventListener("click", function(){ loadList(currentQuery, true); });
+
+  // Reply-draft modal wiring (event delegation, since rows are re-rendered)
+  var modalEl = document.getElementById("ea-mail-reply-modal");
+  var bsModal = window.bootstrap ? new bootstrap.Modal(modalEl) : null;
+  var replyContext = document.getElementById("ea-mail-reply-context");
+  var replyInstructions = document.getElementById("ea-mail-reply-instructions");
+  var replyStatus = document.getElementById("ea-mail-reply-status");
+  var replyText = document.getElementById("ea-mail-reply-text");
+  var currentMessageId = "";
+
+  listEl.addEventListener("click", function(ev){
+    var btn = ev.target.closest(".ea-mail-reply-btn");
+    if (!btn) return;
+    currentMessageId = btn.getAttribute("data-id");
+    replyContext.textContent = btn.getAttribute("data-subject") + " — " + btn.getAttribute("data-from");
+    replyInstructions.value = "";
+    replyStatus.textContent = "";
+    replyText.value = "";
+    if (bsModal) bsModal.show();
+  });
+
+  document.getElementById("ea-mail-reply-generate").addEventListener("click", function(){
+    if (!currentMessageId) return;
+    replyStatus.textContent = "Drafting…";
+    fetch("/admin/expense-analyser/mail/" + encodeURIComponent(currentMessageId) + "/reply.json", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+      body: JSON.stringify({ instructions: replyInstructions.value.trim() }),
+    }).then(function(res){ return res.json().then(function(data){ return {ok: res.ok, data: data}; }); })
+      .then(function(r){
+        if (!r.ok) { replyStatus.textContent = r.data.error || "Could not draft a reply."; return; }
+        replyStatus.textContent = "";
+        replyText.value = r.data.reply || "";
+      })
+      .catch(function(){ replyStatus.textContent = "Network error."; });
+  });
+
+  document.getElementById("ea-mail-reply-copy").addEventListener("click", function(){
+    replyText.select();
+    try { document.execCommand("copy"); } catch (e) {}
+    if (navigator.clipboard) navigator.clipboard.writeText(replyText.value).catch(function(){});
+  });
+
+  loadList("", false);
+})();
+</script>
+
+<style>
+.ea-mail-list { display: flex; flex-direction: column; }
+.ea-mail-row { padding: .85rem 1.1rem; border-top: 1px solid var(--border-color, rgba(0,0,0,.08)); }
+.ea-mail-row:first-child { border-top: none; }
+.ea-mail-top { display: flex; justify-content: space-between; gap: .75rem; align-items: baseline; }
+.ea-mail-subject { font-weight: 600; }
+.ea-mail-snippet { color: var(--text-muted, #6b7280); font-size: .875rem; }
+</style>
+
+{% endif %}
+{% endblock %}

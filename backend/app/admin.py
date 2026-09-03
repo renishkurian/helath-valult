@@ -7605,6 +7605,85 @@ def expense_analyser_insights(
     ))
 
 
+@router.get("/expense-analyser/mail", response_class=HTMLResponse)
+def expense_analyser_mail(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    st = ea.status_dict(db, user)
+    return templates.TemplateResponse("expense_analyser_mail.html", _ea_ctx(
+        request, user, "ea_mail", status=st,
+    ))
+
+
+@router.get("/expense-analyser/mail/list.json")
+def ea_mail_list_json(
+    request: Request,
+    q: str = "",
+    limit: int = 25,
+    page_token: str = "",
+    db: Session = Depends(get_db),
+):
+    from app import mail_assistant as ma
+    user = _ea_user(request, db)
+    if not user:
+        return JSONResponse({"error": "login"}, status_code=401)
+    try:
+        return JSONResponse(ma.list_mail(
+            db, user, query=(q or None), limit=limit, page_token=(page_token or None),
+        ))
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.get("/expense-analyser/mail/{message_id}/detail.json")
+def ea_mail_detail_json(message_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import mail_assistant as ma
+    user = _ea_user(request, db)
+    if not user:
+        return JSONResponse({"error": "login"}, status_code=401)
+    try:
+        return JSONResponse(ma.get_mail_detail(db, user, message_id))
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.post("/expense-analyser/mail/search.json")
+async def ea_mail_search_json(request: Request, db: Session = Depends(get_db)):
+    from app import mail_assistant as ma
+    user = _ea_user(request, db)
+    if not user:
+        return JSONResponse({"error": "login"}, status_code=401)
+    body = await request.json()
+    question = (body.get("question") or "").strip()
+    if not question:
+        return JSONResponse({"error": "Type something to search for."}, status_code=400)
+    limit = int(body.get("limit") or 25)
+    try:
+        return JSONResponse(ma.search_mail(db, user, question, limit=limit))
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.post("/expense-analyser/mail/{message_id}/reply.json")
+async def ea_mail_reply_json(message_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import mail_assistant as ma
+    user = _ea_user(request, db)
+    if not user:
+        return JSONResponse({"error": "login"}, status_code=401)
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    instructions = (body.get("instructions") or "").strip()
+    try:
+        return JSONResponse(ma.draft_reply(db, user, message_id, instructions=instructions))
+    except RuntimeError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
 @router.get("/expense-analyser/statements", response_class=HTMLResponse)
 def ea_statements(request: Request, status: str = "pending", db: Session = Depends(get_db)):
     from app import expense_analyser as ea
