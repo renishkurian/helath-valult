@@ -434,8 +434,11 @@ def login_google_callback(
     user = db.query(models.User).filter(models.User.email == google_email).first()
     if user:
         if user.blocked:
-            from app.login_guard import record_attempt
-            record_attempt(db, google_email, client_ip(request), client_ua(request), False, "blocked")
+            from app.login_guard import log_attempt
+            log_attempt(
+                db, email=google_email, ip=client_ip(request), user_agent=client_ua(request),
+                success=False, reason="blocked",
+            )
             return templates.TemplateResponse(
                 "login.html",
                 _login_ctx(request, "Your account has been blocked. Contact your super administrator.", db=db),
@@ -459,8 +462,11 @@ def login_google_callback(
             )
 
     # Log successful login attempt
-    from app.login_guard import record_attempt
-    record_attempt(db, google_email, client_ip(request), client_ua(request), True, "google_oauth")
+    from app.login_guard import log_attempt
+    log_attempt(
+        db, email=google_email, ip=client_ip(request), user_agent=client_ua(request),
+        success=True, reason="google_oauth",
+    )
 
     # Handle 2FA / TOTP / Phone approval if enabled
     request.session.pop("totp_pending", None)
@@ -1260,6 +1266,7 @@ def family_page(request: Request, db: Session = Depends(get_db)):
 def family_add(
     request: Request,
     name: str = Form(...), relation: str = Form("other"), blood_group: str = Form(""),
+    email: str = Form(""),
     db: Session = Depends(get_db)
 ):
     user, denied = require_mutator(request, db)
@@ -1271,9 +1278,51 @@ def family_add(
     initials = "".join([p[0].upper() for p in name.split()[:2]]) or "FM"
     person = models.Person(
         user_id=vault_id(user), name=name, relation=models.Relation(relation),
-        blood_group=blood_group or None, avatar_initials=initials,
+        blood_group=blood_group or None, email=(email or "").strip().lower() or None,
+        avatar_initials=initials,
     )
     db.add(person)
+    db.commit()
+    return RedirectResponse("/admin/family", status_code=302)
+
+
+@router.post("/family/members/{person_id}/edit")
+def family_edit_member(
+    request: Request,
+    person_id: str,
+    name: str = Form(...),
+    relation: str = Form("other"),
+    blood_group: str = Form(""),
+    dob: str = Form(""),
+    email: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Edit an existing family profile — name, relation, blood group, DOB, email."""
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    from app import family_access as faccess
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/family?err=manager_only", status_code=302)
+    person = (
+        db.query(models.Person)
+        .filter(models.Person.id == person_id, models.Person.user_id == vault_id(user))
+        .first()
+    )
+    if not person:
+        return RedirectResponse("/admin/family?err=not_found", status_code=302)
+    name = (name or "").strip()
+    if name:
+        person.name = name
+    if person.relation != models.Relation.self_:
+        try:
+            person.relation = models.Relation(relation)
+        except ValueError:
+            pass
+    person.blood_group = (blood_group or "").strip() or None
+    person.dob = (dob or "").strip() or None
+    person.email = (email or "").strip().lower() or None
+    person.avatar_initials = "".join([p[0].upper() for p in person.name.split()[:2]]) or person.avatar_initials
     db.commit()
     return RedirectResponse("/admin/family", status_code=302)
 

@@ -40,6 +40,21 @@
     {% if p.blood_group %}
     <div class="mt-2"><span class="badge badge-bad"><i class="bi bi-droplet"></i> {{ p.blood_group }}</span></div>
     {% endif %}
+    {% if is_manager %}
+    <div class="mt-2 d-flex gap-2 flex-wrap position-relative z-2">
+      <button class="btn btn-ghost btn-icon btn-sm" type="button" title="Edit {{ p.name | nice }}"
+              data-edit-person data-id="{{ p.id }}" data-name="{{ p.name }}" data-relation="{{ p.relation | enum_value }}"
+              data-blood="{{ p.blood_group or '' }}" data-dob="{{ p.dob or '' }}" data-email="{{ p.email or '' }}">
+        <i class="bi bi-pencil"></i>
+      </button>
+      {% if not p.linked_user_id and p.relation | enum_value != 'self' %}
+      <button class="btn btn-ghost btn-icon btn-sm" type="button" title="Give {{ p.name | nice }} a login"
+              data-convert-person data-id="{{ p.id }}" data-name="{{ p.name }}" data-relation="{{ p.relation | enum_value }}" data-email="{{ p.email or '' }}">
+        <i class="bi bi-person-badge"></i>
+      </button>
+      {% endif %}
+    </div>
+    {% endif %}
     <div class="portrait-go d-flex align-items-center gap-2 w-100">
       <span><i class="bi bi-folder2-open"></i> Open health</span>
       {% if is_manager and p.relation | enum_value != 'self' %}
@@ -116,11 +131,62 @@
               <label class="form-label" for="fam-blood">Blood group</label>
               <input class="form-control" id="fam-blood" type="text" name="blood_group" placeholder="O+">
             </div>
+            <div class="col-12">
+              <label class="form-label" for="fam-email">Email <span class="text-faint">(optional — for a login later)</span></label>
+              <input class="form-control" id="fam-email" type="email" name="email" placeholder="name@example.com">
+            </div>
           </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
           <button class="btn btn-primary" type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="edit-person" tabindex="-1" aria-labelledby="edit-person-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="edit-person-form" action="/admin/family/members/placeholder/edit">
+        <div class="modal-header">
+          <span class="card-ico gold"><i class="bi bi-pencil"></i></span>
+          <h2 class="modal-title" id="edit-person-title">Edit profile</h2>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label" for="edit-name">Name <span class="req">*</span></label>
+              <input class="form-control" id="edit-name" type="text" name="name" required>
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label" for="edit-relation">Relation</label>
+              <select class="form-select" id="edit-relation" name="relation">
+                <option value="spouse">Spouse</option>
+                <option value="child">Child</option>
+                <option value="parent">Parent</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div class="col-sm-5">
+              <label class="form-label" for="edit-blood">Blood group</label>
+              <input class="form-control" id="edit-blood" type="text" name="blood_group" placeholder="O+">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="edit-dob">Date of birth</label>
+              <input class="form-control" id="edit-dob" type="date" name="dob">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="edit-email">Email</label>
+              <input class="form-control" id="edit-email" type="email" name="email" placeholder="name@example.com">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save changes</button>
         </div>
       </form>
     </div>
@@ -181,5 +247,41 @@
     </div>
   </div>
 </div>
+{% endif %}
+
+{% if is_manager %}
+<script>
+(function(){
+  var editForm = document.getElementById("edit-person-form");
+  var editModalEl = document.getElementById("edit-person");
+  var editModal = window.bootstrap ? new bootstrap.Modal(editModalEl) : null;
+
+  document.querySelectorAll("[data-edit-person]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      editForm.action = "/admin/family/members/" + btn.dataset.id + "/edit";
+      document.getElementById("edit-name").value = btn.dataset.name || "";
+      document.getElementById("edit-relation").value = btn.dataset.relation || "other";
+      document.getElementById("edit-blood").value = btn.dataset.blood || "";
+      document.getElementById("edit-dob").value = btn.dataset.dob || "";
+      document.getElementById("edit-email").value = btn.dataset.email || "";
+      if (editModal) editModal.show();
+    });
+  });
+
+  var inviteModalEl = document.getElementById("invite-member");
+  var inviteModal = window.bootstrap ? new bootstrap.Modal(inviteModalEl) : null;
+
+  document.querySelectorAll("[data-convert-person]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      document.getElementById("inv-name").value = btn.dataset.name || "";
+      document.getElementById("inv-email").value = btn.dataset.email || "";
+      document.getElementById("inv-relation").value = btn.dataset.relation || "other";
+      var sel = document.getElementById("inv-person");
+      if (sel) sel.value = btn.dataset.id || "";
+      if (inviteModal) inviteModal.show();
+    });
+  });
+})();
+</script>
 {% endif %}
 {% endblock %}

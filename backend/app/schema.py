@@ -40,6 +40,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("ayushman_id", "VARCHAR(64)"),
         ("ice_token", "VARCHAR(64)"),
         ("linked_user_id", "VARCHAR(32)"),
+        ("email", "VARCHAR(255)"),
     ],
     "documents": [
         ("custom_category", "VARCHAR(255)"),

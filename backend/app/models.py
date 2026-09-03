@@ -158,6 +158,7 @@ class Person(Base):
     name = Column(String(255), nullable=False)
     relation = Column(Enum(Relation), default=Relation.other, nullable=False)
     dob = Column(String(20), nullable=True)  # ISO date string
+    email = Column(String(255), nullable=True)
     blood_group = Column(String(10), nullable=True)
     avatar_initials = Column(String(4), nullable=True)
     allergies = Column(Text, nullable=True)
