@@ -250,6 +250,7 @@
 {% endif %}
 
 {% if is_manager %}
+{% block scripts %}
 <script>
 (function(){
   var editForm = document.getElementById("edit-person-form");
@@ -283,5 +284,6 @@
   });
 })();
 </script>
+{% endblock %}
 {% endif %}
 {% endblock %}
