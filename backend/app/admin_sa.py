@@ -1,4 +1,5 @@
 """Super Admin HTML: users, online presence, failed logins, and signup."""
+import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
@@ -188,6 +189,102 @@ async def sa_user_modules_save(user_id: str, request: Request, db: Session = Dep
     db.commit()
     return RedirectResponse(
         f"/admin/sa/users?notice=modules&who={quote(owner.email)}",
+        status_code=302,
+    )
+
+
+@router.get("/users/{user_id}/edit", response_class=HTMLResponse)
+def sa_user_edit_form(user_id: str, request: Request, db: Session = Depends(get_db), error: str = ""):
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    return templates.TemplateResponse("sa_user_edit.html", _sa_ctx(
+        request, user, "sa_users", target=target, error=error or None,
+    ))
+
+
+@router.post("/users/{user_id}/edit", response_class=HTMLResponse)
+async def sa_user_edit_save(user_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    form = await request.form()
+    email_norm = str(form.get("email") or "").strip().lower()
+    full_name = str(form.get("full_name") or "").strip()
+    role = str(form.get("role") or target.role).strip()
+    if not email_norm or not full_name:
+        return templates.TemplateResponse("sa_user_edit.html", _sa_ctx(
+            request, user, "sa_users", target=target, error="Name and email are required.",
+        ), status_code=400)
+    if role not in (
+        models.UserRole.owner.value,
+        models.UserRole.superadmin.value,
+        models.UserRole.viewer.value,
+        models.UserRole.member.value,
+    ):
+        role = target.role
+    dupe = (
+        db.query(models.User)
+        .filter(models.User.email == email_norm, models.User.id != target.id)
+        .first()
+    )
+    if dupe:
+        return templates.TemplateResponse("sa_user_edit.html", _sa_ctx(
+            request, user, "sa_users", target=target, error="Another account already uses that email.",
+        ), status_code=409)
+    if target.id == user.id and role != target.role:
+        return templates.TemplateResponse("sa_user_edit.html", _sa_ctx(
+            request, user, "sa_users", target=target, error="You cannot change your own role.",
+        ), status_code=400)
+    target.email = email_norm
+    target.full_name = full_name
+    target.role = role
+    db.commit()
+    return RedirectResponse(
+        f"/admin/sa/users?notice=edited&who={quote(target.email)}",
+        status_code=302,
+    )
+
+
+@router.post("/users/{user_id}/reset-password")
+async def sa_reset_password(user_id: str, request: Request, db: Session = Depends(get_db)):
+    from app import security
+    from app.login_guard import client_ip, log_attempt
+
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    target = db.query(models.User).filter(models.User.id == user_id).first()
+    if not target:
+        return RedirectResponse("/admin/sa/users", status_code=302)
+    form = await request.form()
+    new_password = str(form.get("new_password") or "").strip()
+    generated = False
+    if not new_password:
+        new_password = secrets.token_urlsafe(9)
+        generated = True
+    elif len(new_password) < 8:
+        return RedirectResponse(
+            f"/admin/sa/users?notice=reset-error&who={quote(target.email)}",
+            status_code=302,
+        )
+    target.hashed_password = security.hash_password(new_password)
+    db.commit()
+    log_attempt(
+        db, email=target.email, ip=client_ip(request),
+        user_agent=f"password reset by {user.email}",
+        success=True, reason="sa_password_reset",
+    )
+    notice = "reset-generated" if generated else "reset"
+    pw_part = f"&newpw={quote(new_password)}" if generated else ""
+    return RedirectResponse(
+        f"/admin/sa/users?notice={notice}&who={quote(target.email)}{pw_part}",
         status_code=302,
     )
 

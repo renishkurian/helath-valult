@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Edit user — {{ target.full_name | nice }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">
+      <a href="/admin/sa/users"><i class="bi bi-chevron-left"></i> All users</a>
+    </div>
+    <h1 class="page-title">Edit user</h1>
+    <p class="page-lead">Update account details or issue a new password for <strong>{{ target.full_name | nice }}</strong>.</p>
+  </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">
+  <i class="bi bi-exclamation-triangle"></i>
+  <span>{{ error }}</span>
+</div>
+{% endif %}
+
+<form class="card mb-4" method="post" action="/admin/sa/users/{{ target.id }}/edit" style="max-width:640px;">
+  <div class="mb-3">
+    <label class="form-label" for="full_name">Full name</label>
+    <input class="form-control" type="text" id="full_name" name="full_name" value="{{ target.full_name }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label" for="email">Email</label>
+    <input class="form-control" type="email" id="email" name="email" value="{{ target.email }}" required>
+  </div>
+  <div class="mb-4">
+    <label class="form-label" for="role">Role</label>
+    <select class="form-select" id="role" name="role" {% if target.id == session_user.id %}disabled{% endif %}>
+      <option value="owner" {% if target.role == 'owner' %}selected{% endif %}>Owner</option>
+      <option value="member" {% if target.role == 'member' %}selected{% endif %}>Member</option>
+      <option value="viewer" {% if target.role == 'viewer' %}selected{% endif %}>Viewer</option>
+      <option value="superadmin" {% if target.role == 'superadmin' %}selected{% endif %}>Superadmin</option>
+    </select>
+    {% if target.id == session_user.id %}
+    <input type="hidden" name="role" value="{{ target.role }}">
+    <div class="form-text">You cannot change your own role.</div>
+    {% endif %}
+  </div>
+  <button class="btn btn-primary" type="submit">Save changes</button>
+  <a class="btn btn-ghost" href="/admin/sa/users">Cancel</a>
+</form>
+
+<div class="card" style="max-width:640px;">
+  <h2 class="h6 mb-2">Reset password</h2>
+  <p class="text-faint" style="font-size:.85rem;">Leave blank to generate a random password — it will be shown once after reset.</p>
+  <form method="post" action="/admin/sa/users/{{ target.id }}/reset-password" class="d-flex gap-2 flex-wrap"
+        data-confirm="Reset the password for {{ target.full_name | nice }}?">
+    <input class="form-control" style="max-width:280px;" type="text" name="new_password" placeholder="New password (min 8 chars, optional)">
+    <button class="btn btn-outline-danger" type="submit"><i class="bi bi-key"></i> Reset password</button>
+  </form>
+</div>
+{% endblock %}

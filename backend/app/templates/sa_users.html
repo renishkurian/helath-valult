@@ -55,6 +55,26 @@
   <i class="bi bi-exclamation-triangle"></i>
   <span>You cannot block your own account.</span>
 </div>
+{% elif notice == 'edited' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-check2-circle"></i>
+  <span>Updated details for <strong>{{ who }}</strong>.</span>
+</div>
+{% elif notice == 'reset' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-key"></i>
+  <span>Password reset for <strong>{{ who }}</strong>.</span>
+</div>
+{% elif notice == 'reset-generated' %}
+<div class="alert alert-success" role="alert">
+  <i class="bi bi-key"></i>
+  <span>Password reset for <strong>{{ who }}</strong>. New password (shown once): <code>{{ request.query_params.get('newpw') }}</code></span>
+</div>
+{% elif notice == 'reset-error' %}
+<div class="alert alert-danger" role="alert">
+  <i class="bi bi-exclamation-triangle"></i>
+  <span>Password must be at least 8 characters. Nothing was changed for <strong>{{ who }}</strong>.</span>
+</div>
 {% endif %}
 
 <form class="filter-bar" method="get" action="/admin/sa/users">
@@ -142,9 +162,10 @@
           </td>
           <td>
             {% if u.id == session_user.id %}
-            <span class="text-faint">you</span>
+            <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/edit">Edit</a>
             {% elif u.blocked %}
             <div class="sa-access-actions">
+              <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/edit">Edit</a>
               <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
               <form method="post" action="/admin/sa/users/{{ u.id }}/unblock">
                 <button class="btn btn-outline-success btn-sm" type="submit"><i class="bi bi-check-circle"></i> Unblock</button>
@@ -152,6 +173,7 @@
             </div>
             {% else %}
             <div class="sa-access-actions">
+              <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/edit">Edit</a>
               <a class="btn btn-outline-light btn-sm" href="/admin/sa/users/{{ u.id }}/modules">Modules</a>
               <form method="post" action="/admin/sa/users/{{ u.id }}/block"
                     data-confirm="Block this account? They will not be able to sign in.">
