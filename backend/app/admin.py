@@ -4537,13 +4537,13 @@ def _fn_wants_json(request: Request) -> bool:
 def _fn_txn_dict(row, accounts=None, categories=None) -> dict:
     from app.routers.finance import _txn_out
     if hasattr(row, "model_dump"):
-        return row.model_dump()
+        return row.model_dump(mode="json")
     if hasattr(row, "dict") and not hasattr(row, "account_id"):
         return row.dict()
     if accounts is None or categories is None:
         raise ValueError("accounts/categories required for ORM txn")
     out = _txn_out(row, accounts, categories)
-    return out.model_dump() if hasattr(out, "model_dump") else out.dict()
+    return out.model_dump(mode="json") if hasattr(out, "model_dump") else out.dict()
 
 
 def _fn_dashboard_json(db, user, ym: str) -> dict:
@@ -4552,7 +4552,7 @@ def _fn_dashboard_json(db, user, ym: str) -> dict:
     uid = _owned(db, user)
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
     snap = dash["summary"]
-    summary = snap.model_dump() if hasattr(snap, "model_dump") else dict(snap)
+    summary = snap.model_dump(mode="json") if hasattr(snap, "model_dump") else dict(snap)
     recent = []
     for t in dash.get("recent") or []:
         recent.append(_fn_txn_dict(t, accounts, categories))
@@ -4765,8 +4765,7 @@ def finance_add(
         if raw:
             save_txn_image(db, user, txn.id, raw, image.content_type)
     if _fn_wants_json(request):
-        payload = txn.model_dump() if hasattr(txn, "model_dump") else txn.dict()
-        return JSONResponse({"ok": True, "txn": payload, "redirect": "/admin/finance"})
+        return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": "/admin/finance"})
     return RedirectResponse("/admin/finance", status_code=302)
 
 
@@ -5395,8 +5394,7 @@ async def finance_api_create_txn(request: Request, db: Session = Depends(get_db)
         raw = await image.read()
         if raw:
             save_txn_image(db, user, txn.id, raw, getattr(image, "content_type", None))
-    payload = txn.model_dump() if hasattr(txn, "model_dump") else txn.dict()
-    return JSONResponse({"ok": True, "txn": payload, "redirect": "/admin/finance"})
+    return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": "/admin/finance"})
 
 
 @router.post("/finance/api/transactions/{txn_id}")
@@ -5438,8 +5436,7 @@ async def finance_api_update_txn(txn_id: str, request: Request, db: Session = De
         raw = await image.read()
         if raw:
             save_txn_image(db, user, txn_id, raw, getattr(image, "content_type", None))
-    payload = txn.model_dump() if hasattr(txn, "model_dump") else txn.dict()
-    return JSONResponse({"ok": True, "txn": payload, "redirect": "/admin/finance"})
+    return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": "/admin/finance"})
 
 
 @router.get("/finance/categories", response_class=HTMLResponse)

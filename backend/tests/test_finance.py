@@ -659,6 +659,61 @@ def test_admin_account_statement_and_recurring_pages():
     assert "Amount histogram" in r.text
 
 
+def test_admin_api_update_transaction_returns_json():
+    """Edit save must JSON-encode datetime fields (created_at) without 500."""
+    import uuid
+    email = f"ajax-edit-{uuid.uuid4().hex[:8]}@example.com"
+    r = client.post("/auth/register", json={
+        "email": email, "password": "password123", "full_name": "Ajax Edit",
+    })
+    assert r.status_code == 201, r.text
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    accounts = client.get("/finance/accounts", headers=headers).json()
+    cats = client.get("/finance/categories", headers=headers).json()
+    expense_cat = next(c for c in cats if c["kind"] == "expense" and not c.get("parent_id"))
+    created = client.post("/finance/transactions", headers=headers, json={
+        "account_id": accounts[0]["id"],
+        "category_id": expense_cat["id"],
+        "txn_type": "expense",
+        "amount": 50,
+        "txn_date": "2026-09-02",
+        "txn_time": "04:10",
+        "payee": "Benny",
+        "payment_method": "upi",
+    })
+    assert created.status_code == 200, created.text
+    txn_id = created.json()["id"]
+
+    session = TestClient(app)
+    login = session.post(
+        "/admin/login",
+        data={"email": email, "password": "password123"},
+        follow_redirects=False,
+    )
+    assert login.status_code in (200, 302), login.text
+    updated = session.post(
+        f"/admin/finance/api/transactions/{txn_id}",
+        data={
+            "account_id": accounts[0]["id"],
+            "category_id": expense_cat["id"],
+            "txn_type": "expense",
+            "amount": "55.00",
+            "txn_date": "2026-09-02",
+            "txn_time": "04:10",
+            "payee": "Benny",
+            "description": "Tst",
+            "payment_method": "upi",
+        },
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+    )
+    assert updated.status_code == 200, updated.text
+    body = updated.json()
+    assert body["ok"] is True
+    assert body["txn"]["payee"] == "Benny"
+    assert body["txn"]["amount"] == 55
+    assert isinstance(body["txn"]["created_at"], str)
+
+
 def test_admin_account_edit_name_and_no_default_categories():
     r = client.post("/auth/register", json={
         "email": "editacc@example.com", "password": "password123", "full_name": "Edit Acc",

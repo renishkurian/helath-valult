@@ -122,7 +122,20 @@
     );
     opts.credentials = "same-origin";
     return fetch(url, opts).then(function (res) {
-      return res.json().then(function (data) {
+      return res.text().then(function (text) {
+        var data = null;
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            if (!res.ok) {
+              var plain = new Error(res.statusText || "Request failed");
+              plain.status = res.status;
+              throw plain;
+            }
+            throw e;
+          }
+        }
         if (!res.ok) {
           var detail = data && data.detail;
           if (Array.isArray(detail)) {
