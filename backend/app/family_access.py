@@ -39,6 +39,28 @@ def is_family_member(user: models.User) -> bool:
     return (user.role or "") == models.UserRole.member.value
 
 
+def is_accepted_family_member(user: models.User) -> bool:
+    """Return True if user is vault owner or an accepted family member."""
+    if is_family_admin(user):
+        return True
+    if (user.role or "") == models.UserRole.member.value:
+        return getattr(user, "family_status", "accepted") == "accepted"
+    return False
+
+
+def user_linked_person_ids(db: Session, user: models.User) -> set[str]:
+    """Person profile IDs linked to this user in their vault scope when family invitation is accepted."""
+    if not is_accepted_family_member(user):
+        return set()
+    vid = vault_id(user)
+    people = (
+        db.query(models.Person.id)
+        .filter(models.Person.user_id == vid, models.Person.linked_user_id == user.id)
+        .all()
+    )
+    return {p[0] for p in people}
+
+
 def is_legacy_viewer(user: models.User) -> bool:
     return (user.role or "") == models.UserRole.viewer.value
 
@@ -96,12 +118,26 @@ def permission_for(
     oid = item_owner_id(owner_user_id, vault_scope_id)
     if user.id == oid:
         return models.SharePermission.edit.value
-    share = _share_row(db, resource_type=resource_type, resource_id=resource_id, to_user_id=user.id)
-    if not share:
+    if not is_accepted_family_member(user):
         return None
-    if share.permission == models.SharePermission.edit.value:
-        return models.SharePermission.edit.value
-    return models.SharePermission.view.value
+    share = _share_row(db, resource_type=resource_type, resource_id=resource_id, to_user_id=user.id)
+    if share:
+        return share.permission
+    linked_persons = user_linked_person_ids(db, user)
+    if linked_persons:
+        res_person_id = None
+        if resource_type == models.ShareResourceType.health_document.value:
+            doc = db.query(models.Document.person_id).filter(models.Document.id == resource_id).first()
+            res_person_id = doc[0] if doc else None
+        elif resource_type == models.ShareResourceType.password.value:
+            vi = db.query(models.VaultItem.person_id).filter(models.VaultItem.id == resource_id).first()
+            res_person_id = vi[0] if vi else None
+        elif resource_type == models.ShareResourceType.locker.value:
+            li = db.query(models.LockerItem.person_id).filter(models.LockerItem.id == resource_id).first()
+            res_person_id = li[0] if li else None
+        if res_person_id and res_person_id in linked_persons:
+            return models.SharePermission.view.value
+    return None
 
 
 def can_view(
@@ -149,8 +185,10 @@ def visible_resource_ids(
 ) -> tuple[set[str], set[str]]:
     """Return (owned_ids_placeholder unused, shared_ids) — callers filter owned separately.
 
-    Shared ids: resources shared *to* this user.
+    Shared ids: resources shared *to* this user via FamilyShare OR items attached to user's linked Person profile.
     """
+    if not is_accepted_family_member(user):
+        return set(), set()
     rows = (
         db.query(models.FamilyShare.resource_id)
         .filter(
@@ -160,7 +198,44 @@ def visible_resource_ids(
         )
         .all()
     )
-    return set(), {r[0] for r in rows}
+    shared_ids = {r[0] for r in rows}
+
+    linked_persons = user_linked_person_ids(db, user)
+    if linked_persons:
+        if resource_type == models.ShareResourceType.health_document.value:
+            doc_rows = (
+                db.query(models.Document.id)
+                .filter(
+                    models.Document.person_id.in_(list(linked_persons)),
+                    models.Document.deleted_at.is_(None),
+                )
+                .all()
+            )
+            shared_ids.update(r[0] for r in doc_rows)
+        elif resource_type == models.ShareResourceType.password.value:
+            vault_rows = (
+                db.query(models.VaultItem.id)
+                .filter(
+                    models.VaultItem.user_id == vault_scope_id,
+                    models.VaultItem.person_id.in_(list(linked_persons)),
+                    models.VaultItem.deleted_at.is_(None),
+                )
+                .all()
+            )
+            shared_ids.update(r[0] for r in vault_rows)
+        elif resource_type == models.ShareResourceType.locker.value:
+            locker_rows = (
+                db.query(models.LockerItem.id)
+                .filter(
+                    models.LockerItem.user_id == vault_scope_id,
+                    models.LockerItem.person_id.in_(list(linked_persons)),
+                    models.LockerItem.deleted_at.is_(None),
+                )
+                .all()
+            )
+            shared_ids.update(r[0] for r in locker_rows)
+
+    return set(), shared_ids
 
 
 def shares_for_resource(
@@ -201,6 +276,7 @@ def share_target_users(db: Session, user: models.User, *, repair: bool = True) -
         db.query(models.User)
         .filter(
             models.User.id != user.id,
+            models.User.family_status != "removed",
             (
                 (models.User.vault_owner_id == vid)
                 | (models.User.id == vid)

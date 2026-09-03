@@ -87,6 +87,8 @@ def list_members(
     current_user: models.User = Depends(get_current_user),
 ):
     """Everyone in the household: profiles + linked logins."""
+    if not faccess.is_accepted_family_member(current_user):
+        return []
     vid = vault_id(current_user)
     people = (
         db.query(models.Person)
@@ -94,14 +96,11 @@ def list_members(
         .order_by(models.Person.created_at.asc())
         .all()
     )
-    # Members only see themselves + profiles they need for switching shared context?
-    # Family module: admin sees all; members see all profiles (names/relations) but not private items.
     linked_ids = [p.linked_user_id for p in people if p.linked_user_id]
     users = {}
     if linked_ids:
         for u in db.query(models.User).filter(models.User.id.in_(linked_ids)).all():
             users[u.id] = u
-    # Include vault admin as self profile
     out = [_person_out(p, users.get(p.linked_user_id) if p.linked_user_id else None) for p in people]
     return out
 
@@ -117,6 +116,46 @@ def share_targets(
         ShareTargetOut(user_id=u.id, full_name=u.full_name, email=u.email, role=u.role)
         for u in rows
     ]
+
+
+@router.get("/request")
+def get_family_request(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Get current user's family request / invitation status."""
+    vid = vault_id(current_user)
+    manager = db.query(models.User).filter(models.User.id == vid).first()
+    return {
+        "status": getattr(current_user, "family_status", "accepted"),
+        "manager_id": manager.id if manager else None,
+        "manager_name": manager.full_name if manager else "",
+        "manager_email": manager.email if manager else "",
+    }
+
+
+@router.post("/request/accept")
+def accept_family_request(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Accept pending family invitation."""
+    current_user.family_status = "accepted"
+    db.commit()
+    db.refresh(current_user)
+    return {"ok": True, "family_status": "accepted"}
+
+
+@router.post("/request/reject")
+def reject_family_request(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Reject pending family invitation."""
+    current_user.family_status = "rejected"
+    db.commit()
+    db.refresh(current_user)
+    return {"ok": True, "family_status": "rejected"}
 
 
 @router.post("/invite", response_model=FamilyMemberOut, status_code=201)
@@ -142,6 +181,7 @@ def invite_member(
         hashed_password=security.hash_password(body.password),
         full_name=body.full_name.strip(),
         role=models.UserRole.member.value,
+        family_status="pending",
         vault_owner_id=vault_id(current_user),
     )
     db.add(member)

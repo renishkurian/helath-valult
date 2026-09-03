@@ -26,6 +26,36 @@
   </div>
 </div>
 
+{% if family_status == 'pending' %}
+<div class="card p-4 mb-4 border-warning bg-warning-subtle rounded-3 shadow-sm">
+  <div class="d-flex align-items-center gap-3 mb-2">
+    <span class="fs-2 text-warning"><i class="bi bi-person-plus-fill"></i></span>
+    <div>
+      <h3 class="h5 mb-1 text-dark fw-bold">Family Invitation Request</h3>
+      <p class="mb-0 text-secondary">
+        <strong>{{ family_manager.full_name if family_manager else 'Vault Manager' }}</strong> ({{ family_manager.email if family_manager else '' }}) has invited you to join their family vault.
+      </p>
+    </div>
+  </div>
+  <p class="small text-muted mb-3 ms-5">
+    Once accepted, you will be able to view household family members and details added against your profile or shared with you.
+  </p>
+  <div class="d-flex gap-2 ms-5">
+    <form method="post" action="/admin/family/request/accept">
+      <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i> Accept Invitation</button>
+    </form>
+    <form method="post" action="/admin/family/request/reject">
+      <button type="submit" class="btn btn-outline-danger"><i class="bi bi-x-lg me-1"></i> Decline</button>
+    </form>
+  </div>
+</div>
+{% elif family_status == 'rejected' %}
+<div class="card p-4 mb-4 border-secondary bg-light rounded-3 shadow-sm">
+  <h3 class="h5 text-muted mb-1"><i class="bi bi-info-circle me-1"></i> Family Invitation Declined</h3>
+  <p class="text-muted mb-0">You declined the family invitation from {{ family_manager.full_name if family_manager else 'Vault Manager' }}.</p>
+</div>
+{% endif %}
+
 <div class="album">
   {% for p in people %}
   <article class="portrait">

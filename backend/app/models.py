@@ -86,6 +86,8 @@ class User(Base):
     role = Column(String(20), default=UserRole.owner.value, nullable=False)
     # The vault this account belongs to. Owners: vault_owner_id == id.
     vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
+    # Status of family invitation / membership: accepted | pending | rejected | removed
+    family_status = Column(String(20), default="accepted", nullable=False, index=True)
     totp_secret_enc = Column(Text, nullable=True)
     totp_enabled = Column(Boolean, default=False, nullable=False)
     app_approve = Column(Boolean, default=False, nullable=False)

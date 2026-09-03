@@ -36,6 +36,16 @@
   {% endif %}
 </div>
 
+{% if session_user.family_status == 'pending' %}
+<div class="alert alert-warning border-warning d-flex align-items-center justify-content-between mb-4 shadow-sm" role="alert">
+  <div>
+    <i class="bi bi-person-plus-fill me-2 fs-5"></i>
+    <strong>Pending Family Request:</strong> You have been invited to join a family vault.
+  </div>
+  <a class="btn btn-warning btn-sm fw-bold" href="/admin/family">View Invitation</a>
+</div>
+{% endif %}
+
 {% if request.query_params.get('ok') == 'trashed' %}
 <div class="alert alert-success mb-4" role="status">Document moved to trash. <a href="/admin/trash">Open trash</a></div>
 {% endif %}

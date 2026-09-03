@@ -1243,13 +1243,16 @@ def family_page(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     from app import family_access as faccess
-    people = db.query(models.Person).filter(models.Person.user_id == vault_id(user)).all()
+    vid = vault_id(user)
+    manager = db.query(models.User).filter(models.User.id == vid).first()
+    is_accepted = faccess.is_accepted_family_member(user)
+    people = db.query(models.Person).filter(models.Person.user_id == vid).all() if is_accepted else []
     logins = (
         db.query(models.User)
-        .filter(models.User.vault_owner_id == vault_id(user), models.User.id != vault_id(user))
+        .filter(models.User.vault_owner_id == vid, models.User.id != vid, models.User.family_status != "removed")
         .order_by(models.User.created_at.asc())
         .all()
-    )
+    ) if is_accepted else []
     return templates.TemplateResponse("family.html", {
         "request": request,
         "session_user": user,
@@ -1258,8 +1261,30 @@ def family_page(request: Request, db: Session = Depends(get_db)):
         "people": people,
         "logins": logins,
         "is_manager": faccess.is_family_admin(user),
+        "family_manager": manager,
+        "family_status": getattr(user, "family_status", "accepted"),
         "active_person_id": None,
     })
+
+
+@router.post("/family/request/accept")
+def family_request_accept(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    user.family_status = "accepted"
+    db.commit()
+    return RedirectResponse("/admin/family", status_code=302)
+
+
+@router.post("/family/request/reject")
+def family_request_reject(request: Request, db: Session = Depends(get_db)):
+    user = require_login(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    user.family_status = "rejected"
+    db.commit()
+    return RedirectResponse("/admin/family", status_code=302)
 
 
 @router.post("/family/add")
@@ -1359,6 +1384,7 @@ def family_invite(
         hashed_password=sec.hash_password(password),
         full_name=(full_name or "").strip(),
         role=models.UserRole.member.value,
+        family_status="pending",
         vault_owner_id=vault_id(user),
     )
     db.add(member)
@@ -1404,6 +1430,8 @@ def family_remove_member(request: Request, member_id: str, db: Session = Depends
         .first()
     )
     if member:
+        member.family_status = "removed"
+        member.vault_owner_id = member.id
         db.query(models.DeviceToken).filter(models.DeviceToken.user_id == member.id).delete()
         db.query(models.ViewerAccess).filter(models.ViewerAccess.viewer_user_id == member.id).delete()
         db.query(models.FamilyShare).filter(
@@ -1411,7 +1439,6 @@ def family_remove_member(request: Request, member_id: str, db: Session = Depends
         ).delete(synchronize_session=False)
         for p in db.query(models.Person).filter(models.Person.linked_user_id == member.id).all():
             p.linked_user_id = None
-        db.delete(member)
         db.commit()
     return RedirectResponse("/admin/family", status_code=302)
 

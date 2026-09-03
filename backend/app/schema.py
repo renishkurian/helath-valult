@@ -18,6 +18,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "users": [
         ("role", "VARCHAR(20) NOT NULL DEFAULT 'owner'"),
         ("vault_owner_id", "VARCHAR(32)"),
+        ("family_status", "VARCHAR(20) NOT NULL DEFAULT 'accepted'"),
         ("totp_secret_enc", "TEXT"),
         ("totp_enabled", "BOOLEAN NOT NULL DEFAULT 0"),
         ("app_approve", "BOOLEAN NOT NULL DEFAULT 0"),
@@ -167,6 +168,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
 
 _INDEXES: list[tuple[str, str, str]] = [
     ("ix_users_vault_owner_id", "users", "vault_owner_id"),
+    ("ix_users_family_status", "users", "family_status"),
     ("ix_documents_expiry_date", "documents", "expiry_date"),
     ("ix_documents_custom_category", "documents", "custom_category"),
     ("ix_documents_tags", "documents", "tags"),
