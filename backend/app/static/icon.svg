@@ -1,12 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="g" x1="12" y1="6" x2="54" y2="60" gradientUnits="userSpaceOnUse">
+    <linearGradient id="g" x1="12" y1="4" x2="52" y2="60" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#EBD6A6"/>
       <stop offset="0.45" stop-color="#D9B978"/>
       <stop offset="1" stop-color="#C29B54"/>
     </linearGradient>
   </defs>
+
+  <!-- base tile -->
   <rect width="64" height="64" rx="16" fill="#0A0C11"/>
-  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#g)"/>
-  <path d="M20 21h7.6l4.4 16.2L36.4 21H44l-8.3 24h-7.4z" fill="#18130A"/>
+
+  <!-- shield: vault / protection -->
+  <path d="M32 6.5 L50 12.5 V29 C50 41.5 42.6 50.3 32 55.5
+           C21.4 50.3 14 41.5 14 29 V12.5 Z"
+        fill="url(#g)"/>
+  <path d="M32 6.5 L50 12.5 V29 C50 41.5 42.6 50.3 32 55.5
+           C21.4 50.3 14 41.5 14 29 V12.5 Z"
+        fill="none" stroke="#0A0C11" stroke-opacity="0.15" stroke-width="1"/>
+
+  <!-- pulse / heartbeat line: health -->
+  <path d="M18.5 32 H24.5 L28 24 L32.5 40 L36 30 L38.5 32 H45.5"
+        fill="none" stroke="#18130A" stroke-width="3.1"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- keyhole dot: locked / private records, sits on the pulse line -->
+  <circle cx="32.5" cy="40" r="2.7" fill="#18130A"/>
 </svg>
