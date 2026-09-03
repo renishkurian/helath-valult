@@ -114,6 +114,7 @@ def invite_viewer(
         full_name=body.full_name,
         role=models.UserRole.member.value,
         vault_owner_id=vault_id(current_user),
+        family_status="accepted",  # legacy invite: bypass pending workflow
     )
     db.add(member)
     db.flush()

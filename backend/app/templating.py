@@ -9,7 +9,11 @@ TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 _RELATION_LABELS = {
     "self": "You",
     "spouse": "Spouse",
+    "father": "Father",
+    "mother": "Mother",
     "child": "Child",
+    "brother": "Brother",
+    "sister": "Sister",
     "parent": "Parent",
     "other": "Other",
 }

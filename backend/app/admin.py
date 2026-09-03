@@ -1253,6 +1253,12 @@ def family_page(request: Request, db: Session = Depends(get_db)):
         .order_by(models.User.created_at.asc())
         .all()
     ) if is_accepted else []
+    # Compute which singleton relations are already taken so the UI can disable them.
+    taken_relations = {
+        p.relation.value
+        for p in people
+        if p.relation in models.SINGLETON_RELATIONS and p.relation != models.Relation.self_
+    }
     return templates.TemplateResponse("family.html", {
         "request": request,
         "session_user": user,
@@ -1264,6 +1270,7 @@ def family_page(request: Request, db: Session = Depends(get_db)):
         "family_manager": manager,
         "family_status": getattr(user, "family_status", "accepted"),
         "active_person_id": None,
+        "taken_relations": taken_relations,
     })
 
 
@@ -1300,9 +1307,21 @@ def family_add(
     from app import family_access as faccess
     if not faccess.is_family_admin(user):
         return RedirectResponse("/admin/family?err=manager_only", status_code=302)
+    vid = vault_id(user)
+    try:
+        rel = models.Relation(relation)
+    except ValueError:
+        rel = models.Relation.other
+    # Enforce singleton relations (spouse, father, mother can only exist once).
+    if rel in models.SINGLETON_RELATIONS:
+        exists = db.query(models.Person).filter(
+            models.Person.user_id == vid, models.Person.relation == rel
+        ).first()
+        if exists:
+            return RedirectResponse(f"/admin/family?err=relation_taken&rel={rel.value}", status_code=302)
     initials = "".join([p[0].upper() for p in name.split()[:2]]) or "FM"
     person = models.Person(
-        user_id=vault_id(user), name=name, relation=models.Relation(relation),
+        user_id=vid, name=name, relation=rel,
         blood_group=blood_group or None, email=(email or "").strip().lower() or None,
         avatar_initials=initials,
     )
@@ -1341,9 +1360,19 @@ def family_edit_member(
         person.name = name
     if person.relation != models.Relation.self_:
         try:
-            person.relation = models.Relation(relation)
+            new_rel = models.Relation(relation)
         except ValueError:
-            pass
+            new_rel = models.Relation.other
+        # Enforce singleton relations when changing to a new one.
+        if new_rel in models.SINGLETON_RELATIONS and new_rel != person.relation:
+            exists = db.query(models.Person).filter(
+                models.Person.user_id == vault_id(user),
+                models.Person.relation == new_rel,
+                models.Person.id != person_id,
+            ).first()
+            if exists:
+                return RedirectResponse(f"/admin/family?err=relation_taken&rel={new_rel.value}", status_code=302)
+        person.relation = new_rel
     person.blood_group = (blood_group or "").strip() or None
     person.dob = (dob or "").strip() or None
     person.email = (email or "").strip().lower() or None
@@ -1441,6 +1470,49 @@ def family_remove_member(request: Request, member_id: str, db: Session = Depends
             p.linked_user_id = None
         db.commit()
     return RedirectResponse("/admin/family", status_code=302)
+
+
+
+@router.post("/family/profiles/{person_id}/invite")
+def family_profile_invite(
+    request: Request,
+    person_id: str,
+    email: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """Invite an existing account (by email) to be the login for a profile-only family member."""
+    user, denied = require_mutator(request, db)
+    if denied:
+        return denied
+    from app import family_access as faccess
+    if not faccess.is_family_admin(user):
+        return RedirectResponse("/admin/family?err=manager_only", status_code=302)
+    vid = vault_id(user)
+    person = (
+        db.query(models.Person)
+        .filter(models.Person.id == person_id, models.Person.user_id == vid)
+        .first()
+    )
+    if not person:
+        return RedirectResponse("/admin/family?err=not_found", status_code=302)
+    if person.linked_user_id:
+        return RedirectResponse("/admin/family?err=already_linked", status_code=302)
+    email_n = (email or "").strip().lower()
+    target = db.query(models.User).filter(models.User.email == email_n).first()
+    if not target:
+        return RedirectResponse("/admin/family?err=user_not_found", status_code=302)
+    if target.id == user.id:
+        return RedirectResponse("/admin/family?err=self_invite", status_code=302)
+    if target.vault_owner_id == vid and target.family_status == "accepted":
+        return RedirectResponse("/admin/family?err=already_member", status_code=302)
+    # Link the target account to this vault as pending.
+    target.vault_owner_id = vid
+    target.family_status = "pending"
+    target.role = models.UserRole.member.value
+    # Link the person profile to the invited user.
+    person.linked_user_id = target.id
+    db.commit()
+    return RedirectResponse("/admin/family?ok=invited", status_code=302)
 
 
 @router.post("/people/{person_id}/delete")

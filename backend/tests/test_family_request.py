@@ -21,7 +21,7 @@ def setup_db():
 
     # Owner (husband)
     owner = models.User(
-        email="owner@example.com",
+        email="fam_request_owner@example.com",
         hashed_password=security.hash_password("password123"),
         full_name="Husband Owner",
         role=models.UserRole.owner.value,
@@ -41,7 +41,7 @@ def test_family_invite_request_flow_and_data_access():
     db = SessionLocal()
 
     # Owner logs in
-    resp = client.post("/auth/login", data={"username": "owner@example.com", "password": "password123"})
+    resp = client.post("/auth/login", data={"username": "fam_request_owner@example.com", "password": "password123"})
     assert resp.status_code == 200, resp.text
     owner_token = resp.json()["access_token"]
     owner_headers = {"Authorization": f"Bearer {owner_token}"}
@@ -123,7 +123,7 @@ def test_family_invite_request_flow_and_data_access():
     web = TestClient(app)
     resp = web.post(
         "/admin/login",
-        data={"email": "owner@example.com", "password": "password123"},
+        data={"email": "fam_request_owner@example.com", "password": "password123"},
         follow_redirects=False,
     )
     assert resp.status_code == 302
@@ -141,4 +141,66 @@ def test_family_invite_request_flow_and_data_access():
     assert resp.status_code == 200, resp.text
     assert len(resp.json()) == 0
 
+
+
+def test_invite_existing_standalone_account_flow():
+    db = SessionLocal()
+
+    # Pre-existing standalone user Deepthi Maria
+    deepthi = models.User(
+        email="deepthi@example.com",
+        hashed_password=security.hash_password("password123"),
+        full_name="DEEPTHI MARIA",
+        role=models.UserRole.owner.value,
+        family_status="accepted",
+    )
+    db.add(deepthi)
+    db.commit()
+    db.refresh(deepthi)
+    deepthi.vault_owner_id = deepthi.id
+    db.commit()
+
+    # Owner logs in
+    resp = client.post("/auth/login", data={"username": "fam_request_owner@example.com", "password": "password123"})
+    assert resp.status_code == 200, resp.text
+    owner_token = resp.json()["access_token"]
+    owner_headers = {"Authorization": f"Bearer {owner_token}"}
+
+    # Owner invites existing account deepthi@example.com
+    resp = client.post(
+        "/family/invite",
+        headers=owner_headers,
+        json={
+            "email": "deepthi@example.com",
+            "password": "",
+            "full_name": "DEEPTHI MARIA",
+            "relation": "spouse",
+        },
+    )
+    assert resp.status_code == 201, resp.text
+
+    db.refresh(deepthi)
+    assert deepthi.family_status == "pending"
+
+    # Deepthi logs in
+    resp = client.post("/auth/login", data={"username": "deepthi@example.com", "password": "password123"})
+    assert resp.status_code == 200, resp.text
+    deepthi_headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    # Verify Deepthi sees pending family request from Husband Owner
+    req_info = client.get("/family/request", headers=deepthi_headers).json()
+    assert req_info["status"] == "pending"
+    assert req_info["manager_name"] == "Husband Owner"
+
+    # Deepthi accepts family request
+    client.post("/family/request/accept", headers=deepthi_headers)
+
+    db.refresh(deepthi)
+    assert deepthi.family_status == "accepted"
+
+    # Now Deepthi sees members of Husband Owner's vault
+    members = client.get("/family/members", headers=deepthi_headers).json()
+    assert len(members) > 0
+
     db.close()
+

@@ -16,9 +16,21 @@ def gen_id() -> str:
 class Relation(str, enum.Enum):
     self_ = "self"
     spouse = "spouse"
+    father = "father"
+    mother = "mother"
     child = "child"
-    parent = "parent"
+    brother = "brother"
+    sister = "sister"
+    parent = "parent"   # generic / keep for backward compat
     other = "other"
+
+
+# Relations that can only appear ONCE per vault (not counting 'self').
+SINGLETON_RELATIONS: frozenset["Relation"] = frozenset({
+    Relation.spouse,
+    Relation.father,
+    Relation.mother,
+})
 
 
 class DocCategory(str, enum.Enum):

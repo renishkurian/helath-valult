@@ -9,7 +9,7 @@
       Family Vault
     </div>
     <h1 class="page-title">Household</h1>
-    <p class="page-lead">Add family members, set relationships, and invite logins. Each member keeps their own private entries until they share with you (view or edit).</p>
+    <p class="page-lead">Add family members, set relationships, and invite logins. Each member keeps their own private entries until you share with them.</p>
   </div>
   <div class="page-actions">
     <span class="badge badge-soft" aria-label="{{ people|length }} people">
@@ -26,6 +26,54 @@
   </div>
 </div>
 
+{# ── Error / success flash messages ─────────────────────────────────── #}
+{% set err = request.query_params.get('err') %}
+{% set ok  = request.query_params.get('ok') %}
+{% if err == 'relation_taken' %}
+{% set rel_name = request.query_params.get('rel', '') | capitalize %}
+<div class="alert alert-warning mb-3" role="alert">
+  <i class="bi bi-exclamation-triangle me-1"></i>
+  <strong>{{ rel_name }}</strong> already exists in your household. You can only have one {{ rel_name }}.
+</div>
+{% elif err == 'user_not_found' %}
+<div class="alert alert-warning mb-3" role="alert">
+  <i class="bi bi-person-x me-1"></i>
+  No account found with that email address. Ask them to create an account first.
+</div>
+{% elif err == 'already_linked' %}
+<div class="alert alert-info mb-3" role="alert">
+  <i class="bi bi-info-circle me-1"></i>
+  This profile already has a login linked to it.
+</div>
+{% elif err == 'already_member' %}
+<div class="alert alert-info mb-3" role="alert">
+  <i class="bi bi-info-circle me-1"></i>
+  That person is already an active member of your family vault.
+</div>
+{% elif err == 'self_invite' %}
+<div class="alert alert-warning mb-3" role="alert">
+  <i class="bi bi-exclamation-circle me-1"></i>
+  You cannot invite yourself.
+</div>
+{% elif err == 'email_exists' %}
+<div class="alert alert-warning mb-3" role="alert">
+  <i class="bi bi-exclamation-circle me-1"></i>
+  An account with this email already exists. Use <strong>Invite to family</strong> from the profile card instead.
+</div>
+{% elif err == 'password' %}
+<div class="alert alert-warning mb-3" role="alert">
+  <i class="bi bi-key me-1"></i>
+  Password must be at least 8 characters.
+</div>
+{% endif %}
+{% if ok == 'invited' %}
+<div class="alert alert-success mb-3" role="alert">
+  <i class="bi bi-check-circle me-1"></i>
+  Invitation sent! They'll see a request on their family page.
+</div>
+{% endif %}
+
+{# ── Pending invitation banner for the invited user ─────────────────── #}
 {% if family_status == 'pending' %}
 <div class="card p-4 mb-4 border-warning bg-warning-subtle rounded-3 shadow-sm">
   <div class="d-flex align-items-center gap-3 mb-2">
@@ -33,12 +81,13 @@
     <div>
       <h3 class="h5 mb-1 text-dark fw-bold">Family Invitation Request</h3>
       <p class="mb-0 text-secondary">
-        <strong>{{ family_manager.full_name if family_manager else 'Vault Manager' }}</strong> ({{ family_manager.email if family_manager else '' }}) has invited you to join their family vault.
+        <strong>{{ family_manager.full_name if family_manager else 'Vault Manager' }}</strong>
+        ({{ family_manager.email if family_manager else '' }}) has invited you to join their family vault.
       </p>
     </div>
   </div>
   <p class="small text-muted mb-3 ms-5">
-    Once accepted, you will be able to view household family members and details added against your profile or shared with you.
+    Once accepted, you will be able to view household family members and details added against your profile.
   </p>
   <div class="d-flex gap-2 ms-5">
     <form method="post" action="/admin/family/request/accept">
@@ -56,6 +105,7 @@
 </div>
 {% endif %}
 
+{# ── Portrait grid ───────────────────────────────────────────────────── #}
 <div class="album">
   {% for p in people %}
   <article class="portrait">
@@ -64,31 +114,55 @@
       <a class="stretched-link text-body text-decoration-none" href="/admin?person={{ p.id }}">{{ p.name | nice }}</a>
     </h2>
     <p>{{ p.relation | relabel }}</p>
+
+    {# Login / pending status badge #}
     {% if p.linked_user_id %}
-    <div class="mt-1"><span class="badge badge-soft"><i class="bi bi-key"></i> Has login</span></div>
+      {% set linked_status = logins | selectattr('id', 'equalto', p.linked_user_id) | list %}
+      {% if linked_status and linked_status[0].family_status == 'pending' %}
+      <div class="mt-1">
+        <span class="badge bg-warning text-dark"><i class="bi bi-clock-history me-1"></i>Invite pending</span>
+      </div>
+      {% else %}
+      <div class="mt-1"><span class="badge badge-soft"><i class="bi bi-key"></i> Has login</span></div>
+      {% endif %}
     {% endif %}
+
     {% if p.blood_group %}
     <div class="mt-2"><span class="badge badge-bad"><i class="bi bi-droplet"></i> {{ p.blood_group }}</span></div>
     {% endif %}
+
     {% if is_manager %}
     <div class="mt-2 d-flex gap-2 flex-wrap position-relative z-2">
+      {# Edit button #}
       <button class="btn btn-ghost btn-icon btn-sm" type="button" title="Edit {{ p.name | nice }}"
               data-edit-person data-id="{{ p.id }}" data-name="{{ p.name }}" data-relation="{{ p.relation | enum_value }}"
               data-blood="{{ p.blood_group or '' }}" data-dob="{{ p.dob or '' }}" data-email="{{ p.email or '' }}">
         <i class="bi bi-pencil"></i>
       </button>
+
+      {# ── Invite to family button (profile with no login yet, not self) ─ #}
       {% if not p.linked_user_id and p.relation | enum_value != 'self' %}
-      <button class="btn btn-ghost btn-icon btn-sm" type="button" title="Give {{ p.name | nice }} a login"
+      <button class="btn btn-ghost btn-icon btn-sm text-primary" type="button"
+              title="Invite {{ p.name | nice }} to join your family vault"
+              data-invite-profile data-id="{{ p.id }}" data-name="{{ p.name }}" data-email="{{ p.email or '' }}">
+        <i class="bi bi-send"></i>
+      </button>
+      {% endif %}
+
+      {# Legacy "Give login" button kept for creating a new account for this profile #}
+      {% if not p.linked_user_id and p.relation | enum_value != 'self' %}
+      <button class="btn btn-ghost btn-icon btn-sm" type="button" title="Create a new login for {{ p.name | nice }}"
               data-convert-person data-id="{{ p.id }}" data-name="{{ p.name }}" data-relation="{{ p.relation | enum_value }}" data-email="{{ p.email or '' }}">
         <i class="bi bi-person-badge"></i>
       </button>
       {% endif %}
     </div>
     {% endif %}
+
     <div class="portrait-go d-flex align-items-center gap-2 w-100">
       <span><i class="bi bi-folder2-open"></i> Open health</span>
       {% if is_manager and p.relation | enum_value != 'self' %}
-      <form class="ms-auto position-relative z-2" method="post" action="/admin/people/{{ p.id }}/delete" data-confirm="Remove {{ p.name | nice }}?">
+      <form class="ms-auto position-relative z-2" method="post" action="/admin/people/{{ p.id }}/delete" data-confirm="Remove {{ p.name | nice }} profile?">
         <button class="btn btn-ghost btn-icon btn-sm text-danger" type="submit" aria-label="Remove {{ p.name | nice }}" title="Remove {{ p.name | nice }}">
           <i class="bi bi-trash3"></i>
         </button>
@@ -107,18 +181,25 @@
   {% endif %}
 </div>
 
+{# ── Family logins table ─────────────────────────────────────────────── #}
 {% if is_manager and logins %}
 <section class="mt-5" id="logins">
   <h2 class="h5 mb-3">Family logins</h2>
   <div class="table-responsive">
     <table class="table table-sm align-middle">
-      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Status</th><th></th></tr></thead>
       <tbody>
         {% for m in logins %}
         <tr>
           <td>{{ m.full_name }}</td>
           <td>{{ m.email }}</td>
-          <td><span class="badge badge-soft">{{ m.role }}</span></td>
+          <td>
+            {% if m.family_status == 'pending' %}
+            <span class="badge bg-warning text-dark"><i class="bi bi-clock-history me-1"></i>Pending</span>
+            {% else %}
+            <span class="badge badge-soft">{{ m.role }}</span>
+            {% endif %}
+          </td>
           <td class="text-end">
             <form method="post" action="/admin/family/members/{{ m.id }}/remove" data-confirm="Remove login for {{ m.full_name }}?">
               <button class="btn btn-ghost btn-sm text-danger" type="submit">Remove</button>
@@ -133,6 +214,8 @@
 {% endif %}
 
 {% if is_manager %}
+
+{# ── Modal: Add someone (profile only, no login) ─────────────────────── #}
 <div class="modal fade" id="add-person" tabindex="-1" aria-labelledby="add-person-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -151,9 +234,19 @@
             <div class="col-sm-7">
               <label class="form-label" for="fam-relation">Relation</label>
               <select class="form-select" id="fam-relation" name="relation">
-                <option value="spouse">Spouse</option>
+                <option value="spouse" {% if 'spouse' in taken_relations %}disabled{% endif %}>
+                  Spouse{% if 'spouse' in taken_relations %} (already added){% endif %}
+                </option>
+                <option value="father" {% if 'father' in taken_relations %}disabled{% endif %}>
+                  Father{% if 'father' in taken_relations %} (already added){% endif %}
+                </option>
+                <option value="mother" {% if 'mother' in taken_relations %}disabled{% endif %}>
+                  Mother{% if 'mother' in taken_relations %} (already added){% endif %}
+                </option>
                 <option value="child">Child</option>
-                <option value="parent">Parent</option>
+                <option value="brother">Brother</option>
+                <option value="sister">Sister</option>
+                <option value="parent">Parent (generic)</option>
                 <option value="other">Other</option>
               </select>
             </div>
@@ -162,7 +255,7 @@
               <input class="form-control" id="fam-blood" type="text" name="blood_group" placeholder="O+">
             </div>
             <div class="col-12">
-              <label class="form-label" for="fam-email">Email <span class="text-faint">(optional — for a login later)</span></label>
+              <label class="form-label" for="fam-email">Email <span class="text-faint">(optional — for inviting them later)</span></label>
               <input class="form-control" id="fam-email" type="email" name="email" placeholder="name@example.com">
             </div>
           </div>
@@ -176,6 +269,7 @@
   </div>
 </div>
 
+{# ── Modal: Edit profile ───────────────────────────────────────────────── #}
 <div class="modal fade" id="edit-person" tabindex="-1" aria-labelledby="edit-person-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -194,9 +288,19 @@
             <div class="col-sm-7">
               <label class="form-label" for="edit-relation">Relation</label>
               <select class="form-select" id="edit-relation" name="relation">
-                <option value="spouse">Spouse</option>
+                <option value="spouse" {% if 'spouse' in taken_relations %}data-taken="1"{% endif %}>
+                  Spouse{% if 'spouse' in taken_relations %} (already added){% endif %}
+                </option>
+                <option value="father" {% if 'father' in taken_relations %}data-taken="1"{% endif %}>
+                  Father{% if 'father' in taken_relations %} (already added){% endif %}
+                </option>
+                <option value="mother" {% if 'mother' in taken_relations %}data-taken="1"{% endif %}>
+                  Mother{% if 'mother' in taken_relations %} (already added){% endif %}
+                </option>
                 <option value="child">Child</option>
-                <option value="parent">Parent</option>
+                <option value="brother">Brother</option>
+                <option value="sister">Sister</option>
+                <option value="parent">Parent (generic)</option>
                 <option value="other">Other</option>
               </select>
             </div>
@@ -223,17 +327,49 @@
   </div>
 </div>
 
+{# ── Modal: Invite existing account to a profile ─────────────────────── #}
+<div class="modal fade" id="invite-profile" tabindex="-1" aria-labelledby="invite-profile-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" id="invite-profile-form" action="/admin/family/profiles/placeholder/invite">
+        <div class="modal-header">
+          <span class="card-ico gold"><i class="bi bi-send"></i></span>
+          <h2 class="modal-title" id="invite-profile-title">Invite to family</h2>
+          <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-faint small mb-3">
+            Enter the email address of <strong id="invite-profile-name"></strong>'s existing account.
+            They'll receive an invitation and need to accept it before they can see family data.
+          </p>
+          <div>
+            <label class="form-label" for="invite-profile-email">Email address <span class="req">*</span></label>
+            <input class="form-control" id="invite-profile-email" type="email" name="email" required
+                   placeholder="their-email@example.com">
+            <div class="form-text">Must match their registered account email.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary" type="submit"><i class="bi bi-send me-1"></i>Send invitation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{# ── Modal: Create new login for a profile (legacy flow) ─────────────── #}
 <div class="modal fade" id="invite-member" tabindex="-1" aria-labelledby="invite-member-title" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <form method="post" action="/admin/family/invite">
         <div class="modal-header">
           <span class="card-ico gold"><i class="bi bi-person-badge"></i></span>
-          <h2 class="modal-title" id="invite-member-title">Invite family login</h2>
+          <h2 class="modal-title" id="invite-member-title">Create family login</h2>
           <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <p class="text-faint small mb-3">They sign in with their own account, keep private entries, and only see what you share (or what they share back).</p>
+          <p class="text-faint small mb-3">Creates a brand-new account for a family member. If they already have an account, use the <strong><i class="bi bi-send"></i></strong> button on their profile card instead.</p>
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label" for="inv-name">Full name <span class="req">*</span></label>
@@ -250,9 +386,19 @@
             <div class="col-sm-6">
               <label class="form-label" for="inv-relation">Relation</label>
               <select class="form-select" id="inv-relation" name="relation">
-                <option value="spouse">Spouse</option>
+                <option value="spouse" {% if 'spouse' in taken_relations %}disabled{% endif %}>
+                  Spouse{% if 'spouse' in taken_relations %} (already added){% endif %}
+                </option>
+                <option value="father" {% if 'father' in taken_relations %}disabled{% endif %}>
+                  Father{% if 'father' in taken_relations %} (already added){% endif %}
+                </option>
+                <option value="mother" {% if 'mother' in taken_relations %}disabled{% endif %}>
+                  Mother{% if 'mother' in taken_relations %} (already added){% endif %}
+                </option>
                 <option value="child">Child</option>
-                <option value="parent">Parent</option>
+                <option value="brother">Brother</option>
+                <option value="sister">Sister</option>
+                <option value="parent">Parent (generic)</option>
                 <option value="other">Other</option>
               </select>
             </div>
@@ -271,18 +417,17 @@
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
-          <button class="btn btn-primary" type="submit">Invite</button>
+          <button class="btn btn-primary" type="submit">Create &amp; invite</button>
         </div>
       </form>
     </div>
   </div>
 </div>
-{% endif %}
 
-{% if is_manager %}
 {% block scripts %}
 <script>
 (function(){
+  // Edit profile modal
   var editForm = document.getElementById("edit-person-form");
   var editModalEl = document.getElementById("edit-person");
   var editModal = window.bootstrap ? new bootstrap.Modal(editModalEl) : null;
@@ -291,7 +436,17 @@
     btn.addEventListener("click", function(){
       editForm.action = "/admin/family/members/" + btn.dataset.id + "/edit";
       document.getElementById("edit-name").value = btn.dataset.name || "";
-      document.getElementById("edit-relation").value = btn.dataset.relation || "other";
+      var relSel = document.getElementById("edit-relation");
+      var currentRel = btn.dataset.relation || "other";
+      // Re-enable the currently-set relation so the user can keep it
+      Array.from(relSel.options).forEach(function(opt){
+        if (opt.getAttribute("data-taken") && opt.value !== currentRel) {
+          opt.disabled = true;
+        } else {
+          opt.disabled = false;
+        }
+      });
+      relSel.value = currentRel;
       document.getElementById("edit-blood").value = btn.dataset.blood || "";
       document.getElementById("edit-dob").value = btn.dataset.dob || "";
       document.getElementById("edit-email").value = btn.dataset.email || "";
@@ -299,6 +454,21 @@
     });
   });
 
+  // Invite existing account to profile modal
+  var invProfileForm = document.getElementById("invite-profile-form");
+  var invProfileModalEl = document.getElementById("invite-profile");
+  var invProfileModal = window.bootstrap ? new bootstrap.Modal(invProfileModalEl) : null;
+
+  document.querySelectorAll("[data-invite-profile]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      invProfileForm.action = "/admin/family/profiles/" + btn.dataset.id + "/invite";
+      document.getElementById("invite-profile-name").textContent = btn.dataset.name || "";
+      document.getElementById("invite-profile-email").value = btn.dataset.email || "";
+      if (invProfileModal) invProfileModal.show();
+    });
+  });
+
+  // Create new login modal (pre-filled from portrait card)
   var inviteModalEl = document.getElementById("invite-member");
   var inviteModal = window.bootstrap ? new bootstrap.Modal(inviteModalEl) : null;
 
@@ -311,6 +481,11 @@
       if (sel) sel.value = btn.dataset.id || "";
       if (inviteModal) inviteModal.show();
     });
+  });
+
+  // Auto-dismiss alerts
+  document.querySelectorAll(".alert").forEach(function(el){
+    setTimeout(function(){ el.style.transition="opacity .5s"; el.style.opacity="0"; setTimeout(function(){ el.remove(); }, 500); }, 5000);
   });
 })();
 </script>
