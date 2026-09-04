@@ -31,6 +31,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("lock_passwords", "BOOLEAN NOT NULL DEFAULT 0"),
         ("lock_locker", "BOOLEAN NOT NULL DEFAULT 0"),
         ("lock_health", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("pending_vault_owner_id", "VARCHAR(32)"),
     ],
     "people": [
         ("allergies", "TEXT"),
@@ -182,6 +183,7 @@ _INDEXES: list[tuple[str, str, str]] = [
     ("ix_vault_sends_user_id", "vault_sends", "user_id"),
     ("ix_vault_sends_token", "vault_sends", "token"),
     ("ix_users_last_seen_at", "users", "last_seen_at"),
+    ("ix_users_pending_vault_owner_id", "users", "pending_vault_owner_id"),
     ("ix_login_attempts_email", "login_attempts", "email"),
     ("ix_login_attempts_ip", "login_attempts", "ip"),
     ("ix_login_attempts_created_at", "login_attempts", "created_at"),
