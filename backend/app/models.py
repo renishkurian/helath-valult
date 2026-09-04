@@ -97,7 +97,13 @@ class User(Base):
     # owner = family manager; member = family login with private entries; viewer = legacy
     role = Column(String(20), default=UserRole.owner.value, nullable=False)
     # The vault this account belongs to. Owners: vault_owner_id == id.
+    # NOTE: only ever changes at accept-time (or admin remove). Never set on invite-send,
+    # so a pending invite cannot cut an existing account off from its own data.
     vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
+    # Vault this account has been invited into but not yet accepted. Purely advisory
+    # until family_status flips to "accepted", at which point it is copied into
+    # vault_owner_id. Cleared on reject/cancel.
+    pending_vault_owner_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)
     # Status of family invitation / membership: accepted | pending | rejected | removed
     family_status = Column(String(20), default="accepted", nullable=False, index=True)
     totp_secret_enc = Column(Text, nullable=True)

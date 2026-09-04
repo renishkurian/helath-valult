@@ -1279,6 +1279,11 @@ def family_request_accept(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    # Only NOW does the account actually join the inviting vault.
+    if user.pending_vault_owner_id:
+        user.vault_owner_id = user.pending_vault_owner_id
+        user.pending_vault_owner_id = None
+        user.role = models.UserRole.member.value
     user.family_status = "accepted"
     db.commit()
     return RedirectResponse("/admin/family", status_code=302)
@@ -1289,7 +1294,13 @@ def family_request_reject(request: Request, db: Session = Depends(get_db)):
     user = require_login(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    # Nothing to roll back on vault_owner_id - it was never touched on invite.
+    # Just clear the pending link and un-link the profile the admin created for it.
+    user.pending_vault_owner_id = None
     user.family_status = "rejected"
+    db.query(models.Person).filter(models.Person.linked_user_id == user.id).update(
+        {models.Person.linked_user_id: None}, synchronize_session=False
+    )
     db.commit()
     return RedirectResponse("/admin/family", status_code=302)
 
@@ -1505,11 +1516,15 @@ def family_profile_invite(
         return RedirectResponse("/admin/family?err=self_invite", status_code=302)
     if target.vault_owner_id == vid and target.family_status == "accepted":
         return RedirectResponse("/admin/family?err=already_member", status_code=302)
-    # Link the target account to this vault as pending.
-    target.vault_owner_id = vid
+    if target.family_status == "pending" and target.pending_vault_owner_id:
+        return RedirectResponse("/admin/family?err=already_invited", status_code=302)
+    # Record the invite as pending only. Do NOT touch vault_owner_id here -
+    # target keeps full access to their own existing vault/data until they
+    # explicitly accept. Nothing about their account changes until then.
+    target.pending_vault_owner_id = vid
     target.family_status = "pending"
-    target.role = models.UserRole.member.value
-    # Link the person profile to the invited user.
+    # Link the person profile to the invited user (advisory only - grants
+    # no access; visibility is still gated on vault_owner_id / accept).
     person.linked_user_id = target.id
     db.commit()
     return RedirectResponse("/admin/family?ok=invited", status_code=302)

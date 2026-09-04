@@ -139,7 +139,12 @@ def accept_family_request(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Accept pending family invitation."""
+    """Accept pending family invitation. Only now does the account actually
+    join the inviting vault - vault_owner_id is untouched until this point."""
+    if current_user.pending_vault_owner_id:
+        current_user.vault_owner_id = current_user.pending_vault_owner_id
+        current_user.pending_vault_owner_id = None
+        current_user.role = models.UserRole.member.value
     current_user.family_status = "accepted"
     db.commit()
     db.refresh(current_user)
@@ -151,8 +156,14 @@ def reject_family_request(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
-    """Reject pending family invitation."""
+    """Reject pending family invitation. vault_owner_id was never touched on
+    invite, so there's nothing to roll back there - just clear the pending
+    link and any profile that was tentatively linked to this account."""
+    current_user.pending_vault_owner_id = None
     current_user.family_status = "rejected"
+    db.query(models.Person).filter(models.Person.linked_user_id == current_user.id).update(
+        {models.Person.linked_user_id: None}, synchronize_session=False
+    )
     db.commit()
     db.refresh(current_user)
     return {"ok": True, "family_status": "rejected"}
