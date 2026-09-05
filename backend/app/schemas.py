@@ -1004,6 +1004,18 @@ class FinanceCategoryOut(BaseModel):
     scope: str = "general"  # general | account
 
 
+class FinanceCategoryShareIn(BaseModel):
+    to_user_id: str
+    visible: bool = True
+
+
+class FinanceCategoryShareOut(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    visible: bool
+
+
 class FinanceTxnIn(BaseModel):
     account_id: str
     to_account_id: Optional[str] = None
@@ -1018,6 +1030,7 @@ class FinanceTxnIn(BaseModel):
     payment_method: Optional[str] = None  # upi | credit_card | debit_card | atm | netbanking | cash | other
     tags: Optional[str] = None
     frequency: Optional[str] = None  # if set, also create recurring
+    hidden_from: Optional[list[str]] = None  # family member user ids this entry is hidden from
 
 
 class FinanceTxnOut(BaseModel):
@@ -1041,6 +1054,7 @@ class FinanceTxnOut(BaseModel):
     tags: Optional[str] = None
     source: str = "manual"
     has_image: bool = False
+    hidden_from: list[str] = []  # family member user ids this entry is hidden from (empty if none/not admin)
     deleted_at: Optional[datetime] = None
     created_at: datetime
 

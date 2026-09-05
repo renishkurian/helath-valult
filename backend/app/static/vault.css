@@ -1492,6 +1492,7 @@ tr.js-locker-doc.is-dragging{ opacity:0.45; }
 .mm-muted{ color:var(--v-ink-3) !important; }
 
 .mm-day{ margin-bottom:1.25rem; }
+.mm-day .mm-card + .mm-card{ margin-top:.75rem; }
 .mm-day-head{
   display:flex; align-items:baseline; justify-content:space-between; gap:.75rem;
   padding:.5rem .25rem; margin-bottom:.25rem;

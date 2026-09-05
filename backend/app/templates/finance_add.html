@@ -129,6 +129,19 @@
               {% if editing and edit_txn.image_path %}Current photo kept unless you upload a new one.{% endif %}
             </div>
           </div>
+          {% if family_members %}
+          <div class="col-12">
+            <label class="form-label">Hide from family</label>
+            <div class="form-text mb-1">This entry stays out of the selected member's transaction list and totals, even if they can view this category.</div>
+            {% for m in family_members %}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="hidden_from" id="hide-{{ m.id }}" value="{{ m.id }}"
+                     {% if editing and m.id in hidden_from %}checked{% endif %}>
+              <label class="form-check-label" for="hide-{{ m.id }}">{{ m.full_name }}</label>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
         </div>
 
         <button class="btn btn-primary btn-lg btn-block mt-4" type="submit">

@@ -238,6 +238,101 @@ def visible_resource_ids(
     return set(), shared_ids
 
 
+def visible_finance_category_ids(db: Session, user: models.User) -> set[str]:
+    """Category ids the family manager has explicitly shared with this member.
+
+    Admin (family manager) is unrestricted — callers should check
+    is_family_admin() first and skip filtering entirely for them.
+    """
+    if not is_accepted_family_member(user):
+        return set()
+    rows = (
+        db.query(models.FamilyShare.resource_id)
+        .filter(
+            models.FamilyShare.resource_type == models.ShareResourceType.finance_category.value,
+            models.FamilyShare.to_user_id == user.id,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def set_finance_category_visibility(
+    db: Session,
+    *,
+    admin: models.User,
+    to_user_id: str,
+    category_id: str,
+    visible: bool,
+) -> None:
+    """Family manager grants/revokes a member's view access to a finance category."""
+    require_family_admin(admin)
+    if visible:
+        upsert_share(
+            db,
+            from_user=admin,
+            to_user_id=to_user_id,
+            resource_type=models.ShareResourceType.finance_category.value,
+            resource_id=category_id,
+            permission=models.SharePermission.view.value,
+        )
+    else:
+        row = _share_row(
+            db,
+            resource_type=models.ShareResourceType.finance_category.value,
+            resource_id=category_id,
+            to_user_id=to_user_id,
+        )
+        if row:
+            db.delete(row)
+
+
+def hidden_txn_ids_for(db: Session, user: models.User, vault_scope_id: str) -> set[str]:
+    """Transaction ids the family manager hid from this member specifically.
+
+    Admin sees everything — callers should skip this for admins.
+    """
+    if not is_accepted_family_member(user):
+        return set()
+    rows = (
+        db.query(models.FinanceTxnHide.transaction_id)
+        .filter(
+            models.FinanceTxnHide.vault_id == vault_scope_id,
+            models.FinanceTxnHide.to_user_id == user.id,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def set_txn_hidden_from(
+    db: Session,
+    *,
+    admin: models.User,
+    transaction_id: str,
+    vault_scope_id: str,
+    hidden_from_ids: Iterable[str],
+) -> None:
+    """Replace the full set of members a transaction is hidden from."""
+    require_family_admin(admin)
+    wanted = set(hidden_from_ids)
+    existing = (
+        db.query(models.FinanceTxnHide)
+        .filter(models.FinanceTxnHide.transaction_id == transaction_id)
+        .all()
+    )
+    existing_ids = {row.to_user_id for row in existing}
+    for row in existing:
+        if row.to_user_id not in wanted:
+            db.delete(row)
+    for to_user_id in wanted - existing_ids:
+        db.add(models.FinanceTxnHide(
+            vault_id=vault_scope_id,
+            transaction_id=transaction_id,
+            to_user_id=to_user_id,
+        ))
+
+
 def shares_for_resource(
     db: Session,
     *,

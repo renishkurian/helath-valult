@@ -22,6 +22,8 @@ from app.finance_ai import (
     INCOME_CATEGORIES, PAYMENT_METHODS, PAYMENT_LABELS,
     build_description, classify_message, split_messages,
 )
+from app import family_access
+from app.family_access import is_family_admin
 
 router = APIRouter(prefix="/finance", tags=["finance"], dependencies=[Depends(require_enabled_module("finance"))])
 
@@ -358,7 +360,7 @@ def _category_label(cat, categories) -> str | None:
     return cat.name
 
 
-def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.FinanceTxnOut:
+def _txn_out(t: models.FinanceTransaction, accounts, categories, hidden_from: list[str] | None = None) -> schemas.FinanceTxnOut:
     acc = accounts.get(t.account_id)
     to = accounts.get(t.to_account_id) if t.to_account_id else None
     cat = categories.get(t.category_id) if t.category_id else None
@@ -371,14 +373,40 @@ def _txn_out(t: models.FinanceTransaction, accounts, categories) -> schemas.Fina
         txn_date=t.txn_date, txn_time=t.txn_time, payee=t.payee, notes=t.notes,
         description=t.description, payment_method=t.payment_method, tags=t.tags,
         source=t.source or "manual", has_image=bool(t.image_path),
+        hidden_from=hidden_from or [],
         deleted_at=t.deleted_at, created_at=t.created_at,
     )
 
 
-def _txn_query(db: Session, uid: str, *, include_deleted: bool = False):
+def _hides_for(db: Session, txn_id: str) -> list[str]:
+    rows = (
+        db.query(models.FinanceTxnHide.to_user_id)
+        .filter(models.FinanceTxnHide.transaction_id == txn_id)
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+def _txn_query(db: Session, uid: str, *, include_deleted: bool = False, viewer: models.User | None = None):
+    """Base transaction query for the vault, optionally scoped to what `viewer` may see.
+
+    `viewer=None` (or an admin) is unrestricted — used for internal bookkeeping
+    (balances, exports) that must always see the full vault ledger.
+    A non-admin `viewer` only sees transactions in a category the family
+    manager shared with them, and never a transaction hidden from them.
+    """
     q = db.query(models.FinanceTransaction).filter(models.FinanceTransaction.user_id == uid)
     if not include_deleted:
         q = q.filter(models.FinanceTransaction.deleted_at.is_(None))
+    if viewer is not None and not is_family_admin(viewer):
+        visible_cats = family_access.visible_finance_category_ids(db, viewer)
+        if visible_cats:
+            q = q.filter(models.FinanceTransaction.category_id.in_(visible_cats))
+        else:
+            q = q.filter(False)  # no categories shared yet -> nothing visible
+        hidden_ids = family_access.hidden_txn_ids_for(db, viewer, uid)
+        if hidden_ids:
+            q = q.filter(models.FinanceTransaction.id.notin_(hidden_ids))
     return q
 
 
@@ -408,17 +436,17 @@ def _month_ie(txns) -> tuple[Decimal, Decimal]:
     return income, expense
 
 
-def _txns_in_month(db: Session, uid: str, year_month: str):
+def _txns_in_month(db: Session, uid: str, year_month: str, viewer: models.User | None = None):
     start, end = _month_bounds(year_month)
-    return _txn_query(db, uid).filter(
+    return _txn_query(db, uid, viewer=viewer).filter(
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
     ).all()
 
 
-def _txns_before(db: Session, uid: str, year_month: str):
+def _txns_before(db: Session, uid: str, year_month: str, viewer: models.User | None = None):
     start, _ = _month_bounds(year_month)
-    return _txn_query(db, uid).filter(
+    return _txn_query(db, uid, viewer=viewer).filter(
         models.FinanceTransaction.txn_date < start,
     ).all()
 
@@ -666,10 +694,10 @@ def summary(
     ensure_defaults(db, current_user)
     uid = _owned(db, current_user)
     ym = year_month or datetime.utcnow().strftime("%Y-%m")
-    income, expense = _month_ie(_txns_in_month(db, uid, ym))
+    income, expense = _month_ie(_txns_in_month(db, uid, ym, viewer=current_user))
     prev_ym = _shift_month(ym, -1)
-    prev_income, prev_expense = _month_ie(_txns_in_month(db, uid, prev_ym))
-    open_income, open_expense = _month_ie(_txns_before(db, uid, ym))
+    prev_income, prev_expense = _month_ie(_txns_in_month(db, uid, prev_ym, viewer=current_user))
+    open_income, open_expense = _month_ie(_txns_before(db, uid, ym, viewer=current_user))
     opening = open_income - open_expense
     month_total = income - expense
     accounts = db.query(models.FinanceAccount).filter(
@@ -901,6 +929,64 @@ def delete_category(
     return {"ok": True}
 
 
+@router.get("/categories/{category_id}/shares", response_model=list[schemas.FinanceCategoryShareOut])
+def list_category_shares(
+    category_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Family manager: who can currently see this category's transactions."""
+    require_owner(current_user)
+    cat = _get_category(db, current_user, category_id)
+    uid = _owned(db, current_user)
+    members = db.query(models.User).filter(
+        models.User.vault_owner_id == uid,
+        models.User.role == models.UserRole.member.value,
+    ).all()
+    shared_ids = family_access_shared_member_ids(db, cat.id)
+    return [
+        schemas.FinanceCategoryShareOut(
+            user_id=m.id, full_name=m.full_name, email=m.email,
+            visible=m.id in shared_ids,
+        )
+        for m in members
+    ]
+
+
+def family_access_shared_member_ids(db: Session, category_id: str) -> set[str]:
+    rows = (
+        db.query(models.FamilyShare.to_user_id)
+        .filter(
+            models.FamilyShare.resource_type == models.ShareResourceType.finance_category.value,
+            models.FamilyShare.resource_id == category_id,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+@router.post("/categories/{category_id}/shares", response_model=schemas.FinanceCategoryShareOut)
+def set_category_share(
+    category_id: str,
+    body: schemas.FinanceCategoryShareIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Family manager grants/revokes a member's view access to this category."""
+    require_owner(current_user)
+    cat = _get_category(db, current_user, category_id)
+    member = db.query(models.User).filter(models.User.id == body.to_user_id).first()
+    if not member or vault_id(member) != _owned(db, current_user) or member.role != models.UserRole.member.value:
+        raise HTTPException(404, "Family member not found")
+    family_access.set_finance_category_visibility(
+        db, admin=current_user, to_user_id=member.id, category_id=cat.id, visible=body.visible,
+    )
+    db.commit()
+    return schemas.FinanceCategoryShareOut(
+        user_id=member.id, full_name=member.full_name, email=member.email, visible=body.visible,
+    )
+
+
 # ---------- transactions ----------
 @router.get("/transactions", response_model=list[schemas.FinanceTxnOut])
 def list_transactions(
@@ -909,12 +995,26 @@ def list_transactions(
     account_id: Optional[str] = None,
     q: Optional[str] = None,
     notes_only: bool = False,
+    hidden_only: bool = False,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user),
 ):
     ensure_defaults(db, current_user)
     uid = _owned(db, current_user)
-    query = _txn_query(db, uid)
+    if hidden_only:
+        # Family manager reviewing what's currently hidden from someone.
+        require_owner(current_user)
+        hidden_ids = (
+            db.query(models.FinanceTxnHide.transaction_id)
+            .filter(models.FinanceTxnHide.vault_id == uid)
+            .distinct()
+            .all()
+        )
+        query = _txn_query(db, uid).filter(
+            models.FinanceTransaction.id.in_({r[0] for r in hidden_ids}) if hidden_ids else False
+        )
+    else:
+        query = _txn_query(db, uid, viewer=current_user)
     if year_month:
         start, end = _month_bounds(year_month)
         query = query.filter(models.FinanceTransaction.txn_date >= start, models.FinanceTransaction.txn_date <= end)
@@ -939,6 +1039,14 @@ def list_transactions(
         ))
     rows = query.order_by(models.FinanceTransaction.txn_date.desc(), models.FinanceTransaction.created_at.desc()).all()
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
+    if is_family_admin(current_user):
+        hides = defaultdict(list)
+        if rows:
+            for hide in db.query(models.FinanceTxnHide).filter(
+                models.FinanceTxnHide.transaction_id.in_([r.id for r in rows])
+            ):
+                hides[hide.transaction_id].append(hide.to_user_id)
+        return [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id)) for t in rows]
     return [_txn_out(t, accounts, categories) for t in rows]
 
 
@@ -982,9 +1090,15 @@ def create_transaction(
             amount=_dec(body.amount), payee=body.payee, notes=body.notes,
             frequency=body.frequency, next_due=body.txn_date, active=True,
         ))
+    db.flush()
+    if body.hidden_from is not None:
+        family_access.set_txn_hidden_from(
+            db, admin=current_user, transaction_id=row.id,
+            vault_scope_id=uid, hidden_from_ids=body.hidden_from,
+        )
     db.commit()
     db.refresh(row)
-    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id))
 
 
 @router.put("/transactions/{txn_id}", response_model=schemas.FinanceTxnOut)
@@ -1027,10 +1141,15 @@ def update_transaction(
     row.payment_method = method
     if body.tags is not None:
         row.tags = body.tags
+    uid = _owned(db, current_user)
+    if body.hidden_from is not None:
+        family_access.set_txn_hidden_from(
+            db, admin=current_user, transaction_id=row.id,
+            vault_scope_id=uid, hidden_from_ids=body.hidden_from,
+        )
     db.commit()
     db.refresh(row)
-    uid = _owned(db, current_user)
-    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id))
 
 
 @router.get("/transactions/{txn_id}", response_model=schemas.FinanceTxnOut)
@@ -1042,7 +1161,7 @@ def get_transaction(
     require_owner(current_user)
     row = _get_txn(db, current_user, txn_id)
     uid = _owned(db, current_user)
-    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid))
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id))
 
 
 @router.post("/transactions/bulk-delete")
@@ -2019,7 +2138,7 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
     ensure_defaults(db, user)
     uid = _owned(db, user)
     start, end = _month_bounds(year_month)
-    query = _txn_query(db, uid).filter(
+    query = _txn_query(db, uid, viewer=user).filter(
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
     )
@@ -2037,12 +2156,21 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
         ))
     rows = query.order_by(models.FinanceTransaction.txn_date.desc(), models.FinanceTransaction.created_at.desc()).all()
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
-    items = [_txn_out(t, accounts, categories) for t in rows]
+    if is_family_admin(user):
+        hides = defaultdict(list)
+        if rows:
+            for hide in db.query(models.FinanceTxnHide).filter(
+                models.FinanceTxnHide.transaction_id.in_([r.id for r in rows])
+            ):
+                hides[hide.transaction_id].append(hide.to_user_id)
+        items = [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id)) for t in rows]
+    else:
+        items = [_txn_out(t, accounts, categories) for t in rows]
     income = sum(i.amount for i in items if i.txn_type == "income")
     expense = sum(i.amount for i in items if i.txn_type == "expense")
     prev_ym = _shift_month(year_month, -1)
-    prev_income, prev_expense = _month_ie(_txns_in_month(db, uid, prev_ym))
-    open_income, open_expense = _month_ie(_txns_before(db, uid, year_month))
+    prev_income, prev_expense = _month_ie(_txns_in_month(db, uid, prev_ym, viewer=user))
+    open_income, open_expense = _month_ie(_txns_before(db, uid, year_month, viewer=user))
     opening = _f(open_income - open_expense)
     month_total = income - expense
     days: dict[str, dict] = {}

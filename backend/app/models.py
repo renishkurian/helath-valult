@@ -86,6 +86,7 @@ class ShareResourceType(str, enum.Enum):
     password = "password"
     health_document = "health_document"
     locker = "locker"
+    finance_category = "finance_category"
 
 
 class User(Base):
@@ -800,6 +801,23 @@ class FinanceTransaction(Base):
     image_path = Column(String(500), nullable=True)
     image_mime = Column(String(80), nullable=True)
     deleted_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceTxnHide(Base):
+    """Marks a transaction as hidden from a specific family member's view.
+
+    Owner-set, per member. A hidden transaction is excluded from that
+    member's transaction list AND from their income/expense totals.
+    """
+    __tablename__ = "finance_txn_hides"
+    __table_args__ = (
+        UniqueConstraint("transaction_id", "to_user_id", name="uq_finance_txn_hide_target"),
+    )
+    id = Column(String(32), primary_key=True, default=gen_id)
+    vault_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    transaction_id = Column(String(32), ForeignKey("finance_transactions.id"), nullable=False, index=True)
+    to_user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

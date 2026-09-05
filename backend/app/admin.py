@@ -4802,6 +4802,15 @@ def _fn_user(request, db):
     return user
 
 
+def _fn_family_members(db: Session, user: models.User) -> list[models.User]:
+    """Accepted family members (not the manager) who could be granted finance access."""
+    from app.deps import vault_id as _vid
+    return db.query(models.User).filter(
+        models.User.vault_owner_id == _vid(user),
+        models.User.role == models.UserRole.member.value,
+    ).order_by(models.User.full_name).all()
+
+
 @router.get("/finance", response_class=HTMLResponse)
 def finance_home(
     request: Request,
@@ -4868,6 +4877,7 @@ def finance_add_page(
         return RedirectResponse("/admin/login", status_code=302)
     accounts = fn.list_accounts(db=db, current_user=user)
     categories = fn.list_categories(db=db, current_user=user)
+    family_members = _fn_family_members(db, user)
     if txn_type not in ("income", "expense", "transfer"):
         txn_type = "expense"
     cats_json = json.dumps([
@@ -4890,6 +4900,7 @@ def finance_add_page(
         txn_type=txn_type, today=datetime.utcnow().strftime("%Y-%m-%d"),
         now=datetime.utcnow().strftime("%H:%M"), inr=inr,
         prefill_account_id=account_id or None, cats_json=cats_json, accts_json=accts_json,
+        family_members=family_members,
     ))
 
 
@@ -4908,6 +4919,7 @@ def finance_add(
     description: str = Form(""),
     payment_method: str = Form(""),
     frequency: str = Form(""),
+    hidden_from: list[str] = Form([]),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -4922,6 +4934,7 @@ def finance_add(
         txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
         notes=notes or None, description=description or None,
         payment_method=payment_method or None, frequency=frequency or None,
+        hidden_from=hidden_from or [],
     ), db=db, current_user=user)
     if image and image.filename:
         raw = image.file.read()
@@ -4940,7 +4953,7 @@ def finance_edit_page(
     db: Session = Depends(get_db),
 ):
     from app.routers import finance as fn
-    from app.routers.finance import inr, _get_txn
+    from app.routers.finance import inr, _get_txn, _hides_for
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -4950,6 +4963,8 @@ def finance_edit_page(
         return RedirectResponse("/admin/finance", status_code=302)
     accounts = fn.list_accounts(db=db, current_user=user)
     categories = fn.list_categories(db=db, current_user=user)
+    family_members = _fn_family_members(db, user)
+    hidden_from = set(_hides_for(db, row.id))
     kind = txn_type if txn_type in ("income", "expense", "transfer") else (row.txn_type or "expense")
     if kind not in ("income", "expense", "transfer"):
         kind = "expense"
@@ -4974,7 +4989,7 @@ def finance_edit_page(
         now=(row.txn_time or datetime.utcnow().strftime("%H:%M"))[:5],
         inr=inr, prefill_account_id=row.account_id,
         cats_json=cats_json, accts_json=accts_json,
-        edit_txn=row,
+        edit_txn=row, family_members=family_members, hidden_from=hidden_from,
     ))
 
 
@@ -4993,6 +5008,7 @@ def finance_edit_save(
     notes: str = Form(""),
     description: str = Form(""),
     payment_method: str = Form(""),
+    hidden_from: list[str] = Form([]),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -5009,7 +5025,7 @@ def finance_edit_save(
                 category_id=category_id or None, txn_type=txn_type, amount=float(amount or 0),
                 txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
                 notes=notes or None, description=description or None,
-                payment_method=payment_method or None,
+                payment_method=payment_method or None, hidden_from=hidden_from or [],
             ),
             db=db, current_user=user,
         )
