@@ -22,7 +22,11 @@ def upgrade():
     if 'family_member_id' not in cols:
         with op.batch_alter_table("finance_transactions") as batch_op:
             batch_op.add_column(
-                sa.Column("family_member_id", sa.String(32), sa.ForeignKey("users.id"), nullable=True),
+                sa.Column(
+                    "family_member_id", sa.String(32),
+                    sa.ForeignKey("users.id", name="fk_finance_transactions_family_member_id_users"),
+                    nullable=True,
+                ),
             )
     if 'ix_finance_transactions_family_member_id' not in idx:
         with op.batch_alter_table("finance_transactions") as batch_op:
