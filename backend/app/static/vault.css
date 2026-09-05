@@ -1355,11 +1355,13 @@ body.modules-picker .side-label{
   background:var(--v-surface); box-shadow:var(--v-sh-1);
 }
 .hospital-folders-head{
-  display:flex; flex-direction:column; gap:.125rem; margin-bottom:.875rem;
+  display:flex; flex-direction:row; align-items:flex-start; justify-content:space-between; gap:.5rem; margin-bottom:.875rem;
 }
+.hospital-folders-title{ display:flex; flex-direction:column; gap:.125rem; }
 .hospital-folders-head h3{
   margin:0; font-size:1rem; font-weight:650; letter-spacing:-0.02em;
 }
+.hosp-docs-toggle{ flex-shrink:0; }
 .section-note{
   margin:0; font-size:.875rem; color:var(--v-ink-3); max-width:40rem;
 }

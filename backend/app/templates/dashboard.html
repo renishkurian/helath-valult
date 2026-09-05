@@ -221,7 +221,7 @@
 
   <div class="section-head">
     <h2>Hospitals — {{ active_person.name | nice }}</h2>
-    <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#add-card">
+    <button class="btn btn-ghost btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#add-hospital-modal">
       <i class="bi bi-plus-lg"></i> Add hospital
     </button>
   </div>
@@ -232,7 +232,7 @@
       <div class="empty-ico"><i class="bi bi-building"></i></div>
       <div class="empty-title">No hospitals yet</div>
       <p>Add a hospital for {{ active_person.name | nice }}. Prescriptions, labs, bills, and vaccines are filed under that hospital.</p>
-      <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#add-card">
+      <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#add-hospital-modal">
         <i class="bi bi-plus-lg"></i> Add hospital
       </button>
     </div>
@@ -298,92 +298,168 @@
       </div>
       <div class="col-md-7 col-xl-8">
         <div class="hospital-folders-head">
-          <h3>{{ card.hospital_name | nice }}</h3>
-          <span class="text-faint">Documents for this hospital</span>
+          <div class="hospital-folders-title">
+            <h3>{{ card.hospital_name | nice }}</h3>
+            <span class="text-faint">Documents for this hospital</span>
+          </div>
+          <button class="btn btn-ghost btn-icon btn-sm hosp-docs-toggle" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#hosp-docs-{{ card.id }}"
+                  aria-expanded="true" aria-controls="hosp-docs-{{ card.id }}" aria-label="Toggle documents">
+            <i class="bi bi-chevron-up"></i>
+          </button>
         </div>
-        <div class="folder-grid">
-          {% for cat in hospital_scoped_cats %}
-            <a class="folder" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}&hospital={{ card.hospital_name | urlencode }}">
-              <span class="folder-name">
-                <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span>
-                {{ folder_label[cat] }}
-              </span>
-              <span class="fcount">{{ counts[cat] }}</span>
-            </a>
-          {% endfor %}
+        <div class="collapse show hosp-docs-collapse" id="hosp-docs-{{ card.id }}">
+          <div class="folder-grid">
+            {% for cat in hospital_scoped_cats %}
+              <a class="folder" href="/admin/documents?person={{ active_person.id }}&category={{ cat }}&hospital={{ card.hospital_name | urlencode }}">
+                <span class="folder-name">
+                  <span class="folder-dot" style="background:{{ cat_colors[cat] }}"></span>
+                  {{ folder_label[cat] }}
+                </span>
+                <span class="fcount">{{ counts[cat] }}</span>
+              </a>
+            {% endfor %}
+          </div>
         </div>
       </div>
     </div>
   </div>
   {% endfor %}
 
-  <div class="collapse mb-4" id="add-card">
-    <div class="card">
-      <div class="card-header">
-        <span class="card-ico info"><i class="bi bi-building"></i></span>
-        <div><h2>Add hospital</h2><div class="card-sub">Creates the hospital folder and ID card details</div></div>
-      </div>
-      <div class="card-body">
-        <form method="post" action="/admin/cards/add" enctype="multipart/form-data">
-          <input type="hidden" name="person_id" value="{{ active_person.id }}">
-          <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label" for="c-hosp">Hospital name <span class="req">*</span></label>
-              <input class="form-control" id="c-hosp" type="text" name="hospital_name" required
-                     autocomplete="organization"
-                     style="text-transform: capitalize;">
-              <script>
-              (function () {
-                var el = document.getElementById("c-hosp");
-                if (!el) return;
-                function titleCase(v) {
-                  return String(v || "").replace(/\S+/g, function (w) {
-                    return w.charAt(0).toUpperCase() + w.slice(1);
-                  });
-                }
-                el.addEventListener("blur", function () { el.value = titleCase(el.value.trim()); });
-              })();
-              </script>
+  <div class="modal fade" id="add-hospital-modal" tabindex="-1" aria-labelledby="add-hospital-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered">
+      <div class="modal-content">
+        <form method="post" id="add-hospital-form" action="/admin/cards/add" enctype="multipart/form-data">
+          <div class="modal-header">
+            <span class="card-ico info"><i class="bi bi-building"></i></span>
+            <div class="flex-grow-1">
+              <h2 class="modal-title h5" id="add-hospital-title">Add hospital</h2>
+              <div class="card-sub">Creates the hospital folder and ID card details</div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label" for="c-ward">Ward</label>
-              <input class="form-control" id="c-ward" type="text" name="ward">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="c-blood">Blood group</label>
-              <input class="form-control" id="c-blood" type="text" name="blood_group" placeholder="O+">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="c-pid">Patient ID (encrypted)</label>
-              <input class="form-control" id="c-pid" type="text" name="patient_id">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="c-from">Valid from</label>
-              <input class="form-control" id="c-from" type="date" name="valid_from">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label" for="c-till">Valid till</label>
-              <input class="form-control" id="c-till" type="date" name="valid_till">
-            </div>
-            <div class="col-12">
-              <label class="form-label" for="c-card-image">Patient card photo</label>
-              <input class="form-control" id="c-card-image" type="file" name="card_image"
-                     accept="image/jpeg,image/png,image/webp,image/gif">
-              <div class="form-text">Optional scan of the physical card. Click the ID card to flip and view it; enable as background in Settings.</div>
-            </div>
-            <div class="col-12">
-              <label class="form-label" for="c-notes">Notes (encrypted)</label>
-              <textarea class="form-control" id="c-notes" name="notes" rows="2"></textarea>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-danger d-none" id="add-hospital-error" role="alert"></div>
+            <input type="hidden" name="person_id" value="{{ active_person.id }}">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label" for="c-hosp">Hospital name <span class="req">*</span></label>
+                <input class="form-control" id="c-hosp" type="text" name="hospital_name" required
+                       autocomplete="organization"
+                       style="text-transform: capitalize;">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="c-ward">Ward</label>
+                <input class="form-control" id="c-ward" type="text" name="ward">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="c-blood">Blood group</label>
+                <input class="form-control" id="c-blood" type="text" name="blood_group" placeholder="O+">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="c-pid">Patient ID (encrypted)</label>
+                <input class="form-control" id="c-pid" type="text" name="patient_id">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="c-from">Valid from</label>
+                <input class="form-control" id="c-from" type="date" name="valid_from">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="c-till">Valid till</label>
+                <input class="form-control" id="c-till" type="date" name="valid_till">
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="c-card-image">Patient card photo</label>
+                <input class="form-control" id="c-card-image" type="file" name="card_image"
+                       accept="image/jpeg,image/png,image/webp,image/gif">
+                <div class="form-text">Optional scan of the physical card. Click the ID card to flip and view it; enable as background in Settings.</div>
+              </div>
+              <div class="col-12">
+                <label class="form-label" for="c-notes">Notes (encrypted)</label>
+                <textarea class="form-control" id="c-notes" name="notes" rows="2"></textarea>
+              </div>
             </div>
           </div>
-          <div class="d-flex gap-2 mt-4">
-            <button class="btn btn-primary" type="submit"><i class="bi bi-check2"></i> Save hospital</button>
-            <button class="btn btn-ghost" type="button" data-bs-toggle="collapse" data-bs-target="#add-card">Cancel</button>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" type="button" data-bs-dismiss="modal">Cancel</button>
+            <button class="btn btn-primary" type="submit" id="add-hospital-submit"><i class="bi bi-check2"></i> Save hospital</button>
           </div>
         </form>
       </div>
     </div>
   </div>
+  <script>
+  (function () {
+    var hospEl = document.getElementById("c-hosp");
+    if (hospEl) {
+      function titleCase(v) {
+        return String(v || "").replace(/\S+/g, function (w) {
+          return w.charAt(0).toUpperCase() + w.slice(1);
+        });
+      }
+      hospEl.addEventListener("blur", function () { hospEl.value = titleCase(hospEl.value.trim()); });
+    }
+
+    var form = document.getElementById("add-hospital-form");
+    var modalEl = document.getElementById("add-hospital-modal");
+    var errEl = document.getElementById("add-hospital-error");
+    var submitBtn = document.getElementById("add-hospital-submit");
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        if (errEl) { errEl.classList.add("d-none"); errEl.textContent = ""; }
+        if (submitBtn) submitBtn.disabled = true;
+        fetch(form.getAttribute("action"), {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          body: new FormData(form),
+        }).then(function (res) {
+          return res.json().then(function (data) { return { ok: res.ok, data: data }; });
+        }).then(function (r) {
+          if (!r.ok) {
+            if (errEl) { errEl.textContent = (r.data && r.data.detail) || "Could not save hospital."; errEl.classList.remove("d-none"); }
+            if (submitBtn) submitBtn.disabled = false;
+            return;
+          }
+          window.location.href = (r.data && r.data.redirect) || window.location.href;
+        }).catch(function () {
+          if (errEl) { errEl.textContent = "Could not save hospital. Check your connection and try again."; errEl.classList.remove("d-none"); }
+          if (submitBtn) submitBtn.disabled = false;
+        });
+      });
+    }
+    if (modalEl) {
+      modalEl.addEventListener("hidden.bs.modal", function () {
+        if (form) form.reset();
+        if (errEl) { errEl.classList.add("d-none"); errEl.textContent = ""; }
+        if (submitBtn) submitBtn.disabled = false;
+      });
+    }
+
+    // "Documents for this hospital" grid: closed by default on narrow/mobile screens.
+    if (window.matchMedia && window.matchMedia("(max-width: 640px)").matches) {
+      document.querySelectorAll(".hosp-docs-collapse.show").forEach(function (el) {
+        el.classList.remove("show");
+        var btn = document.querySelector('[data-bs-target="#' + el.id + '"]');
+        if (btn) btn.setAttribute("aria-expanded", "false");
+      });
+    }
+    document.querySelectorAll(".hosp-docs-toggle").forEach(function (btn) {
+      var targetSel = btn.getAttribute("data-bs-target");
+      var target = targetSel ? document.querySelector(targetSel) : null;
+      if (!target) return;
+      target.addEventListener("show.bs.collapse", function () {
+        var ico = btn.querySelector("i"); if (ico) ico.className = "bi bi-chevron-up";
+      });
+      target.addEventListener("hide.bs.collapse", function () {
+        var ico = btn.querySelector("i"); if (ico) ico.className = "bi bi-chevron-down";
+      });
+      if (!target.classList.contains("show")) {
+        var ico = btn.querySelector("i"); if (ico) ico.className = "bi bi-chevron-down";
+      }
+    });
+  })();
+  </script>
 
   <div class="section-head"><h2>Insurance</h2></div>
   <p class="section-note mb-3">Insurance policies and claims stay with {{ active_person.name | nice }} — not under a hospital.</p>

@@ -1559,31 +1559,38 @@ async def cards_add(
     user, denied = require_mutator(request, db)
     if denied:
         return denied
+    wants_json = _fn_wants_json(request)
     person = vault_person(db, user, person_id)
-    if person:
-        from app.templating import nice_name
-        from app.routers.cards import save_card_image
-        hosp = nice_name(hospital_name)
-        card = models.HospitalCard(
-            person_id=person.id, hospital_name=hosp, ward=ward or None, blood_group=blood_group or None,
-            valid_from=valid_from or None, valid_till=valid_till or None,
-            patient_id_enc=crypto.encrypt_text(patient_id or None), notes_enc=crypto.encrypt_text(notes or None),
-        )
-        db.add(card)
-        db.flush()
-        if card_image is not None and getattr(card_image, "filename", None):
-            raw = await card_image.read()
-            if raw:
-                save_card_image(
-                    card,
-                    raw=raw,
-                    content_type=card_image.content_type,
-                    owner_id=vault_id(user),
-                    db=db,
-                    user=user,
-                )
-        db.commit()
-    return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+    if not person:
+        if wants_json:
+            return JSONResponse({"detail": "Person not found"}, status_code=404)
+        return RedirectResponse(f"/admin?person={person_id}", status_code=302)
+    from app.templating import nice_name
+    from app.routers.cards import save_card_image
+    hosp = nice_name(hospital_name)
+    card = models.HospitalCard(
+        person_id=person.id, hospital_name=hosp, ward=ward or None, blood_group=blood_group or None,
+        valid_from=valid_from or None, valid_till=valid_till or None,
+        patient_id_enc=crypto.encrypt_text(patient_id or None), notes_enc=crypto.encrypt_text(notes or None),
+    )
+    db.add(card)
+    db.flush()
+    if card_image is not None and getattr(card_image, "filename", None):
+        raw = await card_image.read()
+        if raw:
+            save_card_image(
+                card,
+                raw=raw,
+                content_type=card_image.content_type,
+                owner_id=vault_id(user),
+                db=db,
+                user=user,
+            )
+    db.commit()
+    redirect = f"/admin?person={person_id}"
+    if wants_json:
+        return JSONResponse({"ok": True, "id": card.id, "hospital_name": card.hospital_name, "redirect": redirect})
+    return RedirectResponse(redirect, status_code=302)
 
 
 @router.post("/cards/{card_id}/delete")
