@@ -5,7 +5,7 @@
 {% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
 {% set can_bulk = view in ('daily', 'monthly', 'total', 'note') %}
 
-<div id="mm-trans" data-month="{{ ledger.year_month }}" data-view="{{ view }}" data-q="{{ q or '' }}">
+<div id="mm-trans" data-month="{{ ledger.year_month }}" data-view="{{ view }}" data-q="{{ q or '' }}" data-account-id="{{ account_id or '' }}" data-family-member-id="{{ family_member_id or '' }}">
 <div class="page-head">
   <div>
     <div class="eyebrow">
@@ -176,8 +176,13 @@
     <div class="card">
       <div class="empty-state">
         <div class="empty-ico"><i class="bi bi-receipt"></i></div>
+        {% if q or account_id or family_member_id %}
+        <div class="empty-title">No transactions match these filters</div>
+        <p>Try a different month, account, family member, or clear the search.</p>
+        {% else %}
         <div class="empty-title">No transactions this month</div>
         <p>Pick another month, or add an entry to start the {{ ledger.label }} ledger.</p>
+        {% endif %}
       </div>
     </div>
     {% endfor %}
@@ -232,9 +237,14 @@
   <div class="card">
     <div class="empty-state">
       <div class="empty-ico"><i class="bi bi-receipt"></i></div>
+      {% if q or account_id or family_member_id %}
+      <div class="empty-title">No transactions match these filters</div>
+      <p>Try a different month, account, family member, or clear the search.</p>
+      {% else %}
       <div class="empty-title">No transactions yet</div>
       <p>Log income, an expense, or a transfer and it will appear here grouped by day.</p>
       <a class="btn btn-primary" href="/admin/finance/add"><i class="bi bi-plus-lg"></i> Add the first entry</a>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
@@ -246,5 +256,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/finance-ajax.js?v=3" defer></script>
+<script src="/static/finance-ajax.js?v=4" defer></script>
 {% endblock %}

@@ -4736,9 +4736,15 @@ def _fn_dashboard_json(db, user, ym: str) -> dict:
     }
 
 
-def _fn_ledger_json(db, user, ym: str, q: str | None = None, notes_only: bool = False) -> dict:
+def _fn_ledger_json(
+    db, user, ym: str, q: str | None = None, notes_only: bool = False,
+    account_id: str | None = None, family_member_id: str | None = None,
+) -> dict:
     from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned
-    ledger = month_ledger(db, user, ym, q=q, notes_only=notes_only)
+    ledger = month_ledger(
+        db, user, ym, q=q, notes_only=notes_only,
+        account_id=account_id or None, family_member_id=family_member_id or None,
+    )
     uid = _owned(db, user)
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
     txns = [_fn_txn_dict(t, accounts, categories) for t in (ledger.get("txns") or [])]
@@ -4781,6 +4787,9 @@ def _fn_ledger_json(db, user, ym: str, q: str | None = None, notes_only: bool = 
         "days": days,
         "weeks": weeks,
         "txns": txns,
+        "account_id": account_id or "",
+        "family_member_id": family_member_id or "",
+        "filtered": bool(q or account_id or family_member_id),
     }
 
 
@@ -4905,12 +4914,13 @@ def finance_add_page(
         }
         for a in accounts
     ])
+    return_to = _fn_safe_return_to(request, None, default="/admin/finance")
     return templates.TemplateResponse("finance_add.html", _fn_ctx(
         request, user, "fn_trans", accounts=accounts, categories=categories,
         txn_type=txn_type, today=datetime.utcnow().strftime("%Y-%m-%d"),
         now=datetime.utcnow().strftime("%H:%M"), inr=inr,
         prefill_account_id=account_id or None, cats_json=cats_json, accts_json=accts_json,
-        family_members=family_members,
+        family_members=family_members, return_to=return_to,
     ))
 
 
@@ -4931,6 +4941,7 @@ def finance_add(
     frequency: str = Form(""),
     hidden_from: list[str] = Form([]),
     family_member_id: str = Form(""),
+    return_to: str = Form(""),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -4951,9 +4962,10 @@ def finance_add(
         raw = image.file.read()
         if raw:
             save_txn_image(db, user, txn.id, raw, image.content_type)
+    redirect = _fn_safe_return_to(request, return_to)
     if _fn_wants_json(request):
-        return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": "/admin/finance"})
-    return RedirectResponse("/admin/finance", status_code=302)
+        return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": redirect})
+    return RedirectResponse(redirect, status_code=302)
 
 
 @router.get("/finance/transactions/{txn_id}/edit", response_class=HTMLResponse)
@@ -4994,6 +5006,7 @@ def finance_edit_page(
         }
         for a in accounts
     ])
+    return_to = _fn_safe_return_to(request, None, default="/admin/finance/transactions")
     return templates.TemplateResponse("finance_add.html", _fn_ctx(
         request, user, "fn_trans", accounts=accounts, categories=categories,
         txn_type=kind, today=row.txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
@@ -5001,6 +5014,7 @@ def finance_edit_page(
         inr=inr, prefill_account_id=row.account_id,
         cats_json=cats_json, accts_json=accts_json,
         edit_txn=row, family_members=family_members, hidden_from=hidden_from,
+        return_to=return_to,
     ))
 
 
@@ -5021,6 +5035,7 @@ def finance_edit_save(
     payment_method: str = Form(""),
     hidden_from: list[str] = Form([]),
     family_member_id: str = Form(""),
+    return_to: str = Form(""),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -5029,6 +5044,7 @@ def finance_edit_save(
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
+    redirect = _fn_safe_return_to(request, return_to)
     try:
         update_transaction(
             txn_id,
@@ -5049,8 +5065,8 @@ def finance_edit_save(
         if raw:
             save_txn_image(db, user, txn_id, raw, image.content_type)
     if _fn_wants_json(request):
-        return JSONResponse({"ok": True, "txn_id": txn_id, "redirect": "/admin/finance"})
-    return RedirectResponse("/admin/finance", status_code=302)
+        return JSONResponse({"ok": True, "txn_id": txn_id, "redirect": redirect})
+    return RedirectResponse(redirect, status_code=302)
 
 
 @router.get("/finance/transactions/{txn_id}/image")
@@ -5551,6 +5567,8 @@ def finance_api_ledger(
     month: Optional[str] = None,
     view: str = "daily",
     q: Optional[str] = None,
+    account_id: Optional[str] = None,
+    family_member_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     user = _fn_user(request, db)
@@ -5561,7 +5579,10 @@ def finance_api_ledger(
         datetime.strptime(ym + "-01", "%Y-%m-%d")
     except ValueError:
         ym = datetime.utcnow().strftime("%Y-%m")
-    data = _fn_ledger_json(db, user, ym, q=q, notes_only=(view == "note"))
+    data = _fn_ledger_json(
+        db, user, ym, q=q, notes_only=(view == "note"),
+        account_id=account_id or None, family_member_id=family_member_id or None,
+    )
     data["view"] = view
     data["q"] = q or ""
     return JSONResponse(data)
@@ -5579,6 +5600,25 @@ def _fn_form_str(form, key: str) -> str:
 def _fn_form_opt(form, key: str) -> str | None:
     s = _fn_form_str(form, key)
     return s or None
+
+
+def _fn_safe_return_to(request: Request, candidate: str | None, default: str = "/admin/finance/transactions") -> str:
+    """Only ever redirect back into /admin/finance/* on this host — never trust an
+    arbitrary client-supplied path for anything else (open-redirect guard)."""
+    from urllib.parse import urlparse
+    for raw in (candidate, request.headers.get("referer")):
+        if not raw:
+            continue
+        try:
+            u = urlparse(raw)
+        except Exception:
+            continue
+        if u.netloc and u.netloc != request.url.netloc:
+            continue
+        path = u.path or ""
+        if path.startswith("/admin/finance"):
+            return path + (("?" + u.query) if u.query else "")
+    return default
 
 
 @router.post("/finance/api/transactions")
@@ -5607,6 +5647,8 @@ async def finance_api_create_txn(request: Request, db: Session = Depends(get_db)
             description=_fn_form_opt(form, "description"),
             payment_method=_fn_form_opt(form, "payment_method"),
             frequency=_fn_form_opt(form, "frequency"),
+            hidden_from=form.getlist("hidden_from") or [],
+            family_member_id=_fn_form_opt(form, "family_member_id"),
         ), db=db, current_user=user)
     except HTTPException as exc:
         return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
@@ -5617,7 +5659,8 @@ async def finance_api_create_txn(request: Request, db: Session = Depends(get_db)
         raw = await image.read()
         if raw:
             save_txn_image(db, user, txn.id, raw, getattr(image, "content_type", None))
-    return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": "/admin/finance"})
+    redirect = _fn_safe_return_to(request, _fn_form_opt(form, "return_to"))
+    return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": redirect})
 
 
 @router.post("/finance/api/transactions/{txn_id}")
@@ -5647,6 +5690,8 @@ async def finance_api_update_txn(txn_id: str, request: Request, db: Session = De
                 notes=_fn_form_opt(form, "notes"),
                 description=_fn_form_opt(form, "description"),
                 payment_method=_fn_form_opt(form, "payment_method"),
+                hidden_from=form.getlist("hidden_from") or [],
+                family_member_id=_fn_form_opt(form, "family_member_id"),
             ),
             db=db, current_user=user,
         )
@@ -5659,7 +5704,8 @@ async def finance_api_update_txn(txn_id: str, request: Request, db: Session = De
         raw = await image.read()
         if raw:
             save_txn_image(db, user, txn_id, raw, getattr(image, "content_type", None))
-    return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": "/admin/finance"})
+    redirect = _fn_safe_return_to(request, _fn_form_opt(form, "return_to"))
+    return JSONResponse({"ok": True, "txn": _fn_txn_dict(txn), "redirect": redirect})
 
 
 @router.get("/finance/categories", response_class=HTMLResponse)

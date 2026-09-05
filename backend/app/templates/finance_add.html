@@ -47,6 +47,7 @@
         {% endif %}
         <input type="hidden" name="category_id" id="category_id" value="{{ edit_txn.category_id if editing and edit_txn.category_id else '' }}">
         <input type="hidden" name="payment_method" id="payment_method" value="{{ (edit_txn.payment_method if editing and edit_txn.payment_method else 'other') }}">
+        <input type="hidden" name="return_to" value="{{ return_to or '' }}">
 
         <label class="form-label" for="amount">Amount <span class="req">*</span></label>
         <div class="amount-well mb-3">

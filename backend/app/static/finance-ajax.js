@@ -172,7 +172,7 @@
         .then(function (data) {
           toast(editing ? "Saved" : "Added");
           idbSet("dash-invalidate", Date.now());
-          window.location.href = (data && data.redirect) || "/admin/finance";
+          window.location.href = (data && data.redirect) || "/admin/finance/transactions";
         })
         .catch(function (err) {
           toast(err.message || "Could not save", true);
@@ -430,7 +430,16 @@
     );
   }
 
-  function emptyLedgerHtml(label) {
+  function emptyLedgerHtml(filtered) {
+    if (filtered) {
+      return (
+        '<div class="card"><div class="empty-state">' +
+        '<div class="empty-ico"><i class="bi bi-receipt"></i></div>' +
+        '<div class="empty-title">No transactions match these filters</div>' +
+        "<p>Try a different month, account, family member, or clear the search.</p>" +
+        "</div></div>"
+      );
+    }
     return (
       '<div class="card"><div class="empty-state">' +
       '<div class="empty-ico"><i class="bi bi-receipt"></i></div>' +
@@ -444,6 +453,7 @@
   function listHtml(ledger, view) {
     var canBulk = view === "daily" || view === "monthly" || view === "total" || view === "note";
     var opts = { canBulk: canBulk, month: ledger.year_month, view: view };
+    var filtered = !!ledger.filtered;
 
     if (view === "calendar") {
       var days = ["S", "M", "T", "W", "T", "F", "S"];
@@ -473,7 +483,7 @@
 
     if (view === "monthly" || view === "total") {
       var txns = ledger.txns || [];
-      if (!txns.length) return emptyLedgerHtml(ledger.label);
+      if (!txns.length) return emptyLedgerHtml(filtered);
       return (
         '<div class="mm-card-list mb-4">' +
         txns
@@ -487,7 +497,7 @@
 
     // daily + note
     var daysList = ledger.days || [];
-    if (!daysList.length) return emptyLedgerHtml(ledger.label);
+    if (!daysList.length) return emptyLedgerHtml(filtered);
     return daysList
       .map(function (day) {
         return (
@@ -521,6 +531,8 @@
     root.dataset.month = ledger.year_month;
     root.dataset.view = view;
     root.dataset.q = ledger.q || "";
+    root.dataset.accountId = ledger.account_id || "";
+    root.dataset.familyMemberId = ledger.family_member_id || "";
 
     var title = root.querySelector("[data-mm-title]");
     if (title) title.textContent = ledger.label;
@@ -537,13 +549,17 @@
     }
     var prev = root.querySelector("[data-mm-prev]");
     var next = root.querySelector("[data-mm-next]");
+    var filterQs =
+      (root.dataset.accountId ? "&account_id=" + encodeURIComponent(root.dataset.accountId) : "") +
+      (root.dataset.familyMemberId ? "&family_member_id=" + encodeURIComponent(root.dataset.familyMemberId) : "");
     if (prev) {
       prev.dataset.month = ledger.prev;
       prev.href =
         "/admin/finance/transactions?month=" +
         encodeURIComponent(ledger.prev) +
         "&view=" +
-        encodeURIComponent(view);
+        encodeURIComponent(view) +
+        filterQs;
     }
     if (next) {
       next.dataset.month = ledger.next;
@@ -551,7 +567,8 @@
         "/admin/finance/transactions?month=" +
         encodeURIComponent(ledger.next) +
         "&view=" +
-        encodeURIComponent(view);
+        encodeURIComponent(view) +
+        filterQs;
     }
     var monthInput = root.querySelector('input[name="month"]');
     if (monthInput) monthInput.value = ledger.year_month;
@@ -578,7 +595,8 @@
         "/admin/finance/transactions?month=" +
         encodeURIComponent(ledger.year_month) +
         "&view=" +
-        encodeURIComponent(v);
+        encodeURIComponent(v) +
+        filterQs;
     });
 
     var bulk = root.querySelector("#mm-bulk-delete");
@@ -605,21 +623,26 @@
           encodeURIComponent(ledger.year_month) +
           "&view=" +
           encodeURIComponent(view) +
-          q
+          q +
+          filterQs
       );
     }
   }
 
-  function loadLedger(month, view, q, preferCache) {
+  function loadLedger(month, view, q, preferCache, accountId, familyMemberId) {
     view = view || "daily";
     q = q || "";
-    var key = "ledger:" + month + ":" + view + ":" + q;
+    accountId = accountId || "";
+    familyMemberId = familyMemberId || "";
+    var key = "ledger:" + month + ":" + view + ":" + q + ":" + accountId + ":" + familyMemberId;
     var url =
       "/admin/finance/api/ledger?month=" +
       encodeURIComponent(month) +
       "&view=" +
       encodeURIComponent(view) +
-      (q ? "&q=" + encodeURIComponent(q) : "");
+      (q ? "&q=" + encodeURIComponent(q) : "") +
+      (accountId ? "&account_id=" + encodeURIComponent(accountId) : "") +
+      (familyMemberId ? "&family_member_id=" + encodeURIComponent(familyMemberId) : "");
     var network = fetchJson(url).then(function (ledger) {
       paintLedger(ledger);
       return idbSet(key, { savedAt: Date.now(), ledger: ledger }).then(function () {
@@ -712,13 +735,19 @@
       var nav = ev.target.closest("[data-mm-prev], [data-mm-next]");
       if (nav) {
         ev.preventDefault();
-        loadLedger(nav.dataset.month, root.dataset.view || "daily", root.dataset.q || "", true);
+        loadLedger(
+          nav.dataset.month, root.dataset.view || "daily", root.dataset.q || "", true,
+          root.dataset.accountId || "", root.dataset.familyMemberId || ""
+        );
         return;
       }
       var viewA = ev.target.closest("[data-mm-view]");
       if (viewA) {
         ev.preventDefault();
-        loadLedger(root.dataset.month, viewA.getAttribute("data-mm-view"), root.dataset.q || "", true);
+        loadLedger(
+          root.dataset.month, viewA.getAttribute("data-mm-view"), root.dataset.q || "", true,
+          root.dataset.accountId || "", root.dataset.familyMemberId || ""
+        );
         return;
       }
       var del = ev.target.closest("[data-mm-delete]");
@@ -739,9 +768,15 @@
       filter.addEventListener("submit", function (ev) {
         ev.preventDefault();
         var qEl = document.getElementById("fn-q");
+        var acctEl = document.getElementById("fn-account");
+        var memberEl = document.getElementById("fn-member");
         var q = (qEl && qEl.value) || "";
+        var accountId = (acctEl && acctEl.value) || "";
+        var familyMemberId = (memberEl && memberEl.value) || "";
         root.dataset.q = q;
-        loadLedger(root.dataset.month, root.dataset.view || "daily", q, false);
+        root.dataset.accountId = accountId;
+        root.dataset.familyMemberId = familyMemberId;
+        loadLedger(root.dataset.month, root.dataset.view || "daily", q, false, accountId, familyMemberId);
       });
     }
 
