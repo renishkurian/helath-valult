@@ -987,6 +987,7 @@ class FinanceCategoryIn(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     kind: str = "expense"
     color: Optional[str] = None
+    icon: Optional[str] = Field(default=None, max_length=16)  # optional emoji override at creation time
     account_id: Optional[str] = None  # null = general / all accounts
     parent_id: Optional[str] = None  # null = top-level; set to add a subcategory
 

@@ -946,6 +946,7 @@ def create_category(
         user_id=uid, name=body.name.strip(),
         kind=kind,
         color=body.color or CAT_COLORS[0],
+        icon=(body.icon or "").strip() or None,
         account_id=acc_id,
         parent_id=parent.id if parent else None,
     )

@@ -5729,6 +5729,7 @@ def finance_category_add(
     request: Request,
     name: str = Form(...),
     kind: str = Form("expense"),
+    icon: str = Form(""),
     account_id: str = Form(""),
     parent_id: str = Form(""),
     db: Session = Depends(get_db),
@@ -5744,7 +5745,8 @@ def finance_category_add(
     try:
         row = create_category(
             sc.FinanceCategoryIn(
-                name=name, kind=kind, account_id=account_id or None, parent_id=parent_id or None,
+                name=name, kind=kind, icon=icon or None,
+                account_id=account_id or None, parent_id=parent_id or None,
             ),
             db=db, current_user=user,
         )
@@ -5754,7 +5756,7 @@ def finance_category_add(
         raise
     if wants_json:
         return JSONResponse({
-            "id": row.id, "name": row.name, "kind": row.kind,
+            "id": row.id, "name": row.name, "kind": row.kind, "icon": row.icon,
             "parent_id": row.parent_id, "account_id": row.account_id,
         })
     return RedirectResponse("/admin/finance/categories", status_code=302)
