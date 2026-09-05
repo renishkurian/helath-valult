@@ -87,6 +87,7 @@ class ShareResourceType(str, enum.Enum):
     health_document = "health_document"
     locker = "locker"
     finance_category = "finance_category"
+    finance_account = "finance_account"
 
 
 class User(Base):
@@ -796,6 +797,7 @@ class FinanceTransaction(Base):
     payment_method = Column(String(30), nullable=True)  # upi | credit_card | debit_card | atm | netbanking | cash | other
     tags = Column(String(500), nullable=True)
     source = Column(String(20), default="manual", nullable=False)  # manual | message | recurring | emi
+    family_member_id = Column(String(32), ForeignKey("users.id"), nullable=True, index=True)  # optional: this entry is tagged against a specific family member
     message_id = Column(String(32), nullable=True, index=True)
     emi_id = Column(String(32), ForeignKey("finance_emis.id"), nullable=True, index=True)
     image_path = Column(String(500), nullable=True)

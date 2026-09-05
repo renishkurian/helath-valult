@@ -37,6 +37,24 @@
     <label class="form-label visually-hidden" for="fn-q">Search transactions</label>
     <input class="form-control" id="fn-q" type="search" name="q" value="{{ q }}" placeholder="Search payee or note">
   </div>
+  {% if accounts %}
+  <label class="form-label visually-hidden" for="fn-account">Account</label>
+  <select class="form-select" id="fn-account" name="account_id">
+    <option value="">All accounts</option>
+    {% for a in accounts %}
+    <option value="{{ a.id }}" {% if account_id == a.id %}selected{% endif %}>{{ a.name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
+  {% if family_members %}
+  <label class="form-label visually-hidden" for="fn-member">Family member</label>
+  <select class="form-select" id="fn-member" name="family_member_id">
+    <option value="">All family members</option>
+    {% for m in family_members %}
+    <option value="{{ m.id }}" {% if family_member_id == m.id %}selected{% endif %}>{{ m.full_name }}</option>
+    {% endfor %}
+  </select>
+  {% endif %}
   <button class="btn btn-outline-light" type="submit">Search</button>
 </form>
 

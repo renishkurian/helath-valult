@@ -365,10 +365,11 @@ def _category_label(cat, categories) -> str | None:
     return cat.name
 
 
-def _txn_out(t: models.FinanceTransaction, accounts, categories, hidden_from: list[str] | None = None) -> schemas.FinanceTxnOut:
+def _txn_out(t: models.FinanceTransaction, accounts, categories, hidden_from: list[str] | None = None, members: dict | None = None) -> schemas.FinanceTxnOut:
     acc = accounts.get(t.account_id)
     to = accounts.get(t.to_account_id) if t.to_account_id else None
     cat = categories.get(t.category_id) if t.category_id else None
+    member = (members or {}).get(t.family_member_id) if t.family_member_id else None
     return schemas.FinanceTxnOut(
         id=t.id, account_id=t.account_id, account_name=acc.name if acc else "",
         to_account_id=t.to_account_id, to_account_name=to.name if to else None,
@@ -379,8 +380,16 @@ def _txn_out(t: models.FinanceTransaction, accounts, categories, hidden_from: li
         description=t.description, payment_method=t.payment_method, tags=t.tags,
         source=t.source or "manual", has_image=bool(t.image_path),
         hidden_from=hidden_from or [],
+        family_member_id=t.family_member_id, family_member_name=member.full_name if member else None,
         deleted_at=t.deleted_at, created_at=t.created_at,
     )
+
+
+def _member_map(db: Session, uid: str) -> dict[str, models.User]:
+    rows = db.query(models.User).filter(
+        models.User.vault_owner_id == uid, models.User.role == models.UserRole.member.value,
+    ).all()
+    return {m.id: m for m in rows}
 
 
 def _hides_for(db: Session, txn_id: str) -> list[str]:
@@ -397,18 +406,26 @@ def _txn_query(db: Session, uid: str, *, include_deleted: bool = False, viewer: 
 
     `viewer=None` (or an admin) is unrestricted — used for internal bookkeeping
     (balances, exports) that must always see the full vault ledger.
-    A non-admin `viewer` only sees transactions in a category the family
-    manager shared with them, and never a transaction hidden from them.
+    A non-admin `viewer` sees a transaction if EITHER its category was shared
+    with them OR its account was shared with them wholesale — sharing an
+    account visibility-grants every transaction posted to it regardless of
+    category. A transaction explicitly hidden from them is excluded either way.
     """
     q = db.query(models.FinanceTransaction).filter(models.FinanceTransaction.user_id == uid)
     if not include_deleted:
         q = q.filter(models.FinanceTransaction.deleted_at.is_(None))
     if viewer is not None and not is_family_admin(viewer):
         visible_cats = family_access.visible_finance_category_ids(db, viewer)
+        visible_accts = family_access.visible_finance_account_ids(db, viewer)
+        conds = []
         if visible_cats:
-            q = q.filter(models.FinanceTransaction.category_id.in_(visible_cats))
+            conds.append(models.FinanceTransaction.category_id.in_(visible_cats))
+        if visible_accts:
+            conds.append(models.FinanceTransaction.account_id.in_(visible_accts))
+        if conds:
+            q = q.filter(or_(*conds))
         else:
-            q = q.filter(False)  # no categories shared yet -> nothing visible
+            q = q.filter(False)  # nothing shared yet -> nothing visible
         hidden_ids = family_access.hidden_txn_ids_for(db, viewer, uid)
         if hidden_ids:
             q = q.filter(models.FinanceTransaction.id.notin_(hidden_ids))
@@ -992,12 +1009,71 @@ def set_category_share(
     )
 
 
+@router.get("/accounts/{account_id}/shares", response_model=list[schemas.FinanceAccountShareOut])
+def list_account_shares(
+    account_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Family manager: who can currently see this account's transactions (whole-account share)."""
+    require_owner(current_user)
+    acc = _get_account(db, current_user, account_id)
+    uid = _owned(db, current_user)
+    members = db.query(models.User).filter(
+        models.User.vault_owner_id == uid,
+        models.User.role == models.UserRole.member.value,
+    ).all()
+    shared_ids = _shared_member_ids_for(db, models.ShareResourceType.finance_account.value, acc.id)
+    return [
+        schemas.FinanceAccountShareOut(
+            user_id=m.id, full_name=m.full_name, email=m.email,
+            visible=m.id in shared_ids,
+        )
+        for m in members
+    ]
+
+
+def _shared_member_ids_for(db: Session, resource_type: str, resource_id: str) -> set[str]:
+    rows = (
+        db.query(models.FamilyShare.to_user_id)
+        .filter(
+            models.FamilyShare.resource_type == resource_type,
+            models.FamilyShare.resource_id == resource_id,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+@router.post("/accounts/{account_id}/shares", response_model=schemas.FinanceAccountShareOut)
+def set_account_share(
+    account_id: str,
+    body: schemas.FinanceAccountShareIn,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Family manager grants/revokes a member's view access to this whole account."""
+    require_owner(current_user)
+    acc = _get_account(db, current_user, account_id)
+    member = db.query(models.User).filter(models.User.id == body.to_user_id).first()
+    if not member or vault_id(member) != _owned(db, current_user) or member.role != models.UserRole.member.value:
+        raise HTTPException(404, "Family member not found")
+    family_access.set_finance_account_visibility(
+        db, admin=current_user, to_user_id=member.id, account_id=acc.id, visible=body.visible,
+    )
+    db.commit()
+    return schemas.FinanceAccountShareOut(
+        user_id=member.id, full_name=member.full_name, email=member.email, visible=body.visible,
+    )
+
+
 # ---------- transactions ----------
 @router.get("/transactions", response_model=list[schemas.FinanceTxnOut])
 def list_transactions(
     year_month: Optional[str] = None,
     txn_type: Optional[str] = None,
     account_id: Optional[str] = None,
+    family_member_id: Optional[str] = None,
     q: Optional[str] = None,
     notes_only: bool = False,
     hidden_only: bool = False,
@@ -1030,6 +1106,8 @@ def list_transactions(
             (models.FinanceTransaction.account_id == account_id)
             | (models.FinanceTransaction.to_account_id == account_id)
         )
+    if family_member_id:
+        query = query.filter(models.FinanceTransaction.family_member_id == family_member_id)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -1051,8 +1129,23 @@ def list_transactions(
                 models.FinanceTxnHide.transaction_id.in_([r.id for r in rows])
             ):
                 hides[hide.transaction_id].append(hide.to_user_id)
-        return [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id)) for t in rows]
+        members = _member_map(db, uid)
+        return [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id), members=members) for t in rows]
     return [_txn_out(t, accounts, categories) for t in rows]
+
+
+def _clean_family_member_id(db: Session, current_user: models.User, family_member_id: str | None) -> str | None:
+    """Validate an optional family-member tag belongs to the same vault; None clears it."""
+    if not family_member_id:
+        return None
+    uid = _owned(db, current_user)
+    member = db.query(models.User).filter(
+        models.User.id == family_member_id, models.User.vault_owner_id == uid,
+        models.User.role == models.UserRole.member.value,
+    ).first()
+    if not member:
+        raise HTTPException(404, "Family member not found")
+    return member.id
 
 
 @router.post("/transactions", response_model=schemas.FinanceTxnOut)
@@ -1087,6 +1180,7 @@ def create_transaction(
         txn_date=body.txn_date, txn_time=body.txn_time, payee=body.payee,
         notes=body.notes, description=desc, payment_method=method,
         tags=body.tags, source="manual",
+        family_member_id=_clean_family_member_id(db, current_user, body.family_member_id),
     )
     db.add(row)
     if body.frequency and body.frequency != "none":
@@ -1103,7 +1197,7 @@ def create_transaction(
         )
     db.commit()
     db.refresh(row)
-    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id))
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id), members=_member_map(db, uid))
 
 
 @router.put("/transactions/{txn_id}", response_model=schemas.FinanceTxnOut)
@@ -1144,6 +1238,7 @@ def update_transaction(
     row.notes = (body.notes or "").strip() or None
     row.description = desc
     row.payment_method = method
+    row.family_member_id = _clean_family_member_id(db, current_user, body.family_member_id)
     if body.tags is not None:
         row.tags = body.tags
     uid = _owned(db, current_user)
@@ -1154,7 +1249,7 @@ def update_transaction(
         )
     db.commit()
     db.refresh(row)
-    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id))
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id), members=_member_map(db, uid))
 
 
 @router.get("/transactions/{txn_id}", response_model=schemas.FinanceTxnOut)
@@ -1166,7 +1261,7 @@ def get_transaction(
     require_owner(current_user)
     row = _get_txn(db, current_user, txn_id)
     uid = _owned(db, current_user)
-    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id))
+    return _txn_out(row, _acct_map(db, uid), _cat_map(db, uid), hidden_from=_hides_for(db, row.id), members=_member_map(db, uid))
 
 
 @router.post("/transactions/bulk-delete")
@@ -2138,7 +2233,7 @@ def ignore_message(message_id: str, db: Session = Depends(get_db), current_user:
     return {"ok": True}
 
 
-def month_ledger(db: Session, user: models.User, year_month: str, q: str | None = None, notes_only: bool = False):
+def month_ledger(db: Session, user: models.User, year_month: str, q: str | None = None, notes_only: bool = False, account_id: str | None = None, family_member_id: str | None = None):
     """Grouped daily view used by the admin UI."""
     ensure_defaults(db, user)
     uid = _owned(db, user)
@@ -2147,6 +2242,13 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
         models.FinanceTransaction.txn_date >= start,
         models.FinanceTransaction.txn_date <= end,
     )
+    if account_id:
+        query = query.filter(
+            (models.FinanceTransaction.account_id == account_id)
+            | (models.FinanceTransaction.to_account_id == account_id)
+        )
+    if family_member_id:
+        query = query.filter(models.FinanceTransaction.family_member_id == family_member_id)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -2168,7 +2270,8 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
                 models.FinanceTxnHide.transaction_id.in_([r.id for r in rows])
             ):
                 hides[hide.transaction_id].append(hide.to_user_id)
-        items = [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id)) for t in rows]
+        members = _member_map(db, uid)
+        items = [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id), members=members) for t in rows]
     else:
         items = [_txn_out(t, accounts, categories) for t in rows]
     income = sum(i.amount for i in items if i.txn_type == "income")

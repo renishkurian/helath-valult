@@ -4850,16 +4850,26 @@ def finance_trans(
     month: Optional[str] = None,
     view: str = "daily",
     q: Optional[str] = None,
+    account_id: Optional[str] = None,
+    family_member_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
+    from app.routers import finance as fn
     from app.routers.finance import month_ledger, inr
     user = _fn_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     ym = month or datetime.utcnow().strftime("%Y-%m")
-    ledger = month_ledger(db, user, ym, q=q, notes_only=(view == "note"))
+    ledger = month_ledger(
+        db, user, ym, q=q, notes_only=(view == "note"),
+        account_id=account_id or None, family_member_id=family_member_id or None,
+    )
+    accounts = fn.list_accounts(db=db, current_user=user)
+    family_members = _fn_family_members(db, user)
     return templates.TemplateResponse("finance_trans.html", _fn_ctx(
         request, user, "fn_trans", ledger=ledger, view=view, q=q or "", inr=inr,
+        accounts=accounts, family_members=family_members,
+        account_id=account_id or "", family_member_id=family_member_id or "",
     ))
 
 
@@ -4920,6 +4930,7 @@ def finance_add(
     payment_method: str = Form(""),
     frequency: str = Form(""),
     hidden_from: list[str] = Form([]),
+    family_member_id: str = Form(""),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -4934,7 +4945,7 @@ def finance_add(
         txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
         notes=notes or None, description=description or None,
         payment_method=payment_method or None, frequency=frequency or None,
-        hidden_from=hidden_from or [],
+        hidden_from=hidden_from or [], family_member_id=family_member_id or None,
     ), db=db, current_user=user)
     if image and image.filename:
         raw = image.file.read()
@@ -5009,6 +5020,7 @@ def finance_edit_save(
     description: str = Form(""),
     payment_method: str = Form(""),
     hidden_from: list[str] = Form([]),
+    family_member_id: str = Form(""),
     image: UploadFile | None = File(None),
     db: Session = Depends(get_db),
 ):
@@ -5026,6 +5038,7 @@ def finance_edit_save(
                 txn_date=txn_date, txn_time=txn_time or None, payee=payee or None,
                 notes=notes or None, description=description or None,
                 payment_method=payment_method or None, hidden_from=hidden_from or [],
+                family_member_id=family_member_id or None,
             ),
             db=db, current_user=user,
         )
@@ -5175,13 +5188,14 @@ def finance_accounts(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/admin/login", status_code=302)
     accounts = fn.list_accounts(db=db, current_user=user)
     summary = fn.summary(db=db, current_user=user)
+    family_members = _fn_family_members(db, user)
     groups = {}
     labels = {"cash": "Cash", "bank": "Accounts", "credit_card": "Card", "loan": "Loan", "wallet": "Wallet", "investment": "Investment", "other": "Other"}
     for a in accounts:
         groups.setdefault(a.account_type, []).append(a)
     return templates.TemplateResponse("finance_accounts.html", _fn_ctx(
         request, user, "fn_accounts", accounts=accounts, groups=groups, labels=labels,
-        summary=summary, inr=inr,
+        summary=summary, inr=inr, family_members=family_members,
     ))
 
 
@@ -5256,6 +5270,32 @@ def finance_account_delete(account_id: str, request: Request, db: Session = Depe
         return RedirectResponse("/admin/login", status_code=302)
     delete_account(account_id, db=db, current_user=user)
     return RedirectResponse("/admin/finance/accounts", status_code=302)
+
+
+@router.get("/finance/api/accounts/{account_id}/shares")
+def finance_api_account_shares_get(account_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import list_account_shares
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    rows = list_account_shares(account_id, db=db, current_user=user)
+    return JSONResponse([r.model_dump() for r in rows])
+
+
+@router.post("/finance/api/accounts/{account_id}/shares")
+async def finance_api_account_shares_set(account_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.finance import set_account_share
+    from app import schemas as sc
+    user = _fn_user(request, db)
+    if not user:
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    body = await request.json()
+    row = set_account_share(
+        account_id,
+        sc.FinanceAccountShareIn(to_user_id=body.get("to_user_id", ""), visible=bool(body.get("visible"))),
+        db=db, current_user=user,
+    )
+    return JSONResponse(row.model_dump())
 
 
 @router.get("/finance/accounts/{account_id}", response_class=HTMLResponse)

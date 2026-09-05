@@ -181,6 +181,22 @@
             <label class="form-check-label" for="edit-acc-is-default">Set as default account</label>
             <div class="form-text">Pre-selected on the "Add transaction" screen. Only one account can be default.</div>
           </div>
+          {% if family_members %}
+          <div class="divider my-3"></div>
+          <div class="mb-1">
+            <label class="form-label">Share with family</label>
+            <div class="form-text mb-2">Sharing an account makes every transaction posted to it visible to the selected member — regardless of category — unless you explicitly hide an individual entry from them on that entry's edit screen.</div>
+            <div id="edit-acc-shares">
+              {% for m in family_members %}
+              <div class="form-check">
+                <input class="form-check-input js-acct-share" type="checkbox" id="acct-share-{{ m.id }}" data-user-id="{{ m.id }}">
+                <label class="form-check-label" for="acct-share-{{ m.id }}">{{ m.full_name }}</label>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="form-text text-muted" id="acct-share-status"></div>
+          </div>
+          {% endif %}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
@@ -197,11 +213,37 @@
 (function(){
   var modal = document.getElementById("edit-account");
   if (!modal) return;
+  var currentAccountId = "";
+  var statusEl = document.getElementById("acct-share-status");
+
+  function loadShares(accountId) {
+    var boxes = modal.querySelectorAll(".js-acct-share");
+    if (!boxes.length) return;
+    boxes.forEach(function(b){ b.checked = false; b.disabled = true; });
+    if (statusEl) statusEl.textContent = "Loading…";
+    fetch("/admin/finance/api/accounts/" + encodeURIComponent(accountId) + "/shares", { credentials: "same-origin" })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(rows){
+        var byId = {};
+        (rows || []).forEach(function(r){ byId[r.user_id] = r.visible; });
+        boxes.forEach(function(b){
+          b.disabled = false;
+          b.checked = !!byId[b.getAttribute("data-user-id")];
+        });
+        if (statusEl) statusEl.textContent = "";
+      })
+      .catch(function(){
+        boxes.forEach(function(b){ b.disabled = false; });
+        if (statusEl) statusEl.textContent = "Couldn't load sharing status.";
+      });
+  }
+
   modal.addEventListener("show.bs.modal", function(ev){
     var btn = ev.relatedTarget;
     if (!btn || !btn.classList.contains("js-edit-account")) return;
     var form = document.getElementById("edit-account-form");
     var id = btn.getAttribute("data-account-id") || "";
+    currentAccountId = id;
     form.action = "/admin/finance/accounts/" + encodeURIComponent(id) + "/edit";
     document.getElementById("edit-acc-name").value = btn.getAttribute("data-account-name") || "";
     document.getElementById("edit-acc-type").value = btn.getAttribute("data-account-type") || "cash";
@@ -209,6 +251,29 @@
     document.getElementById("edit-acc-open").value = btn.getAttribute("data-opening-balance") || "0";
     document.getElementById("edit-acc-no-default-cats").checked = btn.getAttribute("data-no-default-categories") === "1";
     document.getElementById("edit-acc-is-default").checked = btn.getAttribute("data-is-default") === "1";
+    loadShares(id);
+  });
+
+  modal.addEventListener("change", function(ev){
+    var box = ev.target;
+    if (!box.classList || !box.classList.contains("js-acct-share") || !currentAccountId) return;
+    var userId = box.getAttribute("data-user-id");
+    var visible = box.checked;
+    box.disabled = true;
+    if (statusEl) statusEl.textContent = "Saving…";
+    fetch("/admin/finance/api/accounts/" + encodeURIComponent(currentAccountId) + "/shares", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to_user_id: userId, visible: visible }),
+    })
+      .then(function(r){ if (!r.ok) throw new Error("save failed"); return r.json(); })
+      .then(function(){ if (statusEl) statusEl.textContent = "Saved."; })
+      .catch(function(){
+        box.checked = !visible;
+        if (statusEl) statusEl.textContent = "Couldn't save — try again.";
+      })
+      .finally(function(){ box.disabled = false; });
   });
 })();
 </script>

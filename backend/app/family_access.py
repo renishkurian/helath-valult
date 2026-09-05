@@ -287,6 +287,58 @@ def set_finance_category_visibility(
             db.delete(row)
 
 
+def visible_finance_account_ids(db: Session, user: models.User) -> set[str]:
+    """Account ids the family manager has explicitly shared with this member.
+
+    Sharing a whole account grants visibility of every transaction posted to
+    it, regardless of category — used alongside (not instead of)
+    visible_finance_category_ids(); a transaction is visible if either grant
+    covers it. Admin is unrestricted — callers should check
+    is_family_admin() first and skip filtering entirely for them.
+    """
+    if not is_accepted_family_member(user):
+        return set()
+    rows = (
+        db.query(models.FamilyShare.resource_id)
+        .filter(
+            models.FamilyShare.resource_type == models.ShareResourceType.finance_account.value,
+            models.FamilyShare.to_user_id == user.id,
+        )
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def set_finance_account_visibility(
+    db: Session,
+    *,
+    admin: models.User,
+    to_user_id: str,
+    account_id: str,
+    visible: bool,
+) -> None:
+    """Family manager grants/revokes a member's view access to a whole finance account."""
+    require_family_admin(admin)
+    if visible:
+        upsert_share(
+            db,
+            from_user=admin,
+            to_user_id=to_user_id,
+            resource_type=models.ShareResourceType.finance_account.value,
+            resource_id=account_id,
+            permission=models.SharePermission.view.value,
+        )
+    else:
+        row = _share_row(
+            db,
+            resource_type=models.ShareResourceType.finance_account.value,
+            resource_id=account_id,
+            to_user_id=to_user_id,
+        )
+        if row:
+            db.delete(row)
+
+
 def hidden_txn_ids_for(db: Session, user: models.User, vault_scope_id: str) -> set[str]:
     """Transaction ids the family manager hid from this member specifically.
 

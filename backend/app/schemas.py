@@ -1016,6 +1016,18 @@ class FinanceCategoryShareOut(BaseModel):
     visible: bool
 
 
+class FinanceAccountShareIn(BaseModel):
+    to_user_id: str
+    visible: bool = True
+
+
+class FinanceAccountShareOut(BaseModel):
+    user_id: str
+    full_name: str
+    email: str
+    visible: bool
+
+
 class FinanceTxnIn(BaseModel):
     account_id: str
     to_account_id: Optional[str] = None
@@ -1031,6 +1043,7 @@ class FinanceTxnIn(BaseModel):
     tags: Optional[str] = None
     frequency: Optional[str] = None  # if set, also create recurring
     hidden_from: Optional[list[str]] = None  # family member user ids this entry is hidden from
+    family_member_id: Optional[str] = None  # optional: tag this entry against one family member
 
 
 class FinanceTxnOut(BaseModel):
@@ -1055,6 +1068,8 @@ class FinanceTxnOut(BaseModel):
     source: str = "manual"
     has_image: bool = False
     hidden_from: list[str] = []  # family member user ids this entry is hidden from (empty if none/not admin)
+    family_member_id: Optional[str] = None
+    family_member_name: Optional[str] = None
     deleted_at: Optional[datetime] = None
     created_at: datetime
 

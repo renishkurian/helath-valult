@@ -131,6 +131,16 @@
           </div>
           {% if family_members %}
           <div class="col-12">
+            <label class="form-label" for="family_member_id">Tag against family member</label>
+            <select class="form-select" id="family_member_id" name="family_member_id">
+              <option value="">None</option>
+              {% for m in family_members %}
+              <option value="{{ m.id }}" {% if editing and edit_txn.family_member_id == m.id %}selected{% endif %}>{{ m.full_name }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Optional — attribute this entry to one family member. Lets it be filtered by member in the transaction list.</div>
+          </div>
+          <div class="col-12">
             <label class="form-label">Hide from family</label>
             <div class="form-text mb-1">This entry stays out of the selected member's transaction list and totals, even if they can view this category.</div>
             {% for m in family_members %}
