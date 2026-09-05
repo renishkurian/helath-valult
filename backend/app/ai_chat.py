@@ -14,6 +14,7 @@ import urllib.error
 import urllib.request
 from collections import defaultdict
 from datetime import datetime, timedelta
+from urllib.parse import quote
 
 from sqlalchemy.orm import Session
 
@@ -960,6 +961,39 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
             return "\n".join(lines)
         lines.append("No matching doctor in the directory.")
         lines.append("[Open Doctors](/admin/doctors)")
+        return "\n".join(lines)
+
+    if pids and re.search(r"\bhospitals?\b", question or "", re.I):
+        # "any hospital for X in Y" is about the Hospital Card list, not
+        # about a Document with a matching hospital_name field. A hospital
+        # can be saved (visible in the "Hospitals" module) with no document
+        # filed under it yet, so searching Document rows alone missed it
+        # and always fell through to "No matching health document."
+        cards = (
+            db.query(models.HospitalCard)
+            .filter(models.HospitalCard.person_id.in_(pids))
+            .order_by(models.HospitalCard.hospital_name)
+            .all()
+        )
+        matched = []
+        for c in cards:
+            hay = " ".join(x for x in [c.hospital_name, person_name.get(c.person_id, "")] if x)
+            if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
+                matched.append(c)
+        if matched:
+            lines.append("Hospitals on file (open Health Vault for cards & documents):")
+            for c in matched[:12]:
+                who = person_name.get(c.person_id, "")
+                ward = f" · Ward {c.ward}" if c.ward else ""
+                lines.append(
+                    f"- [{c.hospital_name}](/admin/documents?person={c.person_id}"
+                    f"&hospital={quote(c.hospital_name)}) · {who}{ward}"
+                )
+            lines.append("")
+            lines.append("[Open Health Vault](/admin)")
+            return "\n".join(lines)
+        lines.append("No matching hospital on file.")
+        lines.append("[Open Health Vault](/admin)")
         return "\n".join(lines)
 
     if not pids:
