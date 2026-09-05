@@ -857,11 +857,16 @@ def wants_locker_lookup(question: str, db: Session | None = None, user: models.U
         return False
     if wants_password_lookup(q) or _SPEND_RE.search(q):
         return False
+    # "any hospital for X" / "medical record for X" must stay on Health Vault
+    # unless the question also names an actual ID/paper topic (aadhaar, tax,
+    # certificate, etc). This guard used to only apply to the explicit
+    # _LOCKER_ASK_RE branch below; the DB-fallback branch skipped it, so a
+    # clearly medical question with no locker keyword at all could still be
+    # hijacked by an incidental title match — e.g. a person's name also
+    # being the title of an unrelated Document Vault item.
+    if _HEALTH_STEAL_RE.search(q) and not _LOCKER_STRONG_RE.search(q):
+        return False
     if _LOCKER_ASK_RE.search(q):
-        # "medical document" / "lab report file" stay on Health Vault unless
-        # the question clearly names an ID/paper topic.
-        if _HEALTH_STEAL_RE.search(q) and not _LOCKER_STRONG_RE.search(q):
-            return False
         return True
     if db is not None and user is not None:
         return bool(_locker_search_hits(db, user, q))
