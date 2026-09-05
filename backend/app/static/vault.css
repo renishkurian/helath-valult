@@ -1432,6 +1432,17 @@ tr.js-locker-doc.is-dragging{ opacity:0.45; }
   .table-card .lk-docs-table th.table-actions,
   .table-card .lk-docs-table td.table-actions{ width:auto; min-width:9.5rem; }
 }
+/* The column-hiding above is still fragile on real devices (font scaling,
+   dynamic type, non-standard viewport widths all shift where it kicks in
+   and the header/select/icon row collides again). Below 992px, hide the
+   table outright and use the same swipeable card list the Documents page
+   already uses instead of squeezing a 7-column table onto a phone. */
+@media (max-width:991.98px){
+  .mod-locker .table-card{ display:none; }
+  .mod-locker .lk-card-list{ display:flex; }
+  .mod-locker .hv-swipe-hint{ display:block; }
+}
+.lk-doc-card .hv-file-meta{ display:flex; flex-wrap:wrap; gap:.3rem; }
 
 /* Expense Analyser — sync log (card rows; avoid crushed table Error column on mobile) */
 .ea-sync-list{ display:flex; flex-direction:column; }

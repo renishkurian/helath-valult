@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Document Vault{% endblock %}
+{% block body_class %}mod-locker{% endblock %}
 {% block content %}
 {% set type_colors = {
   'aadhaar':'#7FA6FF','pan':'#F0C36A','passport':'#C0A8FF','driving_license':'#4ADE9B',
@@ -307,6 +308,58 @@
     </table>
   </div>
 </div>
+
+{# ----- Mobile swipe cards (table above is hidden below 992px) ----- #}
+{% if items %}
+<p class="hv-swipe-hint">← swipe a document for quick actions</p>
+{% endif %}
+<div class="hv-card-list lk-card-list">
+  {% for item in items %}
+  {% set edit_href = '/admin/security/unlock?item_kind=locker&item_id=' ~ item.id ~ '&next=/admin/locker/' ~ item.id if item.require_2fa else '/admin/locker/' ~ item.id %}
+  {% set share_href = '/admin/security/unlock?item_kind=locker&item_id=' ~ item.id ~ '&next=/admin/locker/' ~ item.id if item.require_2fa else '/admin/locker/' ~ item.id ~ '#share-locker-modal' %}
+  {% set open_href = '/admin/security/unlock?item_kind=locker&item_id=' ~ item.id ~ '&next=/admin/locker/' ~ item.id ~ '/view' if item.require_2fa else '/admin/locker/' ~ item.id ~ '/view' %}
+  <div class="hv-doc-card lk-doc-card">
+    <div class="hv-doc-card-actions lk-doc-card-actions">
+      <a class="hv-swipe-action dl" href="{{ edit_href }}">
+        <i class="bi bi-{% if item.require_2fa %}shield-lock{% else %}pencil{% endif %}"></i> Edit
+      </a>
+      <a class="hv-swipe-action dl" href="{{ share_href }}">
+        <i class="bi bi-share"></i> Share
+      </a>
+      <a class="hv-swipe-action view" href="{{ open_href }}">
+        <i class="bi bi-eye"></i> Open
+      </a>
+    </div>
+    <a class="hv-doc-card-inner text-decoration-none text-reset" href="/admin/locker/{{ item.id }}">
+      <span class="doc-icon" style="background:{{ type_colors.get(item.doc_type, '#8B95A8') }};">{{ item.type_label[:3]|upper }}</span>
+      <div class="min-w-0">
+        <div class="hv-file-name truncate">
+          {{ item.title }}{% if item.require_2fa %} <i class="bi bi-shield-lock text-warning" title="Locked with 2FA"></i>{% endif %}
+        </div>
+        <div class="hv-file-meta">
+          <span>{{ item.type_label }}</span>
+          <span>· {{ (item.folder_id and (summary.folders | selectattr('id','equalto', item.folder_id) | map(attribute='name') | map('nice') | first)) or 'No folder' }}</span>
+          {% if item.person_name %}<span>· {{ item.person_name | nice }}</span>{% else %}<span class="text-faint">· Unassigned</span>{% endif %}
+        </div>
+      </div>
+      <i class="bi bi-chevron-right hv-chev"></i>
+    </a>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <div class="empty-ico"><i class="bi bi-safe2"></i></div>
+    {% if q or doc_type or folder or expiring or person %}
+      <div class="empty-title">Nothing matches this filter</div>
+      <p>Try another search term, or clear the filter to see every document.</p>
+      <a class="btn btn-outline-light" href="/admin/locker"><i class="bi bi-arrow-counterclockwise"></i> Clear filter</a>
+    {% else %}
+      <div class="empty-title">No documents yet</div>
+      <p>File Aadhaar, PAN, vehicle RC, insurance, and warranties — all encrypted on your own server.</p>
+      <a class="btn btn-primary" href="{{ add_href }}"><i class="bi bi-plus-lg"></i> Add the first document</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -359,6 +412,44 @@
       }).catch(function () {
         alert("Could not move document to folder");
       });
+    });
+  });
+
+  document.querySelectorAll(".lk-doc-card").forEach(function (card) {
+    var inner = card.querySelector(".hv-doc-card-inner");
+    if (!inner) return;
+    var startX = 0, currentX = 0, dragging = false, moved = false;
+    inner.addEventListener("pointerdown", function (e) {
+      startX = e.clientX; dragging = true; currentX = 0; moved = false;
+      inner.style.transition = "none";
+      try { inner.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    inner.addEventListener("pointermove", function (e) {
+      if (!dragging) return;
+      currentX = e.clientX - startX;
+      if (Math.abs(currentX) > 8) moved = true;
+      var base = card.classList.contains("swiped") ? -136 : 0;
+      var x = Math.min(0, Math.max(-204, base + currentX));
+      inner.style.transform = "translateX(" + x + "px)";
+    });
+    function endDrag() {
+      if (!dragging) return;
+      dragging = false;
+      inner.style.transition = "";
+      var base = card.classList.contains("swiped") ? -136 : 0;
+      if (base + currentX < -60) card.classList.add("swiped");
+      else card.classList.remove("swiped");
+      inner.style.transform = "";
+      currentX = 0;
+    }
+    inner.addEventListener("pointerup", endDrag);
+    inner.addEventListener("pointercancel", endDrag);
+    inner.addEventListener("click", function (e) {
+      if (moved || card.classList.contains("swiped")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (card.classList.contains("swiped") && !moved) card.classList.remove("swiped");
+      }
     });
   });
 })();
