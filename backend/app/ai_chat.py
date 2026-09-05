@@ -747,8 +747,32 @@ def _search_needle(question: str) -> str:
     return re.sub(r"\s+", " ", cleaned).strip()
 
 
+def _edit_distance_le(a: str, b: str, max_dist: int) -> bool:
+    """Damerau-Levenshtein-ish distance check (insert/delete/substitute/
+    adjacent transpose), capped at max_dist for speed — we only need to
+    know 'close enough', not the exact distance."""
+    if abs(len(a) - len(b)) > max_dist:
+        return False
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cost = 0 if ca == cb else 1
+            cur[j] = min(
+                prev[j] + 1,      # delete
+                cur[j - 1] + 1,   # insert
+                prev[j - 1] + cost,  # substitute
+            )
+            if i > 1 and j > 1 and ca == b[j - 2] and a[i - 2] == cb:
+                cur[j] = min(cur[j], prev2[j - 2] + cost)  # transpose
+        prev2 = prev
+        prev = cur
+    return prev[len(b)] <= max_dist
+
+
 def _fuzzy_token_in(hay: str, token: str) -> bool:
-    """Match typos like taxx→tax and short prefixes."""
+    """Match typos like taxx→tax, short prefixes, and near-miss spellings
+    (transposed/substituted letters like 'sbaine'→'sabine')."""
     t = (token or "").lower()
     h = (hay or "").lower()
     if not t or len(t) < 3:
@@ -758,10 +782,19 @@ def _fuzzy_token_in(hay: str, token: str) -> bool:
     collapsed = re.sub(r"(.)\1+", r"\1", t)
     if collapsed != t and len(collapsed) >= 3 and collapsed in h:
         return True
-    for w in re.findall(r"[a-z0-9\u0d00-\u0d7f]{3,}", h, flags=re.I):
+    words = re.findall(r"[a-z0-9\u0d00-\u0d7f]{3,}", h, flags=re.I)
+    for w in words:
         w = w.lower()
         if w.startswith(t) or t.startswith(w):
             return True
+    # A short typo (one wrong/missing/transposed letter) shouldn't sink an
+    # otherwise-correct match — but only for longer words (5+ letters), so
+    # short ones like "tax" vs "wax" don't get treated as the same thing.
+    if len(t) >= 5:
+        max_dist = 1 if len(t) <= 7 else 2
+        for w in words:
+            if abs(len(w) - len(t)) <= max_dist and _edit_distance_le(t, w.lower(), max_dist):
+                return True
     return False
 
 
