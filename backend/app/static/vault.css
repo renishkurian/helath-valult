@@ -1413,6 +1413,23 @@ tr.js-locker-doc.is-dragging{ opacity:0.45; }
   .table-card .lk-docs-table th:nth-child(5),
   .table-card .lk-docs-table td:nth-child(5){ display:none; }
 }
+@media (max-width:640px){
+  /* Below this width the fixed % columns get too narrow for a select + icon
+     row and start overlapping. Hide Profile/Files and let what remains size
+     to its content, scrolling horizontally (via .table-responsive) instead
+     of squeezing everything on top of itself. */
+  .table-card .lk-docs-table th:nth-child(3),
+  .table-card .lk-docs-table td:nth-child(3),
+  .table-card .lk-docs-table th:nth-child(6),
+  .table-card .lk-docs-table td:nth-child(6){ display:none; }
+  .table-card .lk-docs-table{ table-layout:auto; width:auto; min-width:100%; }
+  .table-card .lk-docs-table th:nth-child(1),
+  .table-card .lk-docs-table td:nth-child(1){ width:auto; min-width:9.5rem; }
+  .table-card .lk-docs-table th:nth-child(2),
+  .table-card .lk-docs-table td:nth-child(2){ width:auto; min-width:7.5rem; }
+  .table-card .lk-docs-table th.table-actions,
+  .table-card .lk-docs-table td.table-actions{ width:auto; min-width:9.5rem; }
+}
 
 /* Expense Analyser — sync log (card rows; avoid crushed table Error column on mobile) */
 .ea-sync-list{ display:flex; flex-direction:column; }
