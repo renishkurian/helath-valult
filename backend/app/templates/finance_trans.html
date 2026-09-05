@@ -97,13 +97,21 @@
   </div>
 </div>
 
+{% if can_bulk %}
+<div class="mm-manage-row mb-3">
+  <button type="button" class="btn btn-sm mm-manage-btn" id="mm-manage-toggle" data-mm-manage-toggle aria-pressed="false">
+    <i class="bi bi-sliders"></i> Manage transactions
+  </button>
+</div>
+{% endif %}
+
 <form
   method="post"
   action="/admin/finance/transactions/bulk-delete"
   id="mm-bulk-delete"
   class="mm-bulk mb-3"
   data-confirm="Move the selected entries to trash?"
-  {% if not can_bulk %}hidden{% endif %}
+  hidden
 >
   <input type="hidden" name="month" value="{{ ledger.year_month }}">
   <input type="hidden" name="view" value="{{ view }}">

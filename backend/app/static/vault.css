@@ -1492,7 +1492,8 @@ tr.js-locker-doc.is-dragging{ opacity:0.45; }
 .mm-muted{ color:var(--v-ink-3) !important; }
 
 .mm-day{ margin-bottom:1.25rem; }
-.mm-day .mm-card + .mm-card{ margin-top:.75rem; }
+.mm-day .mm-card + .mm-card{ margin-top:1rem; }
+.mm-card-list{ display:flex; flex-direction:column; gap:1rem; }
 .mm-day-head{
   display:flex; align-items:baseline; justify-content:space-between; gap:.75rem;
   padding:.5rem .25rem; margin-bottom:.25rem;
@@ -1617,7 +1618,7 @@ body:has(.ask-ai-fab):has(.fab) .mm-fab-spacer{ height:7.5rem; }
   color:var(--v-teal); margin-bottom:.4rem; display:flex; align-items:center; gap:.4rem;
 }
 .mm-insight p{ color:rgba(244,255,252,.88); font-size:.9375rem; }
-.mm-card-list{ display:flex; flex-direction:column; gap:.75rem; }
+.mm-card-list{ display:flex; flex-direction:column; gap:1rem; }
 .mm-card{
   display:flex; align-items:center; gap:.85rem;
   padding:.9rem 1rem; min-height:72px;
@@ -1651,6 +1652,23 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 }
 .mm-card .dropdown .btn-icon{ width:44px; height:44px; flex:0 0 44px; }
 .mm-card .mm-txn-check{ flex:0 0 auto; width:1.25rem; height:1.25rem; }
+
+/* Checkboxes stay hidden until "Manage transactions" is switched on. */
+.mm-txn-check{ display:none; }
+#mm-trans.mm-managing .mm-txn-check{ display:inline-block; }
+
+.mm-manage-row{ display:flex; justify-content:flex-end; }
+.mm-manage-btn{
+  --bs-btn-padding-y:.4rem; --bs-btn-padding-x:.9rem; --bs-btn-font-size:.8125rem;
+  display:inline-flex; align-items:center; gap:.4rem; font-weight:650;
+  color:#E8D3A6; background:transparent; border:1px solid var(--v-gold-line);
+  border-radius:999px; transition:background var(--v-fast) var(--v-ease), color var(--v-fast) var(--v-ease), border-color var(--v-fast) var(--v-ease);
+}
+.mm-manage-btn:hover{ color:#E8D3A6; border-color:var(--v-gold); background:var(--v-gold-soft); }
+.mm-manage-btn.active{
+  color:var(--v-on-gold); border-color:var(--v-gold);
+  background:linear-gradient(150deg,#EBD6A6,var(--v-gold) 50%,var(--v-gold-2));
+}
 .dropdown-item{ width:100%; }
 
 .mm-cal{ display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }

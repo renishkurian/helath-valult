@@ -603,7 +603,7 @@
     var bulk = root.querySelector("#mm-bulk-delete");
     var canBulk = view === "daily" || view === "monthly" || view === "total" || view === "note";
     if (bulk) {
-      bulk.hidden = !canBulk;
+      bulk.hidden = !(canBulk && root.classList.contains("mm-managing"));
       var bm = bulk.querySelector('input[name="month"]');
       var bv = bulk.querySelector('input[name="view"]');
       if (bm) bm.value = ledger.year_month;
@@ -733,6 +733,25 @@
     if (!root) return;
 
     root.addEventListener("click", function (ev) {
+      var manageBtn = ev.target.closest("[data-mm-manage-toggle]");
+      if (manageBtn) {
+        ev.preventDefault();
+        var managing = root.classList.toggle("mm-managing");
+        manageBtn.classList.toggle("active", managing);
+        manageBtn.setAttribute("aria-pressed", managing ? "true" : "false");
+        var curView = root.dataset.view || "daily";
+        var canBulkNow =
+          curView === "daily" || curView === "monthly" || curView === "total" || curView === "note";
+        var bulkForm = document.getElementById("mm-bulk-delete");
+        if (bulkForm) bulkForm.hidden = !(managing && canBulkNow);
+        if (!managing) {
+          document.querySelectorAll(".mm-txn-check").forEach(function (c) {
+            c.checked = false;
+          });
+          syncBulkChecks();
+        }
+        return;
+      }
       var nav = ev.target.closest("[data-mm-prev], [data-mm-next]");
       if (nav) {
         ev.preventDefault();
