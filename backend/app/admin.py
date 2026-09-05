@@ -4904,7 +4904,7 @@ def finance_add_page(
         txn_type = "expense"
     cats_json = json.dumps([
         {
-            "id": str(c.id), "name": c.name, "kind": c.kind,
+            "id": str(c.id), "name": c.name, "kind": c.kind, "icon": c.icon,
             "parent_id": str(c.parent_id) if c.parent_id else None,
             "account_id": str(c.account_id) if c.account_id else None,
         }
@@ -4996,7 +4996,7 @@ def finance_edit_page(
         kind = "expense"
     cats_json = json.dumps([
         {
-            "id": str(c.id), "name": c.name, "kind": c.kind,
+            "id": str(c.id), "name": c.name, "kind": c.kind, "icon": c.icon,
             "parent_id": str(c.parent_id) if c.parent_id else None,
             "account_id": str(c.account_id) if c.account_id else None,
         }

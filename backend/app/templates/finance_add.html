@@ -82,7 +82,7 @@
           </button>
           {% else %}
           <button class="list-row" type="button" id="category-row">
-            <span class="card-ico {% if txn_type=='income' %}good{% else %}bad{% endif %}">
+            <span class="card-ico {% if txn_type=='income' %}good{% else %}bad{% endif %}" id="category-ico">
               <i class="bi {{ type_ico.get(txn_type, 'bi-tag') }}"></i>
             </span>
             <span class="row-body">
@@ -265,9 +265,12 @@
       return !noDefault && !c.account_id;
     });
   }
-  function catLabel(){
+  function selectedCat(){
     var id = document.getElementById("category_id").value;
-    var c = CATS.find(function(x){ return x.id === id; });
+    return CATS.find(function(x){ return x.id === id; });
+  }
+  function catLabel(){
+    var c = selectedCat();
     if(!c) return "Select";
     if(c.parent_id){
       var p = CATS.find(function(x){ return x.id === c.parent_id; });
@@ -275,12 +278,24 @@
     }
     return c.name;
   }
+  var catIcoEl = document.getElementById("category-ico");
+  var catIcoDefault = catIcoEl ? catIcoEl.innerHTML : "";
+  function syncCatIcon(){
+    if(!catIcoEl) return;
+    var c = selectedCat();
+    if(c && c.icon){
+      catIcoEl.textContent = c.icon;
+    } else {
+      catIcoEl.innerHTML = catIcoDefault;
+    }
+  }
   function syncLabels(){
     document.getElementById("account-label").textContent = acctName(document.getElementById("account_id").value);
     var to = document.getElementById("to_account_id");
     if(to) document.getElementById("to-account-label").textContent = acctName(to.value);
     var cat = document.getElementById("category-label");
     if(cat) cat.textContent = catLabel();
+    syncCatIcon();
     var m = document.getElementById("payment_method").value;
     var found = METHODS.find(function(x){ return x[0] === m; });
     document.getElementById("method-label").textContent = found ? found[1] : "Other";
@@ -414,12 +429,12 @@
     }
     var left = parents.map(function(p){
       return '<button type="button" ' + rowAttrs(p.id === parentId) + ' data-parent="' + esc(p.id) + '">'
-        + '<span class="row-body"><span class="row-title truncate">' + esc(p.name) + '</span></span>'
+        + '<span class="row-body"><span class="row-title truncate">' + (p.icon ? esc(p.icon) + ' ' : '') + esc(p.name) + '</span></span>'
         + '<i class="bi bi-chevron-right text-faint ms-auto"></i></button>';
     }).join("");
     function pickBtn(c){
       return '<button type="button" ' + rowAttrs(selected === c.id) + ' data-pick="category" data-id="' + esc(c.id) + '">'
-        + '<span class="row-body"><span class="row-title truncate">' + esc(c.name) + '</span></span>'
+        + '<span class="row-body"><span class="row-title truncate">' + (c.icon ? esc(c.icon) + ' ' : '') + esc(c.name) + '</span></span>'
         + (selected === c.id ? '<i class="bi bi-check2 gold ms-auto"></i>' : '')
         + '</button>';
     }
