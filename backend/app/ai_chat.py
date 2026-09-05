@@ -972,11 +972,13 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
     )
     hits = []
     for d in docs:
-        hay = " ".join([
-            d.title or "", d.hospital_name or "", _enum(d.category) or "",
-            d.custom_category or "", person_name.get(d.person_id, ""),
-        ])
-        if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
+        # Only the hospital name and the profile (person) name decide a match.
+        # Title/category text used to be thrown into the same fuzzy bucket,
+        # which meant a generic category label like "Card scans" could match
+        # a leftover word from the question (e.g. "cards") and pull in a
+        # document from a completely different, unrelated hospital.
+        id_hay = " ".join([d.hospital_name or "", person_name.get(d.person_id, "")])
+        if not needle or _tokens_match(id_hay, needle) or needle.lower() in id_hay.lower():
             hits.append(d)
     shown = hits[:12] if needle else docs[:8]
     if not shown:
