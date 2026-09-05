@@ -996,6 +996,8 @@ class FinanceCategoryOut(BaseModel):
     name: str
     kind: str
     color: Optional[str] = None
+    icon: Optional[str] = None  # resolved: own override, else superadmin global default, else none
+    icon_is_override: bool = False  # true if this vault set its own icon (vs inheriting the global default)
     is_system: bool = False
     account_id: Optional[str] = None
     account_name: Optional[str] = None
@@ -1055,6 +1057,7 @@ class FinanceTxnOut(BaseModel):
     category_id: Optional[str] = None
     category_name: Optional[str] = None
     category_color: Optional[str] = None
+    category_icon: Optional[str] = None
     txn_type: str
     amount: float
     currency: str = "INR"

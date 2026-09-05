@@ -3302,6 +3302,16 @@ select.form-select:not(.v-pick-native){
 }
 .diary-cat-card .row-actions{ margin-top:auto; display:flex; gap:.35rem; flex-wrap:wrap; }
 
+.mm-cat-swatch{ position:relative; }
+.mm-cat-swatch form{ position:absolute; inset:0; }
+.mm-cat-icon-input{
+  width:100%; height:100%; border:none; background:transparent; text-align:center;
+  font-size:1.15rem; line-height:1; padding:0; color:inherit; border-radius:10px;
+}
+.mm-cat-icon-input:focus{ outline:2px solid var(--v-gold); outline-offset:-2px; }
+.mm-cat-icon-input::placeholder{ opacity:.55; }
+.mm-cat-fallback-ico{ pointer-events:none; }
+
 /* Money Manager — accounts explorer (same card language as diary folders) */
 .mm-acct-card .mm-acct-bal{
   font-size:1rem; font-weight:700; letter-spacing:-0.02em;

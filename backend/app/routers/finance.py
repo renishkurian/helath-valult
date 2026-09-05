@@ -347,6 +347,26 @@ def _cat_map(db: Session, uid: str) -> dict[str, models.FinanceCategory]:
     return {c.id: c for c in rows}
 
 
+def _icon_defaults_map(db: Session) -> dict[str, str]:
+    """Superadmin-managed global default emoji, keyed by normalized category name."""
+    rows = db.query(models.FinanceCategoryIconDefault).all()
+    return {r.name_key: r.icon for r in rows}
+
+
+def _resolve_icon(cat, icon_defaults: dict | None) -> tuple[str | None, bool]:
+    """(icon, is_override) — a category's own icon wins; else fall back to the
+    superadmin global default for that category name; else no icon."""
+    if not cat:
+        return None, False
+    if cat.icon:
+        return cat.icon, True
+    if icon_defaults:
+        default = icon_defaults.get((cat.name or "").strip().lower())
+        if default:
+            return default, False
+    return None, False
+
+
 def _acct_map(db: Session, uid: str) -> dict[str, models.FinanceAccount]:
     rows = db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid).all()
     return {a.id: a for a in rows}
@@ -365,16 +385,17 @@ def _category_label(cat, categories) -> str | None:
     return cat.name
 
 
-def _txn_out(t: models.FinanceTransaction, accounts, categories, hidden_from: list[str] | None = None, members: dict | None = None) -> schemas.FinanceTxnOut:
+def _txn_out(t: models.FinanceTransaction, accounts, categories, hidden_from: list[str] | None = None, members: dict | None = None, icon_defaults: dict | None = None) -> schemas.FinanceTxnOut:
     acc = accounts.get(t.account_id)
     to = accounts.get(t.to_account_id) if t.to_account_id else None
     cat = categories.get(t.category_id) if t.category_id else None
     member = (members or {}).get(t.family_member_id) if t.family_member_id else None
+    icon, _ = _resolve_icon(cat, icon_defaults)
     return schemas.FinanceTxnOut(
         id=t.id, account_id=t.account_id, account_name=acc.name if acc else "",
         to_account_id=t.to_account_id, to_account_name=to.name if to else None,
         category_id=t.category_id, category_name=_category_label(cat, categories),
-        category_color=cat.color if cat else None,
+        category_color=cat.color if cat else None, category_icon=icon,
         txn_type=t.txn_type, amount=_f(t.amount), currency=t.currency or "INR",
         txn_date=t.txn_date, txn_time=t.txn_time, payee=t.payee, notes=t.notes,
         description=t.description, payment_method=t.payment_method, tags=t.tags,
@@ -556,11 +577,14 @@ def _category_out(
     c: models.FinanceCategory,
     accounts: dict | None = None,
     categories: dict | None = None,
+    icon_defaults: dict | None = None,
 ) -> schemas.FinanceCategoryOut:
     acc = accounts.get(c.account_id) if accounts and c.account_id else None
     parent = categories.get(c.parent_id) if categories and c.parent_id else None
+    icon, icon_is_override = _resolve_icon(c, icon_defaults)
     return schemas.FinanceCategoryOut(
-        id=c.id, name=c.name, kind=c.kind, color=c.color, is_system=bool(c.is_system),
+        id=c.id, name=c.name, kind=c.kind, color=c.color,
+        icon=icon, icon_is_override=icon_is_override, is_system=bool(c.is_system),
         account_id=c.account_id, account_name=acc.name if acc else None,
         parent_id=c.parent_id, parent_name=parent.name if parent else None,
         scope="account" if c.account_id else "general",
@@ -893,7 +917,8 @@ def list_categories(
     rows = query.order_by(models.FinanceCategory.kind, models.FinanceCategory.name).all()
     accounts = _acct_map(db, uid)
     cats = {c.id: c for c in rows}
-    return [_category_out(c, accounts, cats) for c in rows]
+    icon_defaults = _icon_defaults_map(db)
+    return [_category_out(c, accounts, cats, icon_defaults) for c in rows]
 
 
 @router.post("/categories", response_model=schemas.FinanceCategoryOut)
@@ -927,7 +952,26 @@ def create_category(
     db.add(row)
     db.commit()
     db.refresh(row)
-    return _category_out(row, _acct_map(db, uid), _cat_map(db, uid))
+    return _category_out(row, _acct_map(db, uid), _cat_map(db, uid), _icon_defaults_map(db))
+
+
+@router.post("/categories/{category_id}/icon", response_model=schemas.FinanceCategoryOut)
+def set_category_icon(
+    category_id: str,
+    icon: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Vault owner sets (or clears, with icon="") their own override for a category's
+    emoji. Clearing it falls back to the superadmin global default for that name."""
+    require_owner(current_user)
+    row = _get_category(db, current_user, category_id)
+    icon = (icon or "").strip()
+    row.icon = icon or None
+    db.commit()
+    db.refresh(row)
+    uid = _owned(db, current_user)
+    return _category_out(row, _acct_map(db, uid), _cat_map(db, uid), _icon_defaults_map(db))
 
 
 @router.delete("/categories/{category_id}")
@@ -2263,6 +2307,7 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
         ))
     rows = query.order_by(models.FinanceTransaction.txn_date.desc(), models.FinanceTransaction.created_at.desc()).all()
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
+    icon_defaults = _icon_defaults_map(db)
     if is_family_admin(user):
         hides = defaultdict(list)
         if rows:
@@ -2271,9 +2316,9 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
             ):
                 hides[hide.transaction_id].append(hide.to_user_id)
         members = _member_map(db, uid)
-        items = [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id), members=members) for t in rows]
+        items = [_txn_out(t, accounts, categories, hidden_from=hides.get(t.id), members=members, icon_defaults=icon_defaults) for t in rows]
     else:
-        items = [_txn_out(t, accounts, categories) for t in rows]
+        items = [_txn_out(t, accounts, categories, icon_defaults=icon_defaults) for t in rows]
     income = sum(i.amount for i in items if i.txn_type == "income")
     expense = sum(i.amount for i in items if i.txn_type == "expense")
     prev_ym = _shift_month(year_month, -1)

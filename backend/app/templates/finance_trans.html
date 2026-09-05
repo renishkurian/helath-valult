@@ -156,7 +156,7 @@
       <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
       {% endif %}
       <span class="mm-card-ico {{ item.txn_type }}">
-        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
+        {% if item.category_icon %}{{ item.category_icon }}{% else %}<i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>{% endif %}
       </span>
       <div class="mm-card-body">
         <div class="mm-card-title truncate">{{ item.payee or item.category_name or '—' }}</div>
@@ -215,7 +215,7 @@
       <input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="{{ item.id }}" form="mm-bulk-delete" aria-label="Select transaction">
       {% endif %}
       <span class="mm-card-ico {{ item.txn_type }}">
-        <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
+        {% if item.category_icon %}{{ item.category_icon }}{% else %}<i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>{% endif %}
       </span>
       <div class="mm-card-body">
         <div class="mm-card-title truncate">{{ item.payee or item.category_name or '—' }}</div>
@@ -264,5 +264,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/finance-ajax.js?v=6" defer></script>
+<script src="/static/finance-ajax.js?v=7" defer></script>
 {% endblock %}

@@ -91,7 +91,7 @@
   {% for item in dash.recent %}
   <a class="mm-card" href="/admin/finance/transactions/{{ item.id }}/edit">
     <span class="mm-card-ico {{ item.txn_type }}">
-      <i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>
+      {% if item.category_icon %}{{ item.category_icon }}{% else %}<i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>{% endif %}
     </span>
     <span class="mm-card-body">
       <span class="mm-card-title truncate">{{ item.payee or item.category_name or item.txn_type }}</span>
@@ -122,5 +122,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/finance-ajax.js?v=6" defer></script>
+<script src="/static/finance-ajax.js?v=7" defer></script>
 {% endblock %}

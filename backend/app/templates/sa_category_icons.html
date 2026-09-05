@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Category icons{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Super Admin</div>
+    <h1 class="page-title">Category icons</h1>
+    <p class="page-lead">Set a default emoji for a category name. It shows up on every vault's matching category — unless that vault set its own icon, which always wins for them.</p>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico gold"><i class="bi bi-emoji-smile"></i></span>
+        <div>
+          <h2>Global defaults</h2>
+          <div class="card-sub">Matched by category name, case-insensitive</div>
+        </div>
+      </div>
+      <div class="card-body">
+        {% if saved %}
+        <div class="alert alert-success" role="alert">
+          <i class="bi bi-check2-circle"></i>
+          <span>Saved.</span>
+        </div>
+        {% endif %}
+        {% if defaults %}
+        <ul class="list-unstyled stack-sm">
+          {% for d in defaults %}
+          <li class="d-flex align-items-center gap-3">
+            <span style="font-size:1.5rem; width:2rem; text-align:center;">{{ d.icon }}</span>
+            <span class="flex-grow-1">{{ d.name_label }}</span>
+            <form method="post" action="/admin/sa/category-icons" class="d-flex align-items-center gap-2 m-0">
+              <input type="hidden" name="name" value="{{ d.name_label }}">
+              <input type="hidden" name="icon" value="">
+              <button class="btn btn-ghost btn-sm btn-icon text-danger" type="submit" aria-label="Remove default for {{ d.name_label }}">
+                <i class="bi bi-trash3"></i>
+              </button>
+            </form>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted mb-0">No global defaults set yet — add one on the right.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-ico info"><i class="bi bi-plus-circle"></i></span>
+        <div><h2>Add / update</h2></div>
+      </div>
+      <div class="card-body">
+        <form method="post" action="/admin/sa/category-icons">
+          <div class="mb-3">
+            <label class="form-label" for="sci-name">Category name <span class="req">*</span></label>
+            <input class="form-control" id="sci-name" type="text" name="name" required maxlength="120" placeholder="Groceries, Travel, Salary…">
+            <div class="form-text">Matches any category with this name across every vault (case-insensitive).</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="sci-icon">Emoji <span class="req">*</span></label>
+            <input class="form-control" id="sci-icon" type="text" name="icon" required maxlength="16" placeholder="🛒" style="font-size:1.25rem;">
+            <div class="form-text">Paste an emoji (use your device's emoji keyboard). Leave blank and submit an existing name to remove its default.</div>
+          </div>
+          <button class="btn btn-primary w-100" type="submit"><i class="bi bi-check2"></i> Save default</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

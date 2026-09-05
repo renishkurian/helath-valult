@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -627,3 +627,53 @@ async def sa_settings_mail(request: Request, db: Session = Depends(get_db)):
     put_secret(db, SMTP_PASSWORD_KEY, str(form.get("smtp_password") or ""))
     db.commit()
     return RedirectResponse("/admin/sa/settings?saved=mail", status_code=302)
+
+
+@router.get("/category-icons", response_class=HTMLResponse)
+def sa_category_icons(request: Request, db: Session = Depends(get_db), saved: str = ""):
+    """Global default emoji per category name, applied across every vault
+    unless that vault set its own override on the matching category."""
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    rows = db.query(models.FinanceCategoryIconDefault).order_by(
+        models.FinanceCategoryIconDefault.name_label
+    ).all()
+    return templates.TemplateResponse("sa_category_icons.html", _sa_ctx(
+        request, user, "sa_category_icons", defaults=rows, saved=bool(saved),
+    ))
+
+
+@router.post("/category-icons")
+def sa_category_icon_set(
+    request: Request,
+    name: str = Form(...),
+    icon: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = _sa_user(request, db)
+    if not user:
+        return _deny(require_login(request, db))
+    name = name.strip()
+    icon = icon.strip()
+    key = name.lower()
+    if not name:
+        return RedirectResponse("/admin/sa/category-icons", status_code=302)
+    row = db.query(models.FinanceCategoryIconDefault).filter(
+        models.FinanceCategoryIconDefault.name_key == key
+    ).first()
+    if not icon:
+        if row:
+            db.delete(row)
+            db.commit()
+        return RedirectResponse("/admin/sa/category-icons?saved=1", status_code=302)
+    if row:
+        row.name_label = name
+        row.icon = icon
+        row.updated_by = user.id
+    else:
+        db.add(models.FinanceCategoryIconDefault(
+            name_key=key, name_label=name, icon=icon, updated_by=user.id,
+        ))
+    db.commit()
+    return RedirectResponse("/admin/sa/category-icons?saved=1", status_code=302)

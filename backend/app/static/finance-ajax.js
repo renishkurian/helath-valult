@@ -209,9 +209,9 @@
             '/edit">' +
             '<span class="mm-card-ico ' +
             esc(item.txn_type) +
-            '"><i class="bi ' +
-            ico +
-            '"></i></span>' +
+            '">' +
+            (item.category_icon ? esc(item.category_icon) : '<i class="bi ' + ico + '"></i>') +
+            "</span>" +
             '<span class="mm-card-body">' +
             '<span class="mm-card-title truncate">' +
             esc(title) +
@@ -396,9 +396,9 @@
       check +
       '<span class="mm-card-ico ' +
       esc(item.txn_type) +
-      '"><i class="bi ' +
-      ico +
-      '"></i></span>' +
+      '">' +
+      (item.category_icon ? esc(item.category_icon) : '<i class="bi ' + ico + '"></i>') +
+      "</span>" +
       '<div class="mm-card-body">' +
       '<div class="mm-card-title truncate">' +
       esc(title) +

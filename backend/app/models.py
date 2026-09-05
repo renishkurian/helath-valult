@@ -773,10 +773,23 @@ class FinanceCategory(Base):
     name = Column(String(120), nullable=False)
     kind = Column(String(20), default="expense", nullable=False)  # expense | income
     color = Column(String(16), nullable=True)
+    icon = Column(String(16), nullable=True)  # emoji override; null = inherit global default (by name) or fallback icon
     is_system = Column(Boolean, default=False, nullable=False)
     account_id = Column(String(32), ForeignKey("finance_accounts.id"), nullable=True, index=True)  # null = general / all accounts
     parent_id = Column(String(32), ForeignKey("finance_categories.id"), nullable=True, index=True)  # null = top-level category
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FinanceCategoryIconDefault(Base):
+    """Superadmin-managed global default emoji for a category name, applied
+    across every vault unless that vault's category has its own icon override."""
+    __tablename__ = "finance_category_icon_defaults"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    name_key = Column(String(120), nullable=False, unique=True, index=True)  # normalized: strip().lower()
+    name_label = Column(String(120), nullable=False)  # original casing, for display in the sa admin UI
+    icon = Column(String(16), nullable=False)
+    updated_by = Column(String(32), ForeignKey("users.id"), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class FinanceTransaction(Base):

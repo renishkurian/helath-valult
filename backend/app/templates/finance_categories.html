@@ -19,7 +19,14 @@
       {% for c in categories if not c.account_id and not c.parent_id %}
       {% set ns.has_general = true %}
       <div class="diary-cat-card" style="--cat:{{ c.color or ('#34D399' if c.kind == 'income' else '#F87171') }};">
-        <div class="swatch" aria-hidden="true"><i class="bi bi-tag-fill"></i></div>
+        <div class="swatch mm-cat-swatch" aria-hidden="true">
+          {% if not c.icon %}<i class="bi bi-tag-fill mm-cat-fallback-ico"></i>{% endif %}
+          <form method="post" action="/admin/finance/categories/{{ c.id }}/icon" class="m-0">
+            <input type="text" name="icon" value="{{ c.icon or '' }}" maxlength="8"
+                   class="mm-cat-icon-input" aria-label="Emoji for {{ c.name }}"
+                   placeholder="" onchange="this.form.requestSubmit()">
+          </form>
+        </div>
         <div class="name truncate" title="{{ c.name }}">{{ c.name }}</div>
         <div class="meta">
           {{ c.kind }}
@@ -27,6 +34,7 @@
           {% for sub in categories if sub.parent_id == c.id %}{% set sub_count.n = sub_count.n + 1 %}{% endfor %}
           {% if sub_count.n %} · {{ sub_count.n }} sub{% if sub_count.n != 1 %}s{% endif %}{% endif %}
           {% if c.is_system %} · built-in{% endif %}
+          {% if c.icon_is_override %} · your icon{% elif c.icon %} · default icon{% endif %}
         </div>
         <ul class="mm-cat-subs">
           {% for sub in categories if sub.parent_id == c.id %}
@@ -74,9 +82,19 @@
         {% for c in categories if c.account_id == a.id %}
         {% set ns2.has_owned = true %}
         <div class="diary-cat-card" style="--cat:{{ c.color or ('#34D399' if c.kind == 'income' else '#F87171') }};">
-          <div class="swatch" aria-hidden="true"><i class="bi bi-bookmark-fill"></i></div>
+          <div class="swatch mm-cat-swatch" aria-hidden="true">
+            {% if not c.icon %}<i class="bi bi-bookmark-fill mm-cat-fallback-ico"></i>{% endif %}
+            <form method="post" action="/admin/finance/categories/{{ c.id }}/icon" class="m-0">
+              <input type="text" name="icon" value="{{ c.icon or '' }}" maxlength="8"
+                     class="mm-cat-icon-input" aria-label="Emoji for {{ c.name }}"
+                     placeholder="" onchange="this.form.requestSubmit()">
+            </form>
+          </div>
           <div class="name truncate" title="{{ c.name }}">{{ c.name }}</div>
-          <div class="meta">{{ c.kind }} · {{ a.name }}{% if c.is_system %} · built-in{% endif %}</div>
+          <div class="meta">
+            {{ c.kind }} · {{ a.name }}{% if c.is_system %} · built-in{% endif %}
+            {% if c.icon_is_override %} · your icon{% elif c.icon %} · default icon{% endif %}
+          </div>
           <div class="row-actions">
             {% if not c.is_system %}
             <form method="post" action="/admin/finance/categories/{{ c.id }}/delete"

@@ -4697,7 +4697,7 @@ def _fn_wants_json(request: Request) -> bool:
     return "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest"
 
 
-def _fn_txn_dict(row, accounts=None, categories=None, members=None) -> dict:
+def _fn_txn_dict(row, accounts=None, categories=None, members=None, icon_defaults=None) -> dict:
     from app.routers.finance import _txn_out
     if hasattr(row, "model_dump"):
         return row.model_dump(mode="json")
@@ -4705,22 +4705,23 @@ def _fn_txn_dict(row, accounts=None, categories=None, members=None) -> dict:
         return row.dict()
     if accounts is None or categories is None:
         raise ValueError("accounts/categories required for ORM txn")
-    out = _txn_out(row, accounts, categories, members=members)
+    out = _txn_out(row, accounts, categories, members=members, icon_defaults=icon_defaults)
     return out.model_dump(mode="json") if hasattr(out, "model_dump") else out.dict()
 
 
 def _fn_dashboard_json(db, user, ym: str) -> dict:
-    from app.routers.finance import build_dashboard, _txn_out, _acct_map, _cat_map, _owned
+    from app.routers.finance import build_dashboard, _txn_out, _acct_map, _cat_map, _owned, _icon_defaults_map
     dash = build_dashboard(db, user, ym)
     uid = _owned(db, user)
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
+    icon_defaults = _icon_defaults_map(db)
     snap = dash["summary"]
     summary = snap.model_dump(mode="json") if hasattr(snap, "model_dump") else dict(snap)
     recent = []
     for t in dash.get("recent") or []:
-        recent.append(_fn_txn_dict(t, accounts, categories))
+        recent.append(_fn_txn_dict(t, accounts, categories, icon_defaults=icon_defaults))
     highest = dash.get("highest")
-    highest_d = _fn_txn_dict(highest, accounts, categories) if highest is not None else None
+    highest_d = _fn_txn_dict(highest, accounts, categories, icon_defaults=icon_defaults) if highest is not None else None
     top = dash.get("top_category")
     return {
         "year_month": dash["year_month"],
@@ -4740,7 +4741,7 @@ def _fn_ledger_json(
     db, user, ym: str, q: str | None = None, notes_only: bool = False,
     account_id: str | None = None, family_member_id: str | None = None,
 ) -> dict:
-    from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned, _member_map
+    from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned, _member_map, _icon_defaults_map
     ledger = month_ledger(
         db, user, ym, q=q, notes_only=notes_only,
         account_id=account_id or None, family_member_id=family_member_id or None,
@@ -4748,7 +4749,8 @@ def _fn_ledger_json(
     uid = _owned(db, user)
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
     members = _member_map(db, uid)
-    txns = [_fn_txn_dict(t, accounts, categories, members) for t in (ledger.get("txns") or [])]
+    icon_defaults = _icon_defaults_map(db)
+    txns = [_fn_txn_dict(t, accounts, categories, members, icon_defaults) for t in (ledger.get("txns") or [])]
     days = []
     for d in ledger.get("days") or []:
         days.append({
@@ -4756,7 +4758,7 @@ def _fn_ledger_json(
             "label": d.get("label"),
             "income": float(d.get("income") or 0),
             "expense": float(d.get("expense") or 0),
-            "txns": [_fn_txn_dict(t, accounts, categories, members) for t in (d.get("txns") or [])],
+            "txns": [_fn_txn_dict(t, accounts, categories, members, icon_defaults) for t in (d.get("txns") or [])],
         })
     weeks = []
     for week in ledger.get("weeks") or []:
@@ -5765,6 +5767,31 @@ def finance_category_delete(category_id: str, request: Request, db: Session = De
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     delete_category(category_id, db=db, current_user=user)
+    return RedirectResponse("/admin/finance/categories", status_code=302)
+
+
+@router.post("/finance/categories/{category_id}/icon")
+def finance_category_icon(
+    category_id: str,
+    request: Request,
+    icon: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    """Vault owner sets/clears their own emoji override for a category.
+    Clearing it (empty icon) falls back to the superadmin global default."""
+    from app.routers.finance import set_category_icon
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    wants_json = _fn_wants_json(request)
+    try:
+        row = set_category_icon(category_id, icon=icon, db=db, current_user=user)
+    except HTTPException as exc:
+        if wants_json:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        raise
+    if wants_json:
+        return JSONResponse(row.model_dump(mode="json"))
     return RedirectResponse("/admin/finance/categories", status_code=302)
 
 
