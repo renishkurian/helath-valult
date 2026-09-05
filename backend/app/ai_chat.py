@@ -715,7 +715,9 @@ _PASSWORD_ASK_RE = re.compile(
     re.I,
 )
 _HEALTH_ASK_RE = re.compile(
-    r"\b(medical|health|hospital|lab|labs|report|reports|prescription|"
+    r"\b(medical|health|hospital|hospitals|clinic|clinics|nursing|"
+    r"nursing\s*home|patient|medicity|healthcare|health\s*care|"
+    r"lab|labs|report|reports|prescription|"
     r"scan|x-?ray|blood|allergy|allergies|vaccine|vaccination|doctor|dr\.?|"
     r"gynae|gyne|paediat|pedia|specialist)\b",
     re.I,
@@ -731,7 +733,8 @@ _NEEDLE_STOP_RE = re.compile(
     r"\b(what|whats|what's|which|where|is|are|my|the|a|an|for|of|to|please|"
     r"show|tell|give|me|find|open|view|see|stored|saved|vault|"
     r"password|passwd|pwd|passcode|login|logins|credential|credentials|"
-    r"username|medical|health|hospital|lab|report|reports|prescription|"
+    r"username|medical|health|hospital|hospitals|clinic|clinics|nursing|"
+    r"patient|patients|medicity|healthcare|lab|report|reports|prescription|"
     r"documents?|card|number|id|any|file|files|paper|papers|u|you|"
     r"do|does|did|have|has|got|there|listed)\b",
     re.I,
@@ -860,6 +863,11 @@ def _locker_search_hits(db: Session, user: models.User, question: str) -> list[m
     return hits
 
 
+_HOSPITAL_INTENT_RE = re.compile(
+    r"\b(hospitals?|clinics?|nursing|nursing\s*home|patient|medicity|"
+    r"healthcare|health\s*care)\b",
+    re.I,
+)
 _LOCKER_STRONG_RE = re.compile(
     r"\b(aadhaar|aadhar|pan|passport|license|licence|locker|document\s*vault|"
     r"land\s*tax|tax|taxes|govt|government|voter|rc|insurance|warranty|"
@@ -867,7 +875,9 @@ _LOCKER_STRONG_RE = re.compile(
     re.I,
 )
 _HEALTH_STEAL_RE = re.compile(
-    r"\b(medical|health|hospital|lab|labs|blood|prescription|vaccine|"
+    r"\b(medical|health|hospital|hospitals|clinic|clinics|nursing|"
+    r"nursing\s*home|patient|medicity|healthcare|health\s*care|"
+    r"lab|labs|blood|prescription|vaccine|"
     r"vaccination|allergy|allergies|x-?ray|scan|doctor|gynae|gyne|"
     r"paediat|pedia)\b",
     re.I,
@@ -985,12 +995,17 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
         lines.append("[Open Doctors](/admin/doctors)")
         return "\n".join(lines)
 
-    if pids and re.search(r"\bhospitals?\b", question or "", re.I):
-        # "any hospital for X in Y" is about the Hospital Card list, not
-        # about a Document with a matching hospital_name field. A hospital
-        # can be saved (visible in the "Hospitals" module) with no document
-        # filed under it yet, so searching Document rows alone missed it
-        # and always fell through to "No matching health document."
+    if pids and _HOSPITAL_INTENT_RE.search(question or ""):
+        # "any hospital for X in Y" / "patient card for <clinic>" is about
+        # the Hospital Card list, not about a Document with a matching
+        # hospital_name field. A hospital can be saved (visible in the
+        # "Hospitals" module) with no document filed under it yet, so
+        # searching Document rows alone missed it and always fell through
+        # to "No matching health document." The trigger word set also has
+        # to cover how people actually name these places — "clinic",
+        # "nursing home", "patient card", "medicity", "healthcare" — not
+        # just the literal word "hospital", or the question never reaches
+        # this branch at all and gets misrouted to Document Vault instead.
         cards = (
             db.query(models.HospitalCard)
             .filter(models.HospitalCard.person_id.in_(pids))
