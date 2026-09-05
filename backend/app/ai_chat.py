@@ -1022,9 +1022,12 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
             for c in matched[:12]:
                 who = person_name.get(c.person_id, "")
                 ward = f" · Ward {c.ward}" if c.ward else ""
+                blood = f" · {c.blood_group}" if c.blood_group else ""
                 lines.append(
-                    f"- [{c.hospital_name}](/admin/documents?person={c.person_id}"
-                    f"&hospital={quote(c.hospital_name)}) · {who}{ward}"
+                    f"- {c.hospital_name} · {who}{ward}{blood} — "
+                    f"[Patient card](/admin/cards/{c.id}/edit) · "
+                    f"[Documents](/admin/documents?person={c.person_id}"
+                    f"&hospital={quote(c.hospital_name)})"
                 )
             lines.append("")
             lines.append("[Open Health Vault](/admin)")
