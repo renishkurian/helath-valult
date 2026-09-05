@@ -14,15 +14,18 @@ depends_on = None
 
 
 def upgrade():
-    op.create_table(
-        "finance_txn_hides",
-        sa.Column("id", sa.String(32), primary_key=True),
-        sa.Column("vault_id", sa.String(32), sa.ForeignKey("users.id"), nullable=False, index=True),
-        sa.Column("transaction_id", sa.String(32), sa.ForeignKey("finance_transactions.id"), nullable=False, index=True),
-        sa.Column("to_user_id", sa.String(32), sa.ForeignKey("users.id"), nullable=False, index=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
-        sa.UniqueConstraint("transaction_id", "to_user_id", name="uq_finance_txn_hide_target"),
-    )
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    if "finance_txn_hides" not in inspector.get_table_names():
+        op.create_table(
+            "finance_txn_hides",
+            sa.Column("id", sa.String(32), primary_key=True),
+            sa.Column("vault_id", sa.String(32), sa.ForeignKey("users.id"), nullable=False, index=True),
+            sa.Column("transaction_id", sa.String(32), sa.ForeignKey("finance_transactions.id"), nullable=False, index=True),
+            sa.Column("to_user_id", sa.String(32), sa.ForeignKey("users.id"), nullable=False, index=True),
+            sa.Column("created_at", sa.DateTime(), nullable=True),
+            sa.UniqueConstraint("transaction_id", "to_user_id", name="uq_finance_txn_hide_target"),
+        )
 
 
 def downgrade():

@@ -14,13 +14,21 @@ depends_on = None
 
 
 def upgrade():
-    with op.batch_alter_table("finance_transactions") as batch_op:
-        batch_op.add_column(
-            sa.Column("family_member_id", sa.String(32), sa.ForeignKey("users.id"), nullable=True),
-        )
-        batch_op.create_index(
-            "ix_finance_transactions_family_member_id", ["family_member_id"],
-        )
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    cols = {c['name'] for c in inspector.get_columns('finance_transactions')}
+    idx = {i['name'] for i in inspector.get_indexes('finance_transactions')}
+
+    if 'family_member_id' not in cols:
+        with op.batch_alter_table("finance_transactions") as batch_op:
+            batch_op.add_column(
+                sa.Column("family_member_id", sa.String(32), sa.ForeignKey("users.id"), nullable=True),
+            )
+    if 'ix_finance_transactions_family_member_id' not in idx:
+        with op.batch_alter_table("finance_transactions") as batch_op:
+            batch_op.create_index(
+                "ix_finance_transactions_family_member_id", ["family_member_id"],
+            )
 
 
 def downgrade():

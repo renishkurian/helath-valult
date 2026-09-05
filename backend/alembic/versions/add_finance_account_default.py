@@ -14,10 +14,14 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "finance_accounts",
-        sa.Column("is_default", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    cols = {c['name'] for c in inspector.get_columns('finance_accounts')}
+    if 'is_default' not in cols:
+        op.add_column(
+            "finance_accounts",
+            sa.Column("is_default", sa.Boolean(), nullable=False, server_default=sa.false()),
+        )
 
 
 def downgrade():
