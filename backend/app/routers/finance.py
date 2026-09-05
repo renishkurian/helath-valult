@@ -306,9 +306,14 @@ def _get_category(db: Session, user: models.User, category_id: str) -> models.Fi
     return row
 
 
-def _account_balance(db: Session, account: models.FinanceAccount) -> Decimal:
+def _account_balance(db: Session, account: models.FinanceAccount, viewer: models.User | None = None) -> Decimal:
+    """Balance for `account`. `viewer=None` (or an admin) sees every posted txn.
+    A non-admin `viewer` only sees the slice of txns their category shares +
+    hides allow — so a shared account's balance reflects just what's visible
+    to them, not the whole family's movement on it.
+    """
     uid = account.user_id
-    txns = _txn_query(db, uid).filter(
+    txns = _txn_query(db, uid, viewer=viewer).filter(
         (models.FinanceTransaction.account_id == account.id)
         | (models.FinanceTransaction.to_account_id == account.id),
     ).all()
@@ -410,8 +415,8 @@ def _txn_query(db: Session, uid: str, *, include_deleted: bool = False, viewer: 
     return q
 
 
-def _account_out(db: Session, a: models.FinanceAccount) -> schemas.FinanceAccountOut:
-    bal = _account_balance(db, a)
+def _account_out(db: Session, a: models.FinanceAccount, viewer: models.User | None = None) -> schemas.FinanceAccountOut:
+    bal = _account_balance(db, a, viewer=viewer)
     return schemas.FinanceAccountOut(
         id=a.id, name=a.name, account_type=a.account_type, currency=a.currency or "INR",
         opening_balance=_f(a.opening_balance), credit_limit=_f(a.credit_limit) if a.credit_limit is not None else None,
@@ -706,7 +711,7 @@ def summary(
     assets = Decimal("0")
     liabilities = Decimal("0")
     for a in accounts:
-        bal = _account_balance(db, a)
+        bal = _account_balance(db, a, viewer=current_user)
         if a.account_type in LIABILITY_TYPES:
             liabilities += bal
         else:
@@ -765,7 +770,7 @@ def list_accounts(db: Session = Depends(get_db), current_user: models.User = Dep
     rows = db.query(models.FinanceAccount).filter(
         models.FinanceAccount.user_id == _owned(db, current_user),
     ).order_by(models.FinanceAccount.account_type, models.FinanceAccount.name).all()
-    return [_account_out(db, a) for a in rows if not a.archived]
+    return [_account_out(db, a, viewer=current_user) for a in rows if not a.archived]
 
 
 @router.post("/accounts", response_model=schemas.FinanceAccountOut)
