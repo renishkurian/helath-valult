@@ -369,12 +369,13 @@
     var ico = TYPE_ICO[item.txn_type] || "bi-receipt";
     var title = item.payee || item.category_name || "—";
     var sub = item.category_name || item.txn_type;
-    if (item.description && item.payee) sub += " · " + item.description;
-    var when = item.account_name || "";
-    if (item.to_account_name) when += " → " + item.to_account_name;
-    if (item.payment_method) when += (when ? " · " : "") + methodLabel(item.payment_method);
-    if (opts.showDate && item.txn_date) when += (when ? " · " : "") + item.txn_date;
-    if (opts.showTime && item.txn_time) when += (when ? " · " : "") + String(item.txn_time).slice(0, 5);
+    var desc = item.description || "";
+    var when = "";
+    if (item.account_name) when += '<span class="mm-card-acct">' + esc(item.account_name) + "</span>";
+    if (item.to_account_name) when += " → " + esc(item.to_account_name);
+    if (item.payment_method) when += (when ? " · " : "") + esc(methodLabel(item.payment_method));
+    if (opts.showDate && item.txn_date) when += (when ? " · " : "") + esc(item.txn_date);
+    if (opts.showTime && item.txn_time) when += (when ? " · " : "") + esc(String(item.txn_time).slice(0, 5));
     var sign = item.txn_type === "income" ? "+" : item.txn_type === "expense" ? "−" : "";
     var check = canBulk
       ? '<input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="' +
@@ -404,8 +405,9 @@
       '<div class="mm-card-sub truncate">' +
       esc(sub) +
       "</div>" +
+      (desc ? '<div class="mm-card-desc truncate">' + esc(desc) + "</div>" : "") +
       '<div class="mm-card-when">' +
-      esc(when) +
+      when +
       "</div></div>" +
       '<div class="mm-card-amt mm-' +
       esc(item.txn_type) +

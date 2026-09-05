@@ -134,8 +134,9 @@
       </span>
       <div class="mm-card-body">
         <div class="mm-card-title truncate">{{ item.payee or item.category_name or '—' }}</div>
-        <div class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
-        <div class="mm-card-when">{{ item.account_name }}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %} · {{ item.txn_date }}</div>
+        <div class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}</div>
+        {% if item.description %}<div class="mm-card-desc truncate">{{ item.description }}</div>{% endif %}
+        <div class="mm-card-when"><span class="mm-card-acct">{{ item.account_name }}</span>{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %} · {{ item.txn_date }}</div>
       </div>
       <div class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
         {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}
@@ -187,8 +188,9 @@
       </span>
       <div class="mm-card-body">
         <div class="mm-card-title truncate">{{ item.payee or item.category_name or '—' }}</div>
-        <div class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</div>
-        <div class="mm-card-when">{{ item.account_name }}{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</div>
+        <div class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}</div>
+        {% if item.description %}<div class="mm-card-desc truncate">{{ item.description }}</div>{% endif %}
+        <div class="mm-card-when"><span class="mm-card-acct">{{ item.account_name }}</span>{% if item.to_account_name %} → {{ item.to_account_name }}{% endif %}{% if item.payment_method %} · {{ item.payment_method.replace('_',' ') }}{% endif %}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</div>
       </div>
       <div class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
         {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}

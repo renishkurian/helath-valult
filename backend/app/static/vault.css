@@ -1638,6 +1638,8 @@ a.mm-card:hover{ border-color:var(--v-line-2); background:var(--v-surface-2); co
 .mm-card-body{ flex:1; min-width:0; display:flex; flex-direction:column; gap:.08rem; }
 .mm-card-title{ font-weight:650; font-size:.95rem; letter-spacing:-0.015em; }
 .mm-card-sub, .mm-card-when{ font-size:.75rem; color:var(--v-ink-3); }
+.mm-card-acct{ color:var(--v-teal); font-weight:600; }
+.mm-card-desc{ font-size:.68rem; font-style:italic; color:var(--v-ink-3); max-width:100%; }
 .badge-default{
   font-size:.68rem; font-weight:650; letter-spacing:.02em; text-transform:uppercase;
   color:var(--v-gold, #C9A24B); border:1px solid currentColor; border-radius:999px;
