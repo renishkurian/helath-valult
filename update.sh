@@ -19,6 +19,14 @@ git fetch origin "$BRANCH"
 git pull --ff-only origin "$BRANCH"
 echo "==> Now at $(git rev-parse --short HEAD) ($(git log -1 --format=%s))"
 
+BACKEND_DIR="$REPO_DIR/backend"
+if [[ -f "$BACKEND_DIR/alembic.ini" ]]; then
+  echo "==> Running DB migrations in $BACKEND_DIR"
+  (cd "$BACKEND_DIR" && "$BACKEND_DIR/.venv/bin/alembic" upgrade head)
+else
+  echo "warn: no alembic.ini found in $BACKEND_DIR, skipping migrations" >&2
+fi
+
 echo "==> Restarting $SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl status "$SERVICE_NAME" --no-pager -l || true
