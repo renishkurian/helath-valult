@@ -376,6 +376,7 @@
     if (item.payment_method) when += (when ? " · " : "") + esc(methodLabel(item.payment_method));
     if (opts.showDate && item.txn_date) when += (when ? " · " : "") + esc(item.txn_date);
     if (opts.showTime && item.txn_time) when += (when ? " · " : "") + esc(String(item.txn_time).slice(0, 5));
+    if (item.family_member_name) when += (when ? " · " : "") + esc(item.family_member_name);
     var sign = item.txn_type === "income" ? "+" : item.txn_type === "expense" ? "−" : "";
     var check = canBulk
       ? '<input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="' +

@@ -4697,7 +4697,7 @@ def _fn_wants_json(request: Request) -> bool:
     return "application/json" in accept or request.headers.get("x-requested-with") == "XMLHttpRequest"
 
 
-def _fn_txn_dict(row, accounts=None, categories=None) -> dict:
+def _fn_txn_dict(row, accounts=None, categories=None, members=None) -> dict:
     from app.routers.finance import _txn_out
     if hasattr(row, "model_dump"):
         return row.model_dump(mode="json")
@@ -4705,7 +4705,7 @@ def _fn_txn_dict(row, accounts=None, categories=None) -> dict:
         return row.dict()
     if accounts is None or categories is None:
         raise ValueError("accounts/categories required for ORM txn")
-    out = _txn_out(row, accounts, categories)
+    out = _txn_out(row, accounts, categories, members=members)
     return out.model_dump(mode="json") if hasattr(out, "model_dump") else out.dict()
 
 
@@ -4740,14 +4740,15 @@ def _fn_ledger_json(
     db, user, ym: str, q: str | None = None, notes_only: bool = False,
     account_id: str | None = None, family_member_id: str | None = None,
 ) -> dict:
-    from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned
+    from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned, _member_map
     ledger = month_ledger(
         db, user, ym, q=q, notes_only=notes_only,
         account_id=account_id or None, family_member_id=family_member_id or None,
     )
     uid = _owned(db, user)
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
-    txns = [_fn_txn_dict(t, accounts, categories) for t in (ledger.get("txns") or [])]
+    members = _member_map(db, uid)
+    txns = [_fn_txn_dict(t, accounts, categories, members) for t in (ledger.get("txns") or [])]
     days = []
     for d in ledger.get("days") or []:
         days.append({
@@ -4755,7 +4756,7 @@ def _fn_ledger_json(
             "label": d.get("label"),
             "income": float(d.get("income") or 0),
             "expense": float(d.get("expense") or 0),
-            "txns": [_fn_txn_dict(t, accounts, categories) for t in (d.get("txns") or [])],
+            "txns": [_fn_txn_dict(t, accounts, categories, members) for t in (d.get("txns") or [])],
         })
     weeks = []
     for week in ledger.get("weeks") or []:
