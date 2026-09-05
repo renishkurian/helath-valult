@@ -3319,13 +3319,23 @@ select.form-select:not(.v-pick-native){
 }
 .diary-cat-card .row-actions{ margin-top:auto; display:flex; gap:.35rem; flex-wrap:wrap; }
 
-.mm-cat-swatch{ position:relative; }
+.mm-cat-swatch{ position:relative; cursor:text; }
+.mm-cat-swatch::after{
+  content:"✎"; font-size:.55rem; line-height:1;
+  position:absolute; right:-4px; bottom:-4px; width:15px; height:15px;
+  display:grid; place-items:center; border-radius:50%;
+  background:var(--v-gold); color:var(--v-on-gold);
+  border:1.5px solid var(--v-surface); pointer-events:none;
+}
 .mm-cat-swatch form{ position:absolute; inset:0; }
 .mm-cat-icon-input{
-  width:100%; height:100%; border:none; background:transparent; text-align:center;
+  width:100%; height:100%; border:1px dashed color-mix(in srgb, var(--v-gold) 45%, transparent);
+  background:transparent; text-align:center;
   font-size:1.15rem; line-height:1; padding:0; color:inherit; border-radius:10px;
+  transition:background var(--v-fast) var(--v-ease), border-color var(--v-fast) var(--v-ease);
 }
-.mm-cat-icon-input:focus{ outline:2px solid var(--v-gold); outline-offset:-2px; }
+.mm-cat-swatch:hover .mm-cat-icon-input{ background:var(--v-gold-soft); border-color:var(--v-gold); }
+.mm-cat-icon-input:focus{ outline:2px solid var(--v-gold); outline-offset:-2px; background:var(--v-gold-soft); }
 .mm-cat-icon-input::placeholder{ opacity:.55; }
 .mm-cat-fallback-ico{ pointer-events:none; }
 
