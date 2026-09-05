@@ -776,6 +776,28 @@ def _tokens_match(hay: str, needle: str) -> bool:
     return any(len(t) >= 4 and _fuzzy_token_in(hay_l, t) for t in tokens)
 
 
+def _all_tokens_match(hay: str, needle: str) -> bool:
+    """Strict AND match: every significant needle token must be present.
+
+    _tokens_match() has an "any single 4+ char token" fallback meant for
+    forgiving single-word document search. That fallback is wrong for
+    queries that combine a person's name with a place/hospital name (e.g.
+    "any hospital for renish in bharananganam") — every card belonging to
+    that person contains the person-name token, so the fallback let it
+    match on the name alone and ignore the place entirely, returning every
+    hospital instead of filtering to the one asked about.
+    """
+    hay_l = (hay or "").lower()
+    fillers = {"have", "has", "had", "with", "from", "about", "this", "that", "does", "did", "any"}
+    tokens = [
+        t for t in (needle or "").lower().split()
+        if len(t) >= 3 and t not in fillers
+    ]
+    if not tokens:
+        return False
+    return all(_fuzzy_token_in(hay_l, t) for t in tokens)
+
+
 def wants_password_lookup(question: str) -> bool:
     q = (question or "").strip()
     if not q:
@@ -978,7 +1000,7 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
         matched = []
         for c in cards:
             hay = " ".join(x for x in [c.hospital_name, person_name.get(c.person_id, "")] if x)
-            if not needle or _tokens_match(hay, needle) or needle.lower() in hay.lower():
+            if not needle or _all_tokens_match(hay, needle):
                 matched.append(c)
         if matched:
             lines.append("Hospitals on file (open Health Vault for cards & documents):")
