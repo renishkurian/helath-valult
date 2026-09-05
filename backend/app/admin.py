@@ -5177,6 +5177,7 @@ def finance_account_add(
     opening_balance: str = Form("0"),
     credit_limit: str = Form(""),
     no_default_categories: str = Form(""),
+    is_default: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers.finance import create_account
@@ -5189,6 +5190,7 @@ def finance_account_add(
         opening_balance=float(opening_balance or 0),
         credit_limit=float(credit_limit) if credit_limit.strip() else None,
         no_default_categories=bool(no_default_categories),
+        is_default=bool(is_default),
     ), db=db, current_user=user)
     return RedirectResponse("/admin/finance/accounts", status_code=302)
 
@@ -5202,6 +5204,7 @@ def finance_account_edit(
     opening_balance: str = Form("0"),
     credit_limit: str = Form(""),
     no_default_categories: str = Form(""),
+    is_default: str = Form(""),
     db: Session = Depends(get_db),
 ):
     from app.routers.finance import list_accounts, update_account
@@ -5221,6 +5224,7 @@ def finance_account_edit(
             opening_balance=float(opening_balance or account.opening_balance or 0),
             credit_limit=float(credit_limit) if credit_limit.strip() else None,
             no_default_categories=bool(no_default_categories),
+            is_default=bool(is_default),
         ),
         db=db,
         current_user=user,

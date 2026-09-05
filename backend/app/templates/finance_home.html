@@ -96,7 +96,7 @@
     <span class="mm-card-body">
       <span class="mm-card-title truncate">{{ item.payee or item.category_name or item.txn_type }}</span>
       <span class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</span>
-      <span class="mm-card-when">{{ item.txn_date }}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</span>
+      <span class="mm-card-when">{{ item.account_name }}{% if item.txn_date %} · {{ item.txn_date }}{% endif %}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</span>
     </span>
     <span class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
       {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}

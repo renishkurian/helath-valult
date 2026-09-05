@@ -9,6 +9,8 @@
 {% set type_base = ('/admin/finance/transactions/' ~ edit_txn.id ~ '/edit?txn_type=') if editing else ('/admin/finance/add?txn_type=') %}
 {% set type_suffix = '' if editing else acct_q %}
 
+{% set default_acct = (accounts | selectattr('is_default') | list | first) %}
+
 <div class="page-head">
   <div class="d-flex align-items-center gap-3">
     <a class="btn btn-ghost btn-icon" href="/admin/finance" aria-label="Back to transactions">
@@ -39,7 +41,7 @@
     <form class="card" method="post" action="{{ form_action }}" enctype="multipart/form-data" id="entry-form"{% if editing %} data-edit-id="{{ edit_txn.id }}"{% endif %}>
       <div class="card-body">
         <input type="hidden" name="txn_type" value="{{ txn_type }}">
-        <input type="hidden" name="account_id" id="account_id" value="{{ (edit_txn.account_id if editing else prefill_account_id) or (accounts[0].id if accounts else '') }}">
+        <input type="hidden" name="account_id" id="account_id" value="{{ (edit_txn.account_id if editing else prefill_account_id) or (default_acct.id if default_acct else (accounts[0].id if accounts else '')) }}">
         {% if txn_type=='transfer' %}
         <input type="hidden" name="to_account_id" id="to_account_id" value="{{ (edit_txn.to_account_id if editing and edit_txn.to_account_id else (accounts[1].id if accounts|length > 1 else (accounts[0].id if accounts else ''))) }}">
         {% endif %}

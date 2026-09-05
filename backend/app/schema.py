@@ -75,6 +75,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     "finance_accounts": [
         ("credit_limit", "NUMERIC(14,2)"),
         ("no_default_categories", "BOOLEAN NOT NULL DEFAULT 0"),
+        ("is_default", "BOOLEAN NOT NULL DEFAULT 0"),
     ],
     "finance_categories": [
         ("account_id", "VARCHAR(32)"),

@@ -270,10 +270,15 @@ def ensure_defaults(db: Session, user: models.User) -> None:
             changed = True
     accts = db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid).all()
     have_types = {a.account_type for a in accts}
+    had_no_accounts = not accts
     for name, kind in _DEFAULT_ACCOUNTS:
         if kind in have_types:
             continue
-        db.add(models.FinanceAccount(user_id=uid, name=name, account_type=kind, opening_balance=0))
+        db.add(models.FinanceAccount(
+            user_id=uid, name=name, account_type=kind, opening_balance=0,
+            is_default=had_no_accounts and not have_types,
+        ))
+        have_types.add(kind)
         changed = True
     if changed:
         db.commit()
@@ -383,10 +388,18 @@ def _account_out(db: Session, a: models.FinanceAccount) -> schemas.FinanceAccoun
         id=a.id, name=a.name, account_type=a.account_type, currency=a.currency or "INR",
         opening_balance=_f(a.opening_balance), credit_limit=_f(a.credit_limit) if a.credit_limit is not None else None,
         institution=a.institution, last4=a.last4, archived=bool(a.archived),
-        no_default_categories=bool(a.no_default_categories),
+        no_default_categories=bool(a.no_default_categories), is_default=bool(a.is_default),
         balance=_f(bal), is_liability=a.account_type in LIABILITY_TYPES,
         created_at=a.created_at,
     )
+
+
+def _set_default_account(db: Session, uid: str, keep_id: str) -> None:
+    """Exactly one non-archived account may be default. Unset every other one first."""
+    db.query(models.FinanceAccount).filter(
+        models.FinanceAccount.user_id == uid,
+        models.FinanceAccount.id != keep_id,
+    ).update({"is_default": False})
 
 
 def _month_ie(txns) -> tuple[Decimal, Decimal]:
@@ -736,14 +749,23 @@ def create_account(
     require_owner(current_user)
     ensure_defaults(db, current_user)
     kind = body.account_type if body.account_type in ACCOUNT_TYPES else "cash"
+    uid = _owned(db, current_user)
+    existing = db.query(models.FinanceAccount).filter(
+        models.FinanceAccount.user_id == uid, models.FinanceAccount.archived.is_(False),
+    ).count()
+    make_default = bool(body.is_default) or existing == 0  # first account is always the default
     row = models.FinanceAccount(
-        user_id=_owned(db, current_user), name=body.name.strip(), account_type=kind,
+        user_id=uid, name=body.name.strip(), account_type=kind,
         currency=body.currency or "INR", opening_balance=_dec(body.opening_balance),
         credit_limit=_dec(body.credit_limit) if body.credit_limit is not None else None,
         institution=body.institution, last4=body.last4,
         no_default_categories=bool(body.no_default_categories),
+        is_default=make_default,
     )
     db.add(row)
+    db.flush()
+    if make_default:
+        _set_default_account(db, uid, row.id)
     db.commit()
     db.refresh(row)
     return _account_out(db, row)
@@ -765,6 +787,12 @@ def update_account(
     row.institution = body.institution
     row.last4 = body.last4
     row.no_default_categories = bool(body.no_default_categories)
+    if body.is_default and not row.is_default:
+        row.is_default = True
+        db.flush()
+        _set_default_account(db, row.user_id, row.id)
+    elif not body.is_default:
+        row.is_default = False
     db.commit()
     db.refresh(row)
     return _account_out(db, row)
@@ -779,6 +807,16 @@ def delete_account(
     require_owner(current_user)
     row = _get_account(db, current_user, account_id)
     row.archived = True
+    was_default = bool(row.is_default)
+    row.is_default = False
+    db.flush()
+    if was_default:
+        nxt = db.query(models.FinanceAccount).filter(
+            models.FinanceAccount.user_id == row.user_id,
+            models.FinanceAccount.archived.is_(False),
+        ).order_by(models.FinanceAccount.created_at).first()
+        if nxt:
+            nxt.is_default = True
     db.commit()
     return {"ok": True}
 

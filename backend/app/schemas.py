@@ -963,6 +963,7 @@ class FinanceAccountIn(BaseModel):
     institution: Optional[str] = None
     last4: Optional[str] = None
     no_default_categories: bool = False
+    is_default: bool = False
 
 
 class FinanceAccountOut(BaseModel):
@@ -976,6 +977,7 @@ class FinanceAccountOut(BaseModel):
     last4: Optional[str] = None
     archived: bool = False
     no_default_categories: bool = False
+    is_default: bool = False
     balance: float = 0
     is_liability: bool = False
     created_at: datetime
