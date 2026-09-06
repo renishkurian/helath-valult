@@ -723,10 +723,11 @@ _HEALTH_ASK_RE = re.compile(
     re.I,
 )
 _LOCKER_ASK_RE = re.compile(
-    r"\b(aadhaar|aadhar|pan|passport|license|licence|id\s*card|locker|"
-    r"document\s*vault|driving|voter|rc|insurance|warranty|certificate|"
-    r"property|land\s*tax|tax|taxes|govt|government|papers?|files?|"
-    r"document|documents)\b",
+    r"\b(aadhaars?|aadhars?|pans?|passports?|licenses?|licences?|id\s*cards?|"
+    r"lockers?|document\s*vaults?|driving|voters?|rcs?|insurances?|"
+    r"warrant(?:y|ies)|certificat(?:e|es)|propert(?:y|ies)|land\s*tax(?:es)?|"
+    r"tax(?:es)?|govt|governments?|papers?|files?|"
+    r"documents?)\b",
     re.I,
 )
 _NEEDLE_STOP_RE = re.compile(
@@ -736,7 +737,7 @@ _NEEDLE_STOP_RE = re.compile(
     r"username|medical|health|hospital|hospitals|clinic|clinics|nursing|"
     r"patient|patients|medicity|healthcare|lab|report|reports|prescription|"
     r"documents?|cards?|number|id|any|files?|paper|papers|u|you|"
-    r"do|does|did|have|has|got|there|listed)\b",
+    r"do|does|did|have|has|got|there|listed|list|lists|available|all)\b",
     re.I,
 )
 
@@ -979,9 +980,10 @@ _HOSPITAL_INTENT_RE = re.compile(
     re.I,
 )
 _LOCKER_STRONG_RE = re.compile(
-    r"\b(aadhaar|aadhar|pan|passport|license|licence|locker|document\s*vault|"
-    r"land\s*tax|tax|taxes|govt|government|voter|rc|insurance|warranty|"
-    r"certificate|property)\b",
+    r"\b(aadhaars?|aadhars?|pans?|passports?|licenses?|licences?|lockers?|"
+    r"document\s*vaults?|land\s*tax(?:es)?|tax(?:es)?|govt|governments?|"
+    r"voters?|rcs?|insurances?|warrant(?:y|ies)|certificat(?:e|es)|"
+    r"propert(?:y|ies))\b",
     re.I,
 )
 _HEALTH_STEAL_RE = re.compile(
