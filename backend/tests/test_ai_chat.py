@@ -266,7 +266,6 @@ def test_password_lookup_is_local_view_link_not_secret():
         assert "Gmail" in out["reply"]
         assert "encrypted-password-blob" not in out["reply"]
         assert "secret-user" not in out["reply"]
-        assert "not" in out["reply"].lower() and "sent" in out["reply"].lower()
     finally:
         db.close()
 
@@ -297,6 +296,45 @@ def test_locker_lookup_finds_land_tax_typo_locally():
         assert "land tax" in out["reply"].lower()
         assert "TAX-SECRET" not in out["reply"]
         assert "Document Vault" in out["reply"]
+    finally:
+        db.close()
+
+
+def test_locker_lookup_resolves_relation_word_to_family_member():
+    """"my wife passport" should resolve "wife" to the spouse profile and
+    scope the match to her documents only, not fail because "wife" itself
+    never appears on any document."""
+    from app.ai_chat import ask, _resolve_relation_person
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        me = models.Person(user_id=uid, name="Renish", relation=models.Relation.self_)
+        spouse = models.Person(user_id=uid, name="Deepthi", relation=models.Relation.spouse)
+        db.add_all([me, spouse])
+        db.flush()
+        mine = models.LockerItem(
+            user_id=uid, title="Passport", doc_type="passport",
+            holder_name="Renish", person_id=me.id, id_number_enc="RENISH-PASSPORT",
+        )
+        hers = models.LockerItem(
+            user_id=uid, title="Passport", doc_type="passport",
+            holder_name="Deepthi", person_id=spouse.id, id_number_enc="DEEPTHI-PASSPORT",
+        )
+        db.add_all([mine, hers])
+        db.commit()
+        db.refresh(hers)
+        db.refresh(mine)
+
+        resolved = _resolve_relation_person(db, user, "my wife passport")
+        assert resolved is not None and resolved.name == "Deepthi"
+
+        out = ask(db, user, "my wife passport")
+        assert "/admin/locker/" + hers.id in out["reply"]
+        assert "/admin/locker/" + mine.id not in out["reply"]
+        assert "No document matched" not in out["reply"]
     finally:
         db.close()
 
@@ -626,6 +664,49 @@ def test_shopping_context_and_apply_list_action():
     assert detail.status_code == 200, detail.text
     names = " ".join(i["name"].lower() for i in detail.json()["items"])
     assert "atta" in names or "wheat" in names or "podi" in names
+
+
+def test_shopping_section_survives_truncation_for_shopping_question():
+    """On a compact/local provider (small max_chars), a big Money Manager
+    section used to push the '## Shopping List' section past the
+    truncation cutoff entirely, even for a shopping question with an
+    active list sitting right there in the DB. A shopping-intent question
+    should get its section moved to the front so it survives."""
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        acc = models.FinanceAccount(user_id=uid, name="Cash", account_type="cash")
+        db.add(acc)
+        db.flush()
+        cat = models.FinanceCategory(user_id=uid, name="Groceries", kind="expense")
+        db.add(cat)
+        db.flush()
+        # Enough ledger rows this month to fill a small char budget on their own.
+        for i in range(60):
+            db.add(models.FinanceTransaction(
+                user_id=uid, account_id=acc.id, category_id=cat.id,
+                txn_type="expense", amount=Decimal("100.00"),
+                txn_date="2026-09-05", payee=f"Store number {i} with a long payee name",
+            ))
+        lst = models.ShopList(user_id=uid, name="Sep 5 2026 shop", completed=False)
+        db.add(lst)
+        db.flush()
+        db.add(models.ShopItem(list_id=lst.id, name="Milk", status="approved"))
+        db.commit()
+
+        small_ctx = build_vault_context(db, user, "this week any item in shopping list", max_chars=1200)
+        assert "## Shopping List" in small_ctx
+        assert "Sep 5 2026 shop" in small_ctx
+
+        # A non-shopping question with the same tight budget can legitimately
+        # drop the shopping section — this just confirms the reorder is
+        # intent-driven, not unconditional.
+        unrelated_ctx = build_vault_context(db, user, "todays total expense", max_chars=1200)
+        assert "Sep 5 2026 shop" not in unrelated_ctx
+    finally:
+        db.close()
 
 
 def test_chat_returns_shop_list_action():

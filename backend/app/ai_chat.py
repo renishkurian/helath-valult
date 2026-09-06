@@ -855,6 +855,81 @@ def _name_mentioned(question_lower: str, name: str) -> bool:
     return False
 
 
+_RELATION_WORD_MAP: dict[str, "models.Relation"] = {
+    "wife": models.Relation.spouse,
+    "husband": models.Relation.spouse,
+    "spouse": models.Relation.spouse,
+    "father": models.Relation.father,
+    "dad": models.Relation.father,
+    "daddy": models.Relation.father,
+    "papa": models.Relation.father,
+    "achan": models.Relation.father,
+    "mother": models.Relation.mother,
+    "mom": models.Relation.mother,
+    "mommy": models.Relation.mother,
+    "mummy": models.Relation.mother,
+    "amma": models.Relation.mother,
+    "brother": models.Relation.brother,
+    "sister": models.Relation.sister,
+    "son": models.Relation.child,
+    "daughter": models.Relation.child,
+    "kid": models.Relation.child,
+}
+_RELATION_WORD_RE = re.compile(
+    r"\b(" + "|".join(sorted(_RELATION_WORD_MAP, key=len, reverse=True)) + r")\b",
+    re.I,
+)
+
+
+def _resolve_relation_person(db: Session, user: models.User, question: str) -> models.Person | None:
+    """If the question names a relation ("my wife", "dad's", "mummy") rather
+    than an actual name, resolve it to the one family profile under this
+    vault that relation refers to.
+
+    Downstream search (locker/health) only matches against a document's
+    title, holder name, and tags — never against a relation word, since
+    relation isn't stored on the document at all. So "wife passport" used
+    to fail outright: "wife" matched nothing, leaving only "passport" to
+    satisfy the two-tokens-must-match requirement, which isn't enough on
+    its own. Resolving the relation to the actual person up front lets the
+    caller substitute a name that *does* appear on the document.
+    """
+    q = question or ""
+    m = _RELATION_WORD_RE.search(q)
+    if not m:
+        return None
+    relation = _RELATION_WORD_MAP[m.group(1).lower()]
+    uid = _uid(user)
+    matches = (
+        db.query(models.Person)
+        .filter(models.Person.user_id == uid, models.Person.relation == relation)
+        .all()
+    )
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        q_lower = q.lower()
+        named = [p for p in matches if _name_mentioned(q_lower, p.name)]
+        if len(named) == 1:
+            return named[0]
+    return None
+
+
+def _apply_relation_alias(db: Session, user: models.User, question: str) -> str:
+    """Rewrite a relation word ("wife", "dad", ...) in the question to that
+    family member's actual name, so needle/keyword matching (which only
+    knows names, titles, and tags) can find their documents/cards. Falls
+    back to the original text untouched when the relation can't be
+    resolved to exactly one person — e.g. no such profile, or an
+    ambiguous one like two sons with no name given to disambiguate.
+    """
+    person = _resolve_relation_person(db, user, question)
+    if not person or not (person.name or "").strip():
+        return question
+    first_name = person.name.strip().split()[0]
+    return _RELATION_WORD_RE.sub(first_name, question, count=1)
+
+
 def wants_password_lookup(question: str) -> bool:
     q = (question or "").strip()
     if not q:
@@ -1044,9 +1119,6 @@ def format_password_lookup_reply(db: Session, user: models.User, question: str) 
     lines = [
         "**Password Vault**",
         "",
-        "The password stays on this server. It is **not** sent to the AI provider.",
-        "Open the login here to view or copy it:",
-        "",
     ]
     shown = hits[:12] if needle else items[:8]
     if not items:
@@ -1088,8 +1160,6 @@ def format_health_lookup_reply(
     needle = _search_needle(question)
     lines = [
         "**Health Vault**",
-        "",
-        "Medical records stay on this server. They are **not** sent to the AI provider.",
         "",
     ]
     if re.search(r"\b(doctor|dr\.?|gynae|gyne|paediat|pedia|specialist|phone|number)\b", question or "", re.I):
@@ -1601,6 +1671,38 @@ def suggestion_hints(db: Session, user: models.User) -> list[dict]:
     return hints[:4]
 
 
+_SHOPPING_CONTEXT_RE = re.compile(
+    r"\b(shopping|groceries|grocery|shop\s*list|purchase[sd]?|bought|buy|"
+    r"vaangi|vaangiya|market(?:ing)?)\b",
+    re.I,
+)
+
+
+def _shopping_context_block(
+    db: Session, uid: str, months: list[str], today: datetime, q: str,
+) -> list[str]:
+    """The full '## Shopping List' section: active/completed lists, the
+    purchased-item history for the focus months, and the Manglish grocery
+    glossary — split out so build_vault_context can move it ahead of the
+    much larger Money Manager / Expense Analyser sections when the question
+    is clearly about shopping. Otherwise a small max_chars budget (compact/
+    local providers) truncates the snapshot before ever reaching this
+    section, even though the shopping list being asked about exists and is
+    sitting right there in the DB.
+    """
+    lines: list[str] = ["## Shopping List"]
+    manglish_hits = _manglish_query_hints(q)
+    if manglish_hits:
+        lines.append("Manglish / Malayalam grocery hints from this question:")
+        for h in manglish_hits:
+            lines.append(f"- {h}")
+    lines.extend(_shopping_snapshot_lines(db, uid, months, today, q))
+    from app.grocery import SEED_KEYS
+    gloss = sorted({f"{k}={v}" for k, v in SEED_KEYS.items()}, key=lambda s: s.lower())
+    lines.append("Manglish grocery glossary (subset): " + ", ".join(gloss[:80]))
+    return lines
+
+
 def build_vault_context(db: Session, user: models.User, question: str = "", max_chars: int = MAX_CONTEXT_CHARS) -> str:
     uid = _uid(user)
     today = vault_now()
@@ -1610,6 +1712,11 @@ def build_vault_context(db: Session, user: models.User, question: str = "", max_
     q = question or ""
     tz_label = settings.VAULT_TIMEZONE
     ledger_day = resolve_ledger_day(q, today)
+    # A shopping question gets its section moved to the front of the
+    # snapshot (see _shopping_context_block) so it survives truncation
+    # under a small max_chars budget instead of being pushed out by the
+    # Money Manager / Expense Analyser sections that normally come first.
+    shopping_intent = bool(_SHOPPING_CONTEXT_RE.search(q))
 
     from app import ai_brain
 
@@ -1629,6 +1736,10 @@ def build_vault_context(db: Session, user: models.User, question: str = "", max_
             "Ignore Digital Diary and prior chat guesses. Money Manager ledger is the only source "
             f"for day spend on {ledger_day}."
         )
+        lines.append("")
+
+    if shopping_intent:
+        lines.extend(_shopping_context_block(db, uid, months, today, q))
         lines.append("")
 
     people_n = db.query(models.Person).filter(models.Person.user_id == uid).count()
@@ -1863,18 +1974,11 @@ def build_vault_context(db: Session, user: models.User, question: str = "", max_
         lines.append("No analyser items yet.")
 
     # ---- Shopping List ----
-    lines.append("")
-    lines.append("## Shopping List")
-    manglish_hits = _manglish_query_hints(q)
-    if manglish_hits:
-        lines.append("Manglish / Malayalam grocery hints from this question:")
-        for h in manglish_hits:
-            lines.append(f"- {h}")
-    lines.extend(_shopping_snapshot_lines(db, uid, months, today, q))
-    # Compact glossary so the model can resolve common Manglish even when not in the question
-    from app.grocery import SEED_KEYS
-    gloss = sorted({f"{k}={v}" for k, v in SEED_KEYS.items()}, key=lambda s: s.lower())
-    lines.append("Manglish grocery glossary (subset): " + ", ".join(gloss[:80]))
+    # Already placed near the top of the snapshot when shopping_intent is
+    # true (see above) — don't emit it twice.
+    if not shopping_intent:
+        lines.append("")
+        lines.extend(_shopping_context_block(db, uid, months, today, q))
 
     # ---- Digital Diary ----
     lines.append("")
@@ -2840,11 +2944,15 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     if wants_password_lookup(text):
         reply = format_password_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_health_lookup(text, db, user):
-        reply = format_health_lookup_reply(db, user, text, history=history)
+    # Resolve "my wife" / "dad" / etc. to the actual family member's name
+    # before intent detection and search — see _apply_relation_alias(). The
+    # original text is still what gets stored in chat history.
+    relation_text = _apply_relation_alias(db, user, text)
+    if wants_health_lookup(relation_text, db, user):
+        reply = format_health_lookup_reply(db, user, relation_text, history=history)
         return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_locker_lookup(text, db, user):
-        reply = format_locker_lookup_reply(db, user, text)
+    if wants_locker_lookup(relation_text, db, user):
+        reply = format_locker_lookup_reply(db, user, relation_text)
         return _store_deterministic_reply(db, user, thread, text, reply)
 
     bundle = ap.get_default_bundle(db, user)
