@@ -8334,6 +8334,33 @@ def tracker_list_live(list_id: str, request: Request, db: Session = Depends(get_
     })
 
 
+@router.get("/tracker/lists/{list_id}/quickview")
+def tracker_list_quickview(list_id: str, request: Request, db: Session = Depends(get_db)):
+    """Lightweight item list for the quick-view popup on the Lists page."""
+    from app.routers import tracker as tr
+    user = _tr_user(request, db)
+    if not user:
+        return JSONResponse({"error": "auth"}, status_code=401)
+    lst = tr.get_list(list_id, db=db, current_user=user)
+    items = lst.items or []
+    return JSONResponse({
+        "id": lst.id,
+        "name": lst.name,
+        "item_count": lst.item_count,
+        "checked_count": lst.checked_count,
+        "items": [
+            {
+                "name": i.name,
+                "quantity": i.quantity,
+                "unit": i.unit,
+                "checked": i.checked,
+                "status": i.status,
+            }
+            for i in items
+        ],
+    })
+
+
 @router.get("/tracker/suggest")
 def tracker_suggest_admin(request: Request, q: str = "", limit: int = 8, db: Session = Depends(get_db)):
     """Session-auth suggest for the web Shopping List UI (cookie login)."""

@@ -116,6 +116,7 @@
         </div>
       </span>
       <div class="row-actions">
+        <button type="button" class="btn btn-ghost js-quickview" data-list-id="{{ lst.id }}" data-list-name="{{ lst.name }}" aria-label="Quick view" title="Quick view"><i class="bi bi-eye"></i></button>
         <form method="post" action="/admin/tracker/lists/{{ lst.id }}/delete" data-confirm="Move this list to trash?">
           <button class="btn btn-ghost" type="submit" aria-label="Move to trash" title="Move to trash"><i class="bi bi-trash3"></i></button>
         </form>
@@ -130,4 +131,98 @@
   <p>No shopping lists yet. Create one for this week’s market run.</p>
 </div>
 {% endif %}
+
+<div class="modal fade" id="quickview-modal" tabindex="-1" aria-labelledby="quickview-modal-title" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="quickview-modal-title">List items</h2>
+        <button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="quickview-modal-loading" class="text-muted small">Loading…</div>
+        <ul id="quickview-modal-list" class="list-unstyled mb-0" hidden></ul>
+        <div id="quickview-modal-empty" class="text-muted small" hidden>No items in this list yet.</div>
+        <div id="quickview-modal-error" class="text-danger small" hidden>Couldn't load items.</div>
+      </div>
+      <div class="modal-footer">
+        <a id="quickview-modal-open" href="#" class="btn btn-primary btn-sm">Open list</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var modalEl = document.getElementById("quickview-modal");
+  if (!modalEl || typeof bootstrap === "undefined") return;
+  var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  var titleEl = document.getElementById("quickview-modal-title");
+  var loadingEl = document.getElementById("quickview-modal-loading");
+  var listEl = document.getElementById("quickview-modal-list");
+  var emptyEl = document.getElementById("quickview-modal-empty");
+  var errorEl = document.getElementById("quickview-modal-error");
+  var openLink = document.getElementById("quickview-modal-open");
+
+  function fmtQty(item) {
+    var q = item.quantity;
+    if (q === null || q === undefined) return "";
+    var qs = (Math.round(q * 100) / 100).toString();
+    return qs + (item.unit ? " " + item.unit : "");
+  }
+
+  document.querySelectorAll(".js-quickview").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var listId = btn.getAttribute("data-list-id");
+      var listName = btn.getAttribute("data-list-name") || "List items";
+      titleEl.textContent = listName;
+      openLink.href = "/admin/tracker/lists/" + listId;
+      listEl.hidden = true;
+      listEl.innerHTML = "";
+      emptyEl.hidden = true;
+      errorEl.hidden = true;
+      loadingEl.hidden = false;
+      modal.show();
+
+      fetch("/admin/tracker/lists/" + listId + "/quickview")
+        .then(function (r) { if (!r.ok) throw new Error("bad status"); return r.json(); })
+        .then(function (data) {
+          loadingEl.hidden = true;
+          var items = data.items || [];
+          if (!items.length) {
+            emptyEl.hidden = false;
+            return;
+          }
+          items.forEach(function (item) {
+            var li = document.createElement("li");
+            li.className = "d-flex align-items-center gap-2 py-1 border-bottom";
+            var check = document.createElement("i");
+            check.className = "bi " + (item.checked ? "bi-check-square text-success" : "bi-square text-muted");
+            var label = document.createElement("span");
+            label.className = "flex-grow-1" + (item.checked ? " text-decoration-line-through text-muted" : "");
+            label.textContent = item.name;
+            var qty = document.createElement("span");
+            qty.className = "text-muted small";
+            qty.textContent = fmtQty(item);
+            li.appendChild(check);
+            li.appendChild(label);
+            li.appendChild(qty);
+            if (item.status === "pending") {
+              var badge = document.createElement("span");
+              badge.className = "badge badge-info ms-1";
+              badge.textContent = "pending";
+              li.appendChild(badge);
+            }
+            listEl.appendChild(li);
+          });
+          listEl.hidden = false;
+        })
+        .catch(function () {
+          loadingEl.hidden = true;
+          errorEl.hidden = false;
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}
