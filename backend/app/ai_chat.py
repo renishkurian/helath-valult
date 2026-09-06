@@ -735,7 +735,7 @@ _NEEDLE_STOP_RE = re.compile(
     r"show|tell|give|me|find|open|view|see|stored|saved|vault|"
     r"password|passwd|pwd|passcode|login|logins|credential|credentials|"
     r"username|medical|health|hospital|hospitals|clinic|clinics|nursing|"
-    r"patient|patients|medicity|healthcare|lab|report|reports|prescription|"
+    r"patient|patients|medicity|healthcare|docs?|doctors?|dr|"
     r"documents?|cards?|number|id|any|files?|paper|papers|u|you|"
     r"do|does|did|have|has|got|there|listed|list|lists|available|all)\b",
     re.I,
