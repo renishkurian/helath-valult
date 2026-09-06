@@ -735,7 +735,7 @@ _NEEDLE_STOP_RE = re.compile(
     r"password|passwd|pwd|passcode|login|logins|credential|credentials|"
     r"username|medical|health|hospital|hospitals|clinic|clinics|nursing|"
     r"patient|patients|medicity|healthcare|lab|report|reports|prescription|"
-    r"documents?|card|number|id|any|file|files|paper|papers|u|you|"
+    r"documents?|cards?|number|id|any|files?|paper|papers|u|you|"
     r"do|does|did|have|has|got|there|listed)\b",
     re.I,
 )
@@ -812,16 +812,25 @@ def _tokens_match(hay: str, needle: str) -> bool:
     return any(len(t) >= 4 and _fuzzy_token_in(hay_l, t) for t in tokens)
 
 
-def _all_tokens_match(hay: str, needle: str) -> bool:
-    """Strict AND match: every significant needle token must be present.
+def _enough_tokens_match(hay: str, needle: str) -> bool:
+    """Require at least 2 independently-matching needle tokens (or all of
+    them, if there's only 1), instead of either extreme.
 
-    _tokens_match() has an "any single 4+ char token" fallback meant for
-    forgiving single-word document search. That fallback is wrong for
-    queries that combine a person's name with a place/hospital name (e.g.
-    "any hospital for renish in bharananganam") — every card belonging to
-    that person contains the person-name token, so the fallback let it
-    match on the name alone and ignore the place entirely, returning every
-    hospital instead of filtering to the one asked about.
+    Requiring *every* token to match (the previous approach) breaks on
+    ordinary sentence filler that no hand-maintained stopword list will
+    ever fully cover — "our family member has...", "i mean...", "please
+    check" all add words that will never appear in a hospital's name, so
+    a strict AND fails even when the actual identifying words (a typo'd
+    place name, say) are right there and correctly matched.
+
+    Requiring only *one* token to match (the original bug) means a
+    single coincidental shared word — e.g. every hospital card belonging
+    to the same family member — matches everything, ignoring whatever
+    place/clinic name was actually asked about.
+
+    Two tokens that both independently match is a much stronger signal
+    than either extreme and doesn't require guessing every possible
+    filler phrase in advance.
     """
     hay_l = (hay or "").lower()
     fillers = {"have", "has", "had", "with", "from", "about", "this", "that", "does", "did", "any"}
@@ -831,7 +840,18 @@ def _all_tokens_match(hay: str, needle: str) -> bool:
     ]
     if not tokens:
         return False
-    return all(_fuzzy_token_in(hay_l, t) for t in tokens)
+    matched = sum(1 for t in tokens if _fuzzy_token_in(hay_l, t))
+    return matched >= min(2, len(tokens))
+
+
+def _name_mentioned(question_lower: str, name: str) -> bool:
+    """Does any part of this person's name show up (typo-tolerant) in the
+    question? Used to resolve which family member's card was meant when
+    a hospital has more than one."""
+    for tok in re.findall(r"[a-z0-9\u0d00-\u0d7f]{3,}", (name or "").lower()):
+        if _fuzzy_token_in(question_lower, tok):
+            return True
+    return False
 
 
 def wants_password_lookup(question: str) -> bool:
@@ -841,13 +861,46 @@ def wants_password_lookup(question: str) -> bool:
     return bool(_PASSWORD_ASK_RE.search(q))
 
 
-def wants_health_lookup(question: str) -> bool:
+def _health_entity_hit(db: Session, user: models.User, question: str) -> bool:
+    """A message can clearly name a saved hospital or doctor with no
+    health keyword in it at all — e.g. a one-line correction after a typo,
+    "i mean CARITAS Kottayam". Keyword regexes alone can never anticipate
+    every way a person might refer back to an entity that's already saved
+    in their own vault, so check the vault directly instead of trying to
+    grow the keyword list forever.
+    """
+    needle = _search_needle(question)
+    if not needle:
+        return False
+    uid = _uid(user)
+    people = db.query(models.Person).filter(models.Person.user_id == uid).all()
+    pids = [p.id for p in people]
+    person_name = {p.id: p.name for p in people}
+    if pids:
+        cards = db.query(models.HospitalCard).filter(models.HospitalCard.person_id.in_(pids)).all()
+        for c in cards:
+            hay = " ".join(x for x in [c.hospital_name, person_name.get(c.person_id, "")] if x)
+            if _enough_tokens_match(hay, needle):
+                return True
+    doctors = db.query(models.Doctor).filter(models.Doctor.user_id == uid).all()
+    for d in doctors:
+        hay = " ".join(x for x in [d.name, d.specialty, d.hospital_name, d.notes] if x)
+        if _enough_tokens_match(hay, needle):
+            return True
+    return False
+
+
+def wants_health_lookup(question: str, db: Session | None = None, user: models.User | None = None) -> bool:
     q = (question or "").strip()
     if not q:
         return False
     if wants_password_lookup(q) or _SPEND_RE.search(q):
         return False
-    return bool(_HEALTH_ASK_RE.search(q))
+    if _HEALTH_ASK_RE.search(q):
+        return True
+    if db is not None and user is not None:
+        return _health_entity_hit(db, user, q)
+    return False
 
 
 def _locker_item_hay(it: models.LockerItem, folder_name: str | None = None) -> str:
@@ -879,6 +932,18 @@ def _locker_active_items(db: Session, user: models.User) -> list[models.LockerIt
 
 
 def _locker_search_hits(db: Session, user: models.User, question: str) -> list[models.LockerItem]:
+    """Find locker items matching the question.
+
+    Previously used _tokens_match() (which has an "any single 4+ char
+    token matches" fallback) plus an extra fallback loop doing the same
+    thing again — so a query like "deepthies passport" matched on the
+    holder-name token alone ("deepthies" fuzzy-prefixes "Deepthi") and
+    never actually required "passport" to match too, returning every
+    document tagged to that person instead of just their passport.
+    _enough_tokens_match() requires at least 2 independently-matching
+    tokens (or all of them, if the needle only has 1), the same fix
+    already applied to hospital-card search.
+    """
     items = _locker_active_items(db, user)
     needle = _search_needle(question)
     if not needle:
@@ -886,13 +951,8 @@ def _locker_search_hits(db: Session, user: models.User, question: str) -> list[m
     hits = []
     for it in items:
         hay = _locker_item_hay(it)
-        if _tokens_match(hay, needle) or needle.lower() in hay.lower():
+        if _enough_tokens_match(hay, needle):
             hits.append(it)
-            continue
-        for t in needle.lower().split():
-            if len(t) >= 4 and _fuzzy_token_in(hay, t):
-                hits.append(it)
-                break
     return hits
 
 
@@ -1028,29 +1088,72 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
         lines.append("[Open Doctors](/admin/doctors)")
         return "\n".join(lines)
 
-    if pids and _HOSPITAL_INTENT_RE.search(question or ""):
-        # "any hospital for X in Y" / "patient card for <clinic>" is about
-        # the Hospital Card list, not about a Document with a matching
-        # hospital_name field. A hospital can be saved (visible in the
-        # "Hospitals" module) with no document filed under it yet, so
-        # searching Document rows alone missed it and always fell through
-        # to "No matching health document." The trigger word set also has
-        # to cover how people actually name these places — "clinic",
-        # "nursing home", "patient card", "medicity", "healthcare" — not
-        # just the literal word "hospital", or the question never reaches
-        # this branch at all and gets misrouted to Document Vault instead.
-        cards = (
-            db.query(models.HospitalCard)
-            .filter(models.HospitalCard.person_id.in_(pids))
-            .order_by(models.HospitalCard.hospital_name)
-            .all()
-        )
-        matched = []
+    cards = (
+        db.query(models.HospitalCard)
+        .filter(models.HospitalCard.person_id.in_(pids))
+        .order_by(models.HospitalCard.hospital_name)
+        .all()
+        if pids else []
+    )
+    matched_by_needle = []
+    if needle:
         for c in cards:
             hay = " ".join(x for x in [c.hospital_name, person_name.get(c.person_id, "")] if x)
-            if not needle or _all_tokens_match(hay, needle):
-                matched.append(c)
+            if _enough_tokens_match(hay, needle):
+                matched_by_needle.append(c)
+
+    # "any hospital for X in Y" / "patient card for <clinic>" is about the
+    # Hospital Card list, not about a Document with a matching
+    # hospital_name field. A hospital can be saved (visible in the
+    # "Hospitals" module) with no document filed under it yet, so
+    # searching Document rows alone missed it and always fell through to
+    # "No matching health document." Keyword coverage alone
+    # (_HOSPITAL_INTENT_RE: hospital/clinic/nursing/patient/medicity/
+    # healthcare) can never anticipate every way someone refers back to
+    # an entity they've already saved — a bare follow-up like "i mean
+    # CARITAS Kottayam" carries none of those words — so a needle that
+    # actually matches a saved card is treated as intent too.
+    hospital_intent = bool(_HOSPITAL_INTENT_RE.search(question or "")) or bool(matched_by_needle)
+
+    if pids and hospital_intent:
+        matched = matched_by_needle if needle else cards
         if matched:
+            # If one hospital has cards for more than one family member,
+            # guessing (or dumping every family member's card together) is
+            # worse than asking. Only ask when the question didn't already
+            # name a specific person.
+            q_lower = (question or "").lower()
+            by_hospital = defaultdict(list)
+            for c in matched:
+                by_hospital[c.hospital_name.strip().lower()].append(c)
+
+            resolved = []
+            questions_to_ask = []
+            for group in by_hospital.values():
+                person_ids_in_group = {c.person_id for c in group}
+                if len(person_ids_in_group) <= 1:
+                    resolved.extend(group)
+                    continue
+                named = [
+                    c for c in group
+                    if _name_mentioned(q_lower, person_name.get(c.person_id, ""))
+                ]
+                if named:
+                    resolved.extend(named)
+                else:
+                    names = ", ".join(sorted({
+                        person_name.get(c.person_id, "?") for c in group
+                    }))
+                    questions_to_ask.append((group[0].hospital_name, names))
+
+            if questions_to_ask:
+                for hname, names in questions_to_ask:
+                    lines.append(f"{hname} has cards for more than one family member ({names}). Which one did you mean?")
+                lines.append("")
+                lines.append("[Open Health Vault](/admin)")
+                return "\n".join(lines)
+
+            matched = resolved
             lines.append("Hospitals on file (open Health Vault for cards & documents):")
             for c in matched[:12]:
                 who = person_name.get(c.person_id, "")
@@ -1118,9 +1221,6 @@ def format_locker_lookup_reply(db: Session, user: models.User, question: str) ->
     shown = hits[:12] if needle else items[:8]
     lines = [
         "**Document Vault**",
-        "",
-        "ID numbers stay on this server. They are **not** sent to the AI provider.",
-        "Open the document here:",
         "",
     ]
     if not items:
@@ -2703,11 +2803,11 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     if wants_password_lookup(text):
         reply = format_password_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
+    if wants_health_lookup(text, db, user):
+        reply = format_health_lookup_reply(db, user, text)
+        return _store_deterministic_reply(db, user, thread, text, reply)
     if wants_locker_lookup(text, db, user):
         reply = format_locker_lookup_reply(db, user, text)
-        return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_health_lookup(text):
-        reply = format_health_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
 
     bundle = ap.get_default_bundle(db, user)
