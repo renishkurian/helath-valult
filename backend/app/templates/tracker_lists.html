@@ -141,6 +141,7 @@
       </div>
       <div class="modal-body">
         <div id="quickview-modal-loading" class="text-muted small">Loading…</div>
+        <p id="quickview-modal-hint" class="text-muted small mb-2" hidden>Swipe an item right to mark purchased, left to undo.</p>
         <ul id="quickview-modal-list" class="list-unstyled mb-0" hidden></ul>
         <div id="quickview-modal-empty" class="text-muted small" hidden>No items in this list yet.</div>
         <div id="quickview-modal-error" class="text-danger small" hidden>Couldn't load items.</div>
@@ -152,6 +153,50 @@
   </div>
 </div>
 
+<style>
+.quickview-item {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--bs-border-color, #e5e5e5);
+  touch-action: pan-y;
+  user-select: none;
+}
+.quickview-item-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 0.75rem;
+}
+.quickview-item-bg-right {
+  justify-content: flex-start;
+  background: #1e8e5a;
+  color: #fff;
+}
+.quickview-item-bg-left {
+  justify-content: flex-end;
+  background: #6c757d;
+  color: #fff;
+}
+.quickview-item-content {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.1rem;
+  background: var(--bs-body-bg, #fff);
+  transform: translateX(0);
+}
+.quickview-item-content.dragging {
+  transition: none;
+}
+.quickview-item-content.snap {
+  transition: transform 0.18s ease-out;
+}
+</style>
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
   var modalEl = document.getElementById("quickview-modal");
@@ -159,16 +204,96 @@ document.addEventListener("DOMContentLoaded", function () {
   var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
   var titleEl = document.getElementById("quickview-modal-title");
   var loadingEl = document.getElementById("quickview-modal-loading");
+  var hintEl = document.getElementById("quickview-modal-hint");
   var listEl = document.getElementById("quickview-modal-list");
   var emptyEl = document.getElementById("quickview-modal-empty");
   var errorEl = document.getElementById("quickview-modal-error");
   var openLink = document.getElementById("quickview-modal-open");
+  var SWIPE_THRESHOLD = 64;
 
   function fmtQty(item) {
     var q = item.quantity;
     if (q === null || q === undefined) return "";
     var qs = (Math.round(q * 100) / 100).toString();
     return qs + (item.unit ? " " + item.unit : "");
+  }
+
+  function paintState(row, checked) {
+    var check = row.querySelector(".quickview-item-check");
+    var label = row.querySelector(".quickview-item-label");
+    check.className = "bi quickview-item-check " + (checked ? "bi-check-square text-success" : "bi-square text-muted");
+    label.className = "quickview-item-label flex-grow-1" + (checked ? " text-decoration-line-through text-muted" : "");
+    row.dataset.checked = checked ? "1" : "0";
+  }
+
+  function toggleItem(listId, itemId) {
+    return fetch("/admin/tracker/lists/" + listId + "/items/" + itemId + "/toggle", {
+      method: "POST",
+      headers: { "X-Requested-With": "fetch" },
+    }).then(function (r) {
+      if (!r.ok) throw new Error("toggle failed");
+      return r.json();
+    });
+  }
+
+  function wireSwipe(row, content, listId, item) {
+    var startX = 0, dx = 0, dragging = false, width = 0;
+
+    function setTransform(x) {
+      content.style.transform = "translateX(" + x + "px)";
+    }
+
+    function onDown(e) {
+      dragging = true;
+      width = row.offsetWidth;
+      startX = (e.touches ? e.touches[0].clientX : e.clientX);
+      content.classList.add("dragging");
+      content.classList.remove("snap");
+    }
+
+    function onMove(e) {
+      if (!dragging) return;
+      var x = (e.touches ? e.touches[0].clientX : e.clientX);
+      dx = x - startX;
+      var checked = row.dataset.checked === "1";
+      // Only allow the direction that makes sense for current state.
+      if (checked && dx > 0) dx = 0;
+      if (!checked && dx < 0) dx = 0;
+      var clamped = Math.max(-width, Math.min(width, dx));
+      setTransform(clamped);
+      e.preventDefault && e.preventDefault();
+    }
+
+    function onUp() {
+      if (!dragging) return;
+      dragging = false;
+      content.classList.remove("dragging");
+      content.classList.add("snap");
+      var checked = row.dataset.checked === "1";
+      var shouldMark = !checked && dx > SWIPE_THRESHOLD;
+      var shouldUndo = checked && dx < -SWIPE_THRESHOLD;
+      if (shouldMark || shouldUndo) {
+        setTransform(dx > 0 ? width : -width);
+        toggleItem(listId, item.id)
+          .then(function (res) {
+            paintState(row, res.checked);
+            setTransform(0);
+          })
+          .catch(function () {
+            setTransform(0);
+          });
+      } else {
+        setTransform(0);
+      }
+      dx = 0;
+    }
+
+    row.addEventListener("touchstart", onDown, { passive: true });
+    row.addEventListener("touchmove", onMove, { passive: false });
+    row.addEventListener("touchend", onUp);
+    row.addEventListener("mousedown", onDown);
+    document.addEventListener("mousemove", function (e) { if (dragging) onMove(e); });
+    document.addEventListener("mouseup", function () { if (dragging) onUp(); });
   }
 
   document.querySelectorAll(".js-quickview").forEach(function (btn) {
@@ -181,6 +306,7 @@ document.addEventListener("DOMContentLoaded", function () {
       listEl.innerHTML = "";
       emptyEl.hidden = true;
       errorEl.hidden = true;
+      hintEl.hidden = true;
       loadingEl.hidden = false;
       modal.show();
 
@@ -194,28 +320,48 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
           }
           items.forEach(function (item) {
-            var li = document.createElement("li");
-            li.className = "d-flex align-items-center gap-2 py-1 border-bottom";
+            var row = document.createElement("li");
+            row.className = "quickview-item";
+            row.dataset.checked = item.checked ? "1" : "0";
+
+            var bgRight = document.createElement("div");
+            bgRight.className = "quickview-item-bg quickview-item-bg-right";
+            bgRight.innerHTML = '<i class="bi bi-check-lg me-1"></i> Purchased';
+
+            var bgLeft = document.createElement("div");
+            bgLeft.className = "quickview-item-bg quickview-item-bg-left";
+            bgLeft.innerHTML = 'Undo <i class="bi bi-arrow-counterclockwise ms-1"></i>';
+
+            var content = document.createElement("div");
+            content.className = "quickview-item-content";
+
             var check = document.createElement("i");
-            check.className = "bi " + (item.checked ? "bi-check-square text-success" : "bi-square text-muted");
+            check.className = "bi quickview-item-check " + (item.checked ? "bi-check-square text-success" : "bi-square text-muted");
             var label = document.createElement("span");
-            label.className = "flex-grow-1" + (item.checked ? " text-decoration-line-through text-muted" : "");
+            label.className = "quickview-item-label flex-grow-1" + (item.checked ? " text-decoration-line-through text-muted" : "");
             label.textContent = item.name;
             var qty = document.createElement("span");
             qty.className = "text-muted small";
             qty.textContent = fmtQty(item);
-            li.appendChild(check);
-            li.appendChild(label);
-            li.appendChild(qty);
+            content.appendChild(check);
+            content.appendChild(label);
+            content.appendChild(qty);
             if (item.status === "pending") {
               var badge = document.createElement("span");
               badge.className = "badge badge-info ms-1";
               badge.textContent = "pending";
-              li.appendChild(badge);
+              content.appendChild(badge);
             }
-            listEl.appendChild(li);
+
+            row.appendChild(bgRight);
+            row.appendChild(bgLeft);
+            row.appendChild(content);
+            listEl.appendChild(row);
+
+            if (item.id) wireSwipe(row, content, listId, item);
           });
           listEl.hidden = false;
+          hintEl.hidden = false;
         })
         .catch(function () {
           loadingEl.hidden = true;

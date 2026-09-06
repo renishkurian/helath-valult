@@ -8350,6 +8350,7 @@ def tracker_list_quickview(list_id: str, request: Request, db: Session = Depends
         "checked_count": lst.checked_count,
         "items": [
             {
+                "id": i.id,
                 "name": i.name,
                 "quantity": i.quantity,
                 "unit": i.unit,
