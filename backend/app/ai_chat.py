@@ -1264,6 +1264,13 @@ def format_locker_lookup_reply(db: Session, user: models.User, question: str) ->
         kind = locker_type_label(it.doc_type, it.custom_type)
         folder = getattr(getattr(it, "folder", None), "name", None) or ""
         bits = [kind] if kind else []
+        # Surfacing the holder name is what makes a result like "Iquma
+        # passport" showing up for a "deepthi" search self-explanatory —
+        # without it, a match driven by the holder tag (rather than the
+        # title) looks like an unexplained mismatch instead of what it
+        # actually is: the record is tagged to that person.
+        if it.holder_name and it.holder_name.lower() not in (it.title or "").lower():
+            bits.append(f"holder {it.holder_name}")
         if folder:
             bits.append(f"folder {folder}")
         if it.expiry_date:
