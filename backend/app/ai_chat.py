@@ -861,6 +861,23 @@ def wants_password_lookup(question: str) -> bool:
     return bool(_PASSWORD_ASK_RE.search(q))
 
 
+def _pending_hospital_from_history(history) -> str | None:
+    """If our own last reply asked 'which family member' for a specific
+    hospital, a bare one-word answer like "deepthi" needs to be resolved
+    against THAT hospital, not treated as a fresh, hospital-less search
+    (which would match every hospital that person has, losing the
+    context of what was actually asked)."""
+    for m in reversed(history or []):
+        if (m.get("role") or "") != "assistant":
+            continue
+        content = m.get("content") or ""
+        match = re.search(
+            r"^([^\n]+?) has cards for more than one family member", content, re.I | re.M
+        )
+        return match.group(1).strip() if match else None
+    return None
+
+
 def _health_entity_hit(db: Session, user: models.User, question: str) -> bool:
     """A message can clearly name a saved hospital or doctor with no
     health keyword in it at all — e.g. a one-line correction after a typo,
@@ -1045,7 +1062,9 @@ def format_password_lookup_reply(db: Session, user: models.User, question: str) 
     return "\n".join(lines)
 
 
-def format_health_lookup_reply(db: Session, user: models.User, question: str) -> str:
+def format_health_lookup_reply(
+    db: Session, user: models.User, question: str, history: list | None = None
+) -> str:
     """Local Health Vault links — reports never go to the AI provider."""
     uid = _uid(user)
     people = (
@@ -1055,6 +1074,15 @@ def format_health_lookup_reply(db: Session, user: models.User, question: str) ->
     )
     pids = [p.id for p in people]
     person_name = {p.id: p.name for p in people}
+    if not _HOSPITAL_INTENT_RE.search(question or ""):
+        pending_hospital = _pending_hospital_from_history(history)
+        if pending_hospital:
+            # A bare follow-up ("deepthi") answering our own "which family
+            # member for <hospital>?" question carries no hospital info by
+            # itself — fold the pending hospital back in so the match is
+            # scoped to that one hospital, not every hospital that person
+            # has a card at.
+            question = f"{pending_hospital} {question}"
     needle = _search_needle(question)
     lines = [
         "**Health Vault**",
@@ -2804,7 +2832,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         reply = format_password_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
     if wants_health_lookup(text, db, user):
-        reply = format_health_lookup_reply(db, user, text)
+        reply = format_health_lookup_reply(db, user, text, history=history)
         return _store_deterministic_reply(db, user, thread, text, reply)
     if wants_locker_lookup(text, db, user):
         reply = format_locker_lookup_reply(db, user, text)
