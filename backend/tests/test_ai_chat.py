@@ -567,7 +567,7 @@ def test_admin_ask_page_and_session_chat():
         "content": "Nothing filed yet.", "kind": "ollama", "model": "llama3.2",
         "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15,
     }):
-        chat = session.post("/admin/ai/ask/send", json={"message": "Summarise my shopping lists"})
+        chat = session.post("/admin/ai/ask/send", json={"message": "Give me a quick tip for staying organised at home"})
     assert chat.status_code == 200, chat.text
     payload = chat.json()
     assert payload["reply"] == "Nothing filed yet."
@@ -705,6 +705,45 @@ def test_shopping_section_survives_truncation_for_shopping_question():
         # intent-driven, not unconditional.
         unrelated_ctx = build_vault_context(db, user, "todays total expense", max_chars=1200)
         assert "Sep 5 2026 shop" not in unrelated_ctx
+    finally:
+        db.close()
+
+
+def test_shopping_lookup_is_deterministic_with_link_and_no_truncation():
+    """"any item in shopping list this week" should be answered locally
+    (not handed to the AI) with every item and a real link to the list —
+    previously this fell through to the general AI, which had no list ID
+    to link to and could trail off mid-item on a token-limited provider.
+    A pure creation request ("create a shopping list...") must still be
+    left alone for the AI/vault-action flow.
+    """
+    from app.ai_chat import ask, wants_shopping_lookup
+
+    assert wants_shopping_lookup("this week any item in shopping list") is True
+    assert wants_shopping_lookup("create a shopping list with atta and sharkara") is False
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        lst = models.ShopList(user_id=uid, name="Sep 5 2026 shop", completed=False)
+        db.add(lst)
+        db.flush()
+        item_names = [f"Item {i}" for i in range(25)]
+        for name in item_names:
+            db.add(models.ShopItem(list_id=lst.id, name=name, status="approved"))
+        db.commit()
+        db.refresh(lst)
+
+        out = ask(db, user, "this week any item in shopping list")
+        assert "/admin/tracker/lists/" + lst.id in out["reply"]
+        assert "Sep 5 2026 shop" in out["reply"]
+        # First 20 items shown explicitly, the rest called out — nothing
+        # trails off mid-word the way a free-text AI reply could.
+        for name in item_names[:20]:
+            assert name in out["reply"]
+        assert "5 more" in out["reply"]
     finally:
         db.close()
 

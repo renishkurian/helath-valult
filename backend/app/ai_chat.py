@@ -1356,6 +1356,90 @@ def format_locker_lookup_reply(db: Session, user: models.User, question: str) ->
     return "\n".join(lines)
 
 
+_SHOPPING_ACTION_RE = re.compile(
+    r"\b(create|make|start|build|new|add|remove|delete|check\s*off|mark|"
+    r"complete|finish)\b",
+    re.I,
+)
+
+
+def wants_shopping_lookup(question: str) -> bool:
+    """A read/query about the Shopping List module itself — "any item in
+    shopping list", "what's on my shopping list", "shopping purchase
+    list" — answered locally with a real link, not handed to the AI.
+
+    "create a shopping list ..." / "add X to my list" stay excluded
+    (_SHOPPING_ACTION_RE) since those still need the full AI round-trip
+    to produce a vault-action block the person approves before anything
+    is written.
+    """
+    q = (question or "").strip()
+    if not q:
+        return False
+    if not _SHOPPING_CONTEXT_RE.search(q):
+        return False
+    if not re.search(r"\blists?\b", q, re.I):
+        return False
+    if _SHOPPING_ACTION_RE.search(q):
+        return False
+    return True
+
+
+def format_shopping_lookup_reply(db: Session, user: models.User, question: str) -> str:
+    """Local Shopping List links. Answered deterministically (no LLM call)
+    so a long list can never trail off mid-item the way a token-limited
+    compact/local provider's own free-text reply could, and so every
+    reply can link straight to the real list instead of just describing
+    it.
+    """
+    uid = _uid(user)
+    lists = (
+        db.query(models.ShopList)
+        .filter(models.ShopList.user_id == uid, models.ShopList.deleted_at.is_(None))
+        .order_by(models.ShopList.updated_at.desc())
+        .all()
+    )
+    lines = ["**Shopping List**", ""]
+    if not lists:
+        lines.append("No shopping lists yet. [Open Shopping List](/admin/tracker)")
+        return "\n".join(lines)
+
+    needle = _search_needle(question)
+    named_match = [lst for lst in lists if needle and _enough_tokens_match(lst.name or "", needle)]
+    if named_match:
+        target_lists = named_match
+    else:
+        # Nothing in the question names a specific list by title — fall
+        # back to whichever list is most relevant by recency: the most
+        # recently touched open list, or the most recently completed one
+        # if nothing is open, rather than reporting no match at all.
+        open_lists = [lst for lst in lists if not lst.completed]
+        target_lists = open_lists[:1] or lists[:1]
+
+    for lst in target_lists[:5]:
+        items = [i for i in (lst.items or []) if (i.status or "approved") != "rejected"]
+        unchecked = [i for i in items if not i.checked]
+        checked_n = len(items) - len(unchecked)
+        created = lst.created_at.strftime("%Y-%m-%d") if lst.created_at else "—"
+        status = "completed" if lst.completed else "active"
+        lines.append(f"**{lst.name}** · {status} · {checked_n}/{len(items)} checked · created {created}")
+        show_items = unchecked or items
+        for it in show_items[:20]:
+            qty = ""
+            try:
+                q_val = float(it.quantity) if it.quantity is not None else 1.0
+                if q_val != 1:
+                    qty = f" ×{q_val:g}{(' ' + it.unit) if it.unit else ''}"
+            except (TypeError, ValueError):
+                pass
+            lines.append(f"- {it.name}{qty}")
+        if len(show_items) > 20:
+            lines.append(f"- …and {len(show_items) - 20} more")
+        lines.append(f"[Open full list](/admin/tracker/lists/{lst.id})")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
 def _inr(val) -> str:
     try:
         n = float(val or 0)
@@ -2953,6 +3037,9 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         return _store_deterministic_reply(db, user, thread, text, reply)
     if wants_locker_lookup(relation_text, db, user):
         reply = format_locker_lookup_reply(db, user, relation_text)
+        return _store_deterministic_reply(db, user, thread, text, reply)
+    if wants_shopping_lookup(text):
+        reply = format_shopping_lookup_reply(db, user, text)
         return _store_deterministic_reply(db, user, thread, text, reply)
 
     bundle = ap.get_default_bundle(db, user)
