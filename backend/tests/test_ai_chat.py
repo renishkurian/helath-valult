@@ -824,6 +824,7 @@ def test_diary_context_search_and_apply_entry_action():
         assert "## Digital Diary" in ctx
         assert "Beach day" in ctx
         assert "coconut" in ctx.lower()
+        assert "excerpt" in ctx.lower() or "coconut water" in ctx.lower()
         created = apply_diary_entry_action(db, user, action)
     finally:
         db.close()
@@ -838,6 +839,117 @@ def test_diary_context_search_and_apply_entry_action():
     assert detail.status_code == 200, detail.text
     body = detail.json()["body"]
     assert "Cake" in body and "2,000.00" in body
+
+
+def test_spell_correction_json_parser():
+    from app.ai_chat import parse_spell_correction_json
+
+    out = parse_spell_correction_json(
+        '{"corrected":"From digital diary show rubber expenses","changed":true}',
+        original="From digitl dairy show ruber expnses",
+    )
+    assert out["changed"] is True
+    assert "diary" in out["corrected"]
+    same = parse_spell_correction_json(
+        '{"corrected":"Hello world","changed":true}',
+        original="Hello world",
+    )
+    assert same["changed"] is False
+
+
+def test_spell_correction_runs_before_diary_lookup(monkeypatch):
+    from app import crypto
+    from app.ai_chat import ask, wants_diary_expense_lookup
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        from app.routers import diary as dy
+        from app.ai_chat import format_diary_charges_table
+
+        dy.ensure_defaults(db, user)
+        body = format_diary_charges_table([{"label": "Rubber sheet", "amount": 500}])
+        db.add(models.DiaryEntry(
+            user_id=uid,
+            title="Field notes",
+            body_enc=crypto.encrypt_text(body),
+            entry_date="2026-09-01",
+            tags="rubber",
+        ))
+        db.commit()
+
+        typo = "From digtl diery show ruber related expnses in a table"
+        assert not wants_diary_expense_lookup(typo)
+
+        def fake_spell(_db, _user, text, _bundle):
+            return "From digital diary show rubber related expenses in a table", True
+
+        monkeypatch.setattr("app.ai_chat.spell_correct_user_message", fake_spell)
+        monkeypatch.setattr(
+            "app.ai_chat.ap.get_default_bundle",
+            lambda _db, _user: {"kind": "openai", "name": "Test", "model": "gpt-4o-mini", "api_key": "x"},
+        )
+
+        out = ask(db, user, typo)
+        assert wants_diary_expense_lookup("From digital diary show rubber related expenses in a table")
+        assert "Digital Diary" in out["reply"]
+        assert out.get("spell_corrected")
+        assert "diary" in out["spell_corrected"].lower()
+    finally:
+        db.close()
+
+
+def test_diary_rubber_expense_table_lookup():
+    from app import crypto
+    from app.ai_chat import (
+        ask,
+        build_vault_context,
+        format_diary_charges_table,
+        format_diary_expense_lookup_reply,
+        wants_diary_expense_lookup,
+    )
+
+    headers, email = _headers()
+    db = SessionLocal()
+    try:
+        user = db.query(models.User).filter(models.User.email == email).first()
+        uid = vault_id(user)
+        from app.routers import diary as dy
+        dy.ensure_defaults(db, user)
+        body = format_diary_charges_table(
+            [
+                {"label": "Sheet transport", "amount": 572.15},
+                {"label": "Rubber sheet advance", "amount": 1000},
+            ],
+            preface="Rubber tapping week",
+        )
+        db.add(models.DiaryEntry(
+            user_id=uid,
+            title="Rubber costs",
+            body_enc=crypto.encrypt_text(body),
+            entry_date="2026-09-07",
+            tags="rubber",
+        ))
+        db.commit()
+
+        q = "From digital diary show rubber related expenses in a table"
+        assert wants_diary_expense_lookup(q)
+        reply = format_diary_expense_lookup_reply(db, user, q)
+        assert "Digital Diary" in reply
+        assert "572.15" in reply or "572" in reply
+        assert "Rubber" in reply
+        assert "Money Manager" not in reply.split("Source:")[0]
+        ctx = build_vault_context(db, user, q, max_chars=8000)
+        assert "charge" in ctx.lower() or "572" in ctx
+        assert "Rubber costs" in ctx
+
+        out = ask(db, user, q)
+        assert "572.15" in out["reply"] or "572" in out["reply"]
+        assert "Digital Diary" in out["reply"]
+    finally:
+        db.close()
 
 
 def test_chat_returns_diary_entry_action():

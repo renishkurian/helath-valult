@@ -43,7 +43,7 @@ For questions about existing vault data, answer only from the VAULT SNAPSHOT. Do
 When the user asks for:
 - hospital reports / labs / bills: list matching Health Vault documents (title, date, category, amount, person). Group by hospital.
 - a doctor / specialist / phone number (e.g. gynaecology, paediatrician, “Dr Mehta number”): use the Doctors directory in the snapshot. Answer with name, specialty, hospital, and phone. If several match, list them. If none match, say so and suggest opening Health Vault → Doctors.
-- spend / income lookups: use Money Manager ledger figures only. Digital Diary charges/notes are journal text — never treat them as today’s (or any day’s) Money Manager expense total unless the user asked about the diary. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant; do not count unposted alerts as ledger spend.
+- spend / income lookups: use Money Manager ledger figures only — unless the user explicitly asked for Digital Diary / diary / journal expenses or charges; then use only the Digital Diary section (charge tables and excerpts), not Money Manager rows. Digital Diary amounts are journal text — never treat them as today’s (or any day’s) Money Manager expense total unless the user asked about the diary. Expense Analyser items are mail-parsed candidates (pending/matched/posted) — mention status if relevant; do not count unposted alerts as ledger spend.
 - “today” / “todays” / “ippo” spend: use the snapshot line “Today (Money Manager)” and that date’s listed ledger rows. Do not use a different date from chat history or diary.
 - highest / biggest / costliest paid item or purchase: use Money Manager ledger rows. The **payee** is the item/title (e.g. Home Purchase, HDFC Bank). Category names like Shopping are not the item. Shopping List grocery rows usually have no rupee amount — do not invent one. If a payee is listed, never say the name is missing.
 - a credit-card (or any account) statement for a month: list that account's transactions for the month with date, payee, category, amount, and a total. Say if the account was not found.
@@ -1440,6 +1440,136 @@ def format_shopping_lookup_reply(db: Session, user: models.User, question: str) 
     return "\n".join(lines).rstrip()
 
 
+_DIARY_MODULE_RE = re.compile(r"\b(digital\s+diary|diary|dairy|journal)\b", re.I)
+_DIARY_EXPENSE_ASK_RE = re.compile(
+    r"\b(expenses?|charges?|costs?|spent|amounts?|table|₹|rupee|rupees)\b",
+    re.I,
+)
+_DIARY_QUERY_TRIM_RE = re.compile(
+    r"\b(digital\s+diary|diary|dairy|journal|from|show|list|table|related|"
+    r"expenses?|charges?|costs?|in\s+a|me|please|the|my)\b",
+    re.I,
+)
+
+
+def _diary_search_needle(question: str) -> str:
+    stripped = _DIARY_QUERY_TRIM_RE.sub(" ", question or "")
+    needle = _search_needle(stripped)
+    if needle:
+        return needle
+    return _search_needle(question)
+
+
+def _parse_diary_markdown_charges(body: str) -> list[dict]:
+    """Parse | Item | Amount | tables stored in diary entry bodies."""
+    rows: list[dict] = []
+    for line in (body or "").splitlines():
+        line = line.strip()
+        if not line.startswith("|") or line.count("|") < 3:
+            continue
+        parts = [p.strip() for p in line.split("|")[1:-1]]
+        if len(parts) < 2:
+            continue
+        label = re.sub(r"\*+", "", parts[0]).strip()
+        if not label or label.lower() in ("item", "description", "amount", "amount (₹)"):
+            continue
+        if set(label) <= {"-", ":", " "}:
+            continue
+        if label.lower().startswith("total"):
+            continue
+        amt_raw = re.sub(r"[^\d.,]", "", parts[1].replace(",", ""))
+        if not amt_raw:
+            continue
+        try:
+            amount = float(amt_raw)
+        except ValueError:
+            continue
+        rows.append({"label": label[:120], "amount": amount})
+    return rows
+
+
+def wants_diary_expense_lookup(question: str) -> bool:
+    """Read-only diary charge/expense table — answered on-server, not via LLM."""
+    q = (question or "").strip()
+    if not q or not _DIARY_MODULE_RE.search(q):
+        return False
+    if _DIARY_EXPENSE_ASK_RE.search(q):
+        return True
+    needle = _diary_search_needle(q)
+    return bool(needle) and bool(re.search(r"\b(show|list|find|table|related|summar)\w*\b", q, re.I))
+
+
+def format_diary_expense_lookup_reply(db: Session, user: models.User, question: str) -> str:
+    uid = _uid(user)
+    needle = _diary_search_needle(question)
+    entries = (
+        db.query(models.DiaryEntry)
+        .filter(
+            models.DiaryEntry.user_id == uid,
+            models.DiaryEntry.deleted_at.is_(None),
+        )
+        .order_by(
+            models.DiaryEntry.entry_date.desc(),
+            models.DiaryEntry.created_at.desc(),
+        )
+        .all()
+    )
+    title = "**Digital Diary"
+    if needle:
+        title += f" — {needle} related charges"
+    title += "**"
+    lines = [title, ""]
+    if not entries:
+        lines.append("No diary entries yet. [Open Digital Diary](/admin/diary)")
+        return "\n".join(lines)
+
+    table_rows: list[tuple[str, str, str, str]] = []
+    for e in entries:
+        cat = e.category.name if e.category else "—"
+        body = crypto.decrypt_text(e.body_enc) or ""
+        hay = " ".join([e.title or "", cat, e.tags or "", e.mood or "", body])
+        entry_match = (not needle) or _tokens_match(hay, needle)
+        if needle and not entry_match:
+            continue
+        charges = _parse_diary_markdown_charges(body)
+        if charges:
+            for c in charges:
+                if needle and not entry_match and not _tokens_match(c["label"], needle):
+                    continue
+                table_rows.append((
+                    e.entry_date or "—",
+                    e.title or "—",
+                    c["label"],
+                    _inr(c["amount"]),
+                ))
+        elif entry_match and body.strip():
+            table_rows.append((
+                e.entry_date or "—",
+                e.title or "—",
+                _clip(body, 80),
+                "—",
+            ))
+
+    if not table_rows:
+        if needle:
+            lines.append(f"No diary entries or charge lines matched **{needle}**.")
+        else:
+            lines.append("No charge tables found in diary entries.")
+        lines.append("[Open Digital Diary](/admin/diary)")
+        return "\n".join(lines)
+
+    lines.append("| Date | Entry | Item | Amount |")
+    lines.append("| --- | --- | --- | ---: |")
+    for date, entry_title, item, amt in table_rows[:60]:
+        lines.append(f"| {date} | {entry_title} | {item} | {amt} |")
+    if len(table_rows) > 60:
+        lines.append(f"| … | … | _{len(table_rows) - 60} more rows_ | … |")
+    lines.append("")
+    lines.append("_Source: Digital Diary journal entries (not Money Manager ledger)._")
+    lines.append("[Open Digital Diary](/admin/diary)")
+    return "\n".join(lines)
+
+
 def _inr(val) -> str:
     try:
         n = float(val or 0)
@@ -1762,6 +1892,16 @@ _SHOPPING_CONTEXT_RE = re.compile(
 )
 
 
+def _diary_context_block(db: Session, uid: str, q: str) -> list[str]:
+    lines: list[str] = ["## Digital Diary"]
+    lines.append(
+        "Journal charge tables and excerpts below. When the user asked about the diary, "
+        "answer from here — do not substitute Money Manager ledger rows."
+    )
+    lines.extend(_diary_snapshot_lines(db, uid, q))
+    return lines
+
+
 def _shopping_context_block(
     db: Session, uid: str, months: list[str], today: datetime, q: str,
 ) -> list[str]:
@@ -1801,6 +1941,7 @@ def build_vault_context(db: Session, user: models.User, question: str = "", max_
     # under a small max_chars budget instead of being pushed out by the
     # Money Manager / Expense Analyser sections that normally come first.
     shopping_intent = bool(_SHOPPING_CONTEXT_RE.search(q))
+    diary_intent = bool(_DIARY_MODULE_RE.search(q))
 
     from app import ai_brain
 
@@ -1824,6 +1965,10 @@ def build_vault_context(db: Session, user: models.User, question: str = "", max_
 
     if shopping_intent:
         lines.extend(_shopping_context_block(db, uid, months, today, q))
+        lines.append("")
+
+    if diary_intent and not ledger_day:
+        lines.extend(_diary_context_block(db, uid, q))
         lines.append("")
 
     people_n = db.query(models.Person).filter(models.Person.user_id == uid).count()
@@ -2065,18 +2210,19 @@ def build_vault_context(db: Session, user: models.User, question: str = "", max_
         lines.extend(_shopping_context_block(db, uid, months, today, q))
 
     # ---- Digital Diary ----
-    lines.append("")
-    lines.append("## Digital Diary")
-    if ledger_day:
-        lines.append(
-            f"Omitted for this question — user asked about Money Manager day spend ({ledger_day})."
-        )
-    else:
-        lines.append(
-            "Journal notes only — diary charge tables are not Money Manager ledger spend. "
-            "Do not use diary amounts for “today’s expense” unless the user asked about the diary."
-        )
-        lines.extend(_diary_snapshot_lines(db, uid, q))
+    if not diary_intent:
+        lines.append("")
+        lines.append("## Digital Diary")
+        if ledger_day:
+            lines.append(
+                f"Omitted for this question — user asked about Money Manager day spend ({ledger_day})."
+            )
+        else:
+            lines.append(
+                "Journal notes only — diary charge tables are not Money Manager ledger spend. "
+                "Do not use diary amounts for “today’s expense” unless the user asked about the diary."
+            )
+            lines.extend(_diary_snapshot_lines(db, uid, q))
 
     # ---- Locker (counts only — IDs never leave this server) ----
     locker_n = (
@@ -2268,40 +2414,58 @@ def _diary_snapshot_lines(db: Session, uid: str, question: str = "") -> list[str
             "(defaults are created when the diary is first opened)"
         )
 
+    needle = _diary_search_needle(question)
     entries = (
         db.query(models.DiaryEntry)
-        .filter(models.DiaryEntry.user_id == uid)
+        .filter(
+            models.DiaryEntry.user_id == uid,
+            models.DiaryEntry.deleted_at.is_(None),
+        )
         .order_by(
             models.DiaryEntry.pinned.desc(),
             models.DiaryEntry.entry_date.desc(),
             models.DiaryEntry.created_at.desc(),
         )
-        .limit(40)
+        .limit(200 if needle else 40)
         .all()
     )
     if not entries:
         lines.append("No diary entries yet.")
         return lines
 
-    q = (question or "").casefold().strip()
-    lines.append(f"Recent entries ({min(len(entries), 30)} shown):")
-    shown = 0
+    matched: list[tuple[models.DiaryEntry, str, str]] = []
     for e in entries:
         cat = e.category.name if e.category else "—"
         body = crypto.decrypt_text(e.body_enc) or ""
-        hay = " ".join([e.title or "", cat, e.tags or "", e.mood or "", body]).casefold()
-        if q and len(q) >= 3 and q not in hay and shown >= 15:
+        hay = " ".join([e.title or "", cat, e.tags or "", e.mood or "", body])
+        if needle and not _tokens_match(hay, needle):
             continue
+        matched.append((e, body, cat))
+
+    pool = matched if needle else [(e, crypto.decrypt_text(e.body_enc) or "", (e.category.name if e.category else "—")) for e in entries]
+    if needle and not pool:
+        lines.append(f"No diary entries matched search: {needle!r}.")
+        return lines
+
+    cap = 25 if needle else 30
+    lines.append(f"Entries ({min(len(pool), cap)} shown):")
+    for e, body, cat in pool[:cap]:
         pin = " · pinned" if e.pinned else ""
         lines.append(
             f"- {e.entry_date or 'undated'} · {e.title} · {cat}"
             f"{' · tags ' + e.tags if e.tags else ''}"
             f"{' · mood ' + e.mood if e.mood else ''}{pin}"
         )
-        # Diary body stays on this server — titles only go to the provider.
-        shown += 1
-        if shown >= 30:
-            break
+        charges = _parse_diary_markdown_charges(body)
+        entry_hay = " ".join([e.title or "", cat, e.tags or "", body])
+        entry_match = (not needle) or _tokens_match(entry_hay, needle)
+        if charges:
+            for c in charges[:15]:
+                if needle and not entry_match and not _tokens_match(c["label"], needle):
+                    continue
+                lines.append(f"  · charge · {c['label']} · {_inr(c['amount'])}")
+        elif body.strip():
+            lines.append(f"  · excerpt · {_clip(body, 280)}")
     return lines
 
 
@@ -2724,6 +2888,98 @@ def apply_finance_txn_action(db: Session, user: models.User, action: dict) -> di
     }
 
 
+_SPELL_CORRECT_SYSTEM = """You fix spelling and obvious typos in one Ask AI user message for a household vault app.
+
+Languages: English, Malayalam script, Manglish (Malayalam in Latin letters). Do NOT translate meaning.
+Keep module names when intended: Money Manager, Digital Diary, Expense Analyser, Shopping List, Health Vault, Document Vault, Password Vault.
+Fix common confusions like dairy→diary when the user clearly means the journal module.
+Preserve numbers, dates, currency amounts, account names, payee names, and people names.
+If the message is already fine, return it unchanged.
+
+Reply with JSON only — no markdown fences:
+{"corrected":"full message text","changed":true|false}
+"""
+
+
+def should_run_spell_correction(message: str) -> bool:
+    text = (message or "").strip()
+    if len(text) < 8:
+        return False
+    from app import ai_brain
+    if ai_brain.classify_brain_command(text):
+        return False
+    return True
+
+
+def parse_spell_correction_json(raw: str, *, original: str) -> dict:
+    data = _parse_translate_json(raw)
+    corrected = (data.get("corrected") or "").strip()
+    if not corrected:
+        raise ValueError("Spell correction returned empty text")
+    changed = bool(data.get("changed"))
+    if corrected.casefold() == (original or "").strip().casefold():
+        changed = False
+    return {"corrected": corrected, "changed": changed}
+
+
+def spell_correct_user_message(
+    db: Session,
+    user: models.User,
+    text: str,
+    bundle: dict,
+) -> tuple[str, bool]:
+    """Pre-process tool: one small LLM call to fix typos before routing."""
+    import time
+    from app import ai_usage
+
+    raw = (text or "").strip()
+    if not raw or not bundle:
+        return raw, False
+    started = time.monotonic()
+    try:
+        result = complete_chat(
+            kind=bundle["kind"],
+            api_key=bundle.get("api_key"),
+            model=bundle.get("model"),
+            base_url=bundle.get("base_url"),
+            system=_SPELL_CORRECT_SYSTEM,
+            messages=[{"role": "user", "content": raw}],
+            max_tokens=220,
+            temperature=0.0,
+        )
+        latency = int((time.monotonic() - started) * 1000)
+        parsed = parse_spell_correction_json(result.get("content") or "", original=raw)
+        ai_usage.record(
+            db, user,
+            client="ask_ai_spell",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=result.get("model") or bundle.get("model"),
+            prompt_tokens=result.get("prompt_tokens"),
+            completion_tokens=result.get("completion_tokens"),
+            total_tokens=result.get("total_tokens"),
+            latency_ms=latency,
+            ok=True,
+            request_text=raw,
+            response_text=parsed["corrected"],
+        )
+        return parsed["corrected"], parsed["changed"]
+    except Exception as exc:
+        latency = int((time.monotonic() - started) * 1000)
+        ai_usage.record(
+            db, user,
+            client="ask_ai_spell",
+            provider_name=bundle.get("name"),
+            provider_kind=bundle.get("kind"),
+            model=bundle.get("model"),
+            latency_ms=latency,
+            ok=False,
+            error=str(exc)[:200],
+            request_text=raw,
+        )
+        return raw, False
+
+
 def complete_chat(
     *,
     kind: str,
@@ -2732,6 +2988,8 @@ def complete_chat(
     base_url: str | None,
     system: str,
     messages: list[dict[str, str]],
+    max_tokens: int = 2500,
+    temperature: float = 0.2,
 ) -> dict:
     """Return {content, kind, model, prompt_tokens, completion_tokens, total_tokens}."""
     kind = (kind or "openai").lower()
@@ -2742,7 +3000,10 @@ def complete_chat(
             raise ValueError("Anthropic needs an API key")
         content, usage = _anthropic_messages(api_key, model, system, messages)
     else:
-        content, usage = _openai_messages(base, api_key, model, system, messages)
+        content, usage = _openai_messages(
+            base, api_key, model, system, messages,
+            max_tokens=max_tokens, temperature=temperature,
+        )
     return {
         "content": content or "",
         "kind": kind,
@@ -2754,15 +3015,22 @@ def complete_chat(
 
 
 def _openai_messages(
-    base_url: str, api_key: str | None, model: str, system: str, messages: list[dict[str, str]]
+    base_url: str,
+    api_key: str | None,
+    model: str,
+    system: str,
+    messages: list[dict[str, str]],
+    *,
+    max_tokens: int = 2500,
+    temperature: float = 0.2,
 ) -> tuple[str, dict]:
     from app.ai_usage import parse_usage
 
     payload = [{"role": "system", "content": system}] + messages
     body = json.dumps({
         "model": model,
-        "temperature": 0.2,
-        "max_tokens": 2500,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
         "messages": payload,
     }).encode()
     headers = {"Content-Type": "application/json"}
@@ -2940,12 +3208,20 @@ def delete_thread(db: Session, user: models.User, thread_id: str) -> bool:
     return True
 
 
+def _attach_spell_meta(result: dict, original: str, processed: str) -> dict:
+    if processed and original and processed.strip() != original.strip():
+        result["spell_corrected"] = processed.strip()
+    return result
+
+
 def _store_deterministic_reply(
     db: Session,
     user: models.User,
     thread: models.AiChatThread,
     text: str,
     reply: str,
+    *,
+    processed_text: str | None = None,
 ) -> dict:
     now = datetime.utcnow()
     db.add(models.AiChatMessage(
@@ -2961,13 +3237,13 @@ def _store_deterministic_reply(
     db.commit()
     db.refresh(thread)
     detail = thread_detail(db, user, thread.id)
-    return {
+    return _attach_spell_meta({
         "thread_id": thread.id,
         "title": thread.title,
         "reply": reply,
         "action": None,
         "messages": detail["messages"] if detail else [],
-    }
+    }, text, processed_text or text)
 
 
 def ask(db: Session, user: models.User, message: str, thread_id: str | None = None) -> dict:
@@ -3002,47 +3278,72 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         result["learned"] = learned
         return result
 
+    bundle = ap.get_default_bundle(db, user)
+    process_text = text
+    if bundle and should_run_spell_correction(text):
+        corrected, _changed = spell_correct_user_message(db, user, text, bundle)
+        if corrected:
+            process_text = corrected
+
     # Secrets and ledger facts stay on this server — never sent to the AI provider.
-    ledger_day = should_answer_ledger_day(text, history)
+    ledger_day = should_answer_ledger_day(process_text, history)
     if ledger_day:
-        if needs_spend_clarify(text, history):
-            reply = format_spend_clarify(ledger_day, text)
+        if needs_spend_clarify(process_text, history):
+            reply = format_spend_clarify(ledger_day, process_text)
         else:
             reply = format_money_manager_day_reply(
-                db, user, ledger_day, question=text, history=history,
-                source=resolve_spend_source(text, history),
+                db, user, ledger_day, question=process_text, history=history,
+                source=resolve_spend_source(process_text, history),
             )
-        return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_analyser_upi_breakdown(text) or _question_hits_insights_total(db, user, text):
-        reply = format_analyser_upi_breakdown(db, user, text)
-        return _store_deterministic_reply(db, user, thread, text, reply)
-    if should_answer_highest_expense(text, history):
-        source_q = text
-        if not wants_highest_expense(text):
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
+    if wants_analyser_upi_breakdown(process_text) or _question_hits_insights_total(db, user, process_text):
+        reply = format_analyser_upi_breakdown(db, user, process_text)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
+    if should_answer_highest_expense(process_text, history):
+        source_q = process_text
+        if not wants_highest_expense(process_text):
             for m in reversed(history or []):
                 if (m.get("role") or "") == "user" and wants_highest_expense(m.get("content") or ""):
-                    source_q = m.get("content") or text
+                    source_q = m.get("content") or process_text
                     break
         reply = format_highest_expense_reply(db, user, source_q)
-        return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_password_lookup(text):
-        reply = format_password_lookup_reply(db, user, text)
-        return _store_deterministic_reply(db, user, thread, text, reply)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
+    if wants_password_lookup(process_text):
+        reply = format_password_lookup_reply(db, user, process_text)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
     # Resolve "my wife" / "dad" / etc. to the actual family member's name
     # before intent detection and search — see _apply_relation_alias(). The
     # original text is still what gets stored in chat history.
-    relation_text = _apply_relation_alias(db, user, text)
+    relation_text = _apply_relation_alias(db, user, process_text)
     if wants_health_lookup(relation_text, db, user):
         reply = format_health_lookup_reply(db, user, relation_text, history=history)
-        return _store_deterministic_reply(db, user, thread, text, reply)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
     if wants_locker_lookup(relation_text, db, user):
         reply = format_locker_lookup_reply(db, user, relation_text)
-        return _store_deterministic_reply(db, user, thread, text, reply)
-    if wants_shopping_lookup(text):
-        reply = format_shopping_lookup_reply(db, user, text)
-        return _store_deterministic_reply(db, user, thread, text, reply)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
+    if wants_shopping_lookup(process_text):
+        reply = format_shopping_lookup_reply(db, user, process_text)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
+    if wants_diary_expense_lookup(process_text):
+        reply = format_diary_expense_lookup_reply(db, user, process_text)
+        return _store_deterministic_reply(
+            db, user, thread, text, reply, processed_text=process_text,
+        )
 
-    bundle = ap.get_default_bundle(db, user)
     if not bundle:
         raise LookupError("Add an AI provider first")
 
@@ -3051,10 +3352,10 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     ctx_max_chars = 4000 if is_compact else MAX_CONTEXT_CHARS
     hist_limit = 4 if is_compact else MAX_HISTORY
 
-    snapshot = build_vault_context(db, user, text, max_chars=ctx_max_chars)
+    snapshot = build_vault_context(db, user, process_text, max_chars=ctx_max_chars)
     system = sys_prompt + "\n\n" + snapshot
     payload = [{"role": m["role"], "content": m["content"]} for m in history[-hist_limit:]]
-    payload.append({"role": "user", "content": text})
+    payload.append({"role": "user", "content": process_text})
 
     started = time.monotonic()
     reply = ""
@@ -3081,7 +3382,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
             total_tokens=result.get("total_tokens"),
             latency_ms=latency,
             ok=True,
-            request_text=text,
+            request_text=process_text,
             response_text=reply,
         )
     except Exception as exc:
@@ -3090,10 +3391,10 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
         if not is_compact and any(k in exc_str.lower() for k in ("context_length_exceeded", "token ids are too long", "maximum number of tokens", "context length", "too long", "prompt is too large", "413")):
             # Automatic retry with compact context and trimmed history
             try:
-                compact_snap = build_vault_context(db, user, text, max_chars=3500)
+                compact_snap = build_vault_context(db, user, process_text, max_chars=3500)
                 compact_sys = COMPACT_SYSTEM_PROMPT + "\n\n" + compact_snap
                 compact_payload = [{"role": m["role"], "content": m["content"]} for m in history[-2:]]
-                compact_payload.append({"role": "user", "content": text})
+                compact_payload.append({"role": "user", "content": process_text})
                 result = complete_chat(
                     kind=bundle["kind"],
                     api_key=bundle.get("api_key"),
@@ -3115,7 +3416,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
                     total_tokens=result.get("total_tokens"),
                     latency_ms=latency,
                     ok=True,
-                    request_text=text,
+                    request_text=process_text,
                     response_text=reply,
                 )
             except Exception as retry_exc:
@@ -3129,7 +3430,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
                     latency_ms=latency,
                     ok=False,
                     error=str(retry_exc)[:200],
-                    request_text=text,
+                    request_text=process_text,
                 )
                 raise ValueError(f"Provider error: {retry_exc}") from retry_exc
         else:
@@ -3143,7 +3444,7 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
                 latency_ms=latency,
                 ok=False,
                 error=str(exc)[:200],
-                request_text=text,
+                request_text=process_text,
             )
             raise ValueError(f"{exc}") from exc
     if not reply:
@@ -3184,14 +3485,14 @@ def ask(db: Session, user: models.User, message: str, thread_id: str | None = No
     db.refresh(thread)
 
     detail = thread_detail(db, user, thread.id)
-    return {
+    return _attach_spell_meta({
         "thread_id": thread.id,
         "title": thread.title,
         "reply": display_reply,
         "action": action,
         "learned": learned,
         "messages": detail["messages"] if detail else [],
-    }
+    }, text, process_text)
 
 
 _CATALOG_TRANSLATE_SYSTEM = """You translate Kerala grocery names from Manglish (Malayalam in Latin letters)

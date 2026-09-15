@@ -484,6 +484,15 @@
       state.threadId = body.thread_id;
       titleEl.textContent = body.title || "Chat";
       renderMessages(body.messages || []);
+      if (body.spell_corrected && body.spell_corrected.trim() !== text) {
+        var lastUser = msgsEl.querySelector(".ask-turn.user:last-child .ask-bubble");
+        if (lastUser && !lastUser.querySelector(".ask-spell-note")) {
+          var spellNote = document.createElement("p");
+          spellNote.className = "ask-spell-note text-faint small mb-0 mt-2";
+          spellNote.textContent = "Understood as: " + body.spell_corrected;
+          lastUser.appendChild(spellNote);
+        }
+      }
       var note = learnedNote(body.learned);
       if (note && msgsEl) {
         var last = msgsEl.querySelector(".ask-turn.assistant:last-child .ask-bubble");
