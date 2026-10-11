@@ -18,9 +18,11 @@
 
 <div class="row g-3">
   <div class="col-lg-7">
-    {% if item.og_image or item.og_description %}
+    {% if item.has_local_image or item.og_image or item.og_description %}
     <div class="card mb-3">
-      {% if item.og_image %}
+      {% if item.has_local_image %}
+      <div class="link-thumb"><img src="/admin/urls/{{ item.id }}/image" alt="" loading="lazy"></div>
+      {% elif item.og_image %}
       <div class="link-thumb"><img src="{{ item.og_image }}" alt="" loading="lazy"></div>
       {% endif %}
       <div class="card-body">

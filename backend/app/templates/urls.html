@@ -105,7 +105,9 @@
     {% endif %}
     <a class="d-flex flex-column flex-grow-1 text-decoration-none text-reset" href="/admin/urls/{{ item.id }}">
       <div class="link-thumb">
-        {% if item.og_image %}
+        {% if item.has_local_image %}
+        <img src="/admin/urls/{{ item.id }}/image" alt="" loading="lazy">
+        {% elif item.og_image %}
         <img src="{{ item.og_image }}" alt="" loading="lazy">
         {% else %}
         <i class="bi bi-link-45deg"></i>
@@ -114,7 +116,9 @@
       <div class="link-body">
         <h2 class="link-title mb-0">{{ item.title }}</h2>
         <div class="link-host">
-          {% if item.favicon_url %}
+          {% if item.has_local_favicon %}
+          <img src="/admin/urls/{{ item.id }}/favicon" alt="" width="14" height="14" loading="lazy">
+          {% elif item.favicon_url %}
           <img src="{{ item.favicon_url }}" alt="" width="14" height="14" loading="lazy">
           {% else %}
           <i class="bi bi-globe2"></i>

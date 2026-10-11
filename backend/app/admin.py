@@ -7211,6 +7211,26 @@ def urls_tag_delete(tag_id: str, request: Request, db: Session = Depends(get_db)
     return RedirectResponse("/admin/urls/manage", status_code=302)
 
 
+@router.get("/urls/{item_id}/image")
+def urls_item_image(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.urls import _owned_item, _stored_media_response
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    item = _owned_item(item_id, db, user, include_deleted=True)
+    return _stored_media_response(item, "image")
+
+
+@router.get("/urls/{item_id}/favicon")
+def urls_item_favicon(item_id: str, request: Request, db: Session = Depends(get_db)):
+    from app.routers.urls import _owned_item, _stored_media_response
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    item = _owned_item(item_id, db, user, include_deleted=True)
+    return _stored_media_response(item, "favicon")
+
+
 @router.get("/urls/{item_id}", response_class=HTMLResponse)
 def urls_item_page(item_id: str, request: Request, db: Session = Depends(get_db)):
     from app.routers import urls as uv

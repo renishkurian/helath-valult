@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#0A0C11">
 <meta name="color-scheme" content="dark">
 {% if item.og_description %}<meta name="description" content="{{ item.og_description[:200] }}">{% endif %}
-{% if item.og_image %}<meta property="og:image" content="{{ item.og_image }}">{% endif %}
+{% if item.has_local_image %}<meta property="og:image" content="/urls/public/{{ token }}/image">{% elif item.og_image %}<meta property="og:image" content="{{ item.og_image }}">{% endif %}
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
@@ -23,7 +23,9 @@
     </div>
 
     <div class="card overflow-hidden">
-      {% if item.og_image %}
+      {% if item.has_local_image %}
+      <div class="link-thumb"><img src="/urls/public/{{ token }}/image" alt="" loading="lazy"></div>
+      {% elif item.og_image %}
       <div class="link-thumb"><img src="{{ item.og_image }}" alt="" loading="lazy"></div>
       {% endif %}
       <div class="card-body">
@@ -31,7 +33,9 @@
         <h1 class="page-title">{{ item.title }}</h1>
 
         <div class="link-host mt-2">
-          {% if item.favicon_url %}
+          {% if item.has_local_favicon %}
+          <img src="/urls/public/{{ token }}/favicon" alt="" width="16" height="16" loading="lazy">
+          {% elif item.favicon_url %}
           <img src="{{ item.favicon_url }}" alt="" width="16" height="16" loading="lazy">
           {% else %}
           <i class="bi bi-globe2"></i>

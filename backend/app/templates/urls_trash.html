@@ -33,7 +33,9 @@
     {% for item in items %}
     <div class="list-row">
       <span class="avatar avatar-lg" style="background:rgba(139,149,168,.15);color:#8B95A8">
-        {% if item.favicon_url %}
+        {% if item.has_local_favicon %}
+        <img src="/admin/urls/{{ item.id }}/favicon" alt="" width="22" height="22" loading="lazy">
+        {% elif item.favicon_url %}
         <img src="{{ item.favicon_url }}" alt="" width="22" height="22" loading="lazy">
         {% else %}
         <i class="bi bi-link-45deg"></i>

@@ -97,6 +97,52 @@ def test_url_crud_search_categories_tags_and_share():
     assert client.get("/urls", headers=headers).json() == []
 
 
+def test_create_stores_preview_image(monkeypatch):
+    from app.routers import urls as uv
+
+    monkeypatch.setattr(uv, "fetch_preview", lambda url: {
+        "title": "Stored title",
+        "description": "Stored description",
+        "image": "https://cdn.example/thumb.jpg",
+        "site_name": "Example",
+        "favicon_url": "https://cdn.example/favicon.ico",
+    })
+    monkeypatch.setattr(uv, "fetch_image_bytes", lambda url: (
+        b"\xff\xd8\xff" + url.encode(),
+        "image/jpeg",
+    ))
+    headers = _headers("urls-preview@example.com")
+    r = client.post("/urls", headers=headers, json={"url": "https://example.com/watch"})
+    assert r.status_code == 201, r.text
+    item = r.json()
+    assert item["og_title"] == "Stored title"
+    assert item["og_description"] == "Stored description"
+    assert item["has_local_image"] is True
+    assert item["has_local_favicon"] is True
+    img = client.get(f"/urls/{item['id']}/image", headers=headers)
+    assert img.status_code == 200
+    assert img.content.startswith(b"\xff\xd8\xff")
+    icon = client.get(f"/urls/{item['id']}/favicon", headers=headers)
+    assert icon.status_code == 200
+
+
+def test_youtube_preview_fills_title_and_thumb(monkeypatch):
+    from app import og
+
+    def fake_read(url, *, limit, accept):
+        if "oembed" in url:
+            body = b'{"title":"Song name","thumbnail_url":"https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg","provider_name":"YouTube","author_name":"Channel"}'
+            return body, "application/json", url
+        return b"<html><title>YouTube</title></html>", "text/html", url
+
+    monkeypatch.setattr(og, "_host_is_public", lambda host: True)
+    monkeypatch.setattr(og, "_read_public", fake_read)
+    preview = og.fetch_preview("https://youtu.be/abcdefghijk")
+    assert preview["title"] == "Song name"
+    assert preview["image"] == "https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"
+    assert preview["site_name"] == "YouTube"
+
+
 def test_url_vault_is_isolated_between_users():
     a = _headers("urls-a@example.com")
     b = _headers("urls-b@example.com")

@@ -159,6 +159,10 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
     ],
     "url_items": [
         ("deleted_at", "DATETIME"),
+        ("og_image_path", "VARCHAR(500)"),
+        ("og_image_mime", "VARCHAR(80)"),
+        ("favicon_path", "VARCHAR(500)"),
+        ("favicon_mime", "VARCHAR(80)"),
     ],
     "google_drive_backup": [
         ("last_content_hash", "VARCHAR(64)"),

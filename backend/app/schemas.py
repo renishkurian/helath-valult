@@ -1727,6 +1727,8 @@ class UrlItemOut(BaseModel):
     og_image: Optional[str] = None
     og_site_name: Optional[str] = None
     favicon_url: Optional[str] = None
+    has_local_image: bool = False
+    has_local_favicon: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     deleted_at: Optional[datetime] = None

@@ -1205,8 +1205,12 @@ class UrlItem(Base):
     og_title = Column(String(500), nullable=True)
     og_description = Column(Text, nullable=True)
     og_image = Column(String(2000), nullable=True)
+    og_image_path = Column(String(500), nullable=True)
+    og_image_mime = Column(String(80), nullable=True)
     og_site_name = Column(String(255), nullable=True)
     favicon_url = Column(String(2000), nullable=True)
+    favicon_path = Column(String(500), nullable=True)
+    favicon_mime = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

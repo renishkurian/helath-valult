@@ -7,14 +7,15 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app import models, schemas, crypto
+from app.config import settings
 from app.deps import require_enabled_module, get_current_user, require_owner, vault_id
-from app.og import fetch_preview, hostname_of, normalize_url
+from app.og import fetch_image_bytes, fetch_preview, hostname_of, normalize_url
 from app.templating import setup_templates
 
 router = APIRouter(prefix="/urls", tags=["urls"], dependencies=[Depends(require_enabled_module("urls"))])
@@ -83,6 +84,8 @@ def _active_item_query(db: Session, user: models.User):
 
 
 def _purge_item(db: Session, item: models.UrlItem) -> None:
+    _drop_stored_file(item.og_image_path)
+    _drop_stored_file(item.favicon_path)
     db.delete(item)
 
 
@@ -143,6 +146,8 @@ def _to_out(item: models.UrlItem) -> schemas.UrlItemOut:
         og_image=item.og_image,
         og_site_name=item.og_site_name,
         favicon_url=item.favicon_url,
+        has_local_image=bool(item.og_image_path),
+        has_local_favicon=bool(item.favicon_path),
         created_at=item.created_at,
         updated_at=item.updated_at,
         deleted_at=item.deleted_at,
@@ -173,6 +178,67 @@ def _apply_preview(item: models.UrlItem, preview: dict) -> None:
     item.og_image = preview.get("image")
     item.og_site_name = preview.get("site_name")
     item.favicon_url = preview.get("favicon_url")
+
+
+def _drop_stored_file(rel: Optional[str]) -> None:
+    if not rel:
+        return
+    path = settings.STORAGE_DIR / rel
+    try:
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        pass
+
+
+def _write_preview_file(user_id: str, item_id: str, kind: str, raw: bytes) -> str:
+    dest_dir = settings.STORAGE_DIR / user_id / "url_previews"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    rel = f"{user_id}/url_previews/{item_id}-{kind}.enc"
+    (settings.STORAGE_DIR / rel).write_bytes(crypto.encrypt_bytes(raw))
+    return rel
+
+
+def _store_preview_media(
+    item: models.UrlItem,
+    preview: dict,
+    db: Session,
+    user: models.User,
+) -> None:
+    """Download og:image and favicon onto disk so cards do not hotlink."""
+    if not preview or not item.id:
+        return
+    from app import quota
+
+    for kind, remote_key, path_attr, mime_attr in (
+        ("image", "image", "og_image_path", "og_image_mime"),
+        ("favicon", "favicon_url", "favicon_path", "favicon_mime"),
+    ):
+        remote = (preview.get(remote_key) or "").strip()
+        if not remote:
+            continue
+        got = fetch_image_bytes(remote)
+        if not got:
+            continue
+        raw, mime = got
+        old_rel = getattr(item, path_attr)
+        old_size = 0
+        if old_rel:
+            old = settings.STORAGE_DIR / old_rel
+            if old.is_file():
+                try:
+                    old_size = old.stat().st_size
+                except OSError:
+                    old_size = 0
+        delta = len(raw) - old_size
+        if delta > 0:
+            try:
+                quota.assert_can_store(db, user, delta)
+            except HTTPException:
+                continue
+        _drop_stored_file(old_rel)
+        setattr(item, path_attr, _write_preview_file(item.user_id, item.id, kind, raw))
+        setattr(item, mime_attr, mime)
 
 
 def _set_tags(item: models.UrlItem, tag_ids: list[str], db: Session, user: models.User) -> None:
@@ -477,6 +543,32 @@ def public_item(token: str, db: Session = Depends(get_db)):
     return _to_out(share.item)
 
 
+def _stored_media_response(item: models.UrlItem, kind: str) -> Response:
+    if kind == "favicon":
+        rel, mime = item.favicon_path, item.favicon_mime
+    else:
+        rel, mime = item.og_image_path, item.og_image_mime
+    if not rel:
+        raise HTTPException(404, "Image not found")
+    path = settings.STORAGE_DIR / rel
+    if not path.is_file():
+        raise HTTPException(404, "Image not found")
+    raw = crypto.decrypt_bytes(path.read_bytes())
+    return Response(content=raw, media_type=mime or "image/jpeg")
+
+
+@public_router.get("/public/{token}/image")
+def public_item_image(token: str, db: Session = Depends(get_db)):
+    share = _public_share(token, db)
+    return _stored_media_response(share.item, "image")
+
+
+@public_router.get("/public/{token}/favicon")
+def public_item_favicon(token: str, db: Session = Depends(get_db)):
+    share = _public_share(token, db)
+    return _stored_media_response(share.item, "favicon")
+
+
 @public_router.get("/public/{token}/page", response_class=HTMLResponse)
 def public_page(token: str, request: Request, db: Session = Depends(get_db)):
     share = _public_share(token, db)
@@ -606,10 +698,31 @@ def create_item(
     _apply_preview(item, preview)
     db.add(item)
     db.flush()
+    _store_preview_media(item, preview, db, current_user)
     _set_tags(item, body.tag_ids, db, current_user)
     db.commit()
     db.refresh(item)
     return _to_out(item)
+
+
+@router.get("/{item_id}/image")
+def item_image(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    item = _owned_item(item_id, db, current_user, include_deleted=True)
+    return _stored_media_response(item, "image")
+
+
+@router.get("/{item_id}/favicon")
+def item_favicon(
+    item_id: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    item = _owned_item(item_id, db, current_user, include_deleted=True)
+    return _stored_media_response(item, "favicon")
 
 
 @router.get("/{item_id}", response_model=schemas.UrlItemOut)
@@ -652,7 +765,9 @@ def update_item(
     if "tag_ids" in data:
         _set_tags(item, data.pop("tag_ids") or [], db, current_user)
     if fetch or (url_changed and fetch is not False):
-        _apply_preview(item, fetch_preview(item.url))
+        preview = fetch_preview(item.url)
+        _apply_preview(item, preview)
+        _store_preview_media(item, preview, db, current_user)
         if not (item.title or "").strip():
             item.title = item.og_title or hostname_of(item.url)
     item.updated_at = datetime.utcnow()
@@ -714,7 +829,9 @@ def refresh_preview(
 ):
     require_owner(current_user)
     item = _owned_item(item_id, db, current_user)
-    _apply_preview(item, fetch_preview(item.url))
+    preview = fetch_preview(item.url)
+    _apply_preview(item, preview)
+    _store_preview_media(item, preview, db, current_user)
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)

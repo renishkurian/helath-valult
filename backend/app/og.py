@@ -10,12 +10,16 @@ import re
 import socket
 from html.parser import HTMLParser
 from typing import Optional
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, quote, urljoin, urlparse
 from urllib.request import Request, urlopen
 
 _MAX_BYTES = 512_000
+_MAX_IMAGE_BYTES = 2_000_000
 _TIMEOUT = 8
-_UA = "HealthVault-URLVault/1.0 (+https://localhost)"
+_UA = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
 
 
 class _OgParser(HTMLParser):
@@ -97,6 +101,96 @@ def _host_is_public(host: str) -> bool:
     return True
 
 
+def _youtube_id(url: str) -> Optional[str]:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if host == "youtu.be":
+        vid = (parsed.path or "").strip("/").split("/")[0]
+        return vid if re.fullmatch(r"[\w-]{11}", vid or "") else None
+    if host in ("youtube.com", "m.youtube.com", "music.youtube.com"):
+        vid = (parse_qs(parsed.query).get("v") or [""])[0]
+        if re.fullmatch(r"[\w-]{11}", vid or ""):
+            return vid
+        match = re.match(r"/(?:embed|shorts|live)/([\w-]{11})", parsed.path or "")
+        if match:
+            return match.group(1)
+    return None
+
+
+def _read_public(url: str, *, limit: int, accept: str) -> Optional[tuple[bytes, str, str]]:
+    """GET a public http(s) URL. Returns (body, content-type, final_url) or None."""
+    try:
+        url = normalize_url(url)
+    except ValueError:
+        return None
+    host = urlparse(url).hostname or ""
+    if not _host_is_public(host):
+        return None
+    try:
+        req = Request(url, headers={"User-Agent": _UA, "Accept": accept})
+        with urlopen(req, timeout=_TIMEOUT) as resp:
+            final_url = resp.geturl() or url
+            final_host = urlparse(final_url).hostname or ""
+            if not _host_is_public(final_host):
+                return None
+            ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            raw = resp.read(limit + 1)
+    except Exception:
+        return None
+    if len(raw) > limit:
+        raw = raw[:limit]
+    return raw, ctype, final_url
+
+
+def _youtube_oembed(page_url: str) -> dict:
+    endpoint = "https://www.youtube.com/oembed?format=json&url=" + quote(page_url, safe="")
+    got = _read_public(endpoint, limit=64_000, accept="application/json")
+    if not got:
+        return {}
+    raw, ctype, _final = got
+    if "json" not in ctype and raw[:1] not in (b"{", b"["):
+        return {}
+    try:
+        import json
+        data = json.loads(raw.decode("utf-8", errors="ignore"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        "title": (data.get("title") or "").strip()[:500] or None,
+        "image": (data.get("thumbnail_url") or "").strip()[:2000] or None,
+        "site_name": (data.get("provider_name") or "YouTube").strip()[:255] or None,
+        "author": (data.get("author_name") or "").strip()[:255] or None,
+    }
+
+
+def fetch_image_bytes(url: str) -> Optional[tuple[bytes, str]]:
+    """Download a preview image. None on failure or a non-image response."""
+    got = _read_public(url, limit=_MAX_IMAGE_BYTES, accept="image/*,*/*;q=0.8")
+    if not got:
+        return None
+    raw, ctype, _final = got
+    if not raw:
+        return None
+    if not ctype.startswith("image/"):
+        if raw.startswith(b"\xff\xd8"):
+            ctype = "image/jpeg"
+        elif raw.startswith(b"\x89PNG"):
+            ctype = "image/png"
+        elif raw.startswith(b"GIF8"):
+            ctype = "image/gif"
+        elif raw.startswith(b"RIFF") and b"WEBP" in raw[:16]:
+            ctype = "image/webp"
+        else:
+            return None
+    if ctype == "image/svg+xml":
+        return None
+    return raw, ctype
+
+
 def fetch_preview(url: str) -> dict:
     """Return og/twitter fields. Never raises for network/parse failures."""
     try:
@@ -106,16 +200,12 @@ def fetch_preview(url: str) -> dict:
     host = urlparse(url).hostname or ""
     if not _host_is_public(host):
         return {}
-    try:
-        req = Request(url, headers={"User-Agent": _UA, "Accept": "text/html,application/xhtml+xml"})
-        with urlopen(req, timeout=_TIMEOUT) as resp:
-            ctype = (resp.headers.get("Content-Type") or "").lower()
-            if "html" not in ctype and "xml" not in ctype and ctype:
-                return {"site_name": hostname_of(url)}
-            raw = resp.read(_MAX_BYTES)
-            final_url = resp.geturl() or url
-    except Exception:
-        return {}
+    got = _read_public(url, limit=_MAX_BYTES, accept="text/html,application/xhtml+xml")
+    if not got:
+        return _preview_fallbacks(url, {})
+    raw, ctype, final_url = got
+    if "html" not in ctype and "xml" not in ctype and ctype:
+        return _preview_fallbacks(url, {"site_name": hostname_of(url)})
     try:
         text = raw.decode("utf-8", errors="ignore")
     except Exception:
@@ -138,10 +228,34 @@ def fetch_preview(url: str) -> dict:
         favicon = urljoin(final_url, favicon)
     else:
         favicon = urljoin(final_url, "/favicon.ico")
-    return {
+    preview = {
         "title": (title or "").strip()[:500] or None,
         "description": (desc or "").strip()[:2000] or None,
         "image": (image or "").strip()[:2000] or None,
         "site_name": (site or "").strip()[:255] or None,
         "favicon_url": (favicon or "").strip()[:2000] or None,
     }
+    return _preview_fallbacks(final_url or url, preview)
+
+
+def _preview_fallbacks(url: str, preview: dict) -> dict:
+    """Fill title and image when the HTML page hid them (YouTube consent wall)."""
+    vid = _youtube_id(url)
+    if not vid:
+        return preview
+    if not preview.get("image"):
+        preview["image"] = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+    if not preview.get("site_name"):
+        preview["site_name"] = "YouTube"
+    title = (preview.get("title") or "").strip().lower()
+    generic = title in {"", "youtube", "youtube.com", "- youtube"} or "before you continue" in title
+    if not generic:
+        return preview
+    extra = _youtube_oembed(url)
+    if extra.get("title"):
+        preview["title"] = extra["title"]
+    if extra.get("image") and not preview.get("image"):
+        preview["image"] = extra["image"]
+    if extra.get("author") and not preview.get("description"):
+        preview["description"] = extra["author"]
+    return preview
