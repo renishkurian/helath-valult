@@ -155,6 +155,35 @@ def test_sync_fills_links_missing_a_stored_image(monkeypatch):
     assert item["has_local_image"] is True
 
 
+def test_create_uses_ai_to_tag_the_page_topic(monkeypatch):
+    from app.routers import urls as uv
+
+    monkeypatch.setattr(uv, "fetch_preview", lambda url: {
+        "title": "ESP32 Matter: Control On/Off Light",
+        "description": "Create a Matter compatible on/off light device that controls an ESP32 GPIO.",
+        "site_name": "Random Nerd Tutorials",
+    })
+    monkeypatch.setattr(uv, "fetch_image_bytes", lambda url: None)
+    monkeypatch.setattr("app.ai_providers.get_default_bundle", lambda db, user: {
+        "kind": "openai", "api_key": "sk-test", "model": "gpt-4o-mini", "base_url": None, "name": "t",
+    })
+
+    def fake_chat(**kwargs):
+        blob = kwargs["messages"][0]["content"]
+        assert "ESP32 GPIO" in blob
+        return {"content": '{"category":"Other","tags":["article"]}'}
+
+    monkeypatch.setattr("app.ai_chat.complete_chat", fake_chat)
+    headers = _headers("urls-tag@example.com")
+    r = client.post("/urls", headers=headers, json={
+        "url": "https://randomnerdtutorials.com/esp32-matter-on-off-light/",
+    })
+    assert r.status_code == 201, r.text
+    item = r.json()
+    assert item["category_name"] != "Other"
+    assert "esp32" in {t["name"] for t in item["tags"]}
+
+
 def test_youtube_preview_fills_title_and_thumb(monkeypatch):
     from app import og
 

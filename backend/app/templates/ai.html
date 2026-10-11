@@ -91,11 +91,11 @@
             </div>
             <div class="col-md-6">
               <label class="form-label" for="k-model">Model</label>
-              <input class="form-control" id="k-model" name="model" placeholder="gpt-4o-mini">
+              <input class="form-control" id="k-model" name="model" placeholder="llama-3.3-70b-versatile">
             </div>
             <div class="col-12">
-              <label class="form-label" for="k-base">Base URL (custom / Ollama)</label>
-              <input class="form-control" id="k-base" name="base_url" placeholder="https://openrouter.ai/api/v1">
+              <label class="form-label" for="k-base">Base URL</label>
+              <input class="form-control" id="k-base" name="base_url" placeholder="https://api.groq.com/openai/v1">
             </div>
             <div class="col-12">
               <div class="form-check">
@@ -240,4 +240,43 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var presets = {
+    openai: { model: "gpt-4o-mini", base: "" },
+    anthropic: { model: "claude-3-5-haiku-latest", base: "" },
+    openrouter: { model: "openai/gpt-4o-mini", base: "https://openrouter.ai/api/v1" },
+    kimi: { model: "moonshot-v1-8k", base: "https://api.moonshot.ai/v1" },
+    groq: { model: "llama-3.3-70b-versatile", base: "https://api.groq.com/openai/v1" },
+    ollama: { model: "llama3.2", base: "http://127.0.0.1:11434/v1" },
+    custom: { model: "", base: "" }
+  };
+  var known = {};
+  Object.keys(presets).forEach(function (k) {
+    known[presets[k].model] = true;
+    known[presets[k].base] = true;
+  });
+  known[""] = true;
+  var kind = document.getElementById("k-kind");
+  var model = document.getElementById("k-model");
+  var base = document.getElementById("k-base");
+  if (!kind || !model || !base) return;
+  function apply() {
+    var p = presets[kind.value] || presets.custom;
+    if (known[model.value]) {
+      model.value = p.model;
+      model.placeholder = p.model || "model name";
+    }
+    if (known[base.value]) {
+      base.value = p.base;
+      base.placeholder = p.base || "https://host/v1";
+    }
+  }
+  kind.addEventListener("change", apply);
+  apply();
+})();
+</script>
 {% endblock %}

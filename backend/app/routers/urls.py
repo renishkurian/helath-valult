@@ -1,6 +1,7 @@
 """URL Vault — bookmarks with categories, tags, Open Graph preview, and share links."""
 from __future__ import annotations
 
+import json
 import re
 import secrets
 from datetime import datetime, timedelta
@@ -253,6 +254,171 @@ def _set_tags(item: models.UrlItem, tag_ids: list[str], db: Session, user: model
         .all()
     )
     item.tags = rows
+
+
+_FORMAT_TAGS = {"article", "video", "music", "social", "shopping", "news", "other"}
+
+
+def _label_name(raw: str, limit: int = 32) -> str:
+    text = re.sub(r"\s+", " ", (raw or "").strip())
+    text = re.sub(r"[^0-9A-Za-z +.#_-]", "", text).strip(" ._-")
+    return text[:limit]
+
+
+def _topic_token(title: str, description: str) -> Optional[str]:
+    """A product-like word such as ESP32 when the model only returns a format tag."""
+    blob = f"{title or ''} {description or ''}"
+    match = re.search(r"\b([A-Za-z]{1,12}\d[\w+-]{0,12}|\d{1,4}[A-Za-z][\w+-]{0,12})\b", blob)
+    if not match:
+        return None
+    token = match.group(1).lower()
+    if token in _FORMAT_TAGS or len(token) < 3:
+        return None
+    return token
+
+
+def _parse_label_json(raw: str) -> dict:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?", "", text, flags=re.I).strip()
+        text = re.sub(r"```$", "", text).strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return {}
+    try:
+        data = json.loads(text[start:end + 1])
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _ensure_named_category(name: str, db: Session, user: models.User) -> Optional[str]:
+    clean = _label_name(name, 40)
+    if not clean or clean.lower() in {"other", "none"}:
+        return None
+    uid = vault_id(user)
+    row = (
+        db.query(models.UrlCategory)
+        .filter(models.UrlCategory.user_id == uid, func.lower(models.UrlCategory.name) == clean.lower())
+        .first()
+    )
+    if row:
+        return row.id
+    row = models.UrlCategory(
+        user_id=uid,
+        name=clean,
+        color=CAT_COLORS[abs(hash(clean.lower())) % len(CAT_COLORS)],
+        sort_order=80,
+        is_default=False,
+    )
+    db.add(row)
+    db.flush()
+    return row.id
+
+
+def _ensure_named_tag(name: str, db: Session, user: models.User) -> Optional[models.UrlTag]:
+    clean = _label_name(name, 32)
+    if not clean:
+        return None
+    uid = vault_id(user)
+    row = (
+        db.query(models.UrlTag)
+        .filter(models.UrlTag.user_id == uid, func.lower(models.UrlTag.name) == clean.lower())
+        .first()
+    )
+    if row:
+        return row
+    row = models.UrlTag(
+        user_id=uid,
+        name=clean.lower(),
+        color=CAT_COLORS[abs(hash(clean.lower())) % len(CAT_COLORS)],
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def suggest_url_labels(
+    db: Session,
+    user: models.User,
+    *,
+    title: str,
+    description: str,
+    url: str,
+    site: str,
+) -> dict:
+    """Ask the vault AI which category and topic tags fit this page."""
+    from app.ai_chat import complete_chat
+    from app.ai_providers import get_default_bundle
+
+    bundle = get_default_bundle(db, user)
+    if not bundle or not (bundle.get("api_key") or bundle.get("kind") in ("ollama", "custom")):
+        return {}
+    uid = vault_id(user)
+    cats = [c.name for c in db.query(models.UrlCategory).filter(models.UrlCategory.user_id == uid).all()]
+    tags = [t.name for t in db.query(models.UrlTag).filter(models.UrlTag.user_id == uid).all()]
+    system = (
+        "You file one saved bookmark. Return JSON only: "
+        '{"category":"name","tags":["name"]}. '
+        "Decide from the title and description topic, not from the website format. "
+        "article, video, and music are format tags. Never return only a format tag. "
+        "Do not use category Other when the text names a subject. "
+        "Reuse a category or tag from the lists when it fits. "
+        "If none fit, invent one short topic name. "
+        "If the page is about a chip, board, or product (ESP32, Arduino), that word must be a tag. "
+        "Return 1 to 3 tags."
+    )
+    user_msg = (
+        f"Categories: {', '.join(cats) or '(none)'}\n"
+        f"Tags: {', '.join(tags) or '(none)'}\n"
+        f"URL: {url}\nSite: {site}\nTitle: {title}\nDescription: {description or '(none)'}"
+    )
+    try:
+        result = complete_chat(
+            kind=bundle.get("kind") or "openai",
+            api_key=bundle.get("api_key"),
+            model=bundle.get("model"),
+            base_url=bundle.get("base_url"),
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+            max_tokens=200,
+            temperature=0,
+        )
+    except Exception:
+        return {}
+    data = _parse_label_json(result.get("content") or "")
+    category = _label_name(str(data.get("category") or ""), 40)
+    raw_tags = data.get("tags") if isinstance(data.get("tags"), list) else []
+    names: list[str] = []
+    for raw in raw_tags:
+        clean = _label_name(str(raw), 32)
+        if clean and clean.lower() not in names:
+            names.append(clean.lower())
+    topic = _topic_token(title, description)
+    if topic and topic not in names and not any(topic in n for n in names):
+        names.insert(0, topic)
+    names = [n for n in names if n not in {"other", "none"}][:3]
+    if category.lower() in {"other", "none"}:
+        category = ""
+    if not names or set(names) <= _FORMAT_TAGS:
+        return {}
+    return {"category": category, "tags": names}
+
+
+def apply_url_labels(item: models.UrlItem, labels: dict, db: Session, user: models.User) -> None:
+    if not labels:
+        return
+    category = labels.get("category") or ""
+    if category and not item.category_id:
+        item.category_id = _ensure_named_category(category, db, user)
+    rows = []
+    for name in labels.get("tags") or []:
+        tag = _ensure_named_tag(name, db, user)
+        if tag and tag not in rows:
+            rows.append(tag)
+    if rows:
+        item.tags = rows
 
 
 def _resolve_category(category_id: Optional[str], db: Session, user: models.User) -> Optional[str]:
@@ -608,6 +774,13 @@ def _needs_preview(item: models.UrlItem) -> bool:
     return not item.og_image_path or not (item.og_title or "").strip()
 
 
+def _needs_ai_tags(item: models.UrlItem) -> bool:
+    cat = ((item.category.name if item.category else "") or "").strip().lower()
+    names = {(t.name or "").strip().lower() for t in (item.tags or [])}
+    format_only = (not names) or names <= _FORMAT_TAGS
+    return cat in {"", "other"} and format_only
+
+
 def _maybe_replace_host_title(item: models.UrlItem, preview: dict) -> None:
     title = (preview.get("title") or "").strip()
     if not title:
@@ -630,15 +803,26 @@ def sync_previews(
         .order_by(models.UrlItem.created_at.desc())
         .all()
     )
-    pending = [item for item in rows if _needs_preview(item)]
+    pending = [item for item in rows if _needs_preview(item) or _needs_ai_tags(item)]
     updated = 0
     for item in pending[:_SYNC_BATCH]:
-        preview = fetch_preview(item.url)
-        if not preview:
-            continue
-        _apply_preview(item, preview)
-        _store_preview_media(item, preview, db, current_user)
-        _maybe_replace_host_title(item, preview)
+        if _needs_preview(item):
+            preview = fetch_preview(item.url)
+            if preview:
+                _apply_preview(item, preview)
+                _store_preview_media(item, preview, db, current_user)
+                _maybe_replace_host_title(item, preview)
+        if _needs_ai_tags(item):
+            labels = suggest_url_labels(
+                db, current_user,
+                title=item.og_title or item.title,
+                description=item.og_description or "",
+                url=item.url,
+                site=item.og_site_name or hostname_of(item.url),
+            )
+            if labels and item.category and (item.category.name or "").strip().lower() == "other":
+                item.category_id = None
+            apply_url_labels(item, labels, db, current_user)
         item.updated_at = datetime.utcnow()
         updated += 1
     db.commit()
@@ -746,6 +930,15 @@ def create_item(
     db.flush()
     _store_preview_media(item, preview, db, current_user)
     _set_tags(item, body.tag_ids, db, current_user)
+    if not body.category_id and not body.tag_ids:
+        labels = suggest_url_labels(
+            db, current_user,
+            title=item.og_title or item.title,
+            description=item.og_description or "",
+            url=item.url,
+            site=item.og_site_name or hostname_of(item.url),
+        )
+        apply_url_labels(item, labels, db, current_user)
     db.commit()
     db.refresh(item)
     return _to_out(item)
