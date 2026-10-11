@@ -180,8 +180,31 @@ def test_create_uses_ai_to_tag_the_page_topic(monkeypatch):
     })
     assert r.status_code == 201, r.text
     item = r.json()
-    assert item["category_name"] != "Other"
-    assert "esp32" in {t["name"] for t in item["tags"]}
+    assert item["category_name"] == "Tech"
+    names = {t["name"] for t in item["tags"]}
+    assert "esp32" in names
+    assert "music" not in names
+    assert "article" not in names
+
+
+def test_hardware_link_filed_as_songs_needs_retag():
+    from app.routers import urls as uv
+
+    class _Cat:
+        name = "Songs"
+
+    class _Tag:
+        def __init__(self, name):
+            self.name = name
+
+    class _Item:
+        category = _Cat()
+        tags = [_Tag("music"), _Tag("video")]
+        title = "WIFI Controlled Home Automation using ESP8266 & Blynk App"
+        og_title = title
+        og_description = "ESP8266 project with the Blynk app"
+
+    assert uv._needs_ai_tags(_Item()) is True
 
 
 def test_youtube_preview_fills_title_and_thumb(monkeypatch):

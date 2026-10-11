@@ -257,6 +257,8 @@ def _set_tags(item: models.UrlItem, tag_ids: list[str], db: Session, user: model
 
 
 _FORMAT_TAGS = {"article", "video", "music", "social", "shopping", "news", "other"}
+_HARDWARE = re.compile(r"esp32|esp8266|arduino|raspberry|gpio|blynk|matter", re.I)
+_NOT_HARDWARE = {"songs", "song", "music", "news", "adult", "instagram", "other", "none"}
 
 
 def _label_name(raw: str, limit: int = 32) -> str:
@@ -398,6 +400,17 @@ def suggest_url_labels(
     topic = _topic_token(title, description)
     if topic and topic not in names and not any(topic in n for n in names):
         names.insert(0, topic)
+    blob = f"{title or ''} {description or ''}"
+    if _HARDWARE.search(blob):
+        names = [n for n in names if n not in _NOT_HARDWARE and n not in {"article", "video"}]
+        if category.lower() in _NOT_HARDWARE:
+            category = "Tech"
+        if not category:
+            category = "Tech"
+        if topic and topic not in names:
+            names.insert(0, topic)
+        if "tech" not in names:
+            names.append("tech")
     names = [n for n in names if n not in {"other", "none"}][:3]
     if category.lower() in {"other", "none"}:
         category = ""
@@ -406,11 +419,18 @@ def suggest_url_labels(
     return {"category": category, "tags": names}
 
 
-def apply_url_labels(item: models.UrlItem, labels: dict, db: Session, user: models.User) -> None:
+def apply_url_labels(
+    item: models.UrlItem,
+    labels: dict,
+    db: Session,
+    user: models.User,
+    *,
+    replace: bool = False,
+) -> None:
     if not labels:
         return
     category = labels.get("category") or ""
-    if category and not item.category_id:
+    if category and (replace or not item.category_id):
         item.category_id = _ensure_named_category(category, db, user)
     rows = []
     for name in labels.get("tags") or []:
@@ -777,6 +797,12 @@ def _needs_preview(item: models.UrlItem) -> bool:
 def _needs_ai_tags(item: models.UrlItem) -> bool:
     cat = ((item.category.name if item.category else "") or "").strip().lower()
     names = {(t.name or "").strip().lower() for t in (item.tags or [])}
+    blob = f"{item.og_title or ''} {item.title or ''} {item.og_description or ''}"
+    topic = _topic_token(item.og_title or item.title, item.og_description or "")
+    if topic and topic not in names and not any(topic in n for n in names):
+        return True
+    if _HARDWARE.search(blob) and (cat in _NOT_HARDWARE or names & {"music", "songs", "song"}):
+        return True
     format_only = (not names) or names <= _FORMAT_TAGS
     return cat in {"", "other"} and format_only
 
@@ -820,14 +846,12 @@ def sync_previews(
                 url=item.url,
                 site=item.og_site_name or hostname_of(item.url),
             )
-            if labels and item.category and (item.category.name or "").strip().lower() == "other":
-                item.category_id = None
-            apply_url_labels(item, labels, db, current_user)
+            apply_url_labels(item, labels, db, current_user, replace=True)
         item.updated_at = datetime.utcnow()
         updated += 1
     db.commit()
     still = _active_item_query(db, current_user).all()
-    left = sum(1 for item in still if _needs_preview(item))
+    left = sum(1 for item in still if _needs_preview(item) or _needs_ai_tags(item))
     return {"ok": True, "updated": updated, "left": left}
 
 
