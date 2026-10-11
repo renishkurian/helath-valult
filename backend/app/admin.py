@@ -6988,7 +6988,22 @@ def urls_home(
     return templates.TemplateResponse("urls.html", _url_ctx(
         request, user, nav, summary=summary, items=items,
         q=q, category_id=category_id, tag_id=tag_id, favorite=bool(favorite),
+        synced=request.query_params.get("synced"),
+        sync_left=request.query_params.get("left"),
     ))
+
+
+@router.post("/urls/sync")
+def urls_sync(request: Request, db: Session = Depends(get_db)):
+    from app.routers import urls as uv
+    user = _url_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    result = uv.sync_previews(db=db, current_user=user)
+    return RedirectResponse(
+        f"/admin/urls?synced={result['updated']}&left={result['left']}",
+        status_code=302,
+    )
 
 
 @router.get("/urls/add", response_class=HTMLResponse)

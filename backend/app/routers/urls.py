@@ -601,6 +601,52 @@ def preview_url(
     )
 
 
+_SYNC_BATCH = 20
+
+
+def _needs_preview(item: models.UrlItem) -> bool:
+    return not item.og_image_path or not (item.og_title or "").strip()
+
+
+def _maybe_replace_host_title(item: models.UrlItem, preview: dict) -> None:
+    title = (preview.get("title") or "").strip()
+    if not title:
+        return
+    current = (item.title or "").strip().lower()
+    host = hostname_of(item.url).lower()
+    if current in {host, "youtube", "youtube.com", (item.og_site_name or "").lower()}:
+        item.title = title[:255]
+
+
+@router.post("/sync")
+def sync_previews(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
+):
+    """Re-fetch previews for links that have no stored image or title."""
+    require_owner(current_user)
+    rows = (
+        _active_item_query(db, current_user)
+        .order_by(models.UrlItem.created_at.desc())
+        .all()
+    )
+    pending = [item for item in rows if _needs_preview(item)]
+    updated = 0
+    for item in pending[:_SYNC_BATCH]:
+        preview = fetch_preview(item.url)
+        if not preview:
+            continue
+        _apply_preview(item, preview)
+        _store_preview_media(item, preview, db, current_user)
+        _maybe_replace_host_title(item, preview)
+        item.updated_at = datetime.utcnow()
+        updated += 1
+    db.commit()
+    still = _active_item_query(db, current_user).all()
+    left = sum(1 for item in still if _needs_preview(item))
+    return {"ok": True, "updated": updated, "left": left}
+
+
 # ---------- items ----------
 @router.get("", response_model=list[schemas.UrlItemOut])
 def list_items(

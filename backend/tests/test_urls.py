@@ -126,6 +126,35 @@ def test_create_stores_preview_image(monkeypatch):
     assert icon.status_code == 200
 
 
+def test_sync_fills_links_missing_a_stored_image(monkeypatch):
+    from app.routers import urls as uv
+
+    headers = _headers("urls-sync@example.com")
+    made = client.post("/urls", headers=headers, json={
+        "url": "https://example.com/old",
+        "title": "example.com",
+        "fetch_preview": False,
+    })
+    assert made.status_code == 201, made.text
+    monkeypatch.setattr(uv, "fetch_preview", lambda url: {
+        "title": "Real title",
+        "description": "Blurb",
+        "image": "https://cdn.example/thumb.jpg",
+        "site_name": "Example",
+        "favicon_url": "https://cdn.example/favicon.ico",
+    })
+    monkeypatch.setattr(uv, "fetch_image_bytes", lambda url: (b"\xff\xd8\xffok", "image/jpeg"))
+    synced = client.post("/urls/sync", headers=headers)
+    assert synced.status_code == 200, synced.text
+    body = synced.json()
+    assert body["updated"] == 1
+    assert body["left"] == 0
+    item = client.get(f"/urls/{made.json()['id']}", headers=headers).json()
+    assert item["og_title"] == "Real title"
+    assert item["title"] == "Real title"
+    assert item["has_local_image"] is True
+
+
 def test_youtube_preview_fills_title_and_thumb(monkeypatch):
     from app import og
 
