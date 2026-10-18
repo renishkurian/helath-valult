@@ -62,13 +62,18 @@
 
 <div class="section-head"><h2>Your links</h2></div>
 {% if reports %}
-<div class="list-rows">
-  {% for r in reports %}
-  <div class="list-row">
-    <span class="row-body">
-      <span class="row-title">{{ r.title }}</span>
-      <span class="row-meta">{{ r.date_from }} → {{ r.date_to }} · {% if r.revoked %}revoked{% elif r.expires_at %}expires {{ r.expires_at.strftime('%d %b %Y %H:%M') }} UTC{% else %}never expires{% endif %}</span>
-    </span>
+{% for r in reports %}
+{% set log = logs.get(r.id) %}
+<div class="card p-3 mb-3">
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <div class="me-auto">
+      <div class="fw-semibold">{{ r.title }}</div>
+      <div class="text-muted small">{{ r.date_from }} → {{ r.date_to }} · {% if r.revoked %}revoked{% elif r.expires_at %}expires {{ r.expires_at.strftime('%d %b %Y %H:%M') }} UTC{% else %}never expires{% endif %}</div>
+    </div>
+    <div class="text-muted small">
+      Opens {{ log.views if log else 0 }} · Excel {{ log.excel if log else 0 }}
+      {% if log and log.last %} · last {{ log.last.created_at.strftime('%d %b %Y %H:%M') }} UTC{% endif %}
+    </div>
     {% if not r.revoked %}
     <a class="btn btn-ghost btn-sm" href="/r/{{ r.token }}" target="_blank" rel="noopener">Open</a>
     <form method="post" action="/admin/finance/reports/{{ r.id }}/revoke">
@@ -76,8 +81,28 @@
     </form>
     {% endif %}
   </div>
-  {% endfor %}
+  {% if log and log.recent %}
+  <div class="table-responsive mt-3">
+    <table class="table table-sm mb-0">
+      <thead><tr><th>When</th><th>Action</th><th>IP</th><th>Device</th><th>User agent</th></tr></thead>
+      <tbody>
+      {% for a in log.recent %}
+      <tr>
+        <td>{{ a.created_at.strftime('%d %b %Y %H:%M') }} UTC</td>
+        <td>{{ a.action }}</td>
+        <td>{{ a.ip or '—' }}</td>
+        <td>{{ a.device or '—' }}</td>
+        <td class="text-muted">{{ a.user_agent or '—' }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-muted small mb-0 mt-2">No opens yet.</p>
+  {% endif %}
 </div>
+{% endfor %}
 {% else %}
 <p class="text-muted">No shared reports yet.</p>
 {% endif %}

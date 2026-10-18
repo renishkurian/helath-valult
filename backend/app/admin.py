@@ -5196,8 +5196,10 @@ def finance_reports_page(request: Request, db: Session = Depends(get_db), err: s
     accounts = db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid, models.FinanceAccount.archived == False).order_by(models.FinanceAccount.name).all()
     categories = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).order_by(models.FinanceCategory.name).all()
     reports = db.query(models.FinanceSharedReport).filter(models.FinanceSharedReport.user_id == uid).order_by(models.FinanceSharedReport.created_at.desc()).all()
+    from app.routers.finance_reports import access_summary
+    logs = access_summary(db, reports)
     return templates.TemplateResponse("finance_reports.html", _fn_ctx(
-        request, user, "fn_reports", accounts=accounts, categories=categories, reports=reports, err=err, created=created,
+        request, user, "fn_reports", accounts=accounts, categories=categories, reports=reports, logs=logs, err=err, created=created,
     ))
 
 

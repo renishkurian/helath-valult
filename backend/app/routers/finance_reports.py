@@ -43,6 +43,67 @@ def _ids(raw: str | None) -> list[str]:
     return [p.strip() for p in raw.split(",") if p.strip()]
 
 
+def _client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()[:64]
+    if request.client:
+        return (request.client.host or "")[:64] or None
+    return None
+
+
+def _device(ua: str) -> str:
+    low = ua.lower()
+    if "ipad" in low or "tablet" in low:
+        return "Tablet"
+    if "mobile" in low or "iphone" in low or "android" in low:
+        return "Phone"
+    if "windows" in low:
+        return "Windows"
+    if "mac os" in low or "macintosh" in low:
+        return "Mac"
+    if "linux" in low:
+        return "Linux"
+    return "Unknown"
+
+
+def record_access(db: Session, report: models.FinanceSharedReport, request: Request, action: str) -> None:
+    ua = (request.headers.get("user-agent") or "")[:400]
+    db.add(models.FinanceSharedReportAccess(
+        report_id=report.id,
+        action=action,
+        ip=_client_ip(request),
+        user_agent=ua or None,
+        device=_device(ua),
+    ))
+    db.commit()
+
+
+def access_summary(db: Session, reports: list[models.FinanceSharedReport]) -> dict[str, dict]:
+    if not reports:
+        return {}
+    ids = [r.id for r in reports]
+    rows = (
+        db.query(models.FinanceSharedReportAccess)
+        .filter(models.FinanceSharedReportAccess.report_id.in_(ids))
+        .order_by(models.FinanceSharedReportAccess.created_at.desc())
+        .all()
+    )
+    out: dict[str, dict] = {}
+    for row in rows:
+        bucket = out.setdefault(row.report_id, {"total": 0, "views": 0, "excel": 0, "last": None, "recent": []})
+        bucket["total"] += 1
+        if row.action == "excel":
+            bucket["excel"] += 1
+        else:
+            bucket["views"] += 1
+        if bucket["last"] is None:
+            bucket["last"] = row
+        if len(bucket["recent"]) < 8:
+            bucket["recent"].append(row)
+    return out
+
+
 def load_report(db: Session, token: str) -> models.FinanceSharedReport:
     row = db.query(models.FinanceSharedReport).filter(models.FinanceSharedReport.token == token).first()
     if not row or row.revoked:
@@ -320,6 +381,7 @@ def _public_ctx(report, rows, request: Request):
 @public_router.get("/r/{token}", response_class=HTMLResponse)
 def view_shared_report(token: str, request: Request, db: Session = Depends(get_db)):
     report = load_report(db, token)
+    record_access(db, report, request, "view")
     rows = report_rows(db, report)
     return templates.TemplateResponse("finance_report_public.html", _public_ctx(report, rows, request))
 
@@ -327,6 +389,7 @@ def view_shared_report(token: str, request: Request, db: Session = Depends(get_d
 @public_router.get("/r/{token}/excel")
 def download_shared_report(token: str, request: Request, db: Session = Depends(get_db)):
     report = load_report(db, token)
+    record_access(db, report, request, "excel")
     rows = report_rows(db, report)
     choice = _viewer_choice(request, report)
     shown = apply_viewer_filters(

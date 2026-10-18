@@ -837,6 +837,20 @@ class FinanceSharedReport(Base):
     expires_at = Column(DateTime, nullable=True)  # null = never expires
     revoked = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    accesses = relationship("FinanceSharedReportAccess", back_populates="report", cascade="all, delete-orphan")
+
+
+class FinanceSharedReportAccess(Base):
+    """One open or Excel download of a public finance report link."""
+    __tablename__ = "finance_shared_report_accesses"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    report_id = Column(String(32), ForeignKey("finance_shared_reports.id"), nullable=False, index=True)
+    action = Column(String(20), nullable=False)  # view | excel
+    ip = Column(String(64), nullable=True)
+    user_agent = Column(String(400), nullable=True)
+    device = Column(String(40), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    report = relationship("FinanceSharedReport", back_populates="accesses")
 
 
 class FinanceTxnHide(Base):
