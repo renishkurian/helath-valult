@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ report.title }}</title>
+<link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
+<link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
+<link rel="stylesheet" href="/static/vault.css">
+<style>
+.sr-bar{display:flex;align-items:flex-end;gap:4px;height:180px;overflow-x:auto}
+.sr-col{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:18px;height:100%}
+.sr-col i{display:block;width:8px;border-radius:2px 2px 0 0}
+.sr-col .in{background:#35d68a}
+.sr-col .out{background:#ff6b6b}
+.sr-cat{display:flex;align-items:center;gap:8px;margin:6px 0}
+.sr-cat .track{flex:1;height:10px;background:#222;border-radius:6px;overflow:hidden}
+.sr-cat .fill{height:100%;background:#7c8cf8}
+</style>
+</head>
+<body class="public-app">
+<div class="public-wrap">
+  <div class="public-card">
+    <header class="mb-3">
+      <div class="eyebrow">Shared report</div>
+      <h1 class="page-title">{{ report.title }}</h1>
+      <p class="page-lead mb-0">{{ report.date_from }} to {{ report.date_to }} · expires {{ expired_label }} · {{ all_count }} entries in this report</p>
+    </header>
+
+    <div class="mmx-seg mb-3" role="tablist">
+      <a class="{% if tab == 'list' %}on{% endif %}" href="?tab=list&type={{ txn_type }}&category={{ category_id }}&q={{ q }}">Entries</a>
+      <a class="{% if tab == 'charts' %}on{% endif %}" href="?tab=charts&type={{ txn_type }}&category={{ category_id }}&q={{ q }}">Charts</a>
+    </div>
+
+    <form class="row g-2 mb-3" method="get">
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <div class="col-6 col-md-3">
+        <select class="form-select" name="type">
+          <option value="">All types</option>
+          <option value="income" {% if txn_type == 'income' %}selected{% endif %}>Income</option>
+          <option value="expense" {% if txn_type == 'expense' %}selected{% endif %}>Expense</option>
+          <option value="transfer" {% if txn_type == 'transfer' %}selected{% endif %}>Transfer</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-3">
+        <select class="form-select" name="category">
+          <option value="">All categories in report</option>
+          {% for c in categories %}
+          <option value="{{ c.id }}" {% if category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Search payee, notes, account">
+      </div>
+      <div class="col-md-2 d-flex gap-2">
+        <button class="btn btn-primary" type="submit">Filter</button>
+        <a class="btn btn-ghost" href="/r/{{ report.token }}/excel?type={{ txn_type }}&category={{ category_id }}&q={{ q }}">Excel</a>
+      </div>
+    </form>
+
+    <div class="row g-2 mb-3">
+      <div class="col-4"><div class="stat"><div class="lbl">Income</div><div class="val mm-income">{{ inr(totals.income) }}</div></div></div>
+      <div class="col-4"><div class="stat"><div class="lbl">Expense</div><div class="val mm-expense">{{ inr(totals.expense) }}</div></div></div>
+      <div class="col-4"><div class="stat"><div class="lbl">Net</div><div class="val">{{ inr(totals.net) }}</div></div></div>
+    </div>
+
+    {% if tab == 'charts' %}
+    <h2 class="h6">Income and expense by day</h2>
+    <div class="sr-bar mb-2">
+      {% for d in charts.days %}
+      <div class="sr-col" title="{{ d.date }}">
+        <i class="in" style="height:{{ (d.income / charts.peak * 80)|round(1) }}px"></i>
+        <i class="out" style="height:{{ (d.expense / charts.peak * 80)|round(1) }}px"></i>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="text-muted small">Green income, red expense. {{ charts.days|length }} days with entries.</p>
+    <h2 class="h6 mt-3">Expense by category</h2>
+    {% for c in charts.categories %}
+    <div class="sr-cat">
+      <span style="width:140px">{{ c.name }}</span>
+      <div class="track"><div class="fill" style="width:{{ (c.amount / charts.cat_peak * 100)|round(1) }}%"></div></div>
+      <span>{{ inr(c.amount) }}</span>
+    </div>
+    {% else %}
+    <p class="text-muted">No expenses in this filter.</p>
+    {% endfor %}
+    {% else %}
+    <p class="text-muted">{{ totals.count }} rows after your filter.</p>
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Account</th><th>Category</th><th>Payee</th><th>Notes</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.date }}{% if r.time %} {{ r.time }}{% endif %}</td>
+          <td>{{ r.type }}</td>
+          <td>{{ inr(r.amount) }}</td>
+          <td>{{ r.account }}{% if r.to_account %} → {{ r.to_account }}{% endif %}</td>
+          <td>{{ r.category }}</td>
+          <td>{{ r.payee }}</td>
+          <td>{{ r.notes or r.description }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No entries match this filter.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

@@ -819,6 +819,26 @@ class FinanceTransaction(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class FinanceSharedReport(Base):
+    """Public, expiring snapshot filter over a vault's ledger.
+
+    Viewers see every income and expense (and transfer) that matches the
+    chosen accounts, categories, and date range. They can only narrow that set.
+    """
+    __tablename__ = "finance_shared_reports"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(String(32), ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    account_ids = Column(Text, nullable=False)  # comma-separated finance_accounts.id
+    category_ids = Column(Text, nullable=True)  # comma-separated; empty = every category
+    date_from = Column(String(20), nullable=False)
+    date_to = Column(String(20), nullable=False)
+    expires_at = Column(DateTime, nullable=True)  # null = never expires
+    revoked = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class FinanceTxnHide(Base):
     """Marks a transaction as hidden from a specific family member's view.
 

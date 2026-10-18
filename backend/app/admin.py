@@ -5186,6 +5186,62 @@ def finance_stats(
     return RedirectResponse(f"/admin/finance/charts{suffix}", status_code=302)
 
 
+@router.get("/finance/reports", response_class=HTMLResponse)
+def finance_reports_page(request: Request, db: Session = Depends(get_db), err: str = "", created: str = ""):
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    from app.deps import vault_id as _vid
+    uid = _vid(user)
+    accounts = db.query(models.FinanceAccount).filter(models.FinanceAccount.user_id == uid, models.FinanceAccount.archived == False).order_by(models.FinanceAccount.name).all()
+    categories = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).order_by(models.FinanceCategory.name).all()
+    reports = db.query(models.FinanceSharedReport).filter(models.FinanceSharedReport.user_id == uid).order_by(models.FinanceSharedReport.created_at.desc()).all()
+    return templates.TemplateResponse("finance_reports.html", _fn_ctx(
+        request, user, "fn_more", accounts=accounts, categories=categories, reports=reports, err=err, created=created,
+    ))
+
+
+@router.post("/finance/reports")
+async def finance_reports_create(request: Request, db: Session = Depends(get_db)):
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    form = await request.form()
+    from urllib.parse import quote
+    from app.routers.finance_reports import create_report
+    try:
+        row = create_report(
+            db, user,
+            title=str(form.get("title") or ""),
+            account_ids=form.getlist("account_ids"),
+            category_ids=form.getlist("category_ids"),
+            date_from=str(form.get("date_from") or ""),
+            date_to=str(form.get("date_to") or ""),
+            expiry=str(form.get("expiry") or "24h"),
+        )
+    except Exception as exc:
+        detail = getattr(exc, "detail", None) or "Could not create the report"
+        return RedirectResponse(f"/admin/finance/reports?err={quote(str(detail))}", status_code=302)
+    link = str(request.base_url).rstrip("/") + f"/r/{row.token}"
+    return RedirectResponse(f"/admin/finance/reports?created={quote(link, safe='')}", status_code=302)
+
+
+@router.post("/finance/reports/{report_id}/revoke")
+def finance_reports_revoke(report_id: str, request: Request, db: Session = Depends(get_db)):
+    user = _fn_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    from app.deps import vault_id as _vid
+    row = db.query(models.FinanceSharedReport).filter(
+        models.FinanceSharedReport.id == report_id,
+        models.FinanceSharedReport.user_id == _vid(user),
+    ).first()
+    if row:
+        row.revoked = True
+        db.commit()
+    return RedirectResponse("/admin/finance/reports", status_code=302)
+
+
 @router.get("/finance/charts", response_class=HTMLResponse)
 def finance_charts(
     request: Request,
