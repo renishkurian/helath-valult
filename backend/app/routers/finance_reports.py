@@ -7,6 +7,8 @@ import zipfile
 from datetime import datetime, timedelta
 from xml.sax.saxutils import escape
 
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.orm import Session
@@ -72,6 +74,8 @@ def report_rows(db: Session, report: models.FinanceSharedReport) -> list[dict]:
             "description": t.description or "",
             "category_id": t.category_id or "",
             "category": cat.name if cat else ("Transfer" if t.txn_type == "transfer" else "Uncategorised"),
+            "account_id": t.account_id or "",
+            "to_account_id": t.to_account_id or "",
             "account": acc.name if acc else "",
             "to_account": dest.name if dest else "",
             "method": t.payment_method or "",
@@ -79,11 +83,28 @@ def report_rows(db: Session, report: models.FinanceSharedReport) -> list[dict]:
     return out
 
 
-def apply_viewer_filters(rows: list[dict], *, txn_type: str | None, category_id: str | None, q: str | None) -> list[dict]:
+def apply_viewer_filters(
+    rows: list[dict],
+    *,
+    txn_type: str | None,
+    category_ids: list[str],
+    account_ids: list[str],
+    date_from: str | None,
+    date_to: str | None,
+    q: str | None,
+) -> list[dict]:
     if txn_type in ("income", "expense", "transfer"):
         rows = [r for r in rows if r["type"] == txn_type]
-    if category_id:
-        rows = [r for r in rows if r["category_id"] == category_id]
+    if category_ids:
+        wanted = set(category_ids)
+        rows = [r for r in rows if r["category_id"] in wanted]
+    if account_ids:
+        wanted = set(account_ids)
+        rows = [r for r in rows if r["account_id"] in wanted or r["to_account_id"] in wanted]
+    if date_from:
+        rows = [r for r in rows if r["date"] >= date_from]
+    if date_to:
+        rows = [r for r in rows if r["date"] <= date_to]
     if q:
         needle = q.strip().lower()
         if needle:
@@ -92,6 +113,25 @@ def apply_viewer_filters(rows: list[dict], *, txn_type: str | None, category_id:
                 if needle in (r["payee"] + " " + r["notes"] + " " + r["description"] + " " + r["category"] + " " + r["account"]).lower()
             ]
     return rows
+
+
+def _viewer_choice(request: Request, report: models.FinanceSharedReport) -> dict:
+    date_from = (request.query_params.get("from") or "").strip()
+    date_to = (request.query_params.get("to") or "").strip()
+    if date_from and date_from < report.date_from:
+        date_from = report.date_from
+    if date_to and date_to > report.date_to:
+        date_to = report.date_to
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = report.date_from, report.date_to
+    return {
+        "txn_type": request.query_params.get("type") or "",
+        "category_ids": [c for c in request.query_params.getlist("category") if c],
+        "account_ids": [a for a in request.query_params.getlist("account") if a],
+        "date_from": date_from,
+        "date_to": date_to,
+        "q": request.query_params.get("q") or "",
+    }
 
 
 def totals(rows: list[dict]) -> dict:
@@ -223,15 +263,26 @@ def create_report(
 
 
 def _public_ctx(report, rows, request: Request):
-    txn_type = request.query_params.get("type") or ""
-    category_id = request.query_params.get("category") or ""
-    q = request.query_params.get("q") or ""
+    choice = _viewer_choice(request, report)
     tab = request.query_params.get("tab") or "list"
-    shown = apply_viewer_filters(rows, txn_type=txn_type or None, category_id=category_id or None, q=q or None)
-    cats = {}
+    shown = apply_viewer_filters(
+        rows,
+        txn_type=choice["txn_type"] or None,
+        category_ids=choice["category_ids"],
+        account_ids=choice["account_ids"],
+        date_from=choice["date_from"] or None,
+        date_to=choice["date_to"] or None,
+        q=choice["q"] or None,
+    )
+    cats: dict[str, str] = {}
+    accounts: dict[str, str] = {}
     for r in rows:
         if r["category_id"]:
             cats[r["category_id"]] = r["category"]
+        if r["account_id"] and r["account"]:
+            accounts[r["account_id"]] = r["account"]
+        if r["to_account_id"] and r["to_account"]:
+            accounts[r["to_account_id"]] = r["to_account"]
     return {
         "request": request,
         "report": report,
@@ -240,10 +291,15 @@ def _public_ctx(report, rows, request: Request):
         "totals": totals(shown),
         "charts": chart_payload(shown),
         "categories": [{"id": i, "name": n} for i, n in sorted(cats.items(), key=lambda kv: kv[1].lower())],
-        "txn_type": txn_type,
-        "category_id": category_id,
-        "q": q,
+        "accounts": [{"id": i, "name": n} for i, n in sorted(accounts.items(), key=lambda kv: kv[1].lower())],
+        "txn_type": choice["txn_type"],
+        "category_ids": choice["category_ids"],
+        "account_ids": choice["account_ids"],
+        "date_from": choice["date_from"],
+        "date_to": choice["date_to"],
+        "q": choice["q"],
         "tab": tab if tab in ("list", "charts") else "list",
+        "filter_qs": urlencode(list(request.query_params.multi_items()), doseq=True),
         "inr": inr,
         "expired_label": report.expires_at.strftime("%d %b %Y %H:%M UTC") if report.expires_at else "Never",
     }
@@ -260,11 +316,15 @@ def view_shared_report(token: str, request: Request, db: Session = Depends(get_d
 def download_shared_report(token: str, request: Request, db: Session = Depends(get_db)):
     report = load_report(db, token)
     rows = report_rows(db, report)
+    choice = _viewer_choice(request, report)
     shown = apply_viewer_filters(
         rows,
-        txn_type=request.query_params.get("type") or None,
-        category_id=request.query_params.get("category") or None,
-        q=request.query_params.get("q") or None,
+        txn_type=choice["txn_type"] or None,
+        category_ids=choice["category_ids"],
+        account_ids=choice["account_ids"],
+        date_from=choice["date_from"] or None,
+        date_to=choice["date_to"] or None,
+        q=choice["q"] or None,
     )
     data = to_xlsx(shown, f"{report.title} {report.date_from} to {report.date_to}")
     filename = "report.xlsx"

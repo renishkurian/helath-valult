@@ -59,13 +59,22 @@ html[data-bs-theme="light"] .sr-cat .track{ background:#e6e8ee; }
     </header>
 
     <div class="mmx-seg mb-3" role="tablist">
-      <a class="{% if tab == 'list' %}on{% endif %}" href="?tab=list&type={{ txn_type }}&category={{ category_id }}&q={{ q }}">Entries</a>
-      <a class="{% if tab == 'charts' %}on{% endif %}" href="?tab=charts&type={{ txn_type }}&category={{ category_id }}&q={{ q }}">Charts</a>
+      <a class="{% if tab == 'list' %}on{% endif %}" href="?tab=list&{{ filter_qs }}">Entries</a>
+      <a class="{% if tab == 'charts' %}on{% endif %}" href="?tab=charts&{{ filter_qs }}">Charts</a>
     </div>
 
     <form class="row g-2 mb-3" method="get">
       <input type="hidden" name="tab" value="{{ tab }}">
-      <div class="col-6 col-md-3">
+      <div class="col-6 col-md-2">
+        <label class="form-label">From</label>
+        <input class="form-control" type="date" name="from" value="{{ date_from }}" min="{{ report.date_from }}" max="{{ report.date_to }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">To</label>
+        <input class="form-control" type="date" name="to" value="{{ date_to }}" min="{{ report.date_from }}" max="{{ report.date_to }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <label class="form-label">Type</label>
         <select class="form-select" name="type">
           <option value="">All types</option>
           <option value="income" {% if txn_type == 'income' %}selected{% endif %}>Income</option>
@@ -74,19 +83,29 @@ html[data-bs-theme="light"] .sr-cat .track{ background:#e6e8ee; }
         </select>
       </div>
       <div class="col-6 col-md-3">
-        <select class="form-select" name="category">
-          <option value="">All categories in report</option>
-          {% for c in categories %}
-          <option value="{{ c.id }}" {% if category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+        <label class="form-label">Accounts</label>
+        <select class="form-select" name="account" multiple size="3">
+          {% for a in accounts %}
+          <option value="{{ a.id }}" {% if a.id in account_ids %}selected{% endif %}>{{ a.name }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-4">
-        <input class="form-control" name="q" value="{{ q }}" placeholder="Search payee, notes, account">
+      <div class="col-6 col-md-3">
+        <label class="form-label">Categories</label>
+        <select class="form-select" name="category" multiple size="3">
+          {% for c in categories %}
+          <option value="{{ c.id }}" {% if c.id in category_ids %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
       </div>
-      <div class="col-md-2 d-flex gap-2">
+      <div class="col-md-8">
+        <label class="form-label">Search</label>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Payee, notes, description">
+      </div>
+      <div class="col-md-4 d-flex align-items-end gap-2">
         <button class="btn btn-primary" type="submit">Filter</button>
-        <a class="btn btn-ghost" href="/r/{{ report.token }}/excel?type={{ txn_type }}&category={{ category_id }}&q={{ q }}">Excel</a>
+        <a class="btn btn-ghost" href="/r/{{ report.token }}/excel?{{ filter_qs }}">Excel</a>
+        <a class="btn btn-ghost" href="/r/{{ report.token }}?tab={{ tab }}">Clear</a>
       </div>
     </form>
 
