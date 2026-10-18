@@ -5197,7 +5197,7 @@ def finance_reports_page(request: Request, db: Session = Depends(get_db), err: s
     categories = db.query(models.FinanceCategory).filter(models.FinanceCategory.user_id == uid).order_by(models.FinanceCategory.name).all()
     reports = db.query(models.FinanceSharedReport).filter(models.FinanceSharedReport.user_id == uid).order_by(models.FinanceSharedReport.created_at.desc()).all()
     return templates.TemplateResponse("finance_reports.html", _fn_ctx(
-        request, user, "fn_more", accounts=accounts, categories=categories, reports=reports, err=err, created=created,
+        request, user, "fn_reports", accounts=accounts, categories=categories, reports=reports, err=err, created=created,
     ))
 
 

@@ -4,10 +4,22 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ report.title }}</title>
+<script>
+(function(){
+  var t = localStorage.getItem("sr-theme");
+  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-bs-theme", t);
+})();
+</script>
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
 <link rel="stylesheet" href="/static/vendor/bootstrap-icons.min.css">
 <link rel="stylesheet" href="/static/vault.css">
 <style>
+.sr-wrap{ justify-content:flex-start; align-items:stretch; padding:1.5rem 1.5rem 3rem; }
+.sr-wrap .public-card{ width:min(1120px,100%); margin:0 auto; }
+.sr-top{ display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+.sr-table{ min-width:860px; }
+.sr-table th, .sr-table td{ white-space:nowrap; vertical-align:middle; }
+.sr-table td.sr-notes{ white-space:normal; min-width:180px; }
 .sr-bar{display:flex;align-items:flex-end;gap:4px;height:180px;overflow-x:auto}
 .sr-col{display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:18px;height:100%}
 .sr-col i{display:block;width:8px;border-radius:2px 2px 0 0}
@@ -16,15 +28,34 @@
 .sr-cat{display:flex;align-items:center;gap:8px;margin:6px 0}
 .sr-cat .track{flex:1;height:10px;background:#222;border-radius:6px;overflow:hidden}
 .sr-cat .fill{height:100%;background:#7c8cf8}
+html[data-bs-theme="light"]{
+  color-scheme:light;
+  --v-bg:#F4F6F8; --v-bg-2:#EEF1F4; --v-surface:#FFFFFF; --v-surface-2:#F7F8FA; --v-surface-3:#EEF1F5;
+  --v-ink:#141820; --v-ink-2:#4A5264; --v-ink-3:#6B7280;
+  --v-line:rgba(16,20,28,0.08); --v-line-2:rgba(16,20,28,0.14);
+  --v-hover:rgba(0,0,0,0.04);
+  --bs-body-bg:#F4F6F8; --bs-body-color:#141820; --bs-emphasis-color:#141820;
+  --bs-secondary-color:#4A5264; --bs-tertiary-color:#6B7280;
+  --bs-border-color:rgba(16,20,28,0.12);
+}
+html[data-bs-theme="light"] body{
+  background:var(--v-bg);
+}
+html[data-bs-theme="light"] .sr-cat .track{ background:#e6e8ee; }
 </style>
 </head>
 <body class="public-app">
-<div class="public-wrap">
+<div class="public-wrap sr-wrap">
   <div class="public-card">
-    <header class="mb-3">
-      <div class="eyebrow">Shared report</div>
-      <h1 class="page-title">{{ report.title }}</h1>
-      <p class="page-lead mb-0">{{ report.date_from }} to {{ report.date_to }} · expires {{ expired_label }} · {{ all_count }} entries in this report</p>
+    <header class="sr-top mb-3">
+      <div>
+        <div class="eyebrow">Shared report</div>
+        <h1 class="page-title">{{ report.title }}</h1>
+        <p class="page-lead mb-0">{{ report.date_from }} to {{ report.date_to }} · expires {{ expired_label }} · {{ all_count }} entries in this report</p>
+      </div>
+      <button class="btn btn-ghost btn-sm" type="button" id="sr-theme" aria-label="Switch color theme">
+        <i class="bi bi-moon-stars"></i> <span>Dark</span>
+      </button>
     </header>
 
     <div class="mmx-seg mb-3" role="tablist">
@@ -89,7 +120,7 @@
     {% else %}
     <p class="text-muted">{{ totals.count }} rows after your filter.</p>
     <div class="table-responsive">
-      <table class="table table-sm">
+      <table class="table table-sm sr-table">
         <thead><tr><th>Date</th><th>Type</th><th>Amount</th><th>Account</th><th>Category</th><th>Payee</th><th>Notes</th></tr></thead>
         <tbody>
         {% for r in rows %}
@@ -100,7 +131,7 @@
           <td>{{ r.account }}{% if r.to_account %} → {{ r.to_account }}{% endif %}</td>
           <td>{{ r.category }}</td>
           <td>{{ r.payee }}</td>
-          <td>{{ r.notes or r.description }}</td>
+          <td class="sr-notes">{{ r.notes or r.description }}</td>
         </tr>
         {% else %}
         <tr><td colspan="7">No entries match this filter.</td></tr>
@@ -111,5 +142,22 @@
     {% endif %}
   </div>
 </div>
+<script>
+(function(){
+  var btn = document.getElementById("sr-theme");
+  function paint(){
+    var light = document.documentElement.getAttribute("data-bs-theme") === "light";
+    btn.querySelector("i").className = light ? "bi bi-sun" : "bi bi-moon-stars";
+    btn.querySelector("span").textContent = light ? "Light" : "Dark";
+  }
+  paint();
+  btn.addEventListener("click", function(){
+    var next = document.documentElement.getAttribute("data-bs-theme") === "light" ? "dark" : "light";
+    document.documentElement.setAttribute("data-bs-theme", next);
+    localStorage.setItem("sr-theme", next);
+    paint();
+  });
+})();
+</script>
 </body>
 </html>
