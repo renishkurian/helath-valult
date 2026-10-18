@@ -6,8 +6,9 @@
 <title>{{ report.title }}</title>
 <script>
 (function(){
-  var t = localStorage.getItem("sr-theme");
-  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-bs-theme", t);
+  var h = new Date().getHours();
+  document.documentElement.setAttribute("data-bs-theme", (h >= 6 && h < 18) ? "light" : "dark");
+  try { localStorage.removeItem("sr-theme"); } catch (e) {}
 })();
 </script>
 <link rel="stylesheet" href="/static/vendor/bootstrap.min.css">
@@ -164,17 +165,34 @@ html[data-bs-theme="light"] .sr-cat .track{ background:#e6e8ee; }
 <script>
 (function(){
   var btn = document.getElementById("sr-theme");
+  var manual = null;
+  function byClock(){
+    var h = new Date().getHours();
+    return (h >= 6 && h < 18) ? "light" : "dark";
+  }
   function paint(){
     var light = document.documentElement.getAttribute("data-bs-theme") === "light";
     btn.querySelector("i").className = light ? "bi bi-sun" : "bi bi-moon-stars";
-    btn.querySelector("span").textContent = light ? "Light" : "Dark";
+    btn.querySelector("span").textContent = light ? "Day" : "Night";
   }
-  paint();
-  btn.addEventListener("click", function(){
-    var next = document.documentElement.getAttribute("data-bs-theme") === "light" ? "dark" : "light";
-    document.documentElement.setAttribute("data-bs-theme", next);
-    localStorage.setItem("sr-theme", next);
+  function apply(){
+    document.documentElement.setAttribute("data-bs-theme", manual || byClock());
     paint();
+  }
+  function arm(){
+    var now = new Date();
+    var next = new Date(now);
+    next.setMinutes(0, 0, 0);
+    if (now.getHours() < 6) next.setHours(6);
+    else if (now.getHours() < 18) next.setHours(18);
+    else { next.setDate(next.getDate() + 1); next.setHours(6); }
+    setTimeout(function(){ manual = null; apply(); arm(); }, next - now + 500);
+  }
+  apply();
+  arm();
+  btn.addEventListener("click", function(){
+    manual = document.documentElement.getAttribute("data-bs-theme") === "light" ? "dark" : "light";
+    apply();
   });
 })();
 </script>

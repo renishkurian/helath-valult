@@ -30,6 +30,13 @@ EXPIRY_HOURS = {
 }
 
 
+def _ucfirst(value: str | None) -> str:
+    text = (value or "").strip()
+    if not text:
+        return ""
+    return text[:1].upper() + text[1:]
+
+
 def _ids(raw: str | None) -> list[str]:
     if not raw:
         return []
@@ -67,18 +74,18 @@ def report_rows(db: Session, report: models.FinanceSharedReport) -> list[dict]:
             "id": t.id,
             "date": t.txn_date,
             "time": t.txn_time or "",
-            "type": t.txn_type,
+            "type": _ucfirst(t.txn_type),
             "amount": float(t.amount or 0),
-            "payee": t.payee or "",
-            "notes": t.notes or "",
-            "description": t.description or "",
+            "payee": _ucfirst(t.payee),
+            "notes": _ucfirst(t.notes),
+            "description": _ucfirst(t.description),
             "category_id": t.category_id or "",
-            "category": cat.name if cat else ("Transfer" if t.txn_type == "transfer" else "Uncategorised"),
+            "category": _ucfirst(cat.name if cat else ("Transfer" if t.txn_type == "transfer" else "Uncategorised")),
             "account_id": t.account_id or "",
             "to_account_id": t.to_account_id or "",
-            "account": acc.name if acc else "",
-            "to_account": dest.name if dest else "",
-            "method": t.payment_method or "",
+            "account": _ucfirst(acc.name if acc else ""),
+            "to_account": _ucfirst(dest.name if dest else ""),
+            "method": _ucfirst(t.payment_method),
         })
     return out
 
@@ -94,7 +101,7 @@ def apply_viewer_filters(
     q: str | None,
 ) -> list[dict]:
     if txn_type in ("income", "expense", "transfer"):
-        rows = [r for r in rows if r["type"] == txn_type]
+        rows = [r for r in rows if r["type"].lower() == txn_type]
     if category_ids:
         wanted = set(category_ids)
         rows = [r for r in rows if r["category_id"] in wanted]
@@ -135,8 +142,8 @@ def _viewer_choice(request: Request, report: models.FinanceSharedReport) -> dict
 
 
 def totals(rows: list[dict]) -> dict:
-    income = sum(r["amount"] for r in rows if r["type"] == "income")
-    expense = sum(r["amount"] for r in rows if r["type"] == "expense")
+    income = sum(r["amount"] for r in rows if r["type"].lower() == "income")
+    expense = sum(r["amount"] for r in rows if r["type"].lower() == "expense")
     return {"income": income, "expense": expense, "net": income - expense, "count": len(rows)}
 
 
@@ -145,9 +152,9 @@ def chart_payload(rows: list[dict]) -> dict:
     by_cat: dict[str, float] = {}
     for r in rows:
         day = by_day.setdefault(r["date"], {"date": r["date"], "income": 0.0, "expense": 0.0})
-        if r["type"] == "income":
+        if r["type"].lower() == "income":
             day["income"] += r["amount"]
-        elif r["type"] == "expense":
+        elif r["type"].lower() == "expense":
             day["expense"] += r["amount"]
             by_cat[r["category"]] = by_cat.get(r["category"], 0.0) + r["amount"]
     days = [by_day[k] for k in sorted(by_day)]
@@ -299,7 +306,12 @@ def _public_ctx(report, rows, request: Request):
         "date_to": choice["date_to"],
         "q": choice["q"],
         "tab": tab if tab in ("list", "charts") else "list",
-        "filter_qs": urlencode(list(request.query_params.multi_items()), doseq=True),
+        "filter_qs": urlencode(
+            [("from", choice["date_from"]), ("to", choice["date_to"]), ("type", choice["txn_type"]), ("q", choice["q"])]
+            + [("account", a) for a in choice["account_ids"]]
+            + [("category", c) for c in choice["category_ids"]],
+            doseq=True,
+        ),
         "inr": inr,
         "expired_label": report.expires_at.strftime("%d %b %Y %H:%M UTC") if report.expires_at else "Never",
     }
