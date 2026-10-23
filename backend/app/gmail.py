@@ -155,12 +155,73 @@ def get_attachment(access_token: str, message_id: str, attachment_id: str) -> st
     )
 
 
+def get_message_metadata(access_token: str, message_id: str) -> dict[str, Any]:
+    q = urllib.parse.urlencode({
+        "format": "metadata",
+        "metadataHeaders": ["Subject", "From", "Date"],
+    }, doseq=True)
+    return _request_json(
+        f"{GMAIL_API}/messages/{urllib.parse.quote(message_id, safe='')}?{q}",
+        access_token,
+    )
+
+
 def get_message(access_token: str, message_id: str) -> dict[str, Any]:
     q = urllib.parse.urlencode({"format": "full"})
     return _request_json(
         f"{GMAIL_API}/messages/{urllib.parse.quote(message_id, safe='')}?{q}",
         access_token,
     )
+
+
+def get_messages_metadata(access_token: str, message_ids: list[str]) -> list[dict[str, Any]]:
+    """One Gmail batch call: headers + snippet only, no message bodies."""
+    ids = [m for m in message_ids if m]
+    if not ids:
+        return []
+    boundary = "batch_vault_mail"
+    chunks: list[str] = []
+    for i, mid in enumerate(ids):
+        path = (
+            f"/gmail/v1/users/me/messages/{urllib.parse.quote(mid, safe='')}"
+            "?format=metadata"
+            "&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date"
+        )
+        chunks.append(
+            f"--{boundary}\r\n"
+            "Content-Type: application/http\r\n"
+            f"Content-ID: <item{i}>\r\n\r\n"
+            f"GET {path}\r\n\r\n"
+        )
+    body = ("".join(chunks) + f"--{boundary}--").encode()
+    req = urllib.request.Request(
+        "https://gmail.googleapis.com/batch/gmail/v1",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": f"multipart/mixed; boundary={boundary}",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=45) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        ctype = resp.headers.get("Content-Type") or ""
+    match = re.search(r"boundary=([^;\s]+)", ctype, re.I)
+    split_on = (match.group(1).strip('"') if match else boundary)
+    by_id: dict[str, dict[str, Any]] = {}
+    for part in raw.split("--" + split_on):
+        start = part.find("{")
+        end = part.rfind("}")
+        if start < 0 or end < start:
+            continue
+        try:
+            payload = json.loads(part[start:end + 1])
+        except json.JSONDecodeError:
+            continue
+        mid = payload.get("id")
+        if mid:
+            by_id[mid] = payload
+    return [by_id[mid] for mid in ids if mid in by_id]
 
 
 def _header(headers: list[dict[str, str]], name: str) -> str | None:

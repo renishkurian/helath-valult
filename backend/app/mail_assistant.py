@@ -62,13 +62,16 @@ def list_mail(
     ids, next_token = gmail.list_message_ids(
         token, q, max_results=max(1, min(50, limit)), page_token=page_token,
     )
-    items: list[dict[str, Any]] = []
-    for mid in ids:
-        try:
-            payload = gmail.get_message(token, mid)
-        except Exception:  # noqa: BLE001 — skip a single bad message, keep the list going
-            continue
-        items.append(_summarize(gmail.extract_message(payload)))
+    try:
+        payloads = gmail.get_messages_metadata(token, ids)
+    except Exception:  # noqa: BLE001 — batch down, still show the list
+        payloads = []
+        for mid in ids:
+            try:
+                payloads.append(gmail.get_message_metadata(token, mid))
+            except Exception:  # noqa: BLE001
+                continue
+    items = [_summarize(gmail.extract_message(payload)) for payload in payloads]
     return {"items": items, "next_page_token": next_token, "query": q}
 
 
