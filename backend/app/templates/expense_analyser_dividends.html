@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Dividends{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Expense Analyser</div>
+    <h1 class="page-title">Dividend finder</h1>
+    <p class="page-lead">Dividends found in parsed bank PDFs. Locked Gmail PDFs open with the passwords saved on Statements. {{ password_count }} password{{ 's' if password_count != 1 else '' }} saved.</p>
+  </div>
+  <form method="post" action="/admin/expense-analyser/dividends/scan">
+    <button class="btn btn-primary" type="submit">Scan PDFs</button>
+  </form>
+</div>
+
+{% if request.query_params.get('ok') == 'scanned' %}
+<div class="alert alert-success">Scan finished. New rows use the stored bank passwords.</div>
+{% endif %}
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat accent">
+      <div class="lbl">Total</div>
+      <div class="val mm-income">{{ inr(total) }}</div>
+      <div class="sub">{{ count }} payments{% if year %} in {{ year }}{% endif %}</div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat">
+      <div class="lbl">Issuers</div>
+      <div class="val">{{ issuers|length }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a class="btn btn-sm {% if not year %}btn-primary{% else %}btn-ghost{% endif %}" href="/admin/expense-analyser/dividends">All years</a>
+  {% for y in years %}
+  <a class="btn btn-sm {% if year == y %}btn-primary{% else %}btn-ghost{% endif %}" href="/admin/expense-analyser/dividends?year={{ y }}">{{ y }}</a>
+  {% endfor %}
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-4">
+    <h2 class="h6">By year</h2>
+    <table class="table table-sm">
+      <thead><tr><th>Year</th><th>Amount</th></tr></thead>
+      <tbody>
+      {% for r in year_rows %}
+      <tr><td>{{ r.key }}</td><td>{{ inr(r.total) }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">No dividends yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <h2 class="h6 mt-3">By month</h2>
+    <table class="table table-sm">
+      <thead><tr><th>Month</th><th>Amount</th></tr></thead>
+      <tbody>
+      {% for r in months %}
+      <tr><td>{{ r.key }}</td><td>{{ inr(r.total) }}</td></tr>
+      {% else %}
+      <tr><td colspan="2">No months.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="col-lg-8">
+    <h2 class="h6">Payments</h2>
+    <div class="table-responsive">
+      <table class="table table-sm">
+        <thead><tr><th>Date</th><th>Issued by</th><th>Amount</th><th>Bank</th><th>Statement</th></tr></thead>
+        <tbody>
+        {% for r in items %}
+        <tr>
+          <td>{{ r.date or '—' }}</td>
+          <td>{{ r.issuer }}</td>
+          <td>{{ inr(r.amount) }}</td>
+          <td>{{ r.bank or '—' }}</td>
+          <td class="text-muted">{{ r.source or r.description }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">No dividend rows. Load statements, save the PDF password, then scan.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if issuers %}
+    <h2 class="h6 mt-3">By issuer</h2>
+    <table class="table table-sm">
+      <thead><tr><th>Issued by</th><th>Amount</th></tr></thead>
+      <tbody>
+      {% for r in issuers %}
+      <tr><td>{{ r.name }}</td><td>{{ inr(r.total) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

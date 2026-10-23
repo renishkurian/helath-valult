@@ -8083,6 +8083,101 @@ async def ea_mail_reply_json(message_id: str, request: Request, db: Session = De
         return JSONResponse({"error": str(exc)}, status_code=400)
 
 
+@router.get("/expense-analyser/dividends", response_class=HTMLResponse)
+def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)):
+    import re
+    from collections import defaultdict
+    from app.routers import tracker as tr
+    from app.routers.finance import inr
+    from app.statement_parsers.base import categorize
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    from app.deps import vault_id as _vid
+    uid = _vid(user)
+    rows = (
+        db.query(models.ShopStatementTxn)
+        .filter(models.ShopStatementTxn.user_id == uid, models.ShopStatementTxn.status != "ignored")
+        .all()
+    )
+    changed = False
+    hits = []
+    for row in rows:
+        desc = row.description or ""
+        if categorize(desc) == "dividend" or (row.category or "") == "dividend":
+            if row.category != "dividend":
+                row.category = "dividend"
+                changed = True
+            hits.append(row)
+    if changed:
+        db.commit()
+
+    def issuer(desc: str) -> str:
+        text = desc or ""
+        for pat in (
+            r"ACHCR[/\s:-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
+            r"DIVIDEND(?:\s+FROM)?[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
+            r"\bDIV[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
+        ):
+            m = re.search(pat, text, re.I)
+            if m:
+                name = re.split(r"[/\n]", m.group(1))[0].strip(" -:")
+                return name[:48] or "Unknown"
+        clean = re.sub(r"\s+", " ", text).strip()
+        return (clean[:48] or "Unknown")
+
+    items = []
+    for row in hits:
+        day = (row.txn_date or "")[:10]
+        amt = float(row.amount or 0)
+        items.append({
+            "date": day,
+            "year": day[:4] if len(day) >= 4 else "",
+            "month": day[:7] if len(day) >= 7 else "",
+            "amount": amt,
+            "issuer": issuer(row.description or ""),
+            "bank": row.bank_name or "",
+            "description": row.description or "",
+            "source": row.source_file or "",
+        })
+    items.sort(key=lambda r: r["date"], reverse=True)
+    years = sorted({r["year"] for r in items if r["year"]}, reverse=True)
+    picked = year if year in years else ""
+    shown = [r for r in items if not picked or r["year"] == picked]
+    by_month = defaultdict(float)
+    by_year = defaultdict(float)
+    by_issuer = defaultdict(float)
+    for r in shown:
+        if r["month"]:
+            by_month[r["month"]] += r["amount"]
+        if r["year"]:
+            by_year[r["year"]] += r["amount"]
+        by_issuer[r["issuer"]] += r["amount"]
+    months = [{"key": k, "total": by_month[k]} for k in sorted(by_month, reverse=True)]
+    year_rows = [{"key": k, "total": by_year[k]} for k in sorted(by_year, reverse=True)]
+    issuers = [{"name": k, "total": by_issuer[k]} for k in sorted(by_issuer, key=lambda n: -by_issuer[n])]
+    passwords = tr.list_passwords(db=db, current_user=user)
+    return templates.TemplateResponse("expense_analyser_dividends.html", _ea_ctx(
+        request, user, "ea_dividends",
+        items=shown, months=months, year_rows=year_rows, issuers=issuers,
+        years=years, year=picked, total=sum(r["amount"] for r in shown),
+        count=len(shown), inr=inr, password_count=len(passwords),
+    ))
+
+
+@router.post("/expense-analyser/dividends/scan")
+def ea_dividends_scan(request: Request, db: Session = Depends(get_db)):
+    from app import expense_analyser as ea
+    user = _ea_user(request, db)
+    if not user:
+        return RedirectResponse("/admin/login", status_code=302)
+    try:
+        ea.retry_locked_pdfs(db, user)
+    except Exception:
+        pass
+    return RedirectResponse("/admin/expense-analyser/dividends?ok=scanned", status_code=302)
+
+
 @router.get("/expense-analyser/statements", response_class=HTMLResponse)
 def ea_statements(request: Request, status: str = "pending", db: Session = Depends(get_db)):
     from app import expense_analyser as ea
