@@ -8136,6 +8136,7 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
             "date_label": _month_label(day[:7])[:3] + " " + day[8:10] if len(day) >= 10 else day,
             "year": day[:4] if len(day) >= 4 else "",
             "month": day[:7] if len(day) >= 7 else "",
+            "month_label": _month_label(day[:7]) if len(day) >= 7 else "",
             "amount": amt,
             "issuer": issuer_name(row.description or ""),
             "bank": bank_label(row),

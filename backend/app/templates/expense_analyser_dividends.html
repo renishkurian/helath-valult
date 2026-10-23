@@ -1,11 +1,59 @@
 {% extends "base.html" %}
 {% block title %}Dividends{% endblock %}
 {% block content %}
-<div class="page-head">
+<style>
+.div-hero{
+  display:flex; align-items:flex-end; justify-content:space-between; gap:1rem; flex-wrap:wrap;
+  padding:1.35rem 1.4rem 1.2rem; border-radius:22px; margin-bottom:1rem;
+  background:
+    radial-gradient(420px 160px at 0% 0%, rgba(53,214,138,.16), transparent 70%),
+    rgba(255,255,255,.035);
+  border:1px solid rgba(255,255,255,.07);
+}
+.div-kicker{ font-size:.68rem; letter-spacing:.14em; text-transform:uppercase; color:var(--v-ink-3); font-weight:650; }
+.div-total{
+  font-size:clamp(2.1rem, 4vw, 3rem); font-weight:720; letter-spacing:-.045em; line-height:1;
+  color:#35d68a; margin-top:.35rem;
+}
+.div-sub{ color:var(--v-ink-3); font-size:.84rem; margin-top:.4rem; }
+.div-months{ display:flex; gap:.55rem; overflow-x:auto; padding-bottom:.25rem; margin: .25rem 0 1.1rem; }
+.div-chip{
+  flex:0 0 auto; min-width:7.5rem; padding:.7rem .85rem; border-radius:16px;
+  background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07);
+}
+.div-chip .m{ font-size:.72rem; color:var(--v-ink-3); }
+.div-chip .a{ font-weight:650; margin-top:.15rem; letter-spacing:-.02em; }
+.div-h{
+  display:flex; align-items:baseline; justify-content:space-between;
+  margin:1.15rem 0 .45rem; color:var(--v-ink-3); font-size:.75rem; letter-spacing:.04em;
+}
+.div-row{
+  display:flex; align-items:center; gap:.85rem;
+  padding:.72rem .2rem; border-bottom:1px solid rgba(255,255,255,.06);
+}
+.div-row:last-child{ border-bottom:0; }
+.div-logo{
+  width:46px; height:46px; border-radius:16px; flex-shrink:0;
+  display:grid; place-items:center; overflow:hidden;
+  background:#f4f6f8; color:#1a1d24; font-weight:700;
+}
+.div-logo img{ width:100%; height:100%; object-fit:cover; }
+.div-name{ font-weight:640; letter-spacing:-.02em; }
+.div-meta{ color:var(--v-ink-3); font-size:.78rem; margin-top:.1rem; }
+.div-amt{ margin-left:auto; font-weight:700; color:#35d68a; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.div-years{ display:flex; gap:.4rem; flex-wrap:wrap; margin-bottom:.85rem; }
+.div-years a{
+  text-decoration:none; color:var(--v-ink-2); padding:.35rem .7rem; border-radius:999px;
+  border:1px solid transparent;
+}
+.div-years a.on{ color:#d7ffe9; background:rgba(53,214,138,.14); border-color:rgba(53,214,138,.25); }
+</style>
+
+<div class="div-hero">
   <div>
-    <div class="eyebrow">Expense Analyser</div>
-    <h1 class="page-title">Dividends</h1>
-    <p class="page-lead mb-0">{{ inr(total) }} · {{ count }} payments{% if year %} in {{ year }}{% endif %}</p>
+    <div class="div-kicker">Dividends{% if year %} · {{ year }}{% endif %}</div>
+    <div class="div-total">{{ inr(total) }}</div>
+    <div class="div-sub">{{ count }} credit{{ 's' if count != 1 else '' }} into SBI</div>
   </div>
   <form method="post" action="/admin/expense-analyser/dividends/scan">
     <button class="btn btn-ghost" type="submit">Sync now</button>
@@ -13,40 +61,41 @@
 </div>
 
 {% if request.query_params.get('ok') == 'started' %}
-<div class="alert alert-success">Sync started in the background. Refresh in a minute.</div>
+<div class="alert alert-success">Sync started. Refresh in a minute.</div>
 {% elif request.query_params.get('ok') == 'busy' %}
 <div class="alert alert-info">A sync is already running.</div>
 {% endif %}
 
-<p class="mb-3">
-  <a href="/admin/expense-analyser/dividends" {% if not year %}class="fw-semibold"{% endif %}>All</a>
+<div class="div-years">
+  <a class="{% if not year %}on{% endif %}" href="/admin/expense-analyser/dividends">All</a>
   {% for y in years %}
-  · <a href="/admin/expense-analyser/dividends?year={{ y }}" {% if year == y %}class="fw-semibold"{% endif %}>{{ y }}</a>
-  {% endfor %}
-</p>
-
-{% if months %}
-<p class="text-muted mb-4">
-  {% for r in months %}{{ r.label }} {{ inr(r.total) }}{% if not loop.last %} · {% endif %}{% endfor %}
-</p>
-{% endif %}
-
-<div class="list-rows">
-  {% for r in items %}
-  <div class="list-row">
-    {% if r.logo %}
-    <img src="{{ r.logo }}" alt="" width="36" height="36" style="width:36px;height:36px;border-radius:10px;object-fit:cover;background:var(--v-surface-2)">
-    {% else %}
-    <span class="mmx-ico">{{ r.issuer[:1] }}</span>
-    {% endif %}
-    <span class="row-body">
-      <span class="row-title">{{ r.issuer }}</span>
-      <span class="row-meta">{{ r.date_label or r.date }} · {{ r.bank }}</span>
-    </span>
-    <span class="mm-income">{{ inr(r.amount) }}</span>
-  </div>
-  {% else %}
-  <p class="text-muted">No dividends saved yet.</p>
+  <a class="{% if year == y %}on{% endif %}" href="/admin/expense-analyser/dividends?year={{ y }}">{{ y }}</a>
   {% endfor %}
 </div>
+
+{% if months %}
+<div class="div-months">
+  {% for r in months %}
+  <div class="div-chip"><div class="m">{{ r.label }}</div><div class="a">{{ inr(r.total) }}</div></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% for r in items %}
+  {% if loop.first or r.month != items[loop.index0 - 1].month %}
+  <div class="div-h"><span>{{ r.month_label or r.month }}</span></div>
+  {% endif %}
+  <div class="div-row">
+    <span class="div-logo">
+      {% if r.logo %}<img src="{{ r.logo }}" alt="">{% else %}{{ r.issuer[:1] }}{% endif %}
+    </span>
+    <span>
+      <div class="div-name">{{ r.issuer }}</div>
+      <div class="div-meta">{{ r.date_label or r.date }} · {{ r.bank }}</div>
+    </span>
+    <span class="div-amt">+ {{ inr(r.amount) }}</span>
+  </div>
+{% else %}
+<p class="text-muted">No dividends saved yet.</p>
+{% endfor %}
 {% endblock %}
