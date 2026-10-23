@@ -1,129 +1,52 @@
 {% extends "base.html" %}
 {% block title %}Dividends{% endblock %}
 {% block content %}
-{% set peak_m = (months|map(attribute='total')|max) if months else 1 %}
-{% set peak_i = (issuers|map(attribute='total')|max) if issuers else 1 %}
-<div class="mmx">
-  <div class="mmx-top">
-    <div>
-      <div class="eyebrow">Expense Analyser</div>
-      <h1 class="page-title">Dividends</h1>
-      <p class="page-lead mb-0">Saved statement rows. Reload does not parse PDFs. Sync runs once a day, or when you press Scan PDFs.</p>
-    </div>
-    <form method="post" action="/admin/expense-analyser/dividends/scan">
-      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-repeat"></i> Sync now</button>
-    </form>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Expense Analyser</div>
+    <h1 class="page-title">Dividends</h1>
+    <p class="page-lead mb-0">{{ inr(total) }} · {{ count }} payments{% if year %} in {{ year }}{% endif %}</p>
   </div>
+  <form method="post" action="/admin/expense-analyser/dividends/scan">
+    <button class="btn btn-ghost" type="submit">Sync now</button>
+  </form>
+</div>
 
-  {% if request.query_params.get('ok') == 'started' %}
-  <div class="alert alert-success">Scan started. Refresh in a minute. Only mail that matches a saved password is opened.</div>
-  {% elif request.query_params.get('ok') == 'busy' %}
-  <div class="alert alert-info">A scan is already running.</div>
-  {% endif %}
+{% if request.query_params.get('ok') == 'started' %}
+<div class="alert alert-success">Sync started in the background. Refresh in a minute.</div>
+{% elif request.query_params.get('ok') == 'busy' %}
+<div class="alert alert-info">A sync is already running.</div>
+{% endif %}
 
-  <div class="mmx-grid mb-3">
-    <section class="mmx-card mmx-hero" aria-label="Dividend total">
-      <div class="mmx-hero-top">
-        <div>
-          <div class="mmx-hero-label">Received</div>
-          <div class="mmx-hero-num pos">{{ inr(total) }}</div>
-          <div class="mmx-hero-meta">{{ count }} payment{{ 's' if count != 1 else '' }}{% if year %} in {{ year }}{% else %} across all years{% endif %}</div>
-        </div>
-        <span class="mmx-chip ok"><i class="bi bi-cash-coin"></i> Income</span>
-      </div>
-      <div class="mmx-legend">
-        <span><i style="background:var(--mmx-in)"></i>{{ issuers|length }} companies</span>
-        <span><i style="background:var(--mmx-violet)"></i>{{ months|length }} months</span>
-        <span><i style="background:var(--mmx-amber)"></i>SBI account</span>
-      </div>
-    </section>
-    <div class="mmx-stats">
-      <div class="mmx-pill">
-        <div>
-          <div class="l">Companies</div>
-          <div class="v">{{ issuers|length }}</div>
-        </div>
-        <span class="mmx-ico" style="background:rgba(139,140,249,0.12);color:var(--mmx-violet)"><i class="bi bi-buildings"></i></span>
-      </div>
-      <div class="mmx-pill">
-        <div>
-          <div class="l">Payments</div>
-          <div class="v">{{ count }}</div>
-        </div>
-        <span class="mmx-ico" style="background:rgba(53,214,138,0.1);color:var(--mmx-in)"><i class="bi bi-receipt"></i></span>
-      </div>
-    </div>
+<p class="mb-3">
+  <a href="/admin/expense-analyser/dividends" {% if not year %}class="fw-semibold"{% endif %}>All</a>
+  {% for y in years %}
+  · <a href="/admin/expense-analyser/dividends?year={{ y }}" {% if year == y %}class="fw-semibold"{% endif %}>{{ y }}</a>
+  {% endfor %}
+</p>
+
+{% if months %}
+<p class="text-muted mb-4">
+  {% for r in months %}{{ r.label }} {{ inr(r.total) }}{% if not loop.last %} · {% endif %}{% endfor %}
+</p>
+{% endif %}
+
+<div class="list-rows">
+  {% for r in items %}
+  <div class="list-row">
+    {% if r.logo %}
+    <img src="{{ r.logo }}" alt="" width="36" height="36" style="width:36px;height:36px;border-radius:10px;object-fit:cover;background:var(--v-surface-2)">
+    {% else %}
+    <span class="mmx-ico">{{ r.issuer[:1] }}</span>
+    {% endif %}
+    <span class="row-body">
+      <span class="row-title">{{ r.issuer }}</span>
+      <span class="row-meta">{{ r.date_label or r.date }} · {{ r.bank }}</span>
+    </span>
+    <span class="mm-income">{{ inr(r.amount) }}</span>
   </div>
-
-  <div class="mmx-seg mb-3" role="group" aria-label="Year">
-    <a class="{% if not year %}on{% endif %}" href="/admin/expense-analyser/dividends">All</a>
-    {% for y in years %}
-    <a class="{% if year == y %}on{% endif %}" href="/admin/expense-analyser/dividends?year={{ y }}">{{ y }}</a>
-    {% endfor %}
-  </div>
-
-  <div class="mmx-grid">
-    <section class="mmx-card mmx-c4">
-      <div class="mmx-head">
-        <div class="mmx-title"><span class="mmx-ico"><i class="bi bi-calendar3"></i></span><span class="mmx-t">By month</span></div>
-      </div>
-      {% for r in months %}
-      <div class="bar-row">
-        <div class="bar-head"><span class="b-name">{{ r.label }}</span><span class="b-val">{{ inr(r.total) }}</span></div>
-        <div class="bar"><span style="width:{{ (r.total / peak_m * 100)|round(1) }}%;background:var(--mmx-in)"></span></div>
-      </div>
-      {% else %}
-      <p class="text-muted mb-0">No months yet.</p>
-      {% endfor %}
-      {% if year_rows|length > 1 %}
-      <div class="mmx-head mt-4">
-        <div class="mmx-title"><span class="mmx-ico"><i class="bi bi-calendar"></i></span><span class="mmx-t">By year</span></div>
-      </div>
-      {% for r in year_rows %}
-      <div class="bar-row">
-        <div class="bar-head"><span class="b-name">{{ r.key }}</span><span class="b-val">{{ inr(r.total) }}</span></div>
-      </div>
-      {% endfor %}
-      {% endif %}
-    </section>
-
-    <section class="mmx-card mmx-c8">
-      <div class="mmx-head">
-        <div class="mmx-title"><span class="mmx-ico"><i class="bi bi-building"></i></span><span class="mmx-t">Who paid</span></div>
-      </div>
-      {% for r in issuers %}
-      <div class="bar-row">
-        <div class="bar-head">
-          <span class="b-name">{{ r.name }}</span>
-          <span class="b-val">{{ inr(r.total) }}</span>
-        </div>
-        <div class="bar"><span style="width:{{ (r.total / peak_i * 100)|round(1) }}%"></span></div>
-      </div>
-      {% else %}
-      <p class="text-muted">No companies yet. Save the SBI password, then scan.</p>
-      {% endfor %}
-    </section>
-
-    <section class="mmx-card mmx-c12">
-      <div class="mmx-head">
-        <div class="mmx-title"><span class="mmx-ico"><i class="bi bi-list-ul"></i></span><span class="mmx-t">Each credit</span></div>
-        <span class="mmx-d">{{ count }} rows</span>
-      </div>
-      <div class="list-rows">
-        {% for r in items %}
-        <div class="list-row">
-          <span class="mmx-ico" style="color:var(--mmx-in)">{{ r.issuer[:1] }}</span>
-          <span class="row-body">
-            <span class="row-title">{{ r.issuer }}</span>
-            <span class="row-meta">{{ r.date_label or r.date }} · {{ r.bank }}</span>
-          </span>
-          <span class="mm-income fw-semibold">{{ inr(r.amount) }}</span>
-        </div>
-        {% else %}
-        <p class="text-muted mb-0">No dividend rows yet.</p>
-        {% endfor %}
-      </div>
-    </section>
-  </div>
+  {% else %}
+  <p class="text-muted">No dividends saved yet.</p>
+  {% endfor %}
 </div>
 {% endblock %}

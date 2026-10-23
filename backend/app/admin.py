@@ -8095,44 +8095,26 @@ def _month_label(key: str) -> str:
 
 @router.get("/expense-analyser/dividends", response_class=HTMLResponse)
 def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)):
-    import re
     from collections import defaultdict
-    from app.routers import tracker as tr
+    from app.company_logos import issuer_name, logos_for, name_key
     from app.routers.finance import inr
     user = _ea_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
     from app.deps import vault_id as _vid
     uid = _vid(user)
-    rows = (
+    q = (
         db.query(models.ShopStatementTxn)
         .filter(
             models.ShopStatementTxn.user_id == uid,
             models.ShopStatementTxn.category == "dividend",
             models.ShopStatementTxn.status != "ignored",
         )
-        .all()
     )
+    if year and len(year) == 4 and year.isdigit():
+        q = q.filter(models.ShopStatementTxn.txn_date.like(f"{year}-%"))
+    rows = q.all()
     hits = rows
-
-    def issuer(desc: str) -> str:
-        text = re.sub(r"\s+", " ", desc or "").strip()
-        m = re.search(r"ACHCr\s+[A-Z0-9]+\s+(.+?)\s+-\s+\d", text, re.I)
-        name = m.group(1).strip(" -") if m else ""
-        if not name:
-            for pat in (
-                r"DIVIDEND(?:\s+FROM)?[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
-                r"\bDIV[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
-            ):
-                hit = re.search(pat, text, re.I)
-                if hit:
-                    name = re.split(r"[/\n]", hit.group(1))[0].strip(" -:")
-                    break
-        if not name:
-            name = text[:48]
-        name = re.sub(r"\s*(FNL[-\s]?DIV|FIN\s+DIV|FNLDIV|DIVIDEND).*$", "", name, flags=re.I)
-        name = re.sub(r"[\s\-]*\d{2,4}(?:[\s\-]+\d{2,4})?\s*$", "", name).strip(" -")
-        return (name[:48] or "Unknown").title()
 
     def bank_label(row) -> str:
         name = (row.bank_name or "").strip()
@@ -8155,12 +8137,15 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
             "year": day[:4] if len(day) >= 4 else "",
             "month": day[:7] if len(day) >= 7 else "",
             "amount": amt,
-            "issuer": issuer(row.description or ""),
+            "issuer": issuer_name(row.description or ""),
             "bank": bank_label(row),
             "description": row.description or "",
             "source": row.source_file or "",
         })
     items.sort(key=lambda r: r["date"], reverse=True)
+    logo_map = logos_for(db, [r["issuer"] for r in items])
+    for r in items:
+        r["logo"] = logo_map.get(name_key(r["issuer"]))
     years = sorted({r["year"] for r in items if r["year"]}, reverse=True)
     picked = year if year in years else ""
     shown = [r for r in items if not picked or r["year"] == picked]
@@ -8176,12 +8161,16 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
     months = [{"key": k, "label": _month_label(k), "total": by_month[k]} for k in sorted(by_month, reverse=True)]
     year_rows = [{"key": k, "total": by_year[k]} for k in sorted(by_year, reverse=True)]
     issuers = [{"name": k, "total": by_issuer[k]} for k in sorted(by_issuer, key=lambda n: -by_issuer[n])]
-    passwords = tr.list_passwords(db=db, current_user=user)
+    years = sorted({(r.txn_date or "")[:4] for r in db.query(models.ShopStatementTxn.txn_date).filter(
+        models.ShopStatementTxn.user_id == uid,
+        models.ShopStatementTxn.category == "dividend",
+        models.ShopStatementTxn.status != "ignored",
+    ).all() if r.txn_date}, reverse=True)
     return templates.TemplateResponse("expense_analyser_dividends.html", _ea_ctx(
         request, user, "ea_dividends",
         items=shown, months=months, year_rows=year_rows, issuers=issuers,
         years=years, year=picked, total=sum(r["amount"] for r in shown),
-        count=len(shown), inr=inr, password_count=len(passwords),
+        count=len(shown), inr=inr,
     ))
 
 

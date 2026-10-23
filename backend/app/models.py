@@ -1457,6 +1457,16 @@ class ShopPdfPassword(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class DividendCompanyLogo(Base):
+    """Saved company logo for a dividend issuer. Filled by sync, never by a page view."""
+    __tablename__ = "dividend_company_logos"
+    id = Column(String(32), primary_key=True, default=gen_id)
+    name_key = Column(String(80), nullable=False, unique=True, index=True)
+    domain = Column(String(120), nullable=True)
+    logo_path = Column(String(255), nullable=True)
+    fetched_at = Column(DateTime, nullable=True)
+
+
 class ShopStatementPdf(Base):
     """A Gmail PDF statement tracked for import (password retry without re-search)."""
     __tablename__ = "shop_statement_pdfs"

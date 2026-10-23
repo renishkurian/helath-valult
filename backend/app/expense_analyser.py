@@ -228,7 +228,19 @@ def start_dividend_scan_background(user_id: str) -> bool:
         try:
             user = db.query(models.User).filter(models.User.id == user_id).first()
             if user:
-                retry_locked_pdfs(db, user, matching_passwords_only=True)
+                try:
+                    retry_locked_pdfs(db, user, matching_passwords_only=True)
+                except Exception:
+                    log.exception("background dividend pdf retry failed")
+                from app.company_logos import issuer_name, sync_logos
+                names = [
+                    issuer_name(desc or "")
+                    for (desc,) in db.query(models.ShopStatementTxn.description).filter(
+                        models.ShopStatementTxn.user_id == user_id,
+                        models.ShopStatementTxn.category == "dividend",
+                    ).all()
+                ]
+                sync_logos(db, names)
         except Exception:
             log.exception("background dividend scan failed")
         finally:
@@ -995,6 +1007,7 @@ def _ingest_mail_pdf(
     existing = _mail_pdf_row(db, uid, mid, key)
     if existing and existing.status in ("parsed", "ignored"):
         return {"status": existing.status, "created": 0, "skipped": 1}
+    db.commit()
 
     filename = (part.get("filename") or "statement.pdf")
     try:
@@ -1115,28 +1128,26 @@ def retry_locked_pdfs(db: Session, user: models.User, *, matching_passwords_only
         )
         .all()
     )
+    pending = [
+        (rec.gmail_message_id, rec.subject, rec.from_addr, rec.received_at, rec.filename, rec.gmail_attachment_id)
+        for rec in locked
+        if rec.gmail_message_id and rec.gmail_attachment_id and not (rec.gmail_attachment_id or "").startswith("inline:")
+    ]
+    db.commit()
     phrases = [
         (r.identifier or "").strip().lower()
         for r in db.query(models.ShopPdfPassword).filter(models.ShopPdfPassword.user_id == uid).all()
         if (r.identifier or "").strip()
     ]
+    db.commit()
     out = {"retried": 0, "parsed": 0, "created_rows": 0, "needs_password": 0}
-    for rec in locked:
-        aid = rec.gmail_attachment_id or ""
-        if not rec.gmail_message_id or aid.startswith("inline:"):
-            continue
-        subject = (rec.subject or "").lower()
-        blob = f"{subject} {(rec.filename or '').lower()}"
+    for mid, subject, from_addr, received_at, filename, aid in pending:
+        blob = f"{(subject or '').lower()} {(filename or '').lower()}"
         if matching_passwords_only:
             if not any((" " in p and len(p) >= 12 and p in blob) or (p and " " not in p and p in blob) for p in phrases):
                 continue
-        mail = {
-            "id": rec.gmail_message_id,
-            "subject": rec.subject,
-            "from_addr": rec.from_addr,
-            "received_at": rec.received_at,
-        }
-        part = {"filename": rec.filename or "statement.pdf", "attachment_id": aid}
+        mail = {"id": mid, "subject": subject, "from_addr": from_addr, "received_at": received_at}
+        part = {"filename": filename or "statement.pdf", "attachment_id": aid}
         result = _ingest_mail_pdf(db, user, token, mail, part)
         db.commit()
         out["retried"] += 1
