@@ -8122,10 +8122,7 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
         tail = acct[-4:] if len(acct) >= 4 else ""
         if name.upper() in ("", "UNKNOWN"):
             name = "SBI"
-        label = name
-        if tail:
-            label = f"{name} · {tail}"
-        return label
+        return f"{name} ···{tail}" if tail else name
 
     items = []
     for row in hits:
@@ -8167,11 +8164,47 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
         models.ShopStatementTxn.category == "dividend",
         models.ShopStatementTxn.status != "ignored",
     ).all() if r.txn_date}, reverse=True)
+    tints = ["#c8202f", "#3b3a9e", "#1f5fa8", "#3a3f47", "#b5382f", "#1b7a5a", "#4d7a1f", "#8a4b2a", "#5c3d8a"]
+    month_max = defaultdict(float)
+    for r in shown:
+        month_max[r["month"]] = max(month_max[r["month"]], r["amount"])
+    for r in shown:
+        cap = month_max[r["month"]] or 1
+        r["bar"] = 0 if r["amount"] <= 0 else max(4, round(100 * r["amount"] / cap))
+        r["letter"] = (r["issuer"][:1] or "?").upper()
+        r["tint"] = tints[sum(ord(c) for c in r["issuer"].lower()) % len(tints)]
+    total = sum(r["amount"] for r in shown)
+    count = len(shown)
+    chart_year = picked or (years[0] if years else "")
+    by_chart = defaultdict(float)
+    for r in shown:
+        if chart_year and r["year"] != chart_year:
+            continue
+        if r["month"]:
+            by_chart[r["month"]] += r["amount"]
+    peak = max(by_chart.values()) if by_chart else 0
+    best_key = max(by_month, key=by_month.get) if by_month else ""
+    best = (_month_label(best_key).split(" ")[0] if picked else _month_label(best_key)) if best_key else "—"
+    mon_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    bars = []
+    for i, mon in enumerate(mon_names, start=1):
+        key = f"{chart_year}-{i:02d}" if chart_year else ""
+        amt = by_chart.get(key, 0)
+        bars.append({
+            "mon": mon,
+            "amt": amt,
+            "h": 3 if amt <= 0 else max(10, round(150 * amt / (peak or 1))),
+            "peak": amt > 0 and amt == peak,
+            "label": inr(amt) if amt else "",
+        })
+    largest = max((r["amount"] for r in shown), default=0)
     return templates.TemplateResponse("expense_analyser_dividends.html", _ea_ctx(
         request, user, "ea_dividends",
         items=shown, months=months, year_rows=year_rows, issuers=issuers,
-        years=years, year=picked, total=sum(r["amount"] for r in shown),
-        count=len(shown), inr=inr,
+        years=years, year=picked, chart_year=chart_year, bars=bars,
+        total=total, count=count,
+        average=(total / count) if count else 0,
+        best=best, largest=largest, inr=inr,
     ))
 
 
