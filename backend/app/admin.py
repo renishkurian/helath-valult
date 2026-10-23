@@ -8083,6 +8083,16 @@ async def ea_mail_reply_json(message_id: str, request: Request, db: Session = De
         return JSONResponse({"error": str(exc)}, status_code=400)
 
 
+def _month_label(key: str) -> str:
+    names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    parts = (key or "").split("-")
+    if len(parts) == 2 and parts[1].isdigit():
+        n = int(parts[1])
+        if 1 <= n <= 12:
+            return f"{names[n - 1]} {parts[0]}"
+    return key
+
+
 @router.get("/expense-analyser/dividends", response_class=HTMLResponse)
 def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)):
     import re
@@ -8153,6 +8163,7 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
         amt = float(row.amount or 0)
         items.append({
             "date": day,
+            "date_label": _month_label(day[:7])[:3] + " " + day[8:10] if len(day) >= 10 else day,
             "year": day[:4] if len(day) >= 4 else "",
             "month": day[:7] if len(day) >= 7 else "",
             "amount": amt,
@@ -8174,7 +8185,7 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
         if r["year"]:
             by_year[r["year"]] += r["amount"]
         by_issuer[r["issuer"]] += r["amount"]
-    months = [{"key": k, "total": by_month[k]} for k in sorted(by_month, reverse=True)]
+    months = [{"key": k, "label": _month_label(k), "total": by_month[k]} for k in sorted(by_month, reverse=True)]
     year_rows = [{"key": k, "total": by_year[k]} for k in sorted(by_year, reverse=True)]
     issuers = [{"name": k, "total": by_issuer[k]} for k in sorted(by_issuer, key=lambda n: -by_issuer[n])]
     passwords = tr.list_passwords(db=db, current_user=user)
