@@ -8,10 +8,10 @@
     <div>
       <div class="eyebrow">Expense Analyser</div>
       <h1 class="page-title">Dividends</h1>
-      <p class="page-lead mb-0">Credits into your SBI account{% if year %} · {{ year }}{% endif %}. {{ password_count }} statement password{{ 's' if password_count != 1 else '' }} saved.</p>
+      <p class="page-lead mb-0">Saved statement rows. Reload does not parse PDFs. Sync runs once a day, or when you press Scan PDFs.</p>
     </div>
     <form method="post" action="/admin/expense-analyser/dividends/scan">
-      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-repeat"></i> Scan PDFs</button>
+      <button class="btn btn-primary" type="submit"><i class="bi bi-arrow-repeat"></i> Sync now</button>
     </form>
   </div>
 

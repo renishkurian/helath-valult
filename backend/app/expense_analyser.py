@@ -2024,6 +2024,35 @@ def run_due_syncs() -> None:
             log.info("Scheduled Expense Analyser sync already running for %s", uid)
 
 
+def run_due_dividend_scans() -> None:
+    """Open locked statement PDFs once per vault per day. Page views do not parse."""
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    due: list[str] = []
+    try:
+        now = datetime.utcnow()
+        rows = (
+            db.query(models.ExpenseAnalyserConnection)
+            .filter(models.ExpenseAnalyserConnection.refresh_token_enc.isnot(None))
+            .all()
+        )
+        for row in rows:
+            last = row.last_dividend_scan_at
+            if last and (now - last).total_seconds() < 20 * 3600:
+                continue
+            if _is_heavy_job(row.user_id):
+                continue
+            row.last_dividend_scan_at = now
+            due.append(row.user_id)
+        db.commit()
+    finally:
+        db.close()
+    for uid in due:
+        if start_dividend_scan_background(uid):
+            log.info("Started daily dividend scan for %s", uid)
+
+
 _CHART_COLORS = [
     "#5EEAD4", "#F87171", "#FBBF24", "#60A5FA", "#A78BFA",
     "#34D399", "#FB7185", "#F0C36A", "#38BDF8", "#C0A8FF",

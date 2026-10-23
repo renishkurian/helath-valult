@@ -119,6 +119,7 @@ _EXTRA_COLUMNS: dict[str, list[tuple[str, str]]] = {
         ("hour", "INTEGER NOT NULL DEFAULT 6"),
         ("exclude_subjects", "TEXT"),
         ("exclude_from_emails", "TEXT"),
+        ("last_dividend_scan_at", "DATETIME"),
     ],
     "ai_usage_logs": [
         ("request_text", "TEXT"),

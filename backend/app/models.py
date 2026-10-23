@@ -1283,6 +1283,7 @@ class ExpenseAnalyserConnection(Base):
     enabled = Column(Boolean, default=False, nullable=False)  # daily auto-sync
     hour = Column(Integer, default=6, nullable=False)  # local hour 0-23
     last_sync_at = Column(DateTime, nullable=True)
+    last_dividend_scan_at = Column(DateTime, nullable=True)
     last_ok = Column(Boolean, nullable=True)
     last_error = Column(Text, nullable=True)
     last_history_id = Column(String(64), nullable=True)

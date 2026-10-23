@@ -8099,7 +8099,6 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
     from collections import defaultdict
     from app.routers import tracker as tr
     from app.routers.finance import inr
-    from app.statement_parsers.base import categorize
     user = _ea_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
@@ -8107,23 +8106,14 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
     uid = _vid(user)
     rows = (
         db.query(models.ShopStatementTxn)
-        .filter(models.ShopStatementTxn.user_id == uid, models.ShopStatementTxn.status != "ignored")
+        .filter(
+            models.ShopStatementTxn.user_id == uid,
+            models.ShopStatementTxn.category == "dividend",
+            models.ShopStatementTxn.status != "ignored",
+        )
         .all()
     )
-    changed = False
-    hits = []
-    for row in rows:
-        desc = row.description or ""
-        if categorize(desc) == "dividend" or (row.category or "") == "dividend":
-            if row.category != "dividend":
-                row.category = "dividend"
-                changed = True
-            if (row.bank_name or "").upper() in ("", "UNKNOWN"):
-                row.bank_name = "SBI"
-                changed = True
-            hits.append(row)
-    if changed:
-        db.commit()
+    hits = rows
 
     def issuer(desc: str) -> str:
         text = re.sub(r"\s+", " ", desc or "").strip()
@@ -8150,8 +8140,6 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
         tail = acct[-4:] if len(acct) >= 4 else ""
         if name.upper() in ("", "UNKNOWN"):
             name = "SBI"
-            if name != (row.bank_name or ""):
-                row.bank_name = "SBI"
         label = name
         if tail:
             label = f"{name} · {tail}"
