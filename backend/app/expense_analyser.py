@@ -215,6 +215,30 @@ def start_sync_background(user_id: str, *, trigger: str = "manual") -> bool:
     return True
 
 
+def start_dividend_scan_background(user_id: str) -> bool:
+    """Re-open locked statement PDFs that match a saved subject password."""
+    if _is_heavy_job(user_id):
+        return False
+    _mark_syncing(user_id, True)
+
+    def _run() -> None:
+        from app.database import SessionLocal
+
+        db = SessionLocal()
+        try:
+            user = db.query(models.User).filter(models.User.id == user_id).first()
+            if user:
+                retry_locked_pdfs(db, user, matching_passwords_only=True)
+        except Exception:
+            log.exception("background dividend scan failed")
+        finally:
+            _mark_syncing(user_id, False)
+            db.close()
+
+    threading.Thread(target=_run, name=f"ea-div-{user_id[:8]}", daemon=True).start()
+    return True
+
+
 def start_pdf_import_background(user_id: str) -> bool:
     """Download statement PDFs from Gmail on a worker thread."""
     if _is_heavy_job(user_id):
@@ -1073,7 +1097,7 @@ def import_gmail_pdfs(
     return out
 
 
-def retry_locked_pdfs(db: Session, user: models.User) -> dict[str, Any]:
+def retry_locked_pdfs(db: Session, user: models.User, *, matching_passwords_only: bool = False) -> dict[str, Any]:
     """Re-download PDFs that needed a password after the user saved a bank password."""
     row = _row(db, user)
     if not row or not row.refresh_token_enc:
@@ -1091,11 +1115,21 @@ def retry_locked_pdfs(db: Session, user: models.User) -> dict[str, Any]:
         )
         .all()
     )
+    phrases = [
+        (r.identifier or "").strip().lower()
+        for r in db.query(models.ShopPdfPassword).filter(models.ShopPdfPassword.user_id == uid).all()
+        if (r.identifier or "").strip()
+    ]
     out = {"retried": 0, "parsed": 0, "created_rows": 0, "needs_password": 0}
     for rec in locked:
         aid = rec.gmail_attachment_id or ""
         if not rec.gmail_message_id or aid.startswith("inline:"):
             continue
+        subject = (rec.subject or "").lower()
+        blob = f"{subject} {(rec.filename or '').lower()}"
+        if matching_passwords_only:
+            if not any((" " in p and len(p) >= 12 and p in blob) or (p and " " not in p and p in blob) for p in phrases):
+                continue
         mail = {
             "id": rec.gmail_message_id,
             "subject": rec.subject,
@@ -1104,13 +1138,13 @@ def retry_locked_pdfs(db: Session, user: models.User) -> dict[str, Any]:
         }
         part = {"filename": rec.filename or "statement.pdf", "attachment_id": aid}
         result = _ingest_mail_pdf(db, user, token, mail, part)
+        db.commit()
         out["retried"] += 1
         out["created_rows"] += int(result.get("created") or 0)
         if result.get("status") == "parsed":
             out["parsed"] += 1
         elif result.get("status") == "needs_password":
             out["needs_password"] += 1
-    db.commit()
     return out
 
 

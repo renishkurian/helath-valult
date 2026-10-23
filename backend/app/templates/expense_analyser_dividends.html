@@ -12,8 +12,10 @@
   </form>
 </div>
 
-{% if request.query_params.get('ok') == 'scanned' %}
-<div class="alert alert-success">Scan finished. New rows use the stored bank passwords.</div>
+{% if request.query_params.get('ok') == 'started' %}
+<div class="alert alert-success">Scan started. Only statements that match a saved password are opened. Refresh this page in a minute.</div>
+{% elif request.query_params.get('ok') == 'busy' %}
+<div class="alert alert-info">A scan is already running.</div>
 {% endif %}
 
 <div class="row g-3 mb-4">

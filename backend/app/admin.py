@@ -8108,23 +8108,44 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
             if row.category != "dividend":
                 row.category = "dividend"
                 changed = True
+            if (row.bank_name or "").upper() in ("", "UNKNOWN"):
+                row.bank_name = "SBI"
+                changed = True
             hits.append(row)
     if changed:
         db.commit()
 
     def issuer(desc: str) -> str:
-        text = desc or ""
-        for pat in (
-            r"ACHCR[/\s:-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
-            r"DIVIDEND(?:\s+FROM)?[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
-            r"\bDIV[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
-        ):
-            m = re.search(pat, text, re.I)
-            if m:
-                name = re.split(r"[/\n]", m.group(1))[0].strip(" -:")
-                return name[:48] or "Unknown"
-        clean = re.sub(r"\s+", " ", text).strip()
-        return (clean[:48] or "Unknown")
+        text = re.sub(r"\s+", " ", desc or "").strip()
+        m = re.search(r"ACHCr\s+[A-Z0-9]+\s+(.+?)\s+-\s+\d", text, re.I)
+        name = m.group(1).strip(" -") if m else ""
+        if not name:
+            for pat in (
+                r"DIVIDEND(?:\s+FROM)?[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
+                r"\bDIV[:\s/-]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,48})",
+            ):
+                hit = re.search(pat, text, re.I)
+                if hit:
+                    name = re.split(r"[/\n]", hit.group(1))[0].strip(" -:")
+                    break
+        if not name:
+            name = text[:48]
+        name = re.sub(r"\s*(FNL[-\s]?DIV|FIN\s+DIV|FNLDIV|DIVIDEND).*$", "", name, flags=re.I)
+        name = re.sub(r"[\s\-]*\d{2,4}(?:[\s\-]+\d{2,4})?\s*$", "", name).strip(" -")
+        return (name[:48] or "Unknown").title()
+
+    def bank_label(row) -> str:
+        name = (row.bank_name or "").strip()
+        acct = row.account_number or ""
+        tail = acct[-4:] if len(acct) >= 4 else ""
+        if name.upper() in ("", "UNKNOWN"):
+            name = "SBI"
+            if name != (row.bank_name or ""):
+                row.bank_name = "SBI"
+        label = name
+        if tail:
+            label = f"{name} · {tail}"
+        return label
 
     items = []
     for row in hits:
@@ -8136,7 +8157,7 @@ def ea_dividends(request: Request, year: str = "", db: Session = Depends(get_db)
             "month": day[:7] if len(day) >= 7 else "",
             "amount": amt,
             "issuer": issuer(row.description or ""),
-            "bank": row.bank_name or "",
+            "bank": bank_label(row),
             "description": row.description or "",
             "source": row.source_file or "",
         })
@@ -8171,11 +8192,10 @@ def ea_dividends_scan(request: Request, db: Session = Depends(get_db)):
     user = _ea_user(request, db)
     if not user:
         return RedirectResponse("/admin/login", status_code=302)
-    try:
-        ea.retry_locked_pdfs(db, user)
-    except Exception:
-        pass
-    return RedirectResponse("/admin/expense-analyser/dividends?ok=scanned", status_code=302)
+    from app.deps import vault_id
+    started = ea.start_dividend_scan_background(vault_id(user))
+    flag = "started" if started else "busy"
+    return RedirectResponse(f"/admin/expense-analyser/dividends?ok={flag}", status_code=303)
 
 
 @router.get("/expense-analyser/statements", response_class=HTMLResponse)
