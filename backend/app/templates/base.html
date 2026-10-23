@@ -765,27 +765,6 @@
 {% if session_user %}
 <script src="/static/vault-send-chat.js?v=1"></script>
 {% endif %}
-<div id="pwa-install" class="pwa-banner" hidden>
-  <div class="pwa-banner-inner">
-    <span class="pwa-banner-ico"><i class="bi bi-phone"></i></span>
-    <div class="pwa-banner-text">
-      <strong>Install Family Vault</strong>
-      <span>Add to your home screen for quick access like an app.</span>
-    </div>
-    <button class="btn btn-primary btn-sm" type="button" data-pwa-install>Install</button>
-    <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss install prompt"><i class="bi bi-x-lg"></i></button>
-  </div>
-</div>
-<div id="pwa-ios-hint" class="pwa-banner pwa-banner-ios" hidden>
-  <div class="pwa-banner-inner">
-    <span class="pwa-banner-ico"><i class="bi bi-box-arrow-up"></i></span>
-    <div class="pwa-banner-text">
-      <strong>Add to Home Screen</strong>
-      <span>Tap Share, then <em>Add to Home Screen</em> in Safari.</span>
-    </div>
-    <button class="btn btn-link btn-sm text-muted pwa-banner-close" type="button" data-pwa-dismiss aria-label="Dismiss"><i class="bi bi-x-lg"></i></button>
-  </div>
-</div>
 <script>
 (function() {
   var KEY = "vault_sidebar_collapsed";

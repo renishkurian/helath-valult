@@ -1,5 +1,5 @@
 /* Family Vault PWA — cache shell assets; network-first for admin pages. */
-const CACHE = "vault-shell-v3";
+const CACHE = "vault-shell-v4";
 const OFFLINE = "/static/offline.html";
 const PRECACHE = [
   OFFLINE,

@@ -110,10 +110,24 @@ app.mount("/static", StaticFiles(directory=str(_static)), name="static")
 _templates = setup_templates()
 
 
-@app.get("/")
-def root():
-    """Browser visits to the server root should open the web app, not 404."""
-    return RedirectResponse("/admin", status_code=302)
+@app.get("/", response_class=HTMLResponse)
+def root(request: Request):
+    """Public home page for the OAuth consent-screen URL.
+
+    Google brand verification opens this URL directly. A redirect chain to
+    /admin/login fails that check, so signed-out visitors get the sign-in
+    page here with a 200.
+    """
+    if request.session.get("user_id"):
+        return RedirectResponse("/admin/modules", status_code=302)
+    from app.admin import _login_ctx
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        return _templates.TemplateResponse(request, "login.html", _login_ctx(request, db=db))
+    finally:
+        db.close()
 
 
 @app.get("/health")
