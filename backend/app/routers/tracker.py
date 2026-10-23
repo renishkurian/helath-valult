@@ -1751,8 +1751,12 @@ def resolve_pdf_password(
     matched: list[str] = []
     rest: list[str] = []
     for ident, digits, pwd in _saved_password_rows(db, user):
-        tokens = [t for t in f"{ident} {digits}".lower().split() if t]
-        hit = bool(blob) and any((len(t) >= 3 or t.isdigit()) and t in blob for t in tokens)
+        phrase = (ident or "").strip().lower()
+        if " " in phrase and len(phrase) >= 12:
+            hit = bool(blob) and phrase in blob
+        else:
+            tokens = [t for t in f"{phrase} {digits}".lower().split() if t]
+            hit = bool(blob) and any((len(t) >= 3 or t.isdigit()) and t in blob for t in tokens)
         (matched if hit else rest).append(pwd)
     seen: set[str] = set()
     for pwd in matched + rest:
