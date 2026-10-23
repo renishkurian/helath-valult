@@ -63,7 +63,32 @@ def issuer_name(desc: str) -> str:
     return (name[:48] or "Unknown").title()
 
 
+_BUNDLED: list[tuple[str, str]] = [
+    ("bharat heavy", "bhel.png"),
+    ("oil and natural", "ongc.png"),
+    ("indian energy", "iex.png"),
+    ("datamatics", "datamatics.png"),
+    ("dr reddy", "drreddys.png"),
+    ("coal india", "coal-india.png"),
+    ("welspun", "welspun.png"),
+    ("hpcl", "hpcl.png"),
+    ("ntpc", "ntpc.png"),
+    ("gail", "gail.png"),
+    ("ongc", "ongc.png"),
+    ("bhel", "bhel.png"),
+]
+
+
 def name_key(name: str) -> str:
+    return re.sub(r"\s+", " ", (name or "").strip().lower())[:80]
+
+
+def _bundled(name: str) -> str | None:
+    key = name_key(name)
+    for needle, filename in _BUNDLED:
+        if needle in key and (_DIR / filename).is_file():
+            return f"/static/company-logos/{filename}"
+    return None
     return re.sub(r"\s+", " ", (name or "").strip().lower())[:80]
 
 
@@ -103,6 +128,17 @@ def sync_logos(db: Session, names: list[str]) -> int:
             .first()
         )
         if row and row.logo_path:
+            continue
+        bundled = _bundled(name)
+        if bundled:
+            if row is None:
+                row = models.DividendCompanyLogo(name_key=key)
+                db.add(row)
+            row.logo_path = bundled
+            row.domain = domain_for(name)
+            row.fetched_at = now
+            saved += 1
+            db.commit()
             continue
         if row and row.fetched_at and row.fetched_at > fresh:
             continue
