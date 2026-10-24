@@ -1,126 +1,199 @@
 {% extends "base.html" %}
 {% block title %}Money Manager{% endblock %}
+{% block head %}
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+.mmx{--bg:#0a0d12;--panel:#10151c;--panel2:#151b24;--line:#222b37;--tx:#e9edf2;--mut:#7f8b9b;--gold:#d4a85a;--gold2:#f0cf8c;--teal:#3fd1b5;--red:#ff6b6b;--green:#4ade80;background:var(--bg);color:var(--tx);font:15px/1.5 Inter,system-ui,sans-serif;margin:-2rem -2.25rem -7.75rem;padding:34px clamp(18px,4vw,56px) 110px;min-height:100vh;box-sizing:border-box;background-image:radial-gradient(900px 400px at 85% -10%,rgba(63,209,181,.10),transparent),radial-gradient(700px 400px at 0% 0%,rgba(212,168,90,.08),transparent)}
+.mmx .top{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+.mmx .eyebrow{font-size:11px;letter-spacing:.2em;color:var(--mut)}
+.mmx h1{font:500 44px/1.1 Fraunces,Georgia,serif;margin:4px 0;color:var(--tx)}
+.mmx .sub{color:var(--mut)}
+.mmx .month{display:flex;align-items:center;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:4px}
+.mmx .month a{color:var(--tx);width:34px;height:34px;border-radius:10px;display:grid;place-items:center;text-decoration:none}
+.mmx .month a:hover{background:var(--panel2)}
+.mmx .month span{padding:0 10px;font-weight:600}
+.mmx .hero{position:relative;overflow:hidden;border-radius:24px;padding:28px;border:1px solid rgba(63,209,181,.28);background:linear-gradient(135deg,#0f2a2c,#0d1a22 60%,#101720)}
+.mmx .hero::after{content:"";position:absolute;right:-80px;top:-80px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(212,168,90,.18),transparent 70%)}
+.mmx .hero .row{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;position:relative;z-index:1}
+.mmx .lbl{font-size:11px;letter-spacing:.18em;color:#8fb7b0}
+.mmx .bal{font:500 56px/1.1 Fraunces,Georgia,serif;margin:8px 0;color:var(--green)}
+.mmx .bal.neg{color:var(--red)}
+.mmx .badge{font:600 11px Inter,system-ui,sans-serif;letter-spacing:.14em;padding:4px 10px;border-radius:99px;background:rgba(63,209,181,.14);color:var(--teal);border:1px solid rgba(63,209,181,.4);vertical-align:middle;margin-left:10px}
+.mmx .chips{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.mmx .chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px 12px;font-size:13px;color:var(--mut)}
+.mmx .chip b{display:block;color:var(--tx);font-size:15px;font-weight:600}
+.mmx .chip b.neg{color:var(--red)}
+.mmx .grid{display:grid;grid-template-columns:repeat(12,1fr);gap:16px;margin-top:16px}
+.mmx .card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:20px;color:var(--tx)}
+.mmx .s6{grid-column:span 6}.mmx .s4{grid-column:span 4}.mmx .s8{grid-column:span 8}.mmx .s12{grid-column:span 12}
+.mmx .stat{display:flex;gap:14px;align-items:center}
+.mmx .ic{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:var(--panel2);border:1px solid var(--line);font-size:19px;flex:none}
+.mmx .stat .v{font:500 28px Fraunces,Georgia,serif}
+.mmx .inc .v,.mmx .amt.inc{color:var(--green)}
+.mmx .exp .v,.mmx .amt.exp{color:var(--red)}
+.mmx .stat.inc{background:linear-gradient(135deg,rgba(74,222,128,.10),var(--panel))}
+.mmx .stat.exp{background:linear-gradient(135deg,rgba(255,107,107,.10),var(--panel))}
+.mmx .donutwrap{display:flex;gap:22px;align-items:center;flex-wrap:wrap}
+.mmx .donut{width:150px;height:150px;flex:none;transform:rotate(-90deg)}
+.mmx .legend{display:flex;flex-direction:column;gap:10px;flex:1;min-width:170px}
+.mmx .lg{display:flex;align-items:center;gap:10px;font-size:14px}
+.mmx .lg i{width:10px;height:10px;border-radius:3px;flex:none;font-style:normal}
+.mmx .lg span{margin-left:auto;color:var(--mut)}
+.mmx .bar{height:6px;background:var(--panel2);border-radius:9px;overflow:hidden;margin-top:6px}
+.mmx .bar u{display:block;height:100%;border-radius:9px;text-decoration:none}
+.mmx .insight{display:flex;gap:14px;align-items:flex-start;background:linear-gradient(135deg,rgba(63,209,181,.12),var(--panel));border-color:rgba(63,209,181,.3)}
+.mmx .insight .lbl{color:var(--teal);margin-bottom:4px}
+.mmx h2{font:500 22px Fraunces,Georgia,serif;margin:0 0 14px;display:flex;justify-content:space-between;align-items:baseline;color:var(--tx)}
+.mmx h2 a{font:500 13px Inter,system-ui,sans-serif;color:var(--teal);text-decoration:none}
+.mmx .tx{display:flex;align-items:center;gap:14px;padding:12px 0;border-top:1px solid var(--line);color:inherit;text-decoration:none}
+.mmx .tx:first-of-type{border-top:0}
+.mmx .tx .ic.exp{background:rgba(255,107,107,.10);border-color:rgba(255,107,107,.3);color:var(--red)}
+.mmx .tx .ic.inc{background:rgba(74,222,128,.10);border-color:rgba(74,222,128,.3);color:var(--green)}
+.mmx .tx small{color:var(--mut);display:block}
+.mmx .tx .amt{margin-left:auto;font-weight:600;white-space:nowrap}
+.mmx .fact{font:500 24px Fraunces,Georgia,serif;margin:6px 0 2px}
+.mmx .empty{color:var(--mut);padding:8px 0}
+#mm-home .fab{background:linear-gradient(145deg,var(--gold2),var(--gold));color:#1a1305;box-shadow:0 10px 30px rgba(212,168,90,.35)}
+@media(max-width:991.98px){
+.mmx{margin:-1rem -1rem calc(-1 * (6.25rem + env(safe-area-inset-bottom,0px)));padding:28px 18px calc(var(--v-tabbar-h,64px) + 7rem)}
+.mmx h1{font-size:34px}
+.mmx .bal{font-size:42px}
+.mmx .s6,.mmx .s4,.mmx .s8{grid-column:span 12}
+}
+</style>
+{% endblock %}
 {% block content %}
-<div id="mm-home" data-month="{{ dash.year_month }}">
-{% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
-{% set type_cls = {'income':'mm-income','expense':'mm-expense','transfer':'mm-transfer'} %}
 {% set s = dash.summary %}
-
-<div class="mm-dash-head">
-  <div>
-    <div class="eyebrow">Money Manager</div>
-    <h1 class="page-title">Home</h1>
-    <p class="mm-dash-sub">Track every rupee. Understand every expense.</p>
-  </div>
-  <div class="page-actions">
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.prev }}" data-mm-prev data-month="{{ dash.prev }}" aria-label="Previous month">
-      <i class="bi bi-chevron-left"></i>
-    </a>
-    <span class="mm-dash-month" data-mm-month>{{ dash.label }}</span>
-    <a class="btn btn-outline-light btn-icon" href="/admin/finance?month={{ dash.next }}" data-mm-next data-month="{{ dash.next }}" aria-label="Next month">
-      <i class="bi bi-chevron-right"></i>
-    </a>
-  </div>
-</div>
-
-<section class="mm-hero mb-3" aria-label="Total balance">
-  <div class="mm-hero-kicker">Total balance</div>
-  <div class="mm-hero-row">
-    <div class="mm-hero-val" data-mm-net>{{ inr(s.net) }}</div>
-    <span class="mm-hero-badge">Active</span>
-  </div>
-  <div class="mm-hero-net {% if s.total >= 0 %}mm-income{% else %}mm-expense{% endif %}" data-mm-netline>
-    Net this month <span data-mm-total>{{ inr(s.total) }}</span> · opening <span data-mm-opening>{{ inr(s.opening) }}</span>
-  </div>
-  <div class="mm-hero-orbs" aria-hidden="true"></div>
-</section>
-
-<div class="mm-split mb-3">
-  <div class="mm-split-card in">
-    <div class="mm-split-ico"><i class="bi bi-wallet2"></i></div>
+{% set rows = dash.report_rows or [] %}
+{% set palette = ['#d4a85a','#3fd1b5','#6b7a90'] %}
+<div id="mm-home" class="mmx" data-month="{{ dash.year_month }}">
+  <div class="top">
     <div>
-      <div class="mm-split-lbl">Income</div>
-      <div class="mm-split-val mm-income" data-mm-income>{{ inr(s.income) }}</div>
+      <div class="eyebrow">MONEY MANAGER</div>
+      <h1>Home</h1>
+      <div class="sub">Track every rupee. Understand every expense.</div>
+    </div>
+    <div class="month">
+      <a href="/admin/finance?month={{ dash.prev }}" data-mm-prev data-month="{{ dash.prev }}" aria-label="Previous month">‹</a>
+      <span data-mm-month>{{ dash.label }}</span>
+      <a href="/admin/finance?month={{ dash.next }}" data-mm-next data-month="{{ dash.next }}" aria-label="Next month">›</a>
     </div>
   </div>
-  <div class="mm-split-card out">
-    <div class="mm-split-ico"><i class="bi bi-bag"></i></div>
-    <div>
-      <div class="mm-split-lbl">Expenses</div>
-      <div class="mm-split-val mm-expense" data-mm-expense>{{ inr(s.expense) }}</div>
+
+  <section class="hero" aria-label="Total balance">
+    <div class="row">
+      <div>
+        <div class="lbl">TOTAL BALANCE</div>
+        <div class="bal {% if s.net < 0 %}neg{% endif %}" data-mm-bal>
+          <span data-mm-net class="{% if s.net < 0 %}neg{% endif %}">{{ inr(s.net) }}</span>
+          <span class="badge">ACTIVE</span>
+        </div>
+        <div class="chips" data-mm-netline>
+          <div class="chip">Net this month<b data-mm-total class="{% if s.total < 0 %}neg{% endif %}">{{ inr(s.total) }}</b></div>
+          <div class="chip">Opening<b data-mm-opening class="{% if s.opening < 0 %}neg{% endif %}">{{ inr(s.opening) }}</b></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="grid">
+    <div class="card stat inc s6">
+      <div class="ic">↓</div>
+      <div><div class="lbl">INCOME</div><div class="v" data-mm-income>{{ inr(s.income) }}</div></div>
+    </div>
+    <div class="card stat exp s6">
+      <div class="ic">↑</div>
+      <div><div class="lbl">EXPENSES</div><div class="v" data-mm-expense>{{ inr(s.expense) }}</div></div>
+    </div>
+
+    <div class="card s8">
+      <h2>Spend by category</h2>
+      <div class="donutwrap">
+        <svg class="donut" viewBox="0 0 42 42" data-mm-donut aria-label="Spend by category">
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#1a222d" stroke-width="5"/>
+          {% set ns = namespace(off=25) %}
+          {% for row in rows[:3] %}
+          {% set pct = row.pct|round(0, 'common')|int %}
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="{{ row.color or palette[loop.index0] }}" stroke-width="5" stroke-dasharray="{{ pct }} {{ 100 - pct }}" stroke-dashoffset="{{ ns.off }}"/>
+          {% set ns.off = ns.off - pct %}
+          {% endfor %}
+          {% if rows|length > 3 %}
+          {% set rest = (rows[3:]|sum(attribute='pct'))|round(0, 'common')|int %}
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#6b7a90" stroke-width="5" stroke-dasharray="{{ rest }} {{ 100 - rest }}" stroke-dashoffset="{{ ns.off }}"/>
+          {% endif %}
+        </svg>
+        <div class="legend" data-mm-legend>
+          {% if rows %}
+          {% for row in rows[:3] %}
+          <div>
+            <div class="lg"><i style="background:{{ row.color or palette[loop.index0] }}"></i>{{ row.name }}<span>{{ inr(row.amount) }} · {{ row.pct|round(0, 'common')|int }}%</span></div>
+            <div class="bar"><u style="width:{{ row.pct|round(0, 'common')|int }}%;background:{{ row.color or palette[loop.index0] }}"></u></div>
+          </div>
+          {% endfor %}
+          {% if rows|length > 3 %}
+          {% set rest_amt = rows[3:]|sum(attribute='amount') %}
+          {% set rest_pct = (rows[3:]|sum(attribute='pct'))|round(0, 'common')|int %}
+          <div>
+            <div class="lg"><i style="background:#6b7a90"></i>Everything else<span>{{ inr(rest_amt) }} · {{ rest_pct }}%</span></div>
+            <div class="bar"><u style="width:{{ rest_pct }}%;background:#6b7a90"></u></div>
+          </div>
+          {% endif %}
+          {% else %}
+          <div class="lg"><span>No spend this month</span></div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card s4">
+      <div class="lbl">TOP CATEGORY</div>
+      {% if dash.top_category %}
+      <div class="fact" data-mm-top-name title="{{ dash.top_category.name }}">{{ dash.top_category.name }}</div>
+      <div class="sub" style="font-size:13px" data-mm-top-meta>{{ inr(dash.top_category.amount) }} · {{ dash.top_category.pct|round(0, 'common')|int }}% of spend</div>
+      {% else %}
+      <div class="fact text-muted" data-mm-top-name>No spend yet</div>
+      <div class="sub" style="font-size:13px" data-mm-top-meta></div>
+      {% endif %}
+      <div style="height:1px;background:var(--line);margin:16px 0"></div>
+      <div class="lbl">HIGHEST SPEND</div>
+      {% if dash.highest %}
+      <div class="fact" data-mm-hi-name title="{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
+      <div class="sub" style="font-size:13px;color:var(--red)" data-mm-hi-meta>{{ inr(dash.highest.amount) }}{% if dash.highest.category_name %} · {{ dash.highest.category_name }}{% endif %}</div>
+      {% else %}
+      <div class="fact text-muted" data-mm-hi-name>Nothing posted</div>
+      <div class="sub" data-mm-hi-meta></div>
+      {% endif %}
+    </div>
+
+    <div class="card insight s12" data-mm-insight {% if not dash.insight %}hidden{% endif %}>
+      <div style="font-size:20px;color:var(--teal)">✦</div>
+      <div><div class="lbl">SMART INSIGHT</div><span data-mm-insight-text>{% if dash.insight %}{{ dash.insight }}{% endif %}</span></div>
+    </div>
+
+    <div class="card s12">
+      <h2>Recent <a data-mm-see-all href="/admin/finance/transactions?month={{ dash.year_month }}">See all</a></h2>
+      <div data-mm-recent>
+        {% if dash.recent %}
+        {% for item in dash.recent %}
+        <a class="tx" href="/admin/finance/transactions/{{ item.id }}/edit">
+          <div class="ic {% if item.txn_type == 'income' %}inc{% else %}exp{% endif %}">{% if item.txn_type == 'income' %}↓{% else %}↗{% endif %}</div>
+          <div>
+            <b>{{ item.payee or item.category_name or item.txn_type }}</b>
+            <small>{{ item.account_name }}{% if item.txn_date %} · {{ item.txn_date }}{% endif %}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</small>
+          </div>
+          <div class="amt {% if item.txn_type == 'income' %}inc{% else %}exp{% endif %}">{% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}</div>
+        </a>
+        {% endfor %}
+        {% else %}
+        <div class="empty">Nothing this month yet. Add an entry and this fills in.</div>
+        {% endif %}
+      </div>
     </div>
   </div>
-</div>
 
-<div class="mm-split mm-split-facts mb-4">
-  <div class="mm-split-card stack">
-    <div class="mm-split-lbl">Top category</div>
-    {% if dash.top_category %}
-    <div class="mm-split-name" data-mm-top-name title="{{ dash.top_category.name }}">{{ dash.top_category.name }}</div>
-    <div class="mm-split-meta" data-mm-top-meta>{{ inr(dash.top_category.amount) }} · {{ dash.top_category.pct|int }}% of spend</div>
-    {% else %}
-    <div class="mm-split-name text-muted" data-mm-top-name>No spend yet</div>
-    <div class="mm-split-meta" data-mm-top-meta></div>
-    {% endif %}
-  </div>
-  <div class="mm-split-card stack">
-    <div class="mm-split-lbl">Highest spend</div>
-    {% if dash.highest %}
-    <div class="mm-split-name" data-mm-hi-name title="{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}">{{ dash.highest.payee or dash.highest.category_name or 'Expense' }}</div>
-    <div class="mm-split-meta mm-expense" data-mm-hi-meta>{{ inr(dash.highest.amount) }}{% if dash.highest.category_name %} · {{ dash.highest.category_name }}{% endif %}</div>
-    {% else %}
-    <div class="mm-split-name text-muted" data-mm-hi-name>Nothing posted</div>
-    <div class="mm-split-meta mm-expense" data-mm-hi-meta></div>
-    {% endif %}
-  </div>
-</div>
-
-<section class="mm-insight mb-4" data-mm-insight {% if not dash.insight %}hidden{% endif %}>
-  <div class="mm-insight-kicker"><i class="bi bi-stars"></i> Smart insight</div>
-  <p class="mb-0" data-mm-insight-text>{% if dash.insight %}{{ dash.insight }}{% endif %}</p>
-</section>
-
-<div class="d-flex align-items-center justify-content-between mb-2">
-  <h2 class="h6 mb-0">Recent</h2>
-  <a class="small" href="/admin/finance/transactions?month={{ dash.year_month }}" data-mm-see-all>See all</a>
-</div>
-
-<div data-mm-recent>
-{% if dash.recent %}
-<div class="mm-card-list">
-  {% for item in dash.recent %}
-  <a class="mm-card" href="/admin/finance/transactions/{{ item.id }}/edit">
-    <span class="mm-card-ico {{ item.txn_type }}">
-      {% if item.category_icon %}{{ item.category_icon }}{% else %}<i class="bi {{ type_ico.get(item.txn_type, 'bi-receipt') }}"></i>{% endif %}
-    </span>
-    <span class="mm-card-body">
-      <span class="mm-card-title truncate">{{ item.payee or item.category_name or item.txn_type }}</span>
-      <span class="mm-card-sub truncate">{{ item.category_name or item.txn_type }}{% if item.description and item.payee %} · {{ item.description }}{% endif %}</span>
-      <span class="mm-card-when">{{ item.account_name }}{% if item.txn_date %} · {{ item.txn_date }}{% endif %}{% if item.txn_time %} · {{ item.txn_time[:5] }}{% endif %}</span>
-    </span>
-    <span class="mm-card-amt {{ type_cls.get(item.txn_type, '') }}">
-      {% if item.txn_type == 'income' %}+{% elif item.txn_type == 'expense' %}−{% endif %}{{ inr(item.amount) }}
-    </span>
-  </a>
-  {% endfor %}
-</div>
-{% else %}
-<div class="card">
-  <div class="empty-state">
-    <div class="empty-ico"><i class="bi bi-wallet2"></i></div>
-    <div class="empty-title">Nothing this month yet</div>
-    <p>Log income or an expense and the dashboard fills in.</p>
-    <a class="btn btn-primary" href="/admin/finance/add"><i class="bi bi-plus-lg"></i> Add the first entry</a>
-  </div>
-</div>
-{% endif %}
-</div>
-
-<div class="mm-fab-spacer" aria-hidden="true"></div>
-<a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
+  <a class="fab" href="/admin/finance/add" aria-label="Add transaction"><i class="bi bi-plus-lg"></i></a>
 </div>
 {% endblock %}
-
 {% block scripts %}
-<script src="/static/finance-ajax.js?v=7" defer></script>
+<script src="/static/finance-ajax.js?v=8" defer></script>
 {% endblock %}

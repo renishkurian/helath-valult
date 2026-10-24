@@ -192,47 +192,106 @@
         "</div></div>"
       );
     }
-    return (
-      '<div class="mm-card-list">' +
-      items
-        .map(function (item) {
-          var ico = TYPE_ICO[item.txn_type] || "bi-receipt";
-          var title = item.payee || item.category_name || item.txn_type;
-          var sub = item.category_name || item.txn_type;
-          if (item.description && item.payee) sub += " · " + item.description;
-          var sign = item.txn_type === "income" ? "+" : item.txn_type === "expense" ? "−" : "";
-          var when = item.txn_date || "";
-          if (item.txn_time) when += " · " + String(item.txn_time).slice(0, 5);
-          return (
-            '<a class="mm-card" href="/admin/finance/transactions/' +
-            esc(item.id) +
-            '/edit">' +
-            '<span class="mm-card-ico ' +
-            esc(item.txn_type) +
-            '">' +
-            (item.category_icon ? esc(item.category_icon) : '<i class="bi ' + ico + '"></i>') +
-            "</span>" +
-            '<span class="mm-card-body">' +
-            '<span class="mm-card-title truncate">' +
-            esc(title) +
-            "</span>" +
-            '<span class="mm-card-sub truncate">' +
-            esc(sub) +
-            "</span>" +
-            '<span class="mm-card-when">' +
-            esc(when) +
-            "</span></span>" +
-            '<span class="mm-card-amt mm-' +
-            esc(item.txn_type) +
-            '">' +
-            sign +
-            inr(item.amount) +
-            "</span></a>"
-          );
+    return items
+      .map(function (item) {
+        var title = item.payee || item.category_name || item.txn_type;
+        var sign = item.txn_type === "income" ? "+" : item.txn_type === "expense" ? "−" : "";
+        var when = item.account_name || "";
+        if (item.txn_date) when += (when ? " · " : "") + item.txn_date;
+        if (item.txn_time) when += " · " + String(item.txn_time).slice(0, 5);
+        var cls = item.txn_type === "income" ? "inc" : "exp";
+        return (
+          '<a class="tx" href="/admin/finance/transactions/' +
+          esc(item.id) +
+          '/edit"><div class="ic ' +
+          cls +
+          '">' +
+          (item.txn_type === "income" ? "↓" : "↗") +
+          '</div><div><b>' +
+          esc(title) +
+          "</b><small>" +
+          esc(when) +
+          '</small></div><div class="amt ' +
+          cls +
+          '">' +
+          sign +
+          inr(item.amount) +
+          "</div></a>"
+        );
+      })
+      .join("");
+  }
+
+  var CAT_COLORS = ["#d4a85a", "#3fd1b5", "#6b7a90", "#8fb7b0"];
+
+  function categorySlices(rows) {
+    rows = rows || [];
+    var top = rows.slice(0, 3).map(function (row, i) {
+      return {
+        name: row.name,
+        amount: row.amount,
+        pct: Math.round(row.pct || 0),
+        color: row.color || CAT_COLORS[i],
+      };
+    });
+    var rest = rows.slice(3);
+    if (rest.length) {
+      var amt = rest.reduce(function (n, row) { return n + (row.amount || 0); }, 0);
+      var pct = rest.reduce(function (n, row) { return n + (row.pct || 0); }, 0);
+      top.push({ name: "Everything else", amount: amt, pct: Math.round(pct), color: "#6b7a90" });
+    }
+    return top;
+  }
+
+  function paintCategories(root, rows) {
+    var donut = root.querySelector("[data-mm-donut]");
+    var legend = root.querySelector("[data-mm-legend]");
+    if (!donut || !legend) return;
+    var slices = categorySlices(rows);
+    if (!slices.length) {
+      donut.innerHTML = '<circle cx="21" cy="21" r="15.9" fill="none" stroke="#1a222d" stroke-width="5"/>';
+      legend.innerHTML = '<div class="lg"><span>No spend this month</span></div>';
+      return;
+    }
+    var off = 25;
+    donut.innerHTML =
+      '<circle cx="21" cy="21" r="15.9" fill="none" stroke="#1a222d" stroke-width="5"/>' +
+      slices
+        .map(function (row) {
+          var pct = Math.max(0, Math.min(100, row.pct));
+          var html =
+            '<circle cx="21" cy="21" r="15.9" fill="none" stroke="' +
+            esc(row.color) +
+            '" stroke-width="5" stroke-dasharray="' +
+            pct +
+            " " +
+            (100 - pct) +
+            '" stroke-dashoffset="' +
+            off +
+            '"/>';
+          off -= pct;
+          return html;
         })
-        .join("") +
-      "</div>"
-    );
+        .join("");
+    legend.innerHTML = slices
+      .map(function (row) {
+        return (
+          '<div><div class="lg"><i style="background:' +
+          esc(row.color) +
+          '"></i>' +
+          esc(row.name) +
+          "<span>" +
+          inr(row.amount) +
+          " · " +
+          row.pct +
+          '%</span></div><div class="bar"><u style="width:' +
+          row.pct +
+          "%;background:" +
+          esc(row.color) +
+          '"></u></div></div>'
+        );
+      })
+      .join("");
   }
 
   function paintDashboard(dash) {
@@ -254,8 +313,15 @@
     }
     ["net", "total", "opening", "income", "expense"].forEach(function (k) {
       var el = root.querySelector("[data-mm-" + k + "]");
-      if (el) el.textContent = inr(s[k]);
+      if (!el) return;
+      el.textContent = inr(s[k]);
+      if (k === "net" || k === "total" || k === "opening") {
+        el.classList.toggle("neg", (s[k] || 0) < 0);
+      }
     });
+    paintCategories(root, dash.report_rows);
+    var bal = root.querySelector("[data-mm-bal]");
+    if (bal) bal.classList.toggle("neg", (s.net || 0) < 0);
     var netLine = root.querySelector("[data-mm-netline]");
     if (netLine) {
       netLine.classList.toggle("mm-income", (s.total || 0) >= 0);
