@@ -176,7 +176,11 @@
           <li><a class="dropdown-item js-photo" href="/admin/finance/transactions/{{ item.id }}/image"><i class="bi bi-image"></i> Receipt</a></li>
           {% endif %}
           <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
-          <li><button class="dropdown-item text-danger" type="button" data-mm-delete="{{ item.id }}"><i class="bi bi-trash3"></i> Move to trash</button></li>
+          <li>
+            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if account_id %}&account_id={{ account_id|urlencode }}{% endif %}{% if family_member_id %}&family_member_id={{ family_member_id|urlencode }}{% endif %}" data-confirm="Move this entry to trash?">
+              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
+            </form>
+          </li>
         </ul>
       </div>
     </div>
@@ -235,7 +239,11 @@
           <li><a class="dropdown-item js-photo" href="/admin/finance/transactions/{{ item.id }}/image"><i class="bi bi-image"></i> Receipt</a></li>
           {% endif %}
           <li><a class="dropdown-item" href="/admin/finance/transactions/{{ item.id }}/edit"><i class="bi bi-pencil"></i> Edit</a></li>
-          <li><button class="dropdown-item text-danger" type="button" data-mm-delete="{{ item.id }}"><i class="bi bi-trash3"></i> Move to trash</button></li>
+          <li>
+            <form method="post" action="/admin/finance/transactions/{{ item.id }}/delete?month={{ ledger.year_month }}&view={{ view }}{% if q %}&q={{ q|urlencode }}{% endif %}{% if account_id %}&account_id={{ account_id|urlencode }}{% endif %}{% if family_member_id %}&family_member_id={{ family_member_id|urlencode }}{% endif %}" data-confirm="Move this entry to trash?">
+              <button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button>
+            </form>
+          </li>
         </ul>
       </div>
     </div>
@@ -264,5 +272,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/finance-ajax.js?v=7" defer></script>
+<script src="/static/finance-ajax.js?v=9" defer></script>
 {% endblock %}

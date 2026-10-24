@@ -1649,6 +1649,9 @@ body:has(.ask-ai-fab):has(.fab) .mm-fab-spacer{ height:7.5rem; }
 }
 .mm-insight p{ color:rgba(244,255,252,.88); font-size:.9375rem; }
 .mm-card-list{ display:flex; flex-direction:column; gap:1rem; }
+.mm-card:has(.dropdown-menu.show){ position:relative; z-index:40; }
+.dropdown-menu form{ margin:0; }
+.dropdown-menu button.dropdown-item{ width:100%; border:0; background:transparent; text-align:left; }
 .mm-card{
   display:flex; align-items:center; gap:.85rem;
   padding:.9rem 1rem; min-height:72px;

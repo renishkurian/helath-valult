@@ -5119,12 +5119,20 @@ def finance_delete_txn(txn_id: str, request: Request, db: Session = Depends(get_
             return JSONResponse({"detail": "Unauthorized"}, status_code=401)
         return RedirectResponse("/admin/login", status_code=302)
     delete_transaction(txn_id, db=db, current_user=user)
-    month = (request.query_params.get("month") or "").strip()
-    view = (request.query_params.get("view") or "daily").strip() or "daily"
-    qs = f"?month={month}&view={view}" if month else ""
-    redirect = f"/admin/finance/transactions{qs}"
+    from urllib.parse import urlencode
+    params = {}
+    for key in ("month", "view", "q", "account_id", "family_member_id"):
+        val = (request.query_params.get(key) or "").strip()
+        if val:
+            params[key] = val
+    if "view" not in params:
+        params["view"] = "daily"
+    redirect = "/admin/finance/transactions?" + urlencode(params)
     if _fn_wants_json(request):
-        return JSONResponse({"ok": True, "txn_id": txn_id, "redirect": redirect, "month": month, "view": view})
+        return JSONResponse({
+            "ok": True, "txn_id": txn_id, "redirect": redirect,
+            "month": params.get("month", ""), "view": params.get("view", "daily"),
+        })
     return RedirectResponse(redirect, status_code=302)
 
 

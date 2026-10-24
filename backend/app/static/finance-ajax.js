@@ -490,9 +490,11 @@
       '<li><a class="dropdown-item" href="/admin/finance/transactions/' +
       esc(item.id) +
       '/edit"><i class="bi bi-pencil"></i> Edit</a></li>' +
-      '<li><button class="dropdown-item text-danger" type="button" data-mm-delete="' +
+      '<li><form method="post" action="/admin/finance/transactions/' +
       esc(item.id) +
-      '"><i class="bi bi-trash3"></i> Move to trash</button></li>' +
+      '/delete?' +
+      trashQuery() +
+      '" data-confirm="Move this entry to trash?"><button class="dropdown-item text-danger" type="submit"><i class="bi bi-trash3"></i> Move to trash</button></form></li>' +
       "</ul></div></div>"
     );
   }
@@ -763,6 +765,18 @@
   function bustCaches(month) {
     idbSet("dash-invalidate", Date.now());
     if (month) idbSet("dash:" + month, null);
+  }
+
+  function trashQuery() {
+    var root = document.getElementById("mm-trans");
+    if (!root) return "";
+    var params = new URLSearchParams();
+    if (root.dataset.month) params.set("month", root.dataset.month);
+    params.set("view", root.dataset.view || "daily");
+    if (root.dataset.q) params.set("q", root.dataset.q);
+    if (root.dataset.accountId) params.set("account_id", root.dataset.accountId);
+    if (root.dataset.familyMemberId) params.set("family_member_id", root.dataset.familyMemberId);
+    return params.toString();
   }
 
   function deleteTxn(id) {
