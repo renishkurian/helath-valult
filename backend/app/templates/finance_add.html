@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 {% block body_class %}form-page{% endblock %}
 {% block title %}{% if edit_txn %}Edit{% else %}{{ txn_type|capitalize }}{% endif %}{% endblock %}
+{% block head %}
+<style>
+.fn-review{border-radius:22px;padding:22px 22px 20px;border:1px solid transparent;background:#10151c}
+.fn-review.income{border-color:rgba(74,222,128,.45);background:linear-gradient(180deg,rgba(74,222,128,.12),#10151c 42%);box-shadow:0 0 40px rgba(74,222,128,.08)}
+.fn-review.expense{border-color:rgba(255,107,107,.45);background:linear-gradient(180deg,rgba(255,107,107,.12),#10151c 42%);box-shadow:0 0 40px rgba(255,107,107,.08)}
+.fn-review.transfer{border-color:rgba(167,139,250,.5);background:linear-gradient(180deg,rgba(167,139,250,.16),#10151c 42%);box-shadow:0 0 40px rgba(167,139,250,.12)}
+.fn-review .kicker{font-size:11px;letter-spacing:.18em;color:#8b97a8}
+.fn-review.income .kicker,.fn-review.income .amt{color:#4ade80}
+.fn-review.expense .kicker,.fn-review.expense .amt{color:#ff6b6b}
+.fn-review.transfer .kicker,.fn-review.transfer .amt{color:#c4b5fd}
+.fn-review .amt{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:42px;line-height:1.1;margin:8px 0 16px}
+.fn-review .line{display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08);font-size:14px}
+.fn-review .line span{color:#8b97a8}
+.fn-review .line b{font-weight:600;text-align:right}
+</style>
+{% endblock %}
 {% block content %}
 {% set type_ico = {'income':'bi-arrow-down-left','expense':'bi-arrow-up-right','transfer':'bi-arrow-left-right'} %}
 {% set acct_q = ('&account_id=' ~ prefill_account_id) if prefill_account_id else '' %}
@@ -161,6 +177,16 @@
       </div>
     </form>
   </div>
+  <div class="col-lg-5 col-xl-4">
+    <aside class="fn-review {{ txn_type }}" id="fn-review" aria-live="polite">
+      <div class="kicker" id="fn-review-kicker">{{ txn_type|upper }} PREVIEW</div>
+      <div class="amt" id="fn-review-amt">₹0.00</div>
+      <div class="line"><span>{% if txn_type=='transfer' %}To account{% else %}Category{% endif %}</span><b id="fn-review-cat">—</b></div>
+      <div class="line"><span>{% if txn_type=='transfer' %}From account{% else %}Account{% endif %}</span><b id="fn-review-acct">—</b></div>
+      <div class="line"><span>Payee</span><b id="fn-review-payee">—</b></div>
+      <div class="line"><span>When</span><b id="fn-review-when">—</b></div>
+    </aside>
+  </div>
 </div>
 
 <div class="sheet-scrim" id="scrim"></div>
@@ -299,6 +325,48 @@
     var m = document.getElementById("payment_method").value;
     var found = METHODS.find(function(x){ return x[0] === m; });
     document.getElementById("method-label").textContent = found ? found[1] : "Other";
+    paintReview();
+  }
+  function money(n){
+    var v = Number(n);
+    if(!isFinite(v)) v = 0;
+    return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function whenLabel(){
+    var d = document.getElementById("txn_date").value;
+    var t = document.getElementById("txn_time").value;
+    var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    var text = "—";
+    if(d){
+      var p = d.split("-");
+      text = p[2] + " " + (months[Number(p[1]) - 1] || "") + ", " + p[0];
+    }
+    if(t){
+      var hm = t.split(":");
+      var h = Number(hm[0]);
+      var ap = h >= 12 ? "pm" : "am";
+      h = h % 12 || 12;
+      text = (text === "—" ? "" : text + ", ") + h + ":" + (hm[1] || "00") + " " + ap;
+    }
+    return text;
+  }
+  function paintReview(){
+    var box = document.getElementById("fn-review");
+    if(!box) return;
+    var amt = document.getElementById("amount").value;
+    document.getElementById("fn-review-amt").textContent = money(amt || 0);
+    var cat = document.getElementById("fn-review-cat");
+    var to = document.getElementById("to-account-label");
+    if(KIND === "transfer" && to) cat.textContent = to.textContent || "—";
+    else {
+      var c = document.getElementById("category-label");
+      cat.textContent = (c && c.textContent && c.textContent !== "Select") ? c.textContent : "—";
+    }
+    var acct = document.getElementById("account-label");
+    document.getElementById("fn-review-acct").textContent = (acct && acct.textContent && acct.textContent !== "Select") ? acct.textContent : "—";
+    var payee = (document.getElementById("payee").value || "").trim();
+    document.getElementById("fn-review-payee").textContent = payee || "—";
+    document.getElementById("fn-review-when").textContent = whenLabel();
   }
   function closeSheet(){
     scrim.classList.remove("open");
@@ -687,6 +755,10 @@
   });
 
   syncLabels();
+  ["amount","payee","txn_date","txn_time"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.addEventListener("input", paintReview);
+  });
 })();
 </script>
 {% endblock %}
