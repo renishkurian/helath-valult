@@ -500,6 +500,7 @@ def _qr_ctx(request: Request, error=None, **extra):
         "email": request.session.get("qr_email") or extra.get("email") or "",
         "waiting": bool(request.session.get("qr_payload")),
         "qr_image": extra.pop("qr_image", None),
+        "challenge_id": extra.pop("challenge_id", None) or request.session.get("login_challenge_id") or "",
         "recaptcha_site_key": recaptcha_public_key(),
     }
     ctx.update(extra)
@@ -522,6 +523,8 @@ def _pending_qr(request: Request, db: Session):
         user = db.query(models.User).filter(models.User.id == challenge.user_id).first()
         if user and not is_blocked(user):
             _finish_web_login(request, db, user, reason="app_ok")
+            challenge.status = "used"
+            db.commit()
             _clear_qr_session(request)
             return None, None, RedirectResponse("/admin/modules", status_code=302)
         _clear_qr_session(request)
@@ -711,14 +714,41 @@ async def login_qr_submit(request: Request, db: Session = Depends(get_db)):
         challenge = create_challenge(db, user, client_ip(request), client_ua(request), kind=KIND_QR)
         request.session["login_challenge_id"] = challenge.id
         payload = qr_payload(challenge.id)
+        shown_id = challenge.id
     else:
         request.session.pop("login_challenge_id", None)
         payload = qr_payload(secrets.token_hex(16))
+        shown_id = ""
     request.session["qr_payload"] = payload
     return templates.TemplateResponse(
         "login_qr.html",
-        _qr_ctx(request, waiting=True, qr_image=totp_util.qr_data_uri(payload)),
+        _qr_ctx(request, waiting=True, qr_image=totp_util.qr_data_uri(payload), challenge_id=shown_id),
     )
+
+
+def _claim_approved_qr(request: Request, db: Session, challenge_id: str):
+    """Log this browser in when the phone approved this QR, even if the session lost the id."""
+    from app.login_challenge import KIND_QR, get_challenge, parse_qr_payload
+    from app.totp import is_blocked
+    cid = parse_qr_payload(challenge_id) or ""
+    if not cid:
+        raw = (challenge_id or "").strip().lower()
+        if len(raw) == 32 and all(c in "0123456789abcdef" for c in raw):
+            cid = raw
+    if not cid:
+        return None
+    row = get_challenge(db, cid)
+    if not row or (getattr(row, "kind", None) or "") != KIND_QR or row.status != "approved":
+        return None
+    user = db.query(models.User).filter(models.User.id == row.user_id).first()
+    if not user or is_blocked(user):
+        return None
+    request.session["login_challenge_id"] = row.id
+    _finish_web_login(request, db, user, reason="app_ok")
+    row.status = "used"
+    db.commit()
+    _clear_qr_session(request)
+    return RedirectResponse("/admin/modules", status_code=302)
 
 
 def _qr_status_json(body: dict) -> JSONResponse:
@@ -726,7 +756,7 @@ def _qr_status_json(body: dict) -> JSONResponse:
 
 
 @router.get("/login/qr/status")
-def login_qr_status(request: Request, db: Session = Depends(get_db)):
+def login_qr_status(request: Request, db: Session = Depends(get_db), c: str = ""):
     challenge, payload, early = _pending_qr(request, db)
     if early:
         if isinstance(early, RedirectResponse) and early.headers.get("location", "").endswith("/admin/modules"):
@@ -736,9 +766,10 @@ def login_qr_status(request: Request, db: Session = Depends(get_db)):
         if isinstance(early, RedirectResponse):
             return _qr_status_json({"status": "expired", "redirect": "/admin/login"})
         return _qr_status_json({"status": "denied", "redirect": "/admin/login"})
-    if not payload:
-        # Session cookie can lag the POST that just drew the QR. Do not send the
-        # browser back to the email form on that first poll.
+    claimed = _claim_approved_qr(request, db, c)
+    if claimed is not None:
+        return _qr_status_json({"status": "approved", "redirect": "/admin/modules"})
+    if not payload and not c:
         return _qr_status_json({"status": "pending"})
     return _qr_status_json({"status": "pending"})
 

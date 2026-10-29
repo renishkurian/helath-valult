@@ -478,6 +478,17 @@ def test_qr_login_app_grant_redirects_home():
     assert home.status_code == 200
     assert "Your vaults" in home.text
 
+    web2 = TestClient(app)
+    web2.post("/admin/login/qr", data={"email": email})
+    cid2 = _pending_qr_id(email)
+    assert cid2
+    assert client.post(f"/auth/login-challenges/{cid2}/approve", headers=headers).status_code == 204
+    web2.cookies.clear()
+    lost = web2.get("/admin/login/qr/status", params={"c": cid2})
+    assert lost.status_code == 200
+    assert lost.json()["status"] == "approved"
+    assert web2.get("/admin/modules").status_code == 200
+
 
 def test_qr_login_wrong_account_cannot_grant():
     owner = client.post(

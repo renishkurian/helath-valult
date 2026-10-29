@@ -42,7 +42,7 @@
       </div>
       {% endif %}
 
-      <div class="text-center mb-4">
+      <div class="text-center mb-4" id="qr-wait" data-challenge="{{ challenge_id or '' }}">
         {% if qr_image %}
         <div class="qr-frame qr-frame-lg mx-auto">
           <img src="{{ qr_image }}" alt="QR code to approve this browser" width="200" height="200">
@@ -105,7 +105,10 @@
 (function () {
   async function tick() {
     try {
-      const r = await fetch("/admin/login/qr/status", { credentials: "same-origin", cache: "no-store" });
+      var box = document.getElementById("qr-wait");
+      var cid = box ? (box.getAttribute("data-challenge") || "") : "";
+      var url = "/admin/login/qr/status" + (cid ? ("?c=" + encodeURIComponent(cid)) : "");
+      const r = await fetch(url, { credentials: "same-origin", cache: "no-store" });
       if (!r.ok) return;
       const data = await r.json();
       if (data.status === "approved" && data.redirect) {
