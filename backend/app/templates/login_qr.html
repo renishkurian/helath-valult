@@ -57,7 +57,7 @@
           <span class="pulse-dot mt-1" aria-hidden="true"></span>
           <div>
             <div class="fw-semibold">In the Vault app</div>
-            <p class="text-muted mb-0" style="font-size:.875rem;">Modules → scan icon, then Allow. Keep this tab open.</p>
+            <p class="text-muted mb-0" id="qr-wait-note" style="font-size:.875rem;">Modules → scan icon, then Allow. Keep this tab open.</p>
           </div>
         </div>
       </div>
@@ -105,11 +105,20 @@
 (function () {
   async function tick() {
     try {
-      const r = await fetch("/admin/login/qr/status", { credentials: "same-origin" });
+      const r = await fetch("/admin/login/qr/status", { credentials: "same-origin", cache: "no-store" });
       if (!r.ok) return;
       const data = await r.json();
-      if (data.redirect && data.status !== "pending") {
+      if (data.status === "approved" && data.redirect) {
         window.location.href = data.redirect;
+        return;
+      }
+      if (data.status === "denied" || data.status === "expired") {
+        var note = document.getElementById("qr-wait-note");
+        if (note) {
+          note.textContent = data.status === "denied"
+            ? "That sign-in was denied on your phone."
+            : "This code timed out. Go back and show a new one.";
+        }
       }
     } catch (e) {}
   }

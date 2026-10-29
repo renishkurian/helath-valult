@@ -440,6 +440,10 @@ def test_qr_login_unknown_email_does_not_leak():
     assert wait.status_code == 200
     assert "Scan to sign in" in wait.text
     assert "qr-frame" in wait.text
+    status = web.get("/admin/login/qr/status")
+    assert status.status_code == 200
+    assert status.json()["status"] == "pending"
+    assert "no-store" in status.headers.get("cache-control", "")
     assert _pending_qr_id("missing-qr@example.com") is None
 
 

@@ -721,18 +721,26 @@ async def login_qr_submit(request: Request, db: Session = Depends(get_db)):
     )
 
 
+def _qr_status_json(body: dict) -> JSONResponse:
+    return JSONResponse(body, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/login/qr/status")
 def login_qr_status(request: Request, db: Session = Depends(get_db)):
     challenge, payload, early = _pending_qr(request, db)
     if early:
         if isinstance(early, RedirectResponse) and early.headers.get("location", "").endswith("/admin/modules"):
-            return {"status": "approved", "redirect": "/admin/modules"}
+            return _qr_status_json({"status": "approved", "redirect": "/admin/modules"})
+        if isinstance(early, RedirectResponse) and early.headers.get("location", "").endswith("/admin/login/2fa"):
+            return _qr_status_json({"status": "approved", "redirect": "/admin/login/2fa"})
         if isinstance(early, RedirectResponse):
-            return {"status": "expired", "redirect": "/admin/login"}
-        return {"status": "denied", "redirect": "/admin/login"}
+            return _qr_status_json({"status": "expired", "redirect": "/admin/login"})
+        return _qr_status_json({"status": "denied", "redirect": "/admin/login"})
     if not payload:
-        return {"status": "expired", "redirect": "/admin/login/qr"}
-    return {"status": "pending"}
+        # Session cookie can lag the POST that just drew the QR. Do not send the
+        # browser back to the email form on that first poll.
+        return _qr_status_json({"status": "pending"})
+    return _qr_status_json({"status": "pending"})
 
 
 @router.get("/login/qr/cancel")
