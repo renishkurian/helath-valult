@@ -4942,9 +4942,13 @@ def finance_trans(
     sub_cats_map: dict[str, list] = {}
     for c in all_cats:
         if c.parent_id:
-            sub_cats_map.setdefault(c.parent_id, []).append(c)
+            sub_cats_map.setdefault(c.parent_id, []).append(
+                {"id": c.id, "name": c.name, "icon": c.icon or ""}
+            )
     # Pre-select subcategory list for the chosen parent (for server-side render)
-    selected_sub_cats = sub_cats_map.get(category_id or "", [])
+    selected_sub_cats = [
+        c for c in all_cats if c.parent_id == category_id
+    ] if category_id else []
     return templates.TemplateResponse("finance_trans.html", _fn_ctx(
         request, user, "fn_trans", ledger=ledger, view=view, q=q or "", inr=inr,
         accounts=accounts, family_members=family_members,
