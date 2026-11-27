@@ -2278,7 +2278,7 @@ def ignore_message(message_id: str, db: Session = Depends(get_db), current_user:
     return {"ok": True}
 
 
-def month_ledger(db: Session, user: models.User, year_month: str, q: str | None = None, notes_only: bool = False, account_id: str | None = None, family_member_id: str | None = None):
+def month_ledger(db: Session, user: models.User, year_month: str, q: str | None = None, notes_only: bool = False, account_id: str | None = None, family_member_id: str | None = None, category_id: str | None = None, sub_category_id: str | None = None):
     """Grouped daily view used by the admin UI."""
     ensure_defaults(db, user)
     uid = _owned(db, user)
@@ -2294,6 +2294,21 @@ def month_ledger(db: Session, user: models.User, year_month: str, q: str | None 
         )
     if family_member_id:
         query = query.filter(models.FinanceTransaction.family_member_id == family_member_id)
+    # sub_category_id is more specific — if set, filter directly on that category.
+    # If only category_id (a parent) is set, include all transactions whose category
+    # has that parent_id OR whose category IS that parent (direct match).
+    if sub_category_id:
+        query = query.filter(models.FinanceTransaction.category_id == sub_category_id)
+    elif category_id:
+        # Collect the parent category itself + all direct children
+        child_ids = [
+            c.id for c in db.query(models.FinanceCategory.id).filter(
+                models.FinanceCategory.parent_id == category_id,
+                models.FinanceCategory.user_id == uid,
+            )
+        ]
+        ids_to_match = [category_id] + child_ids
+        query = query.filter(models.FinanceTransaction.category_id.in_(ids_to_match))
     if q:
         like = f"%{q}%"
         query = query.filter(

@@ -4786,11 +4786,13 @@ def _fn_dashboard_json(db, user, ym: str) -> dict:
 def _fn_ledger_json(
     db, user, ym: str, q: str | None = None, notes_only: bool = False,
     account_id: str | None = None, family_member_id: str | None = None,
+    category_id: str | None = None, sub_category_id: str | None = None,
 ) -> dict:
     from app.routers.finance import month_ledger, _txn_out, _acct_map, _cat_map, _owned, _member_map, _icon_defaults_map
     ledger = month_ledger(
         db, user, ym, q=q, notes_only=notes_only,
         account_id=account_id or None, family_member_id=family_member_id or None,
+        category_id=category_id or None, sub_category_id=sub_category_id or None,
     )
     uid = _owned(db, user)
     accounts, categories = _acct_map(db, uid), _cat_map(db, uid)
@@ -4838,7 +4840,9 @@ def _fn_ledger_json(
         "txns": txns,
         "account_id": account_id or "",
         "family_member_id": family_member_id or "",
-        "filtered": bool(q or account_id or family_member_id),
+        "category_id": category_id or "",
+        "sub_category_id": sub_category_id or "",
+        "filtered": bool(q or account_id or family_member_id or category_id or sub_category_id),
     }
 
 
@@ -4910,6 +4914,8 @@ def finance_trans(
     q: Optional[str] = None,
     account_id: Optional[str] = None,
     family_member_id: Optional[str] = None,
+    category_id: Optional[str] = None,
+    sub_category_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     from app.routers import finance as fn
@@ -4921,13 +4927,31 @@ def finance_trans(
     ledger = month_ledger(
         db, user, ym, q=q, notes_only=(view == "note"),
         account_id=account_id or None, family_member_id=family_member_id or None,
+        category_id=category_id or None, sub_category_id=sub_category_id or None,
     )
     accounts = fn.list_accounts(db=db, current_user=user)
     family_members = _fn_family_members(db, user)
+    # Build parent categories (no parent_id) and a map of parent_id -> subcategories
+    from app import models as _m
+    from app.deps import vault_id as _vid
+    uid = _vid(user)
+    all_cats = db.query(_m.FinanceCategory).filter(
+        _m.FinanceCategory.user_id == uid
+    ).order_by(_m.FinanceCategory.name).all()
+    parent_cats = [c for c in all_cats if not c.parent_id]
+    sub_cats_map: dict[str, list] = {}
+    for c in all_cats:
+        if c.parent_id:
+            sub_cats_map.setdefault(c.parent_id, []).append(c)
+    # Pre-select subcategory list for the chosen parent (for server-side render)
+    selected_sub_cats = sub_cats_map.get(category_id or "", [])
     return templates.TemplateResponse("finance_trans.html", _fn_ctx(
         request, user, "fn_trans", ledger=ledger, view=view, q=q or "", inr=inr,
         accounts=accounts, family_members=family_members,
         account_id=account_id or "", family_member_id=family_member_id or "",
+        parent_cats=parent_cats, sub_cats_map=sub_cats_map,
+        category_id=category_id or "", sub_category_id=sub_category_id or "",
+        selected_sub_cats=selected_sub_cats,
     ))
 
 
@@ -5684,6 +5708,8 @@ def finance_api_ledger(
     q: Optional[str] = None,
     account_id: Optional[str] = None,
     family_member_id: Optional[str] = None,
+    category_id: Optional[str] = None,
+    sub_category_id: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     user = _fn_user(request, db)
@@ -5697,6 +5723,7 @@ def finance_api_ledger(
     data = _fn_ledger_json(
         db, user, ym, q=q, notes_only=(view == "note"),
         account_id=account_id or None, family_member_id=family_member_id or None,
+        category_id=category_id or None, sub_category_id=sub_category_id or None,
     )
     data["view"] = view
     data["q"] = q or ""

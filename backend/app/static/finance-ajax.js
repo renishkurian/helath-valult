@@ -446,14 +446,14 @@
     var sign = item.txn_type === "income" ? "+" : item.txn_type === "expense" ? "−" : "";
     var check = canBulk
       ? '<input type="checkbox" class="form-check-input mm-txn-check m-0" name="txn_id" value="' +
-        esc(item.id) +
-        '" form="mm-bulk-delete" aria-label="Select transaction">'
+      esc(item.id) +
+      '" form="mm-bulk-delete" aria-label="Select transaction">'
       : "";
     var photo =
       item.has_image
         ? '<li><a class="dropdown-item js-photo" href="/admin/finance/transactions/' +
-          esc(item.id) +
-          '/image"><i class="bi bi-image"></i> Receipt</a></li>'
+        esc(item.id) +
+        '/image"><i class="bi bi-image"></i> Receipt</a></li>'
         : "";
     return (
       '<div class="mm-card" data-txn-id="' +
@@ -602,6 +602,8 @@
     root.dataset.q = ledger.q || "";
     root.dataset.accountId = ledger.account_id || "";
     root.dataset.familyMemberId = ledger.family_member_id || "";
+    root.dataset.categoryId = ledger.category_id || "";
+    root.dataset.subCategoryId = ledger.sub_category_id || "";
 
     var title = root.querySelector("[data-mm-title]");
     if (title) title.textContent = ledger.label;
@@ -620,7 +622,9 @@
     var next = root.querySelector("[data-mm-next]");
     var filterQs =
       (root.dataset.accountId ? "&account_id=" + encodeURIComponent(root.dataset.accountId) : "") +
-      (root.dataset.familyMemberId ? "&family_member_id=" + encodeURIComponent(root.dataset.familyMemberId) : "");
+      (root.dataset.familyMemberId ? "&family_member_id=" + encodeURIComponent(root.dataset.familyMemberId) : "") +
+      (root.dataset.categoryId ? "&category_id=" + encodeURIComponent(root.dataset.categoryId) : "") +
+      (root.dataset.subCategoryId ? "&sub_category_id=" + encodeURIComponent(root.dataset.subCategoryId) : "");
     if (prev) {
       prev.dataset.month = ledger.prev;
       prev.href =
@@ -689,21 +693,23 @@
         { mmMonth: ledger.year_month, mmView: view, mmQ: ledger.q || "" },
         "",
         "/admin/finance/transactions?month=" +
-          encodeURIComponent(ledger.year_month) +
-          "&view=" +
-          encodeURIComponent(view) +
-          q +
-          filterQs
+        encodeURIComponent(ledger.year_month) +
+        "&view=" +
+        encodeURIComponent(view) +
+        q +
+        filterQs
       );
     }
   }
 
-  function loadLedger(month, view, q, preferCache, accountId, familyMemberId) {
+  function loadLedger(month, view, q, preferCache, accountId, familyMemberId, categoryId, subCategoryId) {
     view = view || "daily";
     q = q || "";
     accountId = accountId || "";
     familyMemberId = familyMemberId || "";
-    var key = "ledger:" + month + ":" + view + ":" + q + ":" + accountId + ":" + familyMemberId;
+    categoryId = categoryId || "";
+    subCategoryId = subCategoryId || "";
+    var key = "ledger:" + month + ":" + view + ":" + q + ":" + accountId + ":" + familyMemberId + ":" + categoryId + ":" + subCategoryId;
     var url =
       "/admin/finance/api/ledger?month=" +
       encodeURIComponent(month) +
@@ -711,7 +717,9 @@
       encodeURIComponent(view) +
       (q ? "&q=" + encodeURIComponent(q) : "") +
       (accountId ? "&account_id=" + encodeURIComponent(accountId) : "") +
-      (familyMemberId ? "&family_member_id=" + encodeURIComponent(familyMemberId) : "");
+      (familyMemberId ? "&family_member_id=" + encodeURIComponent(familyMemberId) : "") +
+      (categoryId ? "&category_id=" + encodeURIComponent(categoryId) : "") +
+      (subCategoryId ? "&sub_category_id=" + encodeURIComponent(subCategoryId) : "");
     var network = fetchJson(url).then(function (ledger) {
       paintLedger(ledger);
       return idbSet(key, { savedAt: Date.now(), ledger: ledger }).then(function () {
@@ -776,6 +784,8 @@
     if (root.dataset.q) params.set("q", root.dataset.q);
     if (root.dataset.accountId) params.set("account_id", root.dataset.accountId);
     if (root.dataset.familyMemberId) params.set("family_member_id", root.dataset.familyMemberId);
+    if (root.dataset.categoryId) params.set("category_id", root.dataset.categoryId);
+    if (root.dataset.subCategoryId) params.set("sub_category_id", root.dataset.subCategoryId);
     return params.toString();
   }
 
@@ -865,18 +875,45 @@
 
     var filter = root.querySelector(".filter-bar");
     if (filter) {
+      // Dynamic subcategory population based on selected parent category
+      var catSel = document.getElementById("fn-category");
+      var subCatSel = document.getElementById("fn-subcategory");
+      if (catSel && subCatSel) {
+        var subCatsMap = {};
+        try { subCatsMap = JSON.parse(catSel.dataset.subCats || "{}"); } catch (e) { }
+        catSel.addEventListener("change", function () {
+          var pid = catSel.value;
+          var subs = subCatsMap[pid] || [];
+          // Rebuild options
+          subCatSel.innerHTML = '<option value="">All subcategories</option>';
+          subs.forEach(function (s) {
+            var opt = document.createElement("option");
+            opt.value = s.id;
+            opt.textContent = (s.icon ? s.icon + " " : "") + s.name;
+            subCatSel.appendChild(opt);
+          });
+          subCatSel.style.display = subs.length ? "" : "none";
+          subCatSel.value = "";
+        });
+      }
       filter.addEventListener("submit", function (ev) {
         ev.preventDefault();
         var qEl = document.getElementById("fn-q");
         var acctEl = document.getElementById("fn-account");
         var memberEl = document.getElementById("fn-member");
+        var catEl = document.getElementById("fn-category");
+        var subCatEl = document.getElementById("fn-subcategory");
         var q = (qEl && qEl.value) || "";
         var accountId = (acctEl && acctEl.value) || "";
         var familyMemberId = (memberEl && memberEl.value) || "";
+        var categoryId = (catEl && catEl.value) || "";
+        var subCategoryId = (subCatEl && subCatEl.value) || "";
         root.dataset.q = q;
         root.dataset.accountId = accountId;
         root.dataset.familyMemberId = familyMemberId;
-        loadLedger(root.dataset.month, root.dataset.view || "daily", q, false, accountId, familyMemberId);
+        root.dataset.categoryId = categoryId;
+        root.dataset.subCategoryId = subCategoryId;
+        loadLedger(root.dataset.month, root.dataset.view || "daily", q, false, accountId, familyMemberId, categoryId, subCategoryId);
       });
     }
 
