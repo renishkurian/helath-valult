@@ -215,8 +215,234 @@ def start_sync_background(user_id: str, *, trigger: str = "manual") -> bool:
     return True
 
 
+def _parse_dividend_email(text: str, subject: str) -> dict | None:
+    """Extract company name, amount and date from a depository dividend credit advice email.
+
+    Handles NSDL / CDSL / RTA credit advice format and typical subject lines like:
+      "Dividend/Interest Credit advice for <COMPANY> ..."
+      "Credit of Dividend - <COMPANY> ..."
+      "<COMPANY> - Dividend of Rs. XX.XX credited on DD-Mon-YYYY"
+    Returns None if the email doesn't look like a dividend credit advice.
+    """
+    blob = (subject + "\n" + text).strip()
+
+    # Must look like a dividend email at all
+    if not re.search(r"\bdividend\b", blob, re.I):
+        return None
+
+    # ── Amount ───────────────────────────────────────────────────────────────
+    amount: float | None = None
+    for pat in (
+        r"(?:gross|net|amount)[^₹₨\d]{0,20}[₹₨Rs\.]{0,4}\s*([\d,]+(?:\.\d{1,2})?)",
+        r"[₹₨]\s*([\d,]+(?:\.\d{1,2})?)",
+        r"Rs\.?\s*([\d,]+(?:\.\d{1,2})?)",
+        r"INR\s*([\d,]+(?:\.\d{1,2})?)",
+        r"credited[^₹₨\d]{0,30}([\d,]+(?:\.\d{1,2})?)",
+    ):
+        m = re.search(pat, blob, re.I)
+        if m:
+            try:
+                amount = float(m.group(1).replace(",", ""))
+                if 0 < amount < 10_000_000:
+                    break
+            except ValueError:
+                amount = None
+
+    if not amount:
+        return None
+
+    # ── Date ─────────────────────────────────────────────────────────────────
+    txn_date: str | None = None
+    _MONTHS = {
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+    }
+    # e.g. "09 November 2026" / "November 09, 2026" / "09-Nov-2026" / "2026-11-09"
+    for pat in (
+        r"(\d{1,2})[- ]([A-Za-z]{3,9})[- ,](\d{4})",
+        r"([A-Za-z]{3,9})[- ](\d{1,2})[,\s]+(\d{4})",
+        r"(\d{4})-(\d{2})-(\d{2})",
+    ):
+        m = re.search(pat, blob)
+        if not m:
+            continue
+        try:
+            g = m.groups()
+            if len(g) == 3 and g[0].isdigit() and len(g[0]) == 4:
+                # ISO format
+                txn_date = f"{g[0]}-{g[1]}-{g[2]}"
+            elif g[0].isdigit():
+                mn = _MONTHS.get(g[1].lower()[:3])
+                if mn:
+                    txn_date = f"{g[2]}-{mn:02d}-{int(g[0]):02d}"
+            else:
+                mn = _MONTHS.get(g[0].lower()[:3])
+                if mn:
+                    txn_date = f"{g[2]}-{mn:02d}-{int(g[1]):02d}"
+            if txn_date:
+                datetime.strptime(txn_date, "%Y-%m-%d")
+                break
+        except (ValueError, AttributeError):
+            txn_date = None
+
+    # ── Company name ─────────────────────────────────────────────────────────
+    company: str | None = None
+    for pat in (
+        r"(?:dividend|interest)[^\n]{0,10}(?:from|for|of|by|credit of)[:\s]+([A-Za-z0-9][A-Za-z0-9 &.\-]{2,60})",
+        r"credit[^\n]{0,10}dividend[^\n]{0,10}(?:of\s+)?([A-Za-z0-9][A-Za-z0-9 &.\-]{2,60})",
+        r"^([A-Za-z0-9][A-Za-z0-9 &.\-]{2,60})\s*[-–]\s*(?:interim|final|dividend)",
+        r"(?:interim|final)\s+dividend\s+(?:of\s+)?(?:[₹₨Rs\.INR\s\d,\.]+\s+)?(?:from\s+)?([A-Za-z0-9][A-Za-z0-9 &.\-]{2,60})",
+    ):
+        m = re.search(pat, blob, re.I | re.M)
+        if m:
+            company = m.group(1).strip(" -:")
+            company = re.sub(r"\s+", " ", company)
+            # Trim trailing noise
+            company = re.split(r"\s+(?:limited|ltd|pvt|private|has|will|is|was|for)\b", company, maxsplit=1, flags=re.I)[0]
+            company = company.strip(" -:,.")
+            if len(company) >= 3:
+                break
+            company = None
+
+    # Fall back to subject line
+    if not company:
+        s = re.sub(r"(?:dividend|credit|advice|interim|final|credited|Rs\.?\s*[\d,\.]+|₹\s*[\d,\.]+)", "", subject, flags=re.I)
+        s = re.sub(r"\s+", " ", s).strip(" -:/,.")
+        if len(s) >= 3:
+            company = s[:60]
+
+    if not company:
+        return None
+
+    return {
+        "company": company.title()[:80],
+        "amount": amount,
+        "txn_date": txn_date,
+    }
+
+
+# Gmail search queries that identify depository / RTA dividend credit advice emails
+_DIVIDEND_EMAIL_QUERIES: list[str] = [
+    "subject:(dividend credit advice) newer_than:365d",
+    "subject:(dividend credited) newer_than:365d",
+    "subject:(credit of dividend) newer_than:365d",
+    "subject:(interim dividend) newer_than:365d",
+    "subject:(final dividend) newer_than:365d",
+    "from:nsdl.co.in newer_than:365d",
+    "from:cdslindia.com newer_than:365d",
+]
+
+
+def scan_dividend_emails(db: Session, user: models.User) -> int:
+    """Search Gmail for dividend credit advice emails and save new ones to ShopStatementTxn.
+
+    Returns the count of newly added rows. Already-seen emails are skipped via
+    transaction_id deduplication (SHA-256 of the Gmail message id).
+    """
+    import hashlib
+    conn = (
+        db.query(models.ExpenseAnalyserConnection)
+        .filter(models.ExpenseAnalyserConnection.user_id == vault_id(user))
+        .first()
+    )
+    if not conn:
+        return 0
+    try:
+        creds = oauth_creds(conn)
+        access_token = creds.get("access_token") if creds else None
+    except Exception:
+        return 0
+    if not access_token:
+        return 0
+
+    uid = vault_id(user)
+
+    # Collect unique gmail message ids across all queries
+    seen_mids: set[str] = set()
+    all_mids: list[str] = []
+    for q in _DIVIDEND_EMAIL_QUERIES:
+        try:
+            mids = gmail.list_message_ids_paged(access_token, q, limit=100)
+            for mid in mids:
+                if mid not in seen_mids:
+                    seen_mids.add(mid)
+                    all_mids.append(mid)
+        except Exception:
+            log.warning("dividend email query failed: %s", q)
+
+    if not all_mids:
+        return 0
+
+    # Build set of transaction_ids already in DB to avoid duplicates
+    existing_txn_ids: set[str] = set(
+        r[0] for r in db.query(models.ShopStatementTxn.transaction_id)
+        .filter(
+            models.ShopStatementTxn.user_id == uid,
+            models.ShopStatementTxn.category == "dividend",
+            models.ShopStatementTxn.transaction_id.isnot(None),
+        )
+        .all()
+    )
+
+    added = 0
+    for mid in all_mids:
+        # Dedup key: sha256 of gmail_message_id prefixed with "div-email:"
+        txn_id = hashlib.sha256(f"div-email:{mid}".encode()).hexdigest()[:16]
+        if txn_id in existing_txn_ids:
+            continue
+        try:
+            raw = gmail.get_message(access_token, mid)
+            mail = gmail.extract_message(raw)
+        except Exception:
+            log.warning("failed to fetch dividend email %s", mid)
+            continue
+
+        subject = mail.get("subject") or ""
+        text = mail.get("text") or mail.get("snippet") or ""
+        parsed = _parse_dividend_email(text, subject)
+        if not parsed:
+            log.debug("dividend email %s did not parse (subject=%r)", mid, subject[:80])
+            continue
+
+        txn_date = parsed["txn_date"]
+        if not txn_date:
+            # Fall back to email received date
+            received = mail.get("received_at") or mail.get("date") or ""
+            if received:
+                try:
+                    dt = datetime.fromisoformat(str(received)[:19])
+                    txn_date = dt.strftime("%Y-%m-%d")
+                except ValueError:
+                    pass
+
+        description = f"DIVIDEND {parsed['company'].upper()} - {parsed['amount']:.2f} (email)"
+        row = models.ShopStatementTxn(
+            id=__import__("uuid").uuid4().hex,
+            user_id=uid,
+            txn_date=txn_date or datetime.utcnow().strftime("%Y-%m-%d"),
+            description=description,
+            amount=parsed["amount"],
+            direction="credit",
+            category="dividend",
+            bank_name="UNKNOWN",
+            account_number="",
+            account_type="",
+            source_file=f"gmail-email:{mid[:20]}",
+            transaction_id=txn_id,
+            status="pending",
+            created_at=datetime.utcnow(),
+        )
+        db.add(row)
+        existing_txn_ids.add(txn_id)
+        added += 1
+        log.info("dividend email added: %s ₹%.2f on %s", parsed["company"], parsed["amount"], txn_date)
+
+    if added:
+        db.commit()
+
+    return added
 def start_dividend_scan_background(user_id: str) -> bool:
-    """Re-open locked statement PDFs that match a saved subject password."""
+    """Scan Gmail for dividend credit advice emails + retry locked PDFs."""
     if _is_heavy_job(user_id):
         return False
     _mark_syncing(user_id, True)
@@ -232,6 +458,13 @@ def start_dividend_scan_background(user_id: str) -> bool:
                     retry_locked_pdfs(db, user, matching_passwords_only=True)
                 except Exception:
                     log.exception("background dividend pdf retry failed")
+                # Scan Gmail for direct dividend credit advice emails
+                try:
+                    email_added = scan_dividend_emails(db, user)
+                    if email_added:
+                        log.info("dividend email scan added %d new rows for %s", email_added, user_id[:8])
+                except Exception:
+                    log.exception("background dividend email scan failed")
                 from app.company_logos import issuer_name, sync_logos
                 names = [
                     issuer_name(desc or "")
