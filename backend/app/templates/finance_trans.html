@@ -38,14 +38,14 @@
   <form class="filter-bar" method="get" action="/admin/finance/transactions">
     <input type="hidden" name="month" value="{{ ledger.year_month }}">
     <input type="hidden" name="view" value="{{ view }}">
-    <div class="search-field">
+    <div class="search-field" style="flex:1 1 160px; min-width:120px;">
       <i class="bi bi-search"></i>
       <label class="form-label visually-hidden" for="fn-q">Search transactions</label>
-      <input class="form-control" id="fn-q" type="search" name="q" value="{{ q }}" placeholder="Search payee or note">
+      <input class="form-control" id="fn-q" type="search" name="q" value="{{ q }}" placeholder="Search">
     </div>
     {% if accounts %}
     <label class="form-label visually-hidden" for="fn-account">Account</label>
-    <select class="form-select" id="fn-account" name="account_id">
+    <select class="form-select" id="fn-account" name="account_id" style="flex:0 1 150px; min-width:110px;">
       <option value="">All accounts</option>
       {% for a in accounts %}
       <option value="{{ a.id }}" {% if account_id==a.id %}selected{% endif %}>{{ a.name }}</option>
@@ -54,8 +54,8 @@
     {% endif %}
     {% if family_members %}
     <label class="form-label visually-hidden" for="fn-member">Family member</label>
-    <select class="form-select" id="fn-member" name="family_member_id">
-      <option value="">All family members</option>
+    <select class="form-select" id="fn-member" name="family_member_id" style="flex:0 1 150px; min-width:110px;">
+      <option value="">All members</option>
       {% for m in family_members %}
       <option value="{{ m.id }}" {% if family_member_id==m.id %}selected{% endif %}>{{ m.full_name }}</option>
       {% endfor %}
@@ -63,7 +63,7 @@
     {% endif %}
     {% if parent_cats %}
     <label class="form-label visually-hidden" for="fn-category">Category</label>
-    <select class="form-select" id="fn-category" name="category_id"
+    <select class="form-select" id="fn-category" name="category_id" style="flex:0 1 150px; min-width:110px;"
       data-sub-cats="{{ sub_cats_map | tojson | forceescape }}">
       <option value="">All categories</option>
       {% for c in parent_cats %}
@@ -73,8 +73,8 @@
       {% endfor %}
     </select>
     <label class="form-label visually-hidden" for="fn-subcategory">Subcategory</label>
-    <select class="form-select" id="fn-subcategory" name="sub_category_id" {% if not selected_sub_cats
-      %}style="display:none" {% endif %}>
+    <select class="form-select" id="fn-subcategory" name="sub_category_id"
+      style="flex:0 1 150px; min-width:110px;{% if not selected_sub_cats %} display:none;{% endif %}">
       <option value="">All subcategories</option>
       {% for s in selected_sub_cats %}
       <option value="{{ s.id }}" {% if sub_category_id==s.id %}selected{% endif %}>
@@ -323,5 +323,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/finance-ajax.js?v=10" defer></script>
+<script src="/static/finance-ajax.js?v=11" defer></script>
 {% endblock %}

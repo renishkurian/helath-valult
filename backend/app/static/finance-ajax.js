@@ -847,7 +847,8 @@
         ev.preventDefault();
         loadLedger(
           nav.dataset.month, root.dataset.view || "daily", root.dataset.q || "", true,
-          root.dataset.accountId || "", root.dataset.familyMemberId || ""
+          root.dataset.accountId || "", root.dataset.familyMemberId || "",
+          root.dataset.categoryId || "", root.dataset.subCategoryId || ""
         );
         return;
       }
@@ -856,7 +857,8 @@
         ev.preventDefault();
         loadLedger(
           root.dataset.month, viewA.getAttribute("data-mm-view"), root.dataset.q || "", true,
-          root.dataset.accountId || "", root.dataset.familyMemberId || ""
+          root.dataset.accountId || "", root.dataset.familyMemberId || "",
+          root.dataset.categoryId || "", root.dataset.subCategoryId || ""
         );
         return;
       }
@@ -881,10 +883,9 @@
       if (catSel && subCatSel) {
         var subCatsMap = {};
         try { subCatsMap = JSON.parse(catSel.dataset.subCats || "{}"); } catch (e) { }
-        catSel.addEventListener("change", function () {
-          var pid = catSel.value;
+        function refreshSubCats(pid, keepValue) {
           var subs = subCatsMap[pid] || [];
-          // Rebuild options
+          var prev = keepValue !== undefined ? keepValue : subCatSel.value;
           subCatSel.innerHTML = '<option value="">All subcategories</option>';
           subs.forEach(function (s) {
             var opt = document.createElement("option");
@@ -893,7 +894,12 @@
             subCatSel.appendChild(opt);
           });
           subCatSel.style.display = subs.length ? "" : "none";
-          subCatSel.value = "";
+          if (prev) subCatSel.value = prev;
+        }
+        // On page load: if category already selected (from URL), show its subcategories
+        if (catSel.value) refreshSubCats(catSel.value, subCatSel.value);
+        catSel.addEventListener("change", function () {
+          refreshSubCats(catSel.value, "");
         });
       }
       filter.addEventListener("submit", function (ev) {
