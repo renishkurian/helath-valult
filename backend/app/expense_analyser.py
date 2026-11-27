@@ -345,6 +345,23 @@ def scan_dividend_emails(db: Session, user: models.User) -> int:
         .filter(models.ExpenseAnalyserConnection.user_id == vault_id(user))
         .first()
     )
+    # If the vault owner has no Gmail connection, check if another vault member
+    # (e.g. superadmin or family member who set up the Expense Analyser) has one.
+    if not conn:
+        from app.deps import vault_id as _vid
+        # Gather all user ids in the same vault (members share vault_owner_id)
+        member_ids = [
+            r[0] for r in db.query(models.User.id).filter(
+                models.User.vault_owner_id == vault_id(user)
+            ).all()
+        ]
+        # Also include standalone accounts (superadmin whose vault_owner_id == own id)
+        all_ids = list(set(member_ids + [vault_id(user)]))
+        conn = (
+            db.query(models.ExpenseAnalyserConnection)
+            .filter(models.ExpenseAnalyserConnection.user_id.in_(all_ids))
+            .first()
+        )
     if not conn:
         return 0
     try:
