@@ -373,7 +373,7 @@ def scan_dividend_emails(db: Session, user: models.User) -> int:
     if not all_mids:
         return 0
 
-    # Build set of transaction_ids already in DB to avoid duplicates
+    # Build set of transaction_ids already in DB to avoid re-adding email rows
     existing_txn_ids: set[str] = set(
         r[0] for r in db.query(models.ShopStatementTxn.transaction_id)
         .filter(
@@ -383,6 +383,37 @@ def scan_dividend_emails(db: Session, user: models.User) -> int:
         )
         .all()
     )
+
+    # Build a lookup of (amount, date) already covered by PDF-sourced rows so we
+    # skip email rows that duplicate something already parsed from a statement PDF.
+    # We use a ±2-day window (same logic as _find_ledger_match).
+    from decimal import Decimal as _D
+    pdf_dividends: list[tuple[_D, str]] = [
+        (_D(str(r[0])), r[1] or "")
+        for r in db.query(models.ShopStatementTxn.amount, models.ShopStatementTxn.txn_date)
+        .filter(
+            models.ShopStatementTxn.user_id == uid,
+            models.ShopStatementTxn.category == "dividend",
+            # Email-sourced rows have source_file starting with "gmail-email:"
+            ~models.ShopStatementTxn.source_file.like("gmail-email:%"),
+        )
+        .all()
+    ]
+
+    def _pdf_has(amount: float, txn_date: str | None) -> bool:
+        """True if a PDF row already covers this amount within ±2 days."""
+        if not txn_date:
+            return False
+        amt = _D(str(amount))
+        try:
+            base = datetime.strptime(txn_date, "%Y-%m-%d").date()
+        except ValueError:
+            return False
+        window = {
+            (base + __import__("datetime").timedelta(days=d)).strftime("%Y-%m-%d")
+            for d in range(-2, 3)
+        }
+        return any(a == amt and d in window for a, d in pdf_dividends)
 
     added = 0
     for mid in all_mids:
@@ -415,6 +446,14 @@ def scan_dividend_emails(db: Session, user: models.User) -> int:
                 except ValueError:
                     pass
 
+        # Skip if a PDF statement row already covers the same amount+date
+        if _pdf_has(parsed["amount"], txn_date):
+            log.debug(
+                "dividend email skipped (PDF already has ₹%.2f on %s): %s",
+                parsed["amount"], txn_date, subject[:60],
+            )
+            continue
+
         description = f"DIVIDEND {parsed['company'].upper()} - {parsed['amount']:.2f} (email)"
         row = models.ShopStatementTxn(
             id=__import__("uuid").uuid4().hex,
@@ -434,6 +473,9 @@ def scan_dividend_emails(db: Session, user: models.User) -> int:
         )
         db.add(row)
         existing_txn_ids.add(txn_id)
+        # Also add to pdf_dividends so within-batch dedup works
+        from decimal import Decimal as _D2
+        pdf_dividends.append((_D2(str(parsed["amount"])), txn_date or ""))
         added += 1
         log.info("dividend email added: %s ₹%.2f on %s", parsed["company"], parsed["amount"], txn_date)
 
